@@ -217,4 +217,4 @@ Tests now:
 
 ## Cleanup Tasks
 
-- [ ] Commit all pending changes to git
+- [x] Commit all pending changes to git
