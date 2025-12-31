@@ -31,9 +31,22 @@ export abstract class Equipment {
     this.effectRadius = effectRadius;
   }
 
-  abstract activate(): void;
-  abstract deactivate(): void;
   abstract applyEffect(time: number, delta: number): void;
+
+  activate(): void {
+    if (this.resourceCurrent <= 0) return;
+    this.isActive = true;
+    if (this.sprite) {
+      this.sprite.setVisible(true);
+    }
+  }
+
+  deactivate(): void {
+    this.isActive = false;
+    if (this.emitter) {
+      this.emitter.stop();
+    }
+  }
 
   getResourcePercent(): number {
     return (this.resourceCurrent / this.resourceMax) * 100;
@@ -60,8 +73,56 @@ export abstract class Equipment {
       this.applyEffect(time, delta);
     }
 
+    this.updateSpritePosition();
+  }
+
+  protected updateSpritePosition(): void {
     if (this.sprite) {
-      this.sprite.setPosition(this.player.x, this.player.y + 12);
+      const direction = this.player.getDirection();
+      const offset = this.getIsoOffset(direction);
+      this.sprite.setPosition(this.player.x + offset.x, this.player.y + offset.y);
+
+      const gridPos = this.player.getGridPosition();
+      const elevation = this.grassSystem.getElevation(gridPos.x, gridPos.y);
+      const depthOffset = this.getDepthOffset(direction);
+      this.sprite.setDepth(99 + gridPos.x + gridPos.y + elevation * 100 + depthOffset);
+    }
+
+    this.updateEmitterPosition();
+  }
+
+  protected updateEmitterPosition(): void {
+    if (this.emitter) {
+      const direction = this.player.getDirection();
+      const offset = this.getEmitterOffset(direction);
+      this.emitter.setPosition(this.player.x + offset.x, this.player.y + offset.y);
+    }
+  }
+
+  protected getEmitterOffset(direction: string): { x: number; y: number } {
+    return this.getIsoOffset(direction);
+  }
+
+  protected getIsoOffset(direction: string): { x: number; y: number } {
+    switch (direction) {
+      case 'up': return { x: 16, y: -8 };
+      case 'down': return { x: -16, y: 8 };
+      case 'left': return { x: -16, y: -8 };
+      case 'right': return { x: 16, y: 8 };
+      default: return { x: 0, y: 8 };
+    }
+  }
+
+  protected getDepthOffset(direction: string): number {
+    switch (direction) {
+      case 'up':
+      case 'left':
+        return -1;
+      case 'down':
+      case 'right':
+        return 1;
+      default:
+        return 0;
     }
   }
 

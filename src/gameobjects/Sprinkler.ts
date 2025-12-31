@@ -7,7 +7,7 @@ export class Sprinkler extends Equipment {
   constructor(scene: Phaser.Scene, player: Player, grassSystem: GrassSystem) {
     super(scene, player, grassSystem, 100, 1.0, 2);
 
-    this.sprite = scene.add.sprite(player.x, player.y, 'sprinkler');
+    this.sprite = scene.add.sprite(player.x, player.y, 'iso_sprinkler');
     this.sprite.setDepth(9);
     this.sprite.setVisible(false);
 
@@ -25,21 +25,6 @@ export class Sprinkler extends Equipment {
     this.emitter = particles;
   }
 
-  activate(): void {
-    if (this.resourceCurrent <= 0) return;
-    this.isActive = true;
-    if (this.sprite) {
-      this.sprite.setVisible(true);
-    }
-  }
-
-  deactivate(): void {
-    this.isActive = false;
-    if (this.emitter) {
-      this.emitter.stop();
-    }
-  }
-
   applyEffect(_time: number, delta: number): void {
     if (this.resourceCurrent <= 0) {
       this.deactivate();
@@ -53,16 +38,17 @@ export class Sprinkler extends Equipment {
     this.resourceCurrent = Math.max(0, this.resourceCurrent - (this.resourceUseRate * delta) / 1000);
 
     if (this.emitter) {
-      this.emitter.setPosition(this.player.x, this.player.y - 10);
       this.emitter.start();
     }
   }
 
-  update(time: number, delta: number): void {
-    super.update(time, delta);
+  protected getEmitterOffset(direction: string): { x: number; y: number } {
+    const offset = this.getIsoOffset(direction);
+    return { x: offset.x, y: offset.y - 10 };
+  }
 
-    if (this.sprite) {
-      this.sprite.setPosition(this.player.x, this.player.y - 8);
-    }
+  protected getIsoOffset(direction: string): { x: number; y: number } {
+    const base = super.getIsoOffset(direction);
+    return { x: base.x, y: base.y - 12 };
   }
 }

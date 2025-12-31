@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CourseData, TerrainType, getTerrainType } from '../data/courseData';
+import { CourseData, TerrainType, getTerrainType, getObstacleType, getObstacleTexture, ObstacleType } from '../data/courseData';
 
 export interface GrassCell {
   x: number;
@@ -9,10 +9,13 @@ export interface GrassCell {
   moisture: number;
   nutrients: number;
   health: number;
+  elevation: number;
+  obstacle: ObstacleType;
   lastMowed: number;
   lastWatered: number;
   lastFertilized: number;
   sprite: Phaser.GameObjects.Sprite;
+  obstacleSprite: Phaser.GameObjects.Sprite | null;
 }
 
 export type GrassState = 'healthy' | 'stressed' | 'dying' | 'dead';
@@ -25,6 +28,8 @@ export class GrassSystem {
   private height: number;
   private group: Phaser.GameObjects.Group;
   private overlayMode: OverlayMode = 'normal';
+  private readonly TILE_WIDTH = 64;
+  private readonly TILE_HEIGHT = 32;
 
   constructor(scene: Phaser.Scene, courseData: CourseData) {
     this.scene = scene;
@@ -35,21 +40,63 @@ export class GrassSystem {
     this.initializeCells(courseData);
   }
 
+  private readonly ELEVATION_HEIGHT = 16;
+
+  gridToScreen(gridX: number, gridY: number, elevation: number = 0): { x: number; y: number } {
+    const screenX = (gridX - gridY) * (this.TILE_WIDTH / 2) + (this.width * this.TILE_WIDTH / 2);
+    const screenY = (gridX + gridY) * (this.TILE_HEIGHT / 2) - elevation * this.ELEVATION_HEIGHT;
+    return { x: screenX, y: screenY };
+  }
+
+  getElevation(gridX: number, gridY: number): number {
+    const cell = this.getCell(gridX, gridY);
+    return cell ? cell.elevation : 0;
+  }
+
+  screenToGrid(screenX: number, screenY: number): { x: number; y: number } {
+    const offsetX = screenX - (this.width * this.TILE_WIDTH / 2);
+    const isoX = (offsetX / (this.TILE_WIDTH / 2) + screenY / (this.TILE_HEIGHT / 2)) / 2;
+    const isoY = (screenY / (this.TILE_HEIGHT / 2) - offsetX / (this.TILE_WIDTH / 2)) / 2;
+    return { x: Math.floor(isoX), y: Math.floor(isoY) };
+  }
+
+  getTileSize(): { width: number; height: number } {
+    return { width: this.TILE_WIDTH, height: this.TILE_HEIGHT };
+  }
+
   private initializeCells(courseData: CourseData): void {
+    const obstacleMap = new Map<string, number>();
+    if (courseData.obstacles) {
+      for (const obs of courseData.obstacles) {
+        obstacleMap.set(`${obs.x},${obs.y}`, obs.type);
+      }
+    }
+
     for (let y = 0; y < this.height; y++) {
       this.cells[y] = [];
       for (let x = 0; x < this.width; x++) {
         const terrainCode = courseData.layout[y]?.[x] ?? 1;
         const type = getTerrainType(terrainCode);
         const initialValues = this.getInitialValues(type);
+        const elevation = courseData.elevation?.[y]?.[x] ?? 0;
 
-        const sprite = this.scene.add.sprite(
-          x * 32 + 16,
-          y * 32 + 16,
-          this.getTextureForType(type)
-        );
-        sprite.setDepth(0);
+        const pos = this.gridToScreen(x, y, elevation);
+        const sprite = this.scene.add.sprite(pos.x, pos.y, this.getTextureForType(type));
+        sprite.setDepth(x + y + elevation * 100);
         this.group.add(sprite);
+
+        const obstacleCode = obstacleMap.get(`${x},${y}`) ?? 0;
+        const obstacle = getObstacleType(obstacleCode);
+        let obstacleSprite: Phaser.GameObjects.Sprite | null = null;
+
+        if (obstacle !== 'none') {
+          const texture = getObstacleTexture(obstacle);
+          if (texture) {
+            obstacleSprite = this.scene.add.sprite(pos.x, pos.y, texture);
+            obstacleSprite.setOrigin(0.5, 1);
+            obstacleSprite.setDepth(x + y + elevation * 100 + 10);
+          }
+        }
 
         const cell: GrassCell = {
           x,
@@ -59,15 +106,23 @@ export class GrassSystem {
           moisture: initialValues.moisture,
           nutrients: initialValues.nutrients,
           health: 100,
+          elevation,
+          obstacle,
           lastMowed: 0,
           lastWatered: 0,
           lastFertilized: 0,
-          sprite
+          sprite,
+          obstacleSprite
         };
 
         cell.health = this.calculateHealth(cell);
         this.cells[y][x] = cell;
-        this.updateCellVisual(cell);
+      }
+    }
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        this.updateCellVisual(this.cells[y][x]);
       }
     }
   }
@@ -91,13 +146,44 @@ export class GrassSystem {
 
   private getTextureForType(type: TerrainType): string {
     switch (type) {
-      case 'fairway': return 'fairway';
-      case 'rough': return 'rough';
-      case 'green': return 'green';
-      case 'bunker': return 'bunker';
-      case 'water': return 'water';
-      default: return 'rough';
+      case 'fairway': return 'iso_fairway_mown';
+      case 'rough': return 'iso_rough_mown';
+      case 'green': return 'iso_green_mown';
+      case 'bunker': return 'iso_bunker';
+      case 'water': return 'iso_water';
+      default: return 'iso_rough_mown';
     }
+  }
+
+  private getRampDirection(x: number, y: number, elevation: number): 'north' | 'south' | 'east' | 'west' | null {
+    const northCell = this.getCell(x, y - 1);
+    const southCell = this.getCell(x, y + 1);
+    const eastCell = this.getCell(x + 1, y);
+    const westCell = this.getCell(x - 1, y);
+
+    const northElev = northCell?.elevation ?? elevation;
+    const southElev = southCell?.elevation ?? elevation;
+    const eastElev = eastCell?.elevation ?? elevation;
+    const westElev = westCell?.elevation ?? elevation;
+
+    if (northElev > elevation && northElev - elevation === 1 && southElev <= elevation) {
+      return 'north';
+    }
+    if (southElev > elevation && southElev - elevation === 1 && northElev <= elevation) {
+      return 'south';
+    }
+    if (eastElev > elevation && eastElev - elevation === 1 && westElev <= elevation) {
+      return 'east';
+    }
+    if (westElev > elevation && westElev - elevation === 1 && eastElev <= elevation) {
+      return 'west';
+    }
+
+    return null;
+  }
+
+  private getRampTexture(direction: 'north' | 'south' | 'east' | 'west'): string {
+    return `iso_ramp_${direction}`;
   }
 
   calculateHealth(cell: GrassCell): number {
@@ -118,20 +204,33 @@ export class GrassSystem {
 
     let texture: string;
 
-    if (cell.type === 'bunker') {
-      texture = 'bunker';
+    const rampDir = this.getRampDirection(cell.x, cell.y, cell.elevation);
+    if (rampDir && cell.type !== 'bunker' && cell.type !== 'water') {
+      texture = this.getRampTexture(rampDir);
+    } else if (cell.type === 'bunker') {
+      texture = 'iso_bunker';
     } else if (cell.type === 'water') {
-      texture = 'water';
+      texture = 'iso_water';
     } else if (cell.health < 20) {
-      texture = 'grass_dead';
+      texture = 'iso_grass_dead';
     } else if (cell.health < 40) {
-      texture = 'grass_dry';
-    } else if (cell.height > 70) {
-      texture = 'grass_tall';
-    } else if (cell.height > 40) {
-      texture = 'grass_medium';
+      texture = 'iso_grass_dry';
+    } else if (cell.type === 'fairway') {
+      if (cell.height <= 20) texture = 'iso_fairway_mown';
+      else if (cell.height <= 45) texture = 'iso_fairway_growing';
+      else texture = 'iso_fairway_unmown';
+    } else if (cell.type === 'rough') {
+      if (cell.height <= 30) texture = 'iso_rough_mown';
+      else if (cell.height <= 60) texture = 'iso_rough_growing';
+      else texture = 'iso_rough_unmown';
+    } else if (cell.type === 'green') {
+      if (cell.height <= 10) texture = 'iso_green_mown';
+      else if (cell.height <= 22) texture = 'iso_green_growing';
+      else texture = 'iso_green_unmown';
     } else {
-      texture = 'grass_short';
+      if (cell.height <= 30) texture = 'iso_rough_mown';
+      else if (cell.height <= 60) texture = 'iso_rough_growing';
+      else texture = 'iso_rough_unmown';
     }
 
     cell.sprite.setTexture(texture);
@@ -202,7 +301,7 @@ export class GrassSystem {
     return this.overlayMode;
   }
 
-  update(gameTime: number, delta: number): void {
+  update(_gameTime: number, delta: number): void {
     const deltaMinutes = delta / 60000;
 
     for (let y = 0; y < this.height; y++) {
@@ -270,34 +369,26 @@ export class GrassSystem {
     return true;
   }
 
-  mowArea(centerX: number, centerY: number, radius: number): void {
+  private applyArea(centerX: number, centerY: number, radius: number, action: (x: number, y: number) => void): void {
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (dx * dx + dy * dy <= radius * radius) {
-          this.mow(centerX + dx, centerY + dy);
+          action(centerX + dx, centerY + dy);
         }
       }
     }
+  }
+
+  mowArea(centerX: number, centerY: number, radius: number): void {
+    this.applyArea(centerX, centerY, radius, (x, y) => this.mow(x, y));
   }
 
   waterArea(centerX: number, centerY: number, radius: number, amount: number): void {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          this.water(centerX + dx, centerY + dy, amount);
-        }
-      }
-    }
+    this.applyArea(centerX, centerY, radius, (x, y) => this.water(x, y, amount));
   }
 
   fertilizeArea(centerX: number, centerY: number, radius: number, amount: number): void {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          this.fertilize(centerX + dx, centerY + dy, amount);
-        }
-      }
-    }
+    this.applyArea(centerX, centerY, radius, (x, y) => this.fertilize(x, y, amount));
   }
 
   getCell(x: number, y: number): GrassCell | null {
@@ -307,103 +398,81 @@ export class GrassSystem {
     return this.cells[y][x];
   }
 
-  getAverageHealth(): number {
+  isWalkable(x: number, y: number): boolean {
+    const cell = this.getCell(x, y);
+    if (!cell) return false;
+    if (cell.type === 'water') return false;
+    if (cell.obstacle !== 'none') return false;
+    return true;
+  }
+
+  canMoveFromTo(fromX: number, fromY: number, toX: number, toY: number): boolean {
+    if (!this.isWalkable(toX, toY)) return false;
+
+    const fromCell = this.getCell(fromX, fromY);
+    const toCell = this.getCell(toX, toY);
+    if (!fromCell || !toCell) return false;
+
+    const elevationDiff = Math.abs(toCell.elevation - fromCell.elevation);
+    if (elevationDiff > 1) return false;
+
+    return true;
+  }
+
+  private getAverageStat(getter: (cell: GrassCell) => number, defaultValue: number): number {
     let total = 0;
     let count = 0;
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = this.cells[y][x];
         if (cell.type !== 'bunker' && cell.type !== 'water') {
-          total += cell.health;
+          total += getter(cell);
           count++;
         }
       }
     }
-    return count > 0 ? total / count : 100;
+    return count > 0 ? total / count : defaultValue;
+  }
+
+  getAverageHealth(): number {
+    return this.getAverageStat(cell => cell.health, 100);
   }
 
   getAverageMoisture(): number {
-    let total = 0;
-    let count = 0;
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water') {
-          total += cell.moisture;
-          count++;
-        }
-      }
-    }
-    return count > 0 ? total / count : 100;
+    return this.getAverageStat(cell => cell.moisture, 100);
   }
 
   getAverageNutrients(): number {
-    let total = 0;
-    let count = 0;
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water') {
-          total += cell.nutrients;
-          count++;
-        }
-      }
-    }
-    return count > 0 ? total / count : 100;
+    return this.getAverageStat(cell => cell.nutrients, 100);
   }
 
   getAverageHeight(): number {
-    let total = 0;
+    return this.getAverageStat(cell => cell.height, 0);
+  }
+
+  private countCells(predicate: (cell: GrassCell) => boolean): number {
     let count = 0;
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water') {
-          total += cell.height;
+        if (cell.type !== 'bunker' && cell.type !== 'water' && predicate(cell)) {
           count++;
         }
       }
     }
-    return count > 0 ? total / count : 0;
+    return count;
   }
 
   getCellsNeedingMowing(): number {
-    let count = 0;
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water' && cell.height > 60) {
-          count++;
-        }
-      }
-    }
-    return count;
+    return this.countCells(cell => cell.height > 60);
   }
 
   getCellsNeedingWater(): number {
-    let count = 0;
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water' && cell.moisture < 30) {
-          count++;
-        }
-      }
-    }
-    return count;
+    return this.countCells(cell => cell.moisture < 30);
   }
 
   getCellsNeedingFertilizer(): number {
-    let count = 0;
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const cell = this.cells[y][x];
-        if (cell.type !== 'bunker' && cell.type !== 'water' && cell.nutrients < 30) {
-          count++;
-        }
-      }
-    }
-    return count;
+    return this.countCells(cell => cell.nutrients < 30);
   }
 
   getOverallCourseCondition(): string {

@@ -7,7 +7,7 @@ export class Mower extends Equipment {
   constructor(scene: Phaser.Scene, player: Player, grassSystem: GrassSystem) {
     super(scene, player, grassSystem, 100, 0.5, 1);
 
-    this.sprite = scene.add.sprite(player.x, player.y + 12, 'mower');
+    this.sprite = scene.add.sprite(player.x, player.y + 12, 'iso_mower');
     this.sprite.setDepth(9);
     this.sprite.setVisible(false);
 
@@ -25,21 +25,6 @@ export class Mower extends Equipment {
     this.emitter = particles;
   }
 
-  activate(): void {
-    if (this.resourceCurrent <= 0) return;
-    this.isActive = true;
-    if (this.sprite) {
-      this.sprite.setVisible(true);
-    }
-  }
-
-  deactivate(): void {
-    this.isActive = false;
-    if (this.emitter) {
-      this.emitter.stop();
-    }
-  }
-
   applyEffect(_time: number, delta: number): void {
     if (this.resourceCurrent <= 0) {
       this.deactivate();
@@ -52,30 +37,8 @@ export class Mower extends Equipment {
     this.resourceCurrent = Math.max(0, this.resourceCurrent - (this.resourceUseRate * delta) / 1000);
 
     if (this.emitter) {
-      this.emitter.setPosition(this.player.x, this.player.y);
       this.emitter.start();
     }
   }
 
-  update(time: number, delta: number): void {
-    super.update(time, delta);
-
-    if (this.sprite) {
-      const direction = this.player.getDirection();
-      switch (direction) {
-        case 'up':
-          this.sprite.setPosition(this.player.x, this.player.y - 16);
-          break;
-        case 'down':
-          this.sprite.setPosition(this.player.x, this.player.y + 16);
-          break;
-        case 'left':
-          this.sprite.setPosition(this.player.x - 16, this.player.y);
-          break;
-        case 'right':
-          this.sprite.setPosition(this.player.x + 16, this.player.y);
-          break;
-      }
-    }
-  }
 }

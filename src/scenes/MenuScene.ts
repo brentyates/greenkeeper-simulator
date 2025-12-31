@@ -30,7 +30,7 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
-  private playHoverSound(): void {
+  private playSound(frequency: number, type: OscillatorType, gain: number, duration: number): void {
     if (!this.audioContext) return;
     const sfxVolume = parseFloat(localStorage.getItem('sfxVolume') || '0.5');
     if (sfxVolume === 0) return;
@@ -41,53 +41,25 @@ export class MenuScene extends Phaser.Scene {
     oscillator.connect(gainNode);
     gainNode.connect(this.audioContext.destination);
 
-    oscillator.frequency.value = 440;
-    oscillator.type = 'sine';
-    gainNode.gain.setValueAtTime(0.1 * sfxVolume, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+    oscillator.frequency.value = frequency;
+    oscillator.type = type;
+    gainNode.gain.setValueAtTime(gain * sfxVolume, this.audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
 
     oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.1);
+    oscillator.stop(this.audioContext.currentTime + duration);
+  }
+
+  private playHoverSound(): void {
+    this.playSound(440, 'sine', 0.1, 0.1);
   }
 
   private playClickSound(): void {
-    if (!this.audioContext) return;
-    const sfxVolume = parseFloat(localStorage.getItem('sfxVolume') || '0.5');
-    if (sfxVolume === 0) return;
-
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-
-    oscillator.frequency.value = 660;
-    oscillator.type = 'square';
-    gainNode.gain.setValueAtTime(0.15 * sfxVolume, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
-
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.15);
+    this.playSound(660, 'square', 0.15, 0.15);
   }
 
   private playNavigateSound(): void {
-    if (!this.audioContext) return;
-    const sfxVolume = parseFloat(localStorage.getItem('sfxVolume') || '0.5');
-    if (sfxVolume === 0) return;
-
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-
-    oscillator.frequency.value = 330;
-    oscillator.type = 'triangle';
-    gainNode.gain.setValueAtTime(0.08 * sfxVolume, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.08);
-
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.08);
+    this.playSound(330, 'triangle', 0.08, 0.08);
   }
 
   private setupKeyboardNavigation(): void {
@@ -190,7 +162,7 @@ export class MenuScene extends Phaser.Scene {
       duration: 3000,
       repeat: -1,
       onUpdate: (tween) => {
-        const value = tween.getValue();
+        const value = tween.getValue() ?? 0;
         this.animatedGrass.forEach((grass, index) => {
           const offset = index * 15;
           grass.setRotation(Math.sin((value + offset) * Math.PI / 180) * 0.1);
@@ -210,8 +182,6 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createDecorations(): void {
-    const width = this.cameras.main.width;
-
     this.drawTree(80, 180);
     this.drawTree(720, 200);
     this.drawTree(50, 320);
@@ -336,11 +306,12 @@ export class MenuScene extends Phaser.Scene {
     const buttons: { text: string; callback: () => void; icon?: string }[] = [];
 
     if (hasSave) {
-      buttons.push({ text: 'Continue', callback: () => this.loadAndStartGame(), icon: '▶' });
+      buttons.push({ text: 'Continue', callback: () => this.startGame(true), icon: '▶' });
     }
-    buttons.push({ text: 'New Game', callback: () => this.startGame(), icon: '🌱' });
+    buttons.push({ text: 'New Game', callback: () => this.startGame(false), icon: '🌱' });
     buttons.push({ text: 'How to Play', callback: () => this.showHowToPlay(), icon: '📖' });
     buttons.push({ text: 'Settings', callback: () => this.showSettings(), icon: '⚙' });
+    buttons.push({ text: 'Test Harness', callback: () => this.openTestHarness(), icon: '🔧' });
 
     buttons.forEach((btn, index) => {
       const button = this.createMenuButton(0, index * 65, btn.text, btn.callback, btn.icon);
@@ -358,13 +329,13 @@ export class MenuScene extends Phaser.Scene {
       });
     });
 
-    const versionText = this.add.text(10, this.cameras.main.height - 25, 'v1.0.0', {
+    this.add.text(10, this.cameras.main.height - 25, 'v1.0.0', {
       fontSize: '14px',
       fontFamily: 'Arial, sans-serif',
       color: '#6a9c6a'
     });
 
-    const credits = this.add.text(this.cameras.main.width - 10, this.cameras.main.height - 25, '© 2024 Greenkeeper Studios', {
+    this.add.text(this.cameras.main.width - 10, this.cameras.main.height - 25, '© 2024 Greenkeeper Studios', {
       fontSize: '14px',
       fontFamily: 'Arial, sans-serif',
       color: '#6a9c6a'
@@ -456,14 +427,10 @@ export class MenuScene extends Phaser.Scene {
     }
     this.children.list
       .filter(child => child !== this.backgroundElements && !this.backgroundElements.list.includes(child))
-      .forEach(child => {
-        if (child !== this.backgroundElements) {
-          child.destroy();
-        }
-      });
+      .forEach(child => child.destroy());
   }
 
-  private startGame(): void {
+  private startGame(loadSave = false): void {
     this.keyboardEnabled = false;
     this.playClickSound();
 
@@ -480,32 +447,19 @@ export class MenuScene extends Phaser.Scene {
     this.time.delayedCall(200, () => {
       this.cameras.main.fadeOut(400, 0, 0, 0);
       this.time.delayedCall(400, () => {
-        this.scene.start('GameScene');
+        this.scene.start('GameScene', loadSave ? { loadSave: true } : undefined);
         this.scene.launch('UIScene');
       });
     });
   }
 
-  private loadAndStartGame(): void {
+  private openTestHarness(): void {
     this.keyboardEnabled = false;
     this.playClickSound();
 
-    if (this.buttonsContainer) {
-      this.tweens.add({
-        targets: this.buttonsContainer,
-        y: this.buttonsContainer.y + 50,
-        alpha: 0,
-        duration: 300,
-        ease: 'Power2'
-      });
-    }
-
-    this.time.delayedCall(200, () => {
-      this.cameras.main.fadeOut(400, 0, 0, 0);
-      this.time.delayedCall(400, () => {
-        this.scene.start('GameScene', { loadSave: true });
-        this.scene.launch('UIScene');
-      });
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.time.delayedCall(300, () => {
+      this.scene.start('TestHarnessScene');
     });
   }
 

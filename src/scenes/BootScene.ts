@@ -42,7 +42,7 @@ export class BootScene extends Phaser.Scene {
       duration: 2500,
       repeat: -1,
       onUpdate: (tween) => {
-        const value = tween.getValue();
+        const value = tween.getValue() ?? 0;
         this.grassBlades.forEach((grass, index) => {
           const offset = index * 12;
           grass.setRotation(Math.sin((value + offset) * Math.PI / 180) * 0.15);
@@ -133,7 +133,7 @@ export class BootScene extends Phaser.Scene {
       fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    const footer = this.add.text(width / 2, height - 30, '© 2024 Greenkeeper Studios', {
+    this.add.text(width / 2, height - 30, '© 2024 Greenkeeper Studios', {
       fontSize: '12px',
       fontFamily: 'Arial, sans-serif',
       color: '#3d5a4f'
@@ -215,7 +215,7 @@ export class BootScene extends Phaser.Scene {
         to: targetProgress,
         duration: 150,
         onUpdate: (tween) => {
-          const progress = tween.getValue();
+          const progress = tween.getValue() ?? 0;
           this.progressBar.clear();
 
           const gradient = this.progressBar;

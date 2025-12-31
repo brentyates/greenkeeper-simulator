@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { Player } from '../gameobjects/Player';
-import { GrassSystem, OverlayMode } from '../systems/GrassSystem';
+import { GrassSystem } from '../systems/GrassSystem';
 import { TimeSystem } from '../systems/TimeSystem';
 import { EquipmentManager } from '../systems/EquipmentManager';
 import { GameStateManager } from '../systems/GameStateManager';
 import { AudioManager } from '../systems/AudioManager';
 import { COURSE_HOLE_1, REFILL_STATIONS } from '../data/courseData';
+import { GameStateLoader } from '../systems/GameStateLoader';
+import type { StartupParams } from '../main';
 
 interface SaveData {
   version: string;
@@ -47,6 +49,11 @@ export class GameScene extends Phaser.Scene {
   private key1!: Phaser.Input.Keyboard.Key;
   private key2!: Phaser.Input.Keyboard.Key;
   private key3!: Phaser.Input.Keyboard.Key;
+  private keyF5!: Phaser.Input.Keyboard.Key;
+  private keyF6!: Phaser.Input.Keyboard.Key;
+  private keyF12!: Phaser.Input.Keyboard.Key;
+  private keyBracketLeft!: Phaser.Input.Keyboard.Key;
+  private keyBracketRight!: Phaser.Input.Keyboard.Key;
 
   private refillStationSprites: Phaser.GameObjects.Sprite[] = [];
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
@@ -69,38 +76,99 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.fadeIn(500, 0, 0, 0);
     this.grassSystem = new GrassSystem(this, COURSE_HOLE_1);
 
-    const courseWidth = COURSE_HOLE_1.width * 32;
-    const courseHeight = COURSE_HOLE_1.height * 32;
+    const tileSize = this.grassSystem.getTileSize();
 
-    this.physics.world.setBounds(0, 0, courseWidth, courseHeight);
-    this.cameras.main.setBounds(0, 0, courseWidth, courseHeight);
+    const bottomLeft = this.grassSystem.gridToScreen(0, COURSE_HOLE_1.height - 1);
+    const topRight = this.grassSystem.gridToScreen(COURSE_HOLE_1.width - 1, 0);
+    const bottomRight = this.grassSystem.gridToScreen(COURSE_HOLE_1.width - 1, COURSE_HOLE_1.height - 1);
 
-    const startX = 24 * 32 + 16;
-    const startY = 34 * 32 + 16;
-    this.player = new Player(this, startX, startY);
+    const padding = 64;
+    const minX = bottomLeft.x - tileSize.width / 2 - padding;
+    const maxX = topRight.x + tileSize.width / 2 + padding;
+    const minY = -tileSize.height / 2 - padding;
+    const maxY = bottomRight.y + tileSize.height / 2 + padding;
 
+    const worldWidth = maxX - minX;
+    const worldHeight = maxY - minY;
+
+    this.physics.world.setBounds(minX, minY, worldWidth, worldHeight);
+    this.cameras.main.setBounds(minX, minY, worldWidth, worldHeight);
+
+    const startGridX = 24;
+    const startGridY = 34;
+    const startPos = this.grassSystem.gridToScreen(startGridX, startGridY);
+
+    this.player = new Player(this, startPos.x, startPos.y);
+    this.player.setMapSize(COURSE_HOLE_1.width, COURSE_HOLE_1.height);
+    this.player.setMoveChecker((fromX, fromY, toX, toY) => this.grassSystem.canMoveFromTo(fromX, fromY, toX, toY));
+    this.player.setElevationGetter((x, y) => this.grassSystem.getElevation(x, y));
+
+    this.cameras.main.centerOn(startPos.x, startPos.y);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-    this.cameras.main.setDeadzone(200, 150);
+    this.cameras.main.setDeadzone(100, 75);
 
     this.timeSystem = new TimeSystem();
     this.equipmentManager = new EquipmentManager(this, this.player, this.grassSystem);
     this.gameStateManager = new GameStateManager(this.grassSystem);
-    this.audioManager = new AudioManager(this);
+    this.audioManager = new AudioManager();
 
     this.createRefillStations();
     this.setupInput();
     this.createPauseOverlay();
     this.createDaylightOverlay();
+
+    this.loadStartupState();
+    this.signalGameReady();
+  }
+
+  private signalGameReady(): void {
+    (window as unknown as { __gameReady: boolean }).__gameReady = true;
+
+    const readyElement = document.createElement('div');
+    readyElement.id = 'game-ready';
+    readyElement.style.display = 'none';
+    document.body.appendChild(readyElement);
+  }
+
+  private loadStartupState(): void {
+    const startupParams = (window as unknown as { startupParams?: StartupParams }).startupParams;
+    if (startupParams?.state) {
+      GameStateLoader.loadFullState(
+        this.grassSystem,
+        this.player,
+        this.equipmentManager,
+        this.timeSystem,
+        this.gameStateManager,
+        this.cameras.main,
+        startupParams.state
+      );
+      console.log('Loaded state from startup params');
+    }
   }
 
   private createDaylightOverlay(): void {
-    const courseWidth = COURSE_HOLE_1.width * 32;
-    const courseHeight = COURSE_HOLE_1.height * 32;
+    const tileSize = this.grassSystem.getTileSize();
+
+    const bottomLeft = this.grassSystem.gridToScreen(0, COURSE_HOLE_1.height - 1);
+    const topRight = this.grassSystem.gridToScreen(COURSE_HOLE_1.width - 1, 0);
+    const bottomRight = this.grassSystem.gridToScreen(COURSE_HOLE_1.width - 1, COURSE_HOLE_1.height - 1);
+
+    const padding = 128;
+    const minX = bottomLeft.x - tileSize.width / 2 - padding;
+    const maxX = topRight.x + tileSize.width / 2 + padding;
+    const minY = -tileSize.height / 2 - padding;
+    const maxY = bottomRight.y + tileSize.height / 2 + padding;
+
+    const overlayWidth = maxX - minX;
+    const overlayHeight = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
     this.daylightOverlay = this.add.rectangle(
-      courseWidth / 2,
-      courseHeight / 2,
-      courseWidth,
-      courseHeight,
+      centerX,
+      centerY,
+      overlayWidth,
+      overlayHeight,
       0xffffff,
       0
     );
@@ -110,12 +178,9 @@ export class GameScene extends Phaser.Scene {
 
   private createRefillStations(): void {
     REFILL_STATIONS.forEach(station => {
-      const sprite = this.add.sprite(
-        station.x * 32 + 16,
-        station.y * 32 + 16,
-        'refill_station'
-      );
-      sprite.setDepth(5);
+      const pos = this.grassSystem.gridToScreen(station.x, station.y);
+      const sprite = this.add.sprite(pos.x, pos.y, 'iso_refill_station');
+      sprite.setDepth(station.x + station.y + 5);
       this.refillStationSprites.push(sprite);
     });
   }
@@ -146,6 +211,11 @@ export class GameScene extends Phaser.Scene {
     this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     this.key3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+    this.keyF5 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F5);
+    this.keyF6 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F6);
+    this.keyF12 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F12);
+    this.keyBracketLeft = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET);
+    this.keyBracketRight = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET);
 
     this.keyTab.on('down', () => {
       const mode = this.grassSystem.cycleOverlayMode();
@@ -186,6 +256,51 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.keyE.on('down', () => this.tryRefill());
+
+    this.keyF5.on('down', () => {
+      const startupParams = (window as unknown as { startupParams?: StartupParams }).startupParams;
+      if (startupParams?.state) {
+        GameStateLoader.loadFullState(
+          this.grassSystem,
+          this.player,
+          this.equipmentManager,
+          this.timeSystem,
+          this.gameStateManager,
+          this.cameras.main,
+          startupParams.state
+        );
+        this.showNotification('State reloaded');
+      } else {
+        this.showNotification('No state to reload');
+      }
+    });
+
+    this.keyF6.on('down', () => {
+      if ((window as unknown as { exportGameState?: () => void }).exportGameState) {
+        (window as unknown as { exportGameState: () => void }).exportGameState();
+        this.showNotification('State exported to console');
+      }
+    });
+
+    this.keyF12.on('down', () => {
+      if ((window as unknown as { captureScreenshot?: () => Promise<string> }).captureScreenshot) {
+        (window as unknown as { captureScreenshot: () => Promise<string> }).captureScreenshot()
+          .then(() => this.showNotification('Screenshot saved'))
+          .catch(() => this.showNotification('Screenshot failed'));
+      }
+    });
+
+    this.keyBracketLeft.on('down', () => {
+      const newZoom = Math.max(0.5, this.cameras.main.zoom - 0.25);
+      this.cameras.main.setZoom(newZoom);
+      this.showNotification(`Zoom: ${(newZoom * 100).toFixed(0)}%`);
+    });
+
+    this.keyBracketRight.on('down', () => {
+      const newZoom = Math.min(2, this.cameras.main.zoom + 0.25);
+      this.cameras.main.setZoom(newZoom);
+      this.showNotification(`Zoom: ${(newZoom * 100).toFixed(0)}%`);
+    });
   }
 
   private createPauseOverlay(): void {

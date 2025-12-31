@@ -1,7 +1,4 @@
-import Phaser from 'phaser';
-
 export class AudioManager {
-  private scene: Phaser.Scene;
   private isMuted = false;
   private musicVolume: number;
   private sfxVolume: number;
@@ -9,8 +6,7 @@ export class AudioManager {
   private activeOscillators: Map<string, OscillatorNode> = new Map();
   private activeGains: Map<string, GainNode> = new Map();
 
-  constructor(scene: Phaser.Scene) {
-    this.scene = scene;
+  constructor() {
     this.musicVolume = parseFloat(localStorage.getItem('musicVolume') || '0.5');
     this.sfxVolume = parseFloat(localStorage.getItem('sfxVolume') || '0.5');
   }
@@ -205,12 +201,12 @@ export class AudioManager {
   }
 
   setMusicVolume(volume: number): void {
-    this.musicVolume = Phaser.Math.Clamp(volume, 0, 1);
+    this.musicVolume = Math.min(1, Math.max(0, volume));
     localStorage.setItem('musicVolume', this.musicVolume.toString());
   }
 
   setSfxVolume(volume: number): void {
-    this.sfxVolume = Phaser.Math.Clamp(volume, 0, 1);
+    this.sfxVolume = Math.min(1, Math.max(0, volume));
     localStorage.setItem('sfxVolume', this.sfxVolume.toString());
   }
 

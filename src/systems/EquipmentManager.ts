@@ -7,9 +7,7 @@ import { Spreader } from '../gameobjects/Spreader';
 import { GrassSystem } from './GrassSystem';
 
 export class EquipmentManager {
-  private scene: Phaser.Scene;
   private player: Player;
-  private grassSystem: GrassSystem;
   private currentEquipment: Equipment | null = null;
   private currentType: EquipmentType = null;
   private mower: Mower;
@@ -17,9 +15,7 @@ export class EquipmentManager {
   private spreader: Spreader;
 
   constructor(scene: Phaser.Scene, player: Player, grassSystem: GrassSystem) {
-    this.scene = scene;
     this.player = player;
-    this.grassSystem = grassSystem;
 
     this.mower = new Mower(scene, player, grassSystem);
     this.sprinkler = new Sprinkler(scene, player, grassSystem);
