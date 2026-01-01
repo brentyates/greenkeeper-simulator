@@ -1,5 +1,4 @@
-import Phaser from 'phaser';
-import { GameConfig, createTestConfig } from './config';
+import { startBabylonGame, BabylonMain } from './babylon/BabylonMain';
 import { getPreset, listPresets } from './data/testPresets';
 import { GameStateSerializer } from './systems/GameStateSerializer';
 import { GameState } from './systems/GameState';
@@ -61,7 +60,7 @@ function parseURLParams(): StartupParams {
 
 declare global {
   interface Window {
-    game: Phaser.Game;
+    game: BabylonMain;
     startupParams: StartupParams;
     captureScreenshot: () => Promise<string>;
     exportGameState: () => void;
@@ -84,87 +83,27 @@ window.loadPreset = (name: string) => {
   }
 };
 
-const config = startupParams.testMode ? createTestConfig() : GameConfig;
-const game = new Phaser.Game(config);
+const game = startBabylonGame('renderCanvas');
 window.game = game;
 
 window.captureScreenshot = async (): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const scene = game.scene.getScene('GameScene');
-    if (!scene) {
-      reject(new Error('GameScene not found'));
-      return;
+  return new Promise((resolve) => {
+    const canvas = document.getElementById('renderCanvas') as HTMLCanvasElement;
+    if (canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+
+      const link = document.createElement('a');
+      link.download = `greenkeeper-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+
+      resolve(dataUrl);
+    } else {
+      resolve('');
     }
-
-    game.renderer.snapshot((image) => {
-      if (image instanceof HTMLImageElement) {
-        const canvas = document.createElement('canvas');
-        canvas.width = image.width;
-        canvas.height = image.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(image, 0, 0);
-          const dataUrl = canvas.toDataURL('image/png');
-
-          const link = document.createElement('a');
-          link.download = `greenkeeper-${Date.now()}.png`;
-          link.href = dataUrl;
-          link.click();
-
-          resolve(dataUrl);
-        } else {
-          reject(new Error('Could not get canvas context'));
-        }
-      } else {
-        reject(new Error('Snapshot did not return an image'));
-      }
-    });
   });
 };
 
 window.exportGameState = () => {
-  const gameScene = game.scene.getScene('GameScene') as unknown as {
-    getGrassSystem: () => unknown;
-    getPlayer: () => unknown;
-    getEquipmentManager: () => unknown;
-    getTimeSystem: () => unknown;
-    getGameStateManager: () => unknown;
-    cameras: { main: Phaser.Cameras.Scene2D.Camera };
-  } | null;
-
-  if (!gameScene) {
-    console.error('GameScene not found');
-    return;
-  }
-
-  const state = GameStateSerializer.serializeFullState(
-    gameScene.getGrassSystem() as Parameters<typeof GameStateSerializer.serializeFullState>[0],
-    gameScene.getPlayer() as Parameters<typeof GameStateSerializer.serializeFullState>[1],
-    gameScene.getEquipmentManager() as Parameters<typeof GameStateSerializer.serializeFullState>[2],
-    gameScene.getTimeSystem() as Parameters<typeof GameStateSerializer.serializeFullState>[3],
-    gameScene.getGameStateManager() as Parameters<typeof GameStateSerializer.serializeFullState>[4],
-    gameScene.cameras.main
-  );
-
-  console.log('Game State:', JSON.stringify(state, null, 2));
-  console.log('Base64:', GameStateSerializer.toBase64(state));
+  console.log('Game state export not yet implemented for Babylon.js version');
 };
-
-if (startupParams.headless) {
-  game.events.once('ready', () => {
-    setTimeout(async () => {
-      try {
-        const dataUrl = await window.captureScreenshot();
-        console.log('Headless screenshot captured:', dataUrl.substring(0, 50) + '...');
-
-        const outputDiv = document.createElement('div');
-        outputDiv.id = 'headless-output';
-        outputDiv.textContent = 'SCREENSHOT_COMPLETE';
-        document.body.appendChild(outputDiv);
-
-      } catch (e) {
-        console.error('Headless screenshot failed:', e);
-      }
-    }, 1000);
-  });
-}
