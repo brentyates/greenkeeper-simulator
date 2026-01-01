@@ -3,7 +3,8 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 
 import { CourseData } from '../../data/courseData';
 import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from '../../core/terrain';
@@ -11,67 +12,61 @@ import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT } from '../../core/terrain';
 export class TerrainBuilder {
   private scene: Scene;
   private courseData: CourseData;
-  private terrainMesh: Mesh | null = null;
+  private tileMeshes: Mesh[] = [];
+  private gridLines: Mesh | null = null;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
     this.courseData = courseData;
   }
 
-  public build(): Mesh {
+  public build(): void {
+    this.buildTiles();
+    this.buildGridLines();
+  }
+
+  private buildTiles(): void {
     const { width, height, layout, elevation } = this.courseData;
 
-    const subdivsX = width;
-    const subdivsZ = height;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = layout[y]?.[x] ?? 1;
+        const elev = elevation?.[y]?.[x] ?? 0;
 
-    const worldWidth = width * (TILE_WIDTH / 2);
-    const worldDepth = height * (TILE_HEIGHT / 2);
+        const tile = this.createIsometricTile(x, y, elev, terrainType);
+        this.tileMeshes.push(tile);
 
+        if (elevation) {
+          this.createSlopeFaces(x, y, elev, terrainType);
+        }
+      }
+    }
+  }
+
+  private createIsometricTile(gridX: number, gridY: number, elevation: number, terrainType: number): Mesh {
     const positions: number[] = [];
     const indices: number[] = [];
     const normals: number[] = [];
-    const uvs: number[] = [];
     const colors: number[] = [];
 
-    for (let z = 0; z <= subdivsZ; z++) {
-      for (let x = 0; x <= subdivsX; x++) {
-        const gridX = x;
-        const gridY = z;
+    const centerX = (gridX - gridY) * (TILE_WIDTH / 2);
+    const centerZ = (gridX + gridY) * (TILE_HEIGHT / 2);
+    const baseY = elevation * ELEVATION_HEIGHT;
 
-        const worldX = (gridX - gridY) * (TILE_WIDTH / 2);
-        const worldZ = (gridX + gridY) * (TILE_HEIGHT / 2);
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
 
-        let elevValue = 0;
-        if (elevation && z < height && x < width) {
-          elevValue = this.getInterpolatedElevation(x, z);
-        } else if (elevation) {
-          const clampedX = Math.min(x, width - 1);
-          const clampedZ = Math.min(z, height - 1);
-          elevValue = elevation[clampedZ]?.[clampedX] ?? 0;
-        }
+    positions.push(centerX, baseY, centerZ - hh);
+    positions.push(centerX + hw, baseY, centerZ);
+    positions.push(centerX, baseY, centerZ + hh);
+    positions.push(centerX - hw, baseY, centerZ);
 
-        const worldY = elevValue * ELEVATION_HEIGHT;
+    indices.push(0, 1, 2);
+    indices.push(0, 2, 3);
 
-        positions.push(worldX, worldY, worldZ);
-
-        uvs.push(x / subdivsX, z / subdivsZ);
-
-        const terrainType = this.getTerrainTypeAt(x, z);
-        const color = this.getTerrainColor(terrainType);
-        colors.push(color.r, color.g, color.b, 1);
-      }
-    }
-
-    for (let z = 0; z < subdivsZ; z++) {
-      for (let x = 0; x < subdivsX; x++) {
-        const topLeft = z * (subdivsX + 1) + x;
-        const topRight = topLeft + 1;
-        const bottomLeft = (z + 1) * (subdivsX + 1) + x;
-        const bottomRight = bottomLeft + 1;
-
-        indices.push(topLeft, bottomLeft, topRight);
-        indices.push(topRight, bottomLeft, bottomRight);
-      }
+    const color = this.getTerrainColor(terrainType);
+    for (let i = 0; i < 4; i++) {
+      colors.push(color.r, color.g, color.b, 1);
     }
 
     VertexData.ComputeNormals(positions, indices, normals);
@@ -80,52 +75,182 @@ export class TerrainBuilder {
     vertexData.positions = positions;
     vertexData.indices = indices;
     vertexData.normals = normals;
-    vertexData.uvs = uvs;
     vertexData.colors = colors;
 
-    const mesh = new Mesh('terrain', this.scene);
+    const mesh = new Mesh(`tile_${gridX}_${gridY}`, this.scene);
     vertexData.applyToMesh(mesh);
 
-    const material = new StandardMaterial('terrainMat', this.scene);
-    material.diffuseColor = new Color3(1, 1, 1);
-    material.specularColor = new Color3(0.1, 0.1, 0.1);
-    material.emissiveColor = new Color3(0.2, 0.2, 0.2);
-    material.backFaceCulling = false;
+    const material = this.getTileMaterial(terrainType);
     mesh.material = material;
     mesh.useVertexColors = true;
 
-    this.terrainMesh = mesh;
     return mesh;
   }
 
-  private getInterpolatedElevation(x: number, z: number): number {
-    const { elevation, width, height } = this.courseData;
-    if (!elevation) return 0;
+  private createSlopeFaces(gridX: number, gridY: number, elevation: number, terrainType: number): void {
+    const { width, height, elevation: elevData } = this.courseData;
+    if (!elevData) return;
 
-    const x0 = Math.floor(x);
-    const z0 = Math.floor(z);
-    const x1 = Math.min(x0 + 1, width - 1);
-    const z1 = Math.min(z0 + 1, height - 1);
+    const neighbors = [
+      { dx: 0, dy: -1, dir: 'north' },
+      { dx: 1, dy: 0, dir: 'east' },
+      { dx: 0, dy: 1, dir: 'south' },
+      { dx: -1, dy: 0, dir: 'west' },
+    ];
 
-    const fx = x - x0;
-    const fz = z - z0;
+    for (const { dx, dy, dir } of neighbors) {
+      const nx = gridX + dx;
+      const ny = gridY + dy;
 
-    const e00 = elevation[z0]?.[x0] ?? 0;
-    const e10 = elevation[z0]?.[x1] ?? 0;
-    const e01 = elevation[z1]?.[x0] ?? 0;
-    const e11 = elevation[z1]?.[x1] ?? 0;
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
 
-    const top = e00 * (1 - fx) + e10 * fx;
-    const bottom = e01 * (1 - fx) + e11 * fx;
+      const neighborElev = elevData[ny]?.[nx] ?? 0;
+      const elevDiff = elevation - neighborElev;
 
-    return top * (1 - fz) + bottom * fz;
+      if (elevDiff > 0) {
+        this.createCliffFace(gridX, gridY, elevation, neighborElev, dir, terrainType);
+      }
+    }
   }
 
-  private getTerrainTypeAt(x: number, z: number): number {
-    const { layout, width, height } = this.courseData;
-    const clampedX = Math.min(Math.max(0, x), width - 1);
-    const clampedZ = Math.min(Math.max(0, z), height - 1);
-    return layout[clampedZ]?.[clampedX] ?? 1;
+  private createCliffFace(gridX: number, gridY: number, topElev: number, bottomElev: number, direction: string, terrainType: number): void {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const normals: number[] = [];
+    const colors: number[] = [];
+
+    const centerX = (gridX - gridY) * (TILE_WIDTH / 2);
+    const centerZ = (gridX + gridY) * (TILE_HEIGHT / 2);
+    const topY = topElev * ELEVATION_HEIGHT;
+    const bottomY = bottomElev * ELEVATION_HEIGHT;
+
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
+
+    let v0: Vector3, v1: Vector3, v2: Vector3, v3: Vector3;
+
+    switch (direction) {
+      case 'north':
+        v0 = new Vector3(centerX - hw, topY, centerZ);
+        v1 = new Vector3(centerX, topY, centerZ - hh);
+        v2 = new Vector3(centerX, bottomY, centerZ - hh);
+        v3 = new Vector3(centerX - hw, bottomY, centerZ);
+        break;
+      case 'east':
+        v0 = new Vector3(centerX, topY, centerZ - hh);
+        v1 = new Vector3(centerX + hw, topY, centerZ);
+        v2 = new Vector3(centerX + hw, bottomY, centerZ);
+        v3 = new Vector3(centerX, bottomY, centerZ - hh);
+        break;
+      case 'south':
+        v0 = new Vector3(centerX + hw, topY, centerZ);
+        v1 = new Vector3(centerX, topY, centerZ + hh);
+        v2 = new Vector3(centerX, bottomY, centerZ + hh);
+        v3 = new Vector3(centerX + hw, bottomY, centerZ);
+        break;
+      case 'west':
+        v0 = new Vector3(centerX, topY, centerZ + hh);
+        v1 = new Vector3(centerX - hw, topY, centerZ);
+        v2 = new Vector3(centerX - hw, bottomY, centerZ);
+        v3 = new Vector3(centerX, bottomY, centerZ + hh);
+        break;
+      default:
+        return;
+    }
+
+    positions.push(v0.x, v0.y, v0.z);
+    positions.push(v1.x, v1.y, v1.z);
+    positions.push(v2.x, v2.y, v2.z);
+    positions.push(v3.x, v3.y, v3.z);
+
+    indices.push(0, 1, 2);
+    indices.push(0, 2, 3);
+
+    const baseColor = this.getTerrainColor(terrainType);
+    const darkColor = new Color3(baseColor.r * 0.6, baseColor.g * 0.6, baseColor.b * 0.6);
+    for (let i = 0; i < 4; i++) {
+      colors.push(darkColor.r, darkColor.g, darkColor.b, 1);
+    }
+
+    VertexData.ComputeNormals(positions, indices, normals);
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.normals = normals;
+    vertexData.colors = colors;
+
+    const mesh = new Mesh(`cliff_${gridX}_${gridY}_${direction}`, this.scene);
+    vertexData.applyToMesh(mesh);
+
+    const material = this.getCliffMaterial();
+    mesh.material = material;
+    mesh.useVertexColors = true;
+
+    this.tileMeshes.push(mesh);
+  }
+
+  private buildGridLines(): void {
+    const { width, height, elevation } = this.courseData;
+    const lines: Vector3[][] = [];
+
+    for (let y = 0; y <= height; y++) {
+      const linePoints: Vector3[] = [];
+      for (let x = 0; x <= width; x++) {
+        const elev = this.getElevationAt(Math.min(x, width - 1), Math.min(y, height - 1));
+        const worldX = (x - y) * (TILE_WIDTH / 2);
+        const worldZ = (x + y) * (TILE_HEIGHT / 2);
+        const worldY = elev * ELEVATION_HEIGHT + 0.5;
+        linePoints.push(new Vector3(worldX, worldY, worldZ));
+      }
+      lines.push(linePoints);
+    }
+
+    for (let x = 0; x <= width; x++) {
+      const linePoints: Vector3[] = [];
+      for (let y = 0; y <= height; y++) {
+        const elev = this.getElevationAt(Math.min(x, width - 1), Math.min(y, height - 1));
+        const worldX = (x - y) * (TILE_WIDTH / 2);
+        const worldZ = (x + y) * (TILE_HEIGHT / 2);
+        const worldY = elev * ELEVATION_HEIGHT + 0.5;
+        linePoints.push(new Vector3(worldX, worldY, worldZ));
+      }
+      lines.push(linePoints);
+    }
+
+    this.gridLines = MeshBuilder.CreateLineSystem('gridLines', { lines }, this.scene);
+    this.gridLines.color = new Color3(0, 0, 0);
+    this.gridLines.alpha = 0.3;
+  }
+
+  private getTileMaterial(terrainType: number): StandardMaterial {
+    const key = `tileMat_${terrainType}`;
+    let material = this.scene.getMaterialByName(key) as StandardMaterial;
+
+    if (!material) {
+      material = new StandardMaterial(key, this.scene);
+      material.diffuseColor = new Color3(1, 1, 1);
+      material.specularColor = new Color3(0.1, 0.1, 0.1);
+      material.emissiveColor = new Color3(0.15, 0.15, 0.15);
+      material.backFaceCulling = false;
+    }
+
+    return material;
+  }
+
+  private getCliffMaterial(): StandardMaterial {
+    const key = 'cliffMat';
+    let material = this.scene.getMaterialByName(key) as StandardMaterial;
+
+    if (!material) {
+      material = new StandardMaterial(key, this.scene);
+      material.diffuseColor = new Color3(1, 1, 1);
+      material.specularColor = new Color3(0.05, 0.05, 0.05);
+      material.emissiveColor = new Color3(0.1, 0.1, 0.1);
+      material.backFaceCulling = false;
+    }
+
+    return material;
   }
 
   private getTerrainColor(terrainType: number): Color3 {
@@ -137,10 +262,6 @@ export class TerrainBuilder {
       case 4: return new Color3(0.3, 0.5, 0.7);
       default: return new Color3(0.5, 0.65, 0.4);
     }
-  }
-
-  public getMesh(): Mesh | null {
-    return this.terrainMesh;
   }
 
   public getElevationAt(gridX: number, gridY: number): number {
@@ -159,9 +280,13 @@ export class TerrainBuilder {
   }
 
   public dispose(): void {
-    if (this.terrainMesh) {
-      this.terrainMesh.dispose();
-      this.terrainMesh = null;
+    for (const mesh of this.tileMeshes) {
+      mesh.dispose();
+    }
+    this.tileMeshes = [];
+    if (this.gridLines) {
+      this.gridLines.dispose();
+      this.gridLines = null;
     }
   }
 }

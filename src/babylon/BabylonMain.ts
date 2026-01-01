@@ -42,6 +42,7 @@ export class BabylonMain {
   private buildScene(): void {
     this.terrainBuilder.build();
     this.createPlayer();
+    this.babylonEngine.setZoom(1.5);
   }
 
   private createPlayer(): void {
