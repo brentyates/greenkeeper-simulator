@@ -5,6 +5,12 @@ test.describe('Grass Growth Over Time', () => {
   test('grass height increases over time', async ({ page }) => {
     await page.goto('/?testMode=true&preset=all_grass_mown');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
+
+    await page.evaluate(() => {
+      const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { getTimeSystem: () => { resume: () => void } };
+      scene.getTimeSystem().resume();
+    });
 
     const initialHeight = await page.evaluate(() => {
       const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { grassSystem: { getCell: (x: number, y: number) => { height: number } | null } };
@@ -26,6 +32,12 @@ test.describe('Grass Growth Over Time', () => {
   test('moisture decreases over time', async ({ page }) => {
     await page.goto('/?testMode=true&preset=equipment_test');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
+
+    await page.evaluate(() => {
+      const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { getTimeSystem: () => { resume: () => void } };
+      scene.getTimeSystem().resume();
+    });
 
     const initialMoisture = await page.evaluate(() => {
       const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { grassSystem: { getCell: (x: number, y: number) => { moisture: number } | null } };
@@ -47,6 +59,12 @@ test.describe('Grass Growth Over Time', () => {
   test('nutrients decrease over time', async ({ page }) => {
     await page.goto('/?testMode=true&preset=equipment_test');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
+
+    await page.evaluate(() => {
+      const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { getTimeSystem: () => { resume: () => void } };
+      scene.getTimeSystem().resume();
+    });
 
     const initialNutrients = await page.evaluate(() => {
       const scene = (window as unknown as { game: Phaser.Game }).game.scene.getScene('GameScene') as unknown as { grassSystem: { getCell: (x: number, y: number) => { nutrients: number } | null } };

@@ -5,6 +5,7 @@ test.describe('Terrain States', () => {
   test('all terrain states render correctly', async ({ page }) => {
     await page.goto('/?testMode=true&preset=all_terrain_states');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('all-terrain-states.png');
   });
@@ -12,6 +13,7 @@ test.describe('Terrain States', () => {
   test('all grass mown preset renders correctly', async ({ page }) => {
     await page.goto('/?testMode=true&preset=all_grass_mown');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('all-grass-mown.png');
   });
@@ -19,6 +21,7 @@ test.describe('Terrain States', () => {
   test('all grass unmown preset renders correctly', async ({ page }) => {
     await page.goto('/?testMode=true&preset=all_grass_unmown');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('all-grass-unmown.png');
   });

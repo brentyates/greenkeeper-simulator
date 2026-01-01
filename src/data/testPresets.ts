@@ -44,8 +44,8 @@ export function presetAllGrassMown(): GameState {
     return { height: 0, moisture: 60, nutrients: 70, health: 100 };
   });
 
-  state.player = { x: 800, y: 544, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.player = { x: 1280, y: 928, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -59,8 +59,8 @@ export function presetAllGrassUnmown(): GameState {
     return { height: 100, moisture: 50, nutrients: 50, health: 60 };
   });
 
-  state.player = { x: 800, y: 544, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.player = { x: 1280, y: 928, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -228,7 +228,7 @@ export function presetTimeMorning(): GameState {
   });
 
   state.player = { x: 800, y: 544, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 7, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 7, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -243,7 +243,7 @@ export function presetTimeNoon(): GameState {
   });
 
   state.player = { x: 800, y: 544, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 360, currentDay: 1, currentHour: 12, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 360, currentDay: 1, currentHour: 12, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -258,7 +258,7 @@ export function presetTimeEvening(): GameState {
   });
 
   state.player = { x: 800, y: 544, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 780, currentDay: 1, currentHour: 19, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 780, currentDay: 1, currentHour: 19, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -273,7 +273,7 @@ export function presetTimeNight(): GameState {
   });
 
   state.player = { x: 800, y: 544, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 1020, currentDay: 1, currentHour: 23, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 1020, currentDay: 1, currentHour: 23, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -290,7 +290,7 @@ export function presetWaterCollisionTest(): GameState {
   // Position player at grid (17, 11) - right next to water at (16, 11)
   // Screen coords: x = (17-11)*32 + 1600 = 1792, y = (17+11)*16 = 448
   state.player = { x: 1792, y: 448, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'left' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
 
   return state;
 }
@@ -305,7 +305,7 @@ export function presetCornerTopLeft(): GameState {
   });
   // Grid (0, 0): screenX = (0-0)*32 + 1600 = 1600, screenY = 0
   state.player = { x: 1600, y: 0, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -319,7 +319,7 @@ export function presetCornerTopRight(): GameState {
   });
   // Grid (49, 0): screenX = (49-0)*32 + 1600 = 3168, screenY = 49*16 = 784
   state.player = { x: 3168, y: 784, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -333,7 +333,7 @@ export function presetCornerBottomLeft(): GameState {
   });
   // Grid (0, 37): screenX = (0-37)*32 + 1600 = 416, screenY = 37*16 = 592
   state.player = { x: 416, y: 592, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -347,7 +347,7 @@ export function presetCornerBottomRight(): GameState {
   });
   // Grid (49, 37): screenX = (49-37)*32 + 1600 = 1984, screenY = (49+37)*16 = 1376
   state.player = { x: 1984, y: 1376, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -361,7 +361,7 @@ export function presetResourceTest(): GameState {
   });
   state.player = { x: 800, y: 544, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
   state.equipment = { currentType: 'mower', mowerResource: 50, sprinklerResource: 50, spreaderResource: 50 };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -377,7 +377,7 @@ export function presetRefillTest(): GameState {
   // screenX = (25-35)*32 + 1600 = 1280, screenY = (25+35)*16 = 960
   state.player = { x: 1280, y: 960, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'left' };
   state.equipment = { currentType: 'mower', mowerResource: 10, sprinklerResource: 10, spreaderResource: 10 };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -393,7 +393,7 @@ export function presetRefillTestFarFromStation(): GameState {
   // screenX = (5-5)*32 + 1600 = 1600, screenY = (5+5)*16 = 160
   state.player = { x: 1600, y: 160, stamina: 100, currentEquipment: 'mower', isEquipmentActive: false, direction: 'down' };
   state.equipment = { currentType: 'mower', mowerResource: 10, sprinklerResource: 10, spreaderResource: 10 };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -408,7 +408,7 @@ export function presetTreeCollisionTest(): GameState {
   // Position next to tree at (2, 2) - player at grid (3, 2)
   // screenX = (3-2)*32 + 1600 = 1632, screenY = (3+2)*16 = 80
   state.player = { x: 1632, y: 80, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'left' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -425,7 +425,7 @@ export function presetElevationTest(): GameState {
     return { height: 0, moisture: 60, nutrients: 70, health: 100, elevation };
   });
   state.player = { x: 1600, y: 160, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -446,7 +446,7 @@ export function presetRampTest(): GameState {
     return { height: 0, moisture: 60, nutrients: 70, health: 100, elevation };
   });
   state.player = { x: 1600, y: 448, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'down' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 
@@ -467,7 +467,7 @@ export function presetCliffTest(): GameState {
     return { height: 0, moisture: 60, nutrients: 70, health: 100, elevation };
   });
   state.player = { x: 1600, y: 640, stamina: 100, currentEquipment: null, isEquipmentActive: false, direction: 'up' };
-  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: false };
+  state.time = { gameTime: 0, currentDay: 1, currentHour: 10, timeScale: 1, isPaused: true };
   return state;
 }
 

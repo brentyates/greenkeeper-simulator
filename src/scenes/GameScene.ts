@@ -73,7 +73,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.fadeIn(500, 0, 0, 0);
+    const startupParams = (window as unknown as { startupParams?: StartupParams }).startupParams;
+    const isTestMode = startupParams?.testMode === true;
+    if (!isTestMode) {
+      this.cameras.main.fadeIn(500, 0, 0, 0);
+    }
     this.grassSystem = new GrassSystem(this, COURSE_HOLE_1);
 
     const tileSize = this.grassSystem.getTileSize();
@@ -104,8 +108,11 @@ export class GameScene extends Phaser.Scene {
     this.player.setElevationGetter((x, y) => this.grassSystem.getElevation(x, y));
 
     this.cameras.main.centerOn(startPos.x, startPos.y);
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-    this.cameras.main.setDeadzone(100, 75);
+    const lerpAmount = isTestMode ? 1.0 : 0.1;
+    this.cameras.main.startFollow(this.player, true, lerpAmount, lerpAmount);
+    if (!isTestMode) {
+      this.cameras.main.setDeadzone(100, 75);
+    }
 
     this.timeSystem = new TimeSystem();
     this.equipmentManager = new EquipmentManager(this, this.player, this.grassSystem);
@@ -126,7 +133,6 @@ export class GameScene extends Phaser.Scene {
 
     const readyElement = document.createElement('div');
     readyElement.id = 'game-ready';
-    readyElement.style.display = 'none';
     document.body.appendChild(readyElement);
   }
 
@@ -460,8 +466,13 @@ export class GameScene extends Phaser.Scene {
 
     this.player.update(this.cursors);
 
+    const timeIsPaused = this.timeSystem.getIsPaused();
     this.timeSystem.update(delta);
-    this.grassSystem.update(this.timeSystem.getGameTime(), delta * this.timeSystem.getTimeScale());
+
+    if (!timeIsPaused) {
+      this.grassSystem.update(this.timeSystem.getGameTime(), delta * this.timeSystem.getTimeScale());
+    }
+
     this.equipmentManager.update(time, delta);
     this.gameStateManager.update(delta);
 

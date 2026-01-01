@@ -5,11 +5,12 @@ test.describe('Refill Station', () => {
   test('player can refill resources when near refill station', async ({ page }) => {
     await page.goto('/?testMode=true&preset=refill_test');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-near-station-before.png');
 
     await page.keyboard.press('e');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-near-station-after.png');
   });
@@ -17,11 +18,12 @@ test.describe('Refill Station', () => {
   test('player cannot refill when not near refill station', async ({ page }) => {
     await page.goto('/?testMode=true&preset=refill_test_far');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-far-from-station-before.png');
 
     await page.keyboard.press('e');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-far-from-station-after.png');
   });
@@ -29,9 +31,10 @@ test.describe('Refill Station', () => {
   test('all resources refill to 100% after successful refill', async ({ page }) => {
     await page.goto('/?testMode=true&preset=refill_test');
     await waitForGameReady(page);
+    await page.waitForTimeout(200);
 
     await page.keyboard.press('e');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-all-resources-100.png');
   });

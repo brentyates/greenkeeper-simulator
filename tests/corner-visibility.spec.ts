@@ -13,6 +13,7 @@ test.describe('Corner Visibility', () => {
     test(`player visible at ${corner.name} corner`, async ({ page }) => {
       await page.goto(`/?testMode=true&preset=${corner.preset}`);
       await waitForGameReady(page);
+      await page.waitForTimeout(200);
 
       await expect(page).toHaveScreenshot(`corner-${corner.name}.png`);
     });

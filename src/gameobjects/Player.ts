@@ -64,6 +64,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return { x: Math.round(isoX), y: Math.round(isoY) };
   }
 
+  syncGridPosition(): void {
+    const gridPos = this.screenToGrid(this.x, this.y);
+    this.gridX = gridPos.x;
+    this.gridY = gridPos.y;
+  }
+
   update(cursors: {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -148,6 +154,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   getGridPosition(): { x: number; y: number } {
     return { x: this.gridX, y: this.gridY };
+  }
+
+  getIsMoving(): boolean {
+    return this.isMoving;
   }
 
   setGridPosition(x: number, y: number): void {

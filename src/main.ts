@@ -61,6 +61,7 @@ function parseURLParams(): StartupParams {
 
 declare global {
   interface Window {
+    game: Phaser.Game;
     startupParams: StartupParams;
     captureScreenshot: () => Promise<string>;
     exportGameState: () => void;
@@ -85,6 +86,7 @@ window.loadPreset = (name: string) => {
 
 const config = startupParams.testMode ? createTestConfig() : GameConfig;
 const game = new Phaser.Game(config);
+window.game = game;
 
 window.captureScreenshot = async (): Promise<string> => {
   return new Promise((resolve, reject) => {

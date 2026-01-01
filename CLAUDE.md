@@ -5,16 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 ```bash
-npm run dev          # Start development server (Vite on port 5173 or 8080)
-npm run build        # TypeScript check + production build
-npm run test         # Run all Playwright tests
-npm run test:update  # Update Playwright snapshots
+npm run dev           # Start development server (Vite)
+npm run build         # TypeScript check + production build
+npm run test          # Run unit tests (Vitest)
+npm run test:watch    # Run unit tests in watch mode
+npm run test:coverage # Run with coverage report
+npm run test:e2e      # Run Playwright E2E tests
+npm run test:e2e:update # Update Playwright snapshots
 ```
 
-Run a single test:
+Run specific tests:
 ```bash
-npx playwright test tests/mowing.spec.ts
-npx playwright test -g "mowing changes grass state"  # Run by test name
+npx vitest run src/core/terrain.test.ts          # Single unit test file
+npx vitest run -t "calculates health"            # By test name
+npx playwright test tests/mowing.spec.ts         # Single E2E test
 ```
 
 ## Architecture
@@ -34,6 +38,18 @@ Built on **Phaser 3** with isometric 2:1 diamond perspective (64x32 tiles). The 
 | `EquipmentManager` | Coordinates Mower, Sprinkler, Spreader equipment with resource depletion |
 | `TimeSystem` | Day/night cycle, time progression with configurable scale |
 | `GameState*` | Serialization/deserialization for save/load and testing |
+
+### Core Logic (in `src/core/`)
+Pure, Phaser-independent modules for TDD:
+
+| Module | Purpose |
+|--------|---------|
+| `terrain.ts` | Coordinate conversion, walkability, health calculation, ramps |
+| `grass-simulation.ts` | Growth, mowing/watering/fertilizing effects, course stats |
+| `equipment-logic.ts` | Resource management, activation, consumption |
+| `time-logic.ts` | Time progression, day/night cycle, formatting |
+| `movement.ts` | Grid movement, bounds checking, collision validation |
+| `scoring.ts` | Objectives, score calculation, day transitions |
 
 ### Coordinate Systems
 - **Grid coordinates**: `(gridX, gridY)` - logical tile positions
@@ -56,6 +72,17 @@ Each has: resource pool, depletion rate, effect radius, particle emitter
 
 ## Testing
 
+### Unit Tests (Vitest)
+Located in `src/core/*.test.ts`. Pure logic tests for TDD:
+- `terrain.test.ts` - 76 tests for coordinates, walkability, health
+- `grass-simulation.test.ts` - 53 tests for growth and equipment effects
+- `equipment-logic.test.ts` - 49 tests for resource management
+- `time-logic.test.ts` - 68 tests for time system
+- `movement.test.ts` - 65 tests for player movement
+- `scoring.test.ts` - 54 tests for objectives and scoring
+- `integration.test.ts` - 32 tests for system interactions
+
+### E2E Tests (Playwright)
 **State-based testing** is the primary pattern. Load specific game states via URL:
 
 ```bash

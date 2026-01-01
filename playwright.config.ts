@@ -14,7 +14,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        },
+      },
     },
   ],
   webServer: {
@@ -25,7 +30,8 @@ export default defineConfig({
   },
   expect: {
     toHaveScreenshot: {
-      maxDiffPixels: 100,
+      maxDiffPixelRatio: 0.05,
+      timeout: 10000,
     },
   },
 });

@@ -36,6 +36,7 @@ export class GameStateLoader {
 
   static loadPlayer(player: Player, state: GameState): void {
     player.setPosition(state.player.x, state.player.y);
+    player.syncGridPosition();
     player.setStamina(state.player.stamina);
     player.setCurrentEquipment(state.player.currentEquipment);
     player.setIsEquipmentActive(state.player.isEquipmentActive);
