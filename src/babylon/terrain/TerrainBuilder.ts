@@ -27591,6 +27591,228 @@ export class TerrainBuilder {
       gridHeight: this.courseData.height
     };
   }
+
+  public generateDetailedContourLines(interval: number = 1): DetailedContourLinesData {
+    const contours: Array<{ elevation: number; segments: Array<{ x1: number; z1: number; x2: number; z2: number }> }> = [];
+
+    let minElevation = Infinity, maxElevation = -Infinity;
+    for (let z = 0; z < this.courseData.height; z++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const elev = this.getElevationAt(x, z);
+        minElevation = Math.min(minElevation, elev);
+        maxElevation = Math.max(maxElevation, elev);
+      }
+    }
+
+    const startLevel = Math.ceil(minElevation / interval) * interval;
+    const endLevel = Math.floor(maxElevation / interval) * interval;
+
+    for (let level = startLevel; level <= endLevel; level += interval) {
+      const segments: Array<{ x1: number; z1: number; x2: number; z2: number }> = [];
+
+      for (let z = 0; z < this.courseData.height - 1; z++) {
+        for (let x = 0; x < this.courseData.width - 1; x++) {
+          const e00 = this.getElevationAt(x, z);
+          const e10 = this.getElevationAt(x + 1, z);
+          const e01 = this.getElevationAt(x, z + 1);
+          const e11 = this.getElevationAt(x + 1, z + 1);
+
+          const cellSegments = this.detailedMarchingSquaresCell(x, z, e00, e10, e01, e11, level);
+          segments.push(...cellSegments);
+        }
+      }
+
+      if (segments.length > 0) {
+        contours.push({ elevation: level, segments });
+      }
+    }
+
+    return {
+      contours,
+      interval,
+      minElevation,
+      maxElevation,
+      totalSegments: contours.reduce((sum, c) => sum + c.segments.length, 0)
+    };
+  }
+
+  private detailedMarchingSquaresCell(x: number, z: number, e00: number, e10: number, e01: number, e11: number, level: number): Array<{ x1: number; z1: number; x2: number; z2: number }> {
+    const segments: Array<{ x1: number; z1: number; x2: number; z2: number }> = [];
+
+    const b00 = e00 >= level ? 1 : 0;
+    const b10 = e10 >= level ? 1 : 0;
+    const b01 = e01 >= level ? 1 : 0;
+    const b11 = e11 >= level ? 1 : 0;
+    const code = b00 | (b10 << 1) | (b01 << 2) | (b11 << 3);
+
+    const lerp = (v0: number, v1: number, t: number) => v0 + t * (v1 - v0);
+    const getT = (v0: number, v1: number) => (v0 === v1) ? 0.5 : (level - v0) / (v1 - v0);
+
+    const topT = getT(e00, e10);
+    const bottomT = getT(e01, e11);
+    const leftT = getT(e00, e01);
+    const rightT = getT(e10, e11);
+
+    const top = { x: lerp(x, x + 1, topT), z: z };
+    const bottom = { x: lerp(x, x + 1, bottomT), z: z + 1 };
+    const left = { x: x, z: lerp(z, z + 1, leftT) };
+    const right = { x: x + 1, z: lerp(z, z + 1, rightT) };
+
+    switch (code) {
+      case 1: case 14: segments.push({ x1: top.x, z1: top.z, x2: left.x, z2: left.z }); break;
+      case 2: case 13: segments.push({ x1: top.x, z1: top.z, x2: right.x, z2: right.z }); break;
+      case 3: case 12: segments.push({ x1: left.x, z1: left.z, x2: right.x, z2: right.z }); break;
+      case 4: case 11: segments.push({ x1: left.x, z1: left.z, x2: bottom.x, z2: bottom.z }); break;
+      case 5:
+        segments.push({ x1: top.x, z1: top.z, x2: right.x, z2: right.z });
+        segments.push({ x1: left.x, z1: left.z, x2: bottom.x, z2: bottom.z });
+        break;
+      case 6: case 9: segments.push({ x1: top.x, z1: top.z, x2: bottom.x, z2: bottom.z }); break;
+      case 7: case 8: segments.push({ x1: right.x, z1: right.z, x2: bottom.x, z2: bottom.z }); break;
+      case 10:
+        segments.push({ x1: top.x, z1: top.z, x2: left.x, z2: left.z });
+        segments.push({ x1: right.x, z1: right.z, x2: bottom.x, z2: bottom.z });
+        break;
+    }
+
+    return segments;
+  }
+
+  public generateSlopeField(): SlopeFieldData {
+    const slopeField: Array<Array<{ slopeAngle: number; slopeDirection: number; magnitude: number }>> = [];
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      slopeField[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const gradient = this.computeGradient(x, z);
+        const magnitude = Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ);
+        const slopeAngle = Math.atan(magnitude) * (180 / Math.PI);
+        const slopeDirection = Math.atan2(gradient.gradientZ, gradient.gradientX) * (180 / Math.PI);
+
+        slopeField[z][x] = { slopeAngle, slopeDirection, magnitude };
+      }
+    }
+
+    return {
+      slopeField,
+      width: this.courseData.width,
+      height: this.courseData.height
+    };
+  }
+
+  public computeDetailedElevationHistogram(bucketSize: number = 1): DetailedElevationHistogramData {
+    const histogram: Map<number, number> = new Map();
+    let minElevation = Infinity, maxElevation = -Infinity;
+    let totalElevation = 0;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const elev = this.getElevationAt(x, z);
+        minElevation = Math.min(minElevation, elev);
+        maxElevation = Math.max(maxElevation, elev);
+        totalElevation += elev;
+
+        const bucket = Math.floor(elev / bucketSize) * bucketSize;
+        histogram.set(bucket, (histogram.get(bucket) || 0) + 1);
+      }
+    }
+
+    const buckets = Array.from(histogram.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([elevation, count]) => ({ elevation, count }));
+
+    const totalTiles = this.courseData.width * this.courseData.height;
+
+    return {
+      buckets,
+      bucketSize,
+      minElevation,
+      maxElevation,
+      averageElevation: totalElevation / totalTiles,
+      totalTiles
+    };
+  }
+
+  public identifySteepAreas(thresholdAngle: number = 30): SteepAreasData {
+    const steepAreas: Array<{ x: number; z: number; slopeAngle: number }> = [];
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const gradient = this.computeGradient(x, z);
+        const magnitude = Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ);
+        const slopeAngle = Math.atan(magnitude) * (180 / Math.PI);
+
+        if (slopeAngle >= thresholdAngle) {
+          steepAreas.push({ x, z, slopeAngle });
+        }
+      }
+    }
+
+    return {
+      steepAreas,
+      totalSteepTiles: steepAreas.length,
+      percentageSteep: steepAreas.length / (this.courseData.width * this.courseData.height),
+      thresholdAngle
+    };
+  }
+
+  public computeRidgesAndValleys(): RidgesAndValleysData {
+    const ridges: Array<{ x: number; z: number; intensity: number }> = [];
+    const valleys: Array<{ x: number; z: number; intensity: number }> = [];
+
+    for (let z = 1; z < this.courseData.height - 1; z++) {
+      for (let x = 1; x < this.courseData.width - 1; x++) {
+        const center = this.getElevationAt(x, z);
+
+        const n = this.getElevationAt(x, z - 1);
+        const s = this.getElevationAt(x, z + 1);
+        const e = this.getElevationAt(x + 1, z);
+        const w = this.getElevationAt(x - 1, z);
+
+        const laplacian = (n + s + e + w) / 4 - center;
+
+        if (laplacian < -0.3) {
+          ridges.push({ x, z, intensity: Math.abs(laplacian) });
+        } else if (laplacian > 0.3) {
+          valleys.push({ x, z, intensity: laplacian });
+        }
+      }
+    }
+
+    return {
+      ridges,
+      valleys,
+      ridgeCount: ridges.length,
+      valleyCount: valleys.length
+    };
+  }
+
+  public computeDetailedContourStatistics(): DetailedContourStatistics {
+    const contours = this.generateDetailedContourLines(1);
+    const histogram = this.computeDetailedElevationHistogram();
+    const steepAreas = this.identifySteepAreas();
+    const ridgesValleys = this.computeRidgesAndValleys();
+
+    let totalContourLength = 0;
+    for (const contour of contours.contours) {
+      for (const seg of contour.segments) {
+        totalContourLength += Math.sqrt(
+          Math.pow(seg.x2 - seg.x1, 2) + Math.pow(seg.z2 - seg.z1, 2)
+        );
+      }
+    }
+
+    return {
+      contourCount: contours.contours.length,
+      totalSegments: contours.totalSegments,
+      totalContourLength,
+      elevationRange: contours.maxElevation - contours.minElevation,
+      averageElevation: histogram.averageElevation,
+      steepAreaPercentage: steepAreas.percentageSteep,
+      ridgeCount: ridgesValleys.ridgeCount,
+      valleyCount: ridgesValleys.valleyCount
+    };
+  }
 }
 
 export interface WaterTileData {
@@ -30616,4 +30838,52 @@ export interface PathfindingStatistics {
   averageIterations: number;
   gridWidth: number;
   gridHeight: number;
+}
+
+export interface DetailedContourLinesData {
+  contours: Array<{ elevation: number; segments: Array<{ x1: number; z1: number; x2: number; z2: number }> }>;
+  interval: number;
+  minElevation: number;
+  maxElevation: number;
+  totalSegments: number;
+}
+
+export interface SlopeFieldData {
+  slopeField: Array<Array<{ slopeAngle: number; slopeDirection: number; magnitude: number }>>;
+  width: number;
+  height: number;
+}
+
+export interface DetailedElevationHistogramData {
+  buckets: Array<{ elevation: number; count: number }>;
+  bucketSize: number;
+  minElevation: number;
+  maxElevation: number;
+  averageElevation: number;
+  totalTiles: number;
+}
+
+export interface SteepAreasData {
+  steepAreas: Array<{ x: number; z: number; slopeAngle: number }>;
+  totalSteepTiles: number;
+  percentageSteep: number;
+  thresholdAngle: number;
+}
+
+export interface RidgesAndValleysData {
+  ridges: Array<{ x: number; z: number; intensity: number }>;
+  valleys: Array<{ x: number; z: number; intensity: number }>;
+  ridgeCount: number;
+  valleyCount: number;
+}
+
+export interface DetailedContourStatistics {
+  contourCount: number;
+  totalSegments: number;
+  totalContourLength: number;
+  elevationRange: number;
+  averageElevation: number;
+  steepAreaPercentage: number;
+  ridgeCount: number;
+  valleyCount: number;
 }
