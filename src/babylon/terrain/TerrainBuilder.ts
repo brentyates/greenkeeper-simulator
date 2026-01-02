@@ -1817,6 +1817,110 @@ export class TerrainBuilder {
     }
     return largest;
   }
+
+  public findTerrainEdges(terrainType: TerrainType): Array<{ x: number; y: number }> {
+    const { width, height } = this.courseData;
+    const edges: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentType = this.getTerrainTypeAt(x, y);
+        if (currentType !== terrainType) continue;
+
+        const neighbors = this.getNeighborTiles(x, y, false);
+        let isEdge = neighbors.length < 4;
+
+        if (!isEdge) {
+          for (const neighbor of neighbors) {
+            const neighborType = this.getTerrainTypeAt(neighbor.x, neighbor.y);
+            if (neighborType !== terrainType) {
+              isEdge = true;
+              break;
+            }
+          }
+        }
+
+        if (isEdge) {
+          edges.push({ x, y });
+        }
+      }
+    }
+
+    return edges;
+  }
+
+  public findTerrainBoundary(
+    type1: TerrainType,
+    type2: TerrainType
+  ): Array<{ x: number; y: number; side: 'n' | 's' | 'e' | 'w' }> {
+    const { width, height } = this.courseData;
+    const boundary: Array<{ x: number; y: number; side: 'n' | 's' | 'e' | 'w' }> = [];
+
+    const directions: Array<{ dx: number; dy: number; side: 'n' | 's' | 'e' | 'w' }> = [
+      { dx: 0, dy: -1, side: 'n' },
+      { dx: 0, dy: 1, side: 's' },
+      { dx: 1, dy: 0, side: 'e' },
+      { dx: -1, dy: 0, side: 'w' }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentType = this.getTerrainTypeAt(x, y);
+        if (currentType !== type1) continue;
+
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+
+          if (!this.isValidGridPosition(nx, ny)) continue;
+
+          const neighborType = this.getTerrainTypeAt(nx, ny);
+          if (neighborType === type2) {
+            boundary.push({ x, y, side: dir.side });
+          }
+        }
+      }
+    }
+
+    return boundary;
+  }
+
+  public getTerrainPerimeter(tiles: Array<{ x: number; y: number }>): number {
+    const tileSet = new Set(tiles.map(t => `${t.x}_${t.y}`));
+    let perimeter = 0;
+
+    for (const tile of tiles) {
+      const neighbors = this.getNeighborTiles(tile.x, tile.y, false);
+      const borderEdges = 4 - neighbors.filter(n => tileSet.has(`${n.x}_${n.y}`)).length;
+      perimeter += borderEdges;
+    }
+
+    return perimeter;
+  }
+
+  public isTerrainEnclosed(tiles: Array<{ x: number; y: number }>): boolean {
+    if (tiles.length === 0) return false;
+
+    const { width, height } = this.courseData;
+
+    for (const tile of tiles) {
+      if (tile.x === 0 || tile.x === width - 1 || tile.y === 0 || tile.y === height - 1) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  public getTerrainCompactness(tiles: Array<{ x: number; y: number }>): number {
+    if (tiles.length === 0) return 0;
+
+    const area = tiles.length;
+    const perimeter = this.getTerrainPerimeter(tiles);
+
+    if (perimeter === 0) return 1;
+    return (4 * Math.PI * area) / (perimeter * perimeter);
+  }
 }
 
 export interface TerrainStatistics {
