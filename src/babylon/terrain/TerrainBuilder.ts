@@ -26553,6 +26553,271 @@ export class TerrainBuilder {
       waterCoverage: waterData.totalWaterTiles / (this.courseData.width * this.courseData.height)
     };
   }
+
+  public computeErosionFlow(): ErosionFlowData {
+    const flowMap: Array<Array<{ flowX: number; flowZ: number; magnitude: number }>> = [];
+    let maxFlowMagnitude = 0;
+    let totalFlowVolume = 0;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      flowMap[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const currentElevation = this.getElevationAt(x, z);
+
+        let lowestX = 0, lowestZ = 0, lowestDiff = 0;
+        const neighbors = [
+          { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+          { dx: 0, dz: -1 }, { dx: 0, dz: 1 },
+          { dx: -1, dz: -1 }, { dx: 1, dz: -1 },
+          { dx: -1, dz: 1 }, { dx: 1, dz: 1 }
+        ];
+
+        for (const { dx, dz } of neighbors) {
+          const nx = x + dx, nz = z + dz;
+          if (nx >= 0 && nx < this.courseData.width && nz >= 0 && nz < this.courseData.height) {
+            const neighborElevation = this.getElevationAt(nx, nz);
+            const diff = currentElevation - neighborElevation;
+            if (diff > lowestDiff) {
+              lowestDiff = diff;
+              lowestX = dx;
+              lowestZ = dz;
+            }
+          }
+        }
+
+        const magnitude = lowestDiff;
+        maxFlowMagnitude = Math.max(maxFlowMagnitude, magnitude);
+        totalFlowVolume += magnitude;
+
+        flowMap[z][x] = { flowX: lowestX, flowZ: lowestZ, magnitude };
+      }
+    }
+
+    return {
+      flowMap,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      maxFlowMagnitude,
+      totalFlowVolume
+    };
+  }
+
+  public computeSedimentTransport(flowData: ErosionFlowData, sedimentCapacity: number = 1.0): SedimentTransportData {
+    const sedimentMap: number[][] = [];
+    const depositionMap: number[][] = [];
+    let totalSediment = 0;
+    let totalDeposition = 0;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      sedimentMap[z] = [];
+      depositionMap[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const flow = flowData.flowMap[z][x];
+        const erosionAmount = flow.magnitude * 0.1 * sedimentCapacity;
+
+        const terrainType = this.getTerrainTypeAt(x, z);
+        const erodibility = terrainType === 'bunker' ? 2.0 :
+                           terrainType === 'rough' ? 0.8 :
+                           terrainType === 'green' ? 0.3 :
+                           terrainType === 'fairway' ? 0.5 : 0.1;
+
+        const sediment = erosionAmount * erodibility;
+        sedimentMap[z][x] = sediment;
+        totalSediment += sediment;
+
+        const depositAmount = sediment * (1 - flow.magnitude / (flowData.maxFlowMagnitude || 1));
+        depositionMap[z][x] = depositAmount;
+        totalDeposition += depositAmount;
+      }
+    }
+
+    return {
+      sedimentMap,
+      depositionMap,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      totalSediment,
+      totalDeposition,
+      netErosion: totalSediment - totalDeposition
+    };
+  }
+
+  public simulateRainfallErosion(intensity: number = 1.0, duration: number = 1.0): RainfallErosionResult {
+    const erosionMap: number[][] = [];
+    const runoffMap: number[][] = [];
+    let totalErosion = 0;
+    let totalRunoff = 0;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      erosionMap[z] = [];
+      runoffMap[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const gradient = this.computeGradient(x, z);
+        const slopeFactor = Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ);
+
+        const terrainType = this.getTerrainTypeAt(x, z);
+        const infiltrationRate = terrainType === 'bunker' ? 0.9 :
+                                  terrainType === 'green' ? 0.2 :
+                                  terrainType === 'fairway' ? 0.4 :
+                                  terrainType === 'rough' ? 0.3 : 0.1;
+
+        const runoff = intensity * duration * (1 - infiltrationRate);
+        runoffMap[z][x] = runoff;
+        totalRunoff += runoff;
+
+        const erosion = runoff * slopeFactor * 0.5;
+        erosionMap[z][x] = erosion;
+        totalErosion += erosion;
+      }
+    }
+
+    return {
+      erosionMap,
+      runoffMap,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      totalErosion,
+      totalRunoff,
+      averageErosion: totalErosion / (this.courseData.width * this.courseData.height),
+      intensity,
+      duration
+    };
+  }
+
+  public computeWeatheringFactors(): WeatheringFactorsData {
+    const weatheringMap: Array<Array<{ physical: number; chemical: number; biological: number }>> = [];
+    let totalWeathering = 0;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      weatheringMap[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const elevation = this.getElevationAt(x, z);
+        const gradient = this.computeGradient(x, z);
+        const slope = Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ);
+
+        const physical = Math.min(1, elevation * 0.1 + slope * 2);
+
+        const terrainType = this.getTerrainTypeAt(x, z);
+        const chemical = terrainType === 'bunker' ? 0.8 :
+                         terrainType === 'water' ? 1.0 :
+                         terrainType === 'green' ? 0.3 : 0.5;
+
+        const biological = terrainType === 'rough' ? 0.9 :
+                           terrainType === 'fairway' ? 0.7 :
+                           terrainType === 'green' ? 0.5 :
+                           terrainType === 'bunker' ? 0.1 : 0.2;
+
+        weatheringMap[z][x] = { physical, chemical, biological };
+        totalWeathering += physical + chemical + biological;
+      }
+    }
+
+    return {
+      weatheringMap,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      totalWeathering,
+      averageWeathering: totalWeathering / (this.courseData.width * this.courseData.height * 3)
+    };
+  }
+
+  public identifyErosionVulnerableAreas(threshold: number = 0.5): ErosionVulnerableAreasData {
+    const vulnerableAreas: Array<{ x: number; z: number; vulnerability: number; reason: string }> = [];
+    const flowData = this.computeErosionFlow();
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const flow = flowData.flowMap[z][x];
+        const gradient = this.computeGradient(x, z);
+        const slope = Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ);
+
+        const terrainType = this.getTerrainTypeAt(x, z);
+        const erodibility = terrainType === 'bunker' ? 1.0 :
+                           terrainType === 'rough' ? 0.4 :
+                           terrainType === 'fairway' ? 0.3 : 0.2;
+
+        const vulnerability = (flow.magnitude * 0.4 + slope * 0.3 + erodibility * 0.3);
+
+        if (vulnerability > threshold) {
+          let reason = 'Multiple factors';
+          if (flow.magnitude > slope && flow.magnitude > erodibility) {
+            reason = 'High water flow';
+          } else if (slope > erodibility) {
+            reason = 'Steep slope';
+          } else {
+            reason = 'Erodible terrain';
+          }
+          vulnerableAreas.push({ x, z, vulnerability, reason });
+        }
+      }
+    }
+
+    return {
+      vulnerableAreas,
+      totalVulnerableArea: vulnerableAreas.length,
+      percentageVulnerable: vulnerableAreas.length / (this.courseData.width * this.courseData.height),
+      threshold
+    };
+  }
+
+  public computeErosionOverTime(timeSteps: number, stepDuration: number = 1.0): ErosionTimeSeriesData {
+    const timeSeries: Array<{ time: number; totalErosion: number; maxErosion: number }> = [];
+    let cumulativeErosion = 0;
+
+    for (let t = 0; t < timeSteps; t++) {
+      const time = t * stepDuration;
+      const rainfallIntensity = 0.5 + 0.5 * Math.sin(t * 0.3);
+      const erosionResult = this.simulateRainfallErosion(rainfallIntensity, stepDuration);
+
+      cumulativeErosion += erosionResult.totalErosion;
+
+      let maxErosion = 0;
+      for (let z = 0; z < this.courseData.height; z++) {
+        for (let x = 0; x < this.courseData.width; x++) {
+          maxErosion = Math.max(maxErosion, erosionResult.erosionMap[z][x]);
+        }
+      }
+
+      timeSeries.push({ time, totalErosion: cumulativeErosion, maxErosion });
+    }
+
+    return {
+      timeSeries,
+      timeSteps,
+      stepDuration,
+      totalDuration: timeSteps * stepDuration,
+      finalTotalErosion: cumulativeErosion
+    };
+  }
+
+  public computeErosionStatistics(): ErosionStatistics {
+    const flowData = this.computeErosionFlow();
+    const sedimentData = this.computeSedimentTransport(flowData);
+    const weatheringData = this.computeWeatheringFactors();
+    const vulnerableData = this.identifyErosionVulnerableAreas();
+
+    let minFlow = Infinity, maxFlow = -Infinity;
+    for (let z = 0; z < this.courseData.height; z++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const flow = flowData.flowMap[z][x].magnitude;
+        minFlow = Math.min(minFlow, flow);
+        maxFlow = Math.max(maxFlow, flow);
+      }
+    }
+
+    return {
+      totalFlowVolume: flowData.totalFlowVolume,
+      maxFlowMagnitude: flowData.maxFlowMagnitude,
+      minFlowMagnitude: minFlow,
+      averageFlowMagnitude: flowData.totalFlowVolume / (this.courseData.width * this.courseData.height),
+      totalSediment: sedimentData.totalSediment,
+      totalDeposition: sedimentData.totalDeposition,
+      netErosion: sedimentData.netErosion,
+      totalWeathering: weatheringData.totalWeathering,
+      vulnerableAreaCount: vulnerableData.totalVulnerableArea,
+      vulnerableAreaPercentage: vulnerableData.percentageVulnerable
+    };
+  }
 }
 
 export interface WaterTileData {
@@ -29319,4 +29584,70 @@ export interface VertexBufferStatistics {
   hasColors: boolean;
   hasNormals: boolean;
   hasUVs: boolean;
+}
+
+export interface ErosionFlowData {
+  flowMap: Array<Array<{ flowX: number; flowZ: number; magnitude: number }>>;
+  width: number;
+  height: number;
+  maxFlowMagnitude: number;
+  totalFlowVolume: number;
+}
+
+export interface SedimentTransportData {
+  sedimentMap: number[][];
+  depositionMap: number[][];
+  width: number;
+  height: number;
+  totalSediment: number;
+  totalDeposition: number;
+  netErosion: number;
+}
+
+export interface RainfallErosionResult {
+  erosionMap: number[][];
+  runoffMap: number[][];
+  width: number;
+  height: number;
+  totalErosion: number;
+  totalRunoff: number;
+  averageErosion: number;
+  intensity: number;
+  duration: number;
+}
+
+export interface WeatheringFactorsData {
+  weatheringMap: Array<Array<{ physical: number; chemical: number; biological: number }>>;
+  width: number;
+  height: number;
+  totalWeathering: number;
+  averageWeathering: number;
+}
+
+export interface ErosionVulnerableAreasData {
+  vulnerableAreas: Array<{ x: number; z: number; vulnerability: number; reason: string }>;
+  totalVulnerableArea: number;
+  percentageVulnerable: number;
+  threshold: number;
+}
+
+export interface ErosionTimeSeriesData {
+  timeSeries: Array<{ time: number; totalErosion: number; maxErosion: number }>;
+  timeSteps: number;
+  stepDuration: number;
+  totalDuration: number;
+  finalTotalErosion: number;
+}
+
+export interface ErosionStatistics {
+  totalFlowVolume: number;
+  maxFlowMagnitude: number;
+  minFlowMagnitude: number;
+  averageFlowMagnitude: number;
+  totalSediment: number;
+  totalDeposition: number;
+  netErosion: number;
+  totalWeathering: number;
+  vulnerableAreaCount: number;
+  vulnerableAreaPercentage: number;
 }
