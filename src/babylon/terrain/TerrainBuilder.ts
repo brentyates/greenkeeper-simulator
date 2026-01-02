@@ -12189,6 +12189,208 @@ export class TerrainBuilder {
     return samples;
   }
 
+  public computeTerrainTypeSkeleton(targetType: TerrainType): TerrainSkeleton {
+    const distanceField = this.computeTerrainTypeDistanceField(targetType);
+    const { width, height } = this.courseData;
+    const skeletonPoints: Array<{ x: number; y: number; distance: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (distanceField.signs[y][x] !== 1) continue;
+        const currentDist = distanceField.field[y][x];
+        if (currentDist === 0) continue;
+
+        const gradient = this.getDistanceFieldGradient(distanceField, x, y);
+        if (gradient.magnitude < 0.1) {
+          skeletonPoints.push({ x, y, distance: currentDist });
+          continue;
+        }
+
+        const neighbors = [
+          { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+          { dx: 0, dy: -1 }, { dx: 0, dy: 1 }
+        ];
+
+        let hasHigherNeighbor = false;
+        let hasLowerOrEqualNeighborInOppositeDirs = false;
+
+        for (const { dx, dy } of neighbors) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            if (distanceField.field[ny][nx] > currentDist) {
+              hasHigherNeighbor = true;
+            }
+          }
+        }
+
+        const leftDist = x > 0 ? distanceField.field[y][x - 1] : Infinity;
+        const rightDist = x < width - 1 ? distanceField.field[y][x + 1] : Infinity;
+        const topDist = y > 0 ? distanceField.field[y - 1][x] : Infinity;
+        const bottomDist = y < height - 1 ? distanceField.field[y + 1][x] : Infinity;
+
+        if ((leftDist <= currentDist && rightDist <= currentDist) ||
+            (topDist <= currentDist && bottomDist <= currentDist)) {
+          hasLowerOrEqualNeighborInOppositeDirs = true;
+        }
+
+        if (hasHigherNeighbor || hasLowerOrEqualNeighborInOppositeDirs) {
+          skeletonPoints.push({ x, y, distance: currentDist });
+        }
+      }
+    }
+
+    const edges: Array<{ from: number; to: number; cost: number }> = [];
+    for (let i = 0; i < skeletonPoints.length; i++) {
+      for (let j = i + 1; j < skeletonPoints.length; j++) {
+        const dx = Math.abs(skeletonPoints[i].x - skeletonPoints[j].x);
+        const dy = Math.abs(skeletonPoints[i].y - skeletonPoints[j].y);
+        if (dx <= 1 && dy <= 1) {
+          const cost = Math.sqrt(dx * dx + dy * dy);
+          edges.push({ from: i, to: j, cost });
+        }
+      }
+    }
+
+    return {
+      targetType,
+      points: skeletonPoints,
+      edges,
+      pointCount: skeletonPoints.length,
+      avgDistanceFromBoundary: skeletonPoints.length > 0 ?
+        skeletonPoints.reduce((sum, p) => sum + p.distance, 0) / skeletonPoints.length : 0
+    };
+  }
+
+  public findSkeletonCenterline(skeleton: TerrainSkeleton): Array<{ x: number; y: number }> {
+    if (skeleton.points.length === 0) return [];
+    if (skeleton.points.length === 1) return [{ x: skeleton.points[0].x, y: skeleton.points[0].y }];
+
+    const endpoints: number[] = [];
+    const connectionCount = new Map<number, number>();
+
+    for (const edge of skeleton.edges) {
+      connectionCount.set(edge.from, (connectionCount.get(edge.from) ?? 0) + 1);
+      connectionCount.set(edge.to, (connectionCount.get(edge.to) ?? 0) + 1);
+    }
+
+    for (const [idx, count] of connectionCount) {
+      if (count === 1) {
+        endpoints.push(idx);
+      }
+    }
+
+    if (endpoints.length < 2) {
+      const sorted = [...skeleton.points].sort((a, b) => b.distance - a.distance);
+      return sorted.map(p => ({ x: p.x, y: p.y }));
+    }
+
+    let longestPath: number[] = [];
+    let longestLength = 0;
+
+    for (let i = 0; i < endpoints.length; i++) {
+      for (let j = i + 1; j < endpoints.length; j++) {
+        const path = this.findPathInSkeleton(skeleton, endpoints[i], endpoints[j]);
+        if (path.length > longestLength) {
+          longestLength = path.length;
+          longestPath = path;
+        }
+      }
+    }
+
+    return longestPath.map(idx => ({ x: skeleton.points[idx].x, y: skeleton.points[idx].y }));
+  }
+
+  private findPathInSkeleton(skeleton: TerrainSkeleton, startIdx: number, endIdx: number): number[] {
+    const adjacency = new Map<number, Array<{ neighbor: number; cost: number }>>();
+    for (const edge of skeleton.edges) {
+      if (!adjacency.has(edge.from)) adjacency.set(edge.from, []);
+      if (!adjacency.has(edge.to)) adjacency.set(edge.to, []);
+      adjacency.get(edge.from)!.push({ neighbor: edge.to, cost: edge.cost });
+      adjacency.get(edge.to)!.push({ neighbor: edge.from, cost: edge.cost });
+    }
+
+    const visited = new Set<number>();
+    const queue: Array<{ idx: number; path: number[] }> = [{ idx: startIdx, path: [startIdx] }];
+
+    while (queue.length > 0) {
+      const { idx, path } = queue.shift()!;
+      if (idx === endIdx) return path;
+      if (visited.has(idx)) continue;
+      visited.add(idx);
+
+      const neighbors = adjacency.get(idx) ?? [];
+      for (const { neighbor } of neighbors) {
+        if (!visited.has(neighbor)) {
+          queue.push({ idx: neighbor, path: [...path, neighbor] });
+        }
+      }
+    }
+
+    return [startIdx];
+  }
+
+  public computeMedialAxis(targetType: TerrainType): MedialAxisResult {
+    const skeleton = this.computeTerrainTypeSkeleton(targetType);
+    const centerline = this.findSkeletonCenterline(skeleton);
+
+    const branchPoints: Array<{ x: number; y: number }> = [];
+    const connectionCount = new Map<number, number>();
+
+    for (const edge of skeleton.edges) {
+      connectionCount.set(edge.from, (connectionCount.get(edge.from) ?? 0) + 1);
+      connectionCount.set(edge.to, (connectionCount.get(edge.to) ?? 0) + 1);
+    }
+
+    for (const [idx, count] of connectionCount) {
+      if (count >= 3) {
+        branchPoints.push({
+          x: skeleton.points[idx].x,
+          y: skeleton.points[idx].y
+        });
+      }
+    }
+
+    let totalWidth = 0;
+    for (const point of skeleton.points) {
+      totalWidth += point.distance * 2;
+    }
+    const avgWidth = skeleton.points.length > 0 ? totalWidth / skeleton.points.length : 0;
+
+    return {
+      skeleton,
+      centerline,
+      branchPoints,
+      avgWidth,
+      maxWidth: skeleton.points.length > 0 ?
+        Math.max(...skeleton.points.map(p => p.distance)) * 2 : 0,
+      minWidth: skeleton.points.length > 0 ?
+        Math.min(...skeleton.points.map(p => p.distance)) * 2 : 0
+    };
+  }
+
+  public getRegionCenterlineLength(targetType: TerrainType): number {
+    const result = this.computeMedialAxis(targetType);
+    if (result.centerline.length < 2) return 0;
+
+    let length = 0;
+    for (let i = 1; i < result.centerline.length; i++) {
+      const dx = result.centerline[i].x - result.centerline[i - 1].x;
+      const dy = result.centerline[i].y - result.centerline[i - 1].y;
+      length += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    return length;
+  }
+
+  public getRegionElongation(targetType: TerrainType): number {
+    const result = this.computeMedialAxis(targetType);
+    if (result.centerline.length < 2 || result.avgWidth === 0) return 0;
+
+    const centerlineLength = this.getRegionCenterlineLength(targetType);
+    return centerlineLength / result.avgWidth;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -18097,4 +18299,21 @@ export interface DistanceFieldRaySample {
   distance: number;
   fieldValue: number;
   signedValue: number;
+}
+
+export interface TerrainSkeleton {
+  targetType: TerrainType;
+  points: Array<{ x: number; y: number; distance: number }>;
+  edges: Array<{ from: number; to: number; cost: number }>;
+  pointCount: number;
+  avgDistanceFromBoundary: number;
+}
+
+export interface MedialAxisResult {
+  skeleton: TerrainSkeleton;
+  centerline: Array<{ x: number; y: number }>;
+  branchPoints: Array<{ x: number; y: number }>;
+  avgWidth: number;
+  maxWidth: number;
+  minWidth: number;
 }
