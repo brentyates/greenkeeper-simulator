@@ -8064,6 +8064,185 @@ export class TerrainBuilder {
     return candidates.slice(0, count);
   }
 
+  public computeVisibilityFromPoint(viewX: number, viewY: number, viewerHeight: number = 1.8): boolean[][] {
+    const { width, height } = this.courseData;
+    const visibility: boolean[][] = [];
+
+    const viewerElev = this.getElevationAt(viewX, viewY) + viewerHeight;
+
+    for (let y = 0; y < height; y++) {
+      visibility[y] = [];
+      for (let x = 0; x < width; x++) {
+        if (x === viewX && y === viewY) {
+          visibility[y][x] = true;
+          continue;
+        }
+        visibility[y][x] = this.isLineOfSightClear(viewX, viewY, viewerElev, x, y);
+      }
+    }
+
+    return visibility;
+  }
+
+  private isLineOfSightClear(x1: number, y1: number, viewerElev: number, x2: number, y2: number): boolean {
+    const targetElev = this.getElevationAt(x2, y2);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < 1) return true;
+
+    const steps = Math.max(Math.abs(dx), Math.abs(dy)) * 2;
+    const stepX = dx / steps;
+    const stepY = dy / steps;
+    const elevStep = (targetElev - viewerElev) / steps;
+
+    for (let i = 1; i < steps; i++) {
+      const checkX = x1 + stepX * i;
+      const checkY = y1 + stepY * i;
+      const expectedElev = viewerElev + elevStep * i;
+
+      const terrainElev = this.getBilinearElevation(checkX, checkY);
+
+      if (terrainElev > expectedElev + 0.1) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  public computeViewshedPercentage(viewX: number, viewY: number, viewerHeight: number = 1.8): number {
+    const visibility = this.computeVisibilityFromPoint(viewX, viewY, viewerHeight);
+    const { width, height } = this.courseData;
+
+    let visibleCount = 0;
+    let totalCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        totalCount++;
+        if (visibility[y][x]) visibleCount++;
+      }
+    }
+
+    return (visibleCount / totalCount) * 100;
+  }
+
+  public findHighVisibilityPoints(viewerHeight: number = 1.8, topN: number = 10): Array<{ x: number; y: number; visibilityPercent: number }> {
+    const { width, height } = this.courseData;
+    const results: Array<{ x: number; y: number; visibilityPercent: number }> = [];
+
+    const step = Math.max(1, Math.floor(Math.min(width, height) / 20));
+
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
+        const visibilityPercent = this.computeViewshedPercentage(x, y, viewerHeight);
+        results.push({ x, y, visibilityPercent });
+      }
+    }
+
+    results.sort((a, b) => b.visibilityPercent - a.visibilityPercent);
+    return results.slice(0, topN);
+  }
+
+  public computeMultiPointVisibility(viewerLocations: Array<{ x: number; y: number }>, viewerHeight: number = 1.8): number[][] {
+    const { width, height } = this.courseData;
+    const combinedVisibility: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      combinedVisibility[y] = [];
+      for (let x = 0; x < width; x++) {
+        combinedVisibility[y][x] = 0;
+      }
+    }
+
+    for (const viewer of viewerLocations) {
+      const visibility = this.computeVisibilityFromPoint(viewer.x, viewer.y, viewerHeight);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (visibility[y][x]) {
+            combinedVisibility[y][x]++;
+          }
+        }
+      }
+    }
+
+    return combinedVisibility;
+  }
+
+  public classifyVisibility(gridX: number, gridY: number, viewerX: number, viewerY: number, viewerHeight: number = 1.8): 'visible' | 'partially_obscured' | 'hidden' {
+    const visibility = this.computeVisibilityFromPoint(viewerX, viewerY, viewerHeight);
+
+    if (visibility[gridY]?.[gridX]) return 'visible';
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+    let neighborVisible = 0;
+    for (const n of neighbors) {
+      const nx = gridX + n.dx;
+      const ny = gridY + n.dy;
+      if (this.isValidGridPosition(nx, ny) && visibility[ny][nx]) {
+        neighborVisible++;
+      }
+    }
+
+    if (neighborVisible > 0) return 'partially_obscured';
+    return 'hidden';
+  }
+
+  public getVisibilityAnalysis(viewerX: number, viewerY: number, viewerHeight: number = 1.8): VisibilityAnalysis {
+    const visibility = this.computeVisibilityFromPoint(viewerX, viewerY, viewerHeight);
+    const { width, height } = this.courseData;
+
+    let visibleCount = 0;
+    let hiddenCount = 0;
+    let farthestVisible = { x: viewerX, y: viewerY, distance: 0 };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (visibility[y][x]) {
+          visibleCount++;
+          const distance = Math.sqrt((x - viewerX) ** 2 + (y - viewerY) ** 2);
+          if (distance > farthestVisible.distance) {
+            farthestVisible = { x, y, distance };
+          }
+        } else {
+          hiddenCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      visibleCount,
+      hiddenCount,
+      visibilityPercentage: (visibleCount / totalTiles) * 100,
+      farthestVisiblePoint: farthestVisible,
+      viewerLocation: { x: viewerX, y: viewerY },
+      viewerHeight
+    };
+  }
+
+  public findBlindSpots(viewerLocations: Array<{ x: number; y: number }>, viewerHeight: number = 1.8): Array<{ x: number; y: number }> {
+    const multiVisibility = this.computeMultiPointVisibility(viewerLocations, viewerHeight);
+    const { width, height } = this.courseData;
+    const blindSpots: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (multiVisibility[y][x] === 0) {
+          blindSpots.push({ x, y });
+        }
+      }
+    }
+
+    return blindSpots;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -13199,6 +13378,15 @@ export interface PondingAnalysis {
   significantCount: number;
   severeCount: number;
   pondingPercentage: number;
+}
+
+export interface VisibilityAnalysis {
+  visibleCount: number;
+  hiddenCount: number;
+  visibilityPercentage: number;
+  farthestVisiblePoint: { x: number; y: number; distance: number };
+  viewerLocation: { x: number; y: number };
+  viewerHeight: number;
 }
 
 export interface LineSampleOptions {
