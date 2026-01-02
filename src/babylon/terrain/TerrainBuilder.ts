@@ -27086,6 +27086,229 @@ export class TerrainBuilder {
       isDaytime: sunPosition.isDaytime
     };
   }
+
+  public computeBaseWind(time: number, windSpeed: number = 5, windDirection: number = 45): BaseWindData {
+    const dirRad = (windDirection * Math.PI) / 180;
+
+    const gustFactor = 1 + 0.3 * Math.sin(time * 2.5) + 0.15 * Math.sin(time * 5.7);
+    const effectiveSpeed = windSpeed * gustFactor;
+
+    const windX = Math.cos(dirRad) * effectiveSpeed;
+    const windZ = Math.sin(dirRad) * effectiveSpeed;
+
+    const turbulence = 0.2 + 0.1 * Math.sin(time * 3.1);
+
+    return {
+      direction: windDirection,
+      speed: effectiveSpeed,
+      baseSpeed: windSpeed,
+      vector: { x: windX, z: windZ },
+      gustFactor,
+      turbulence,
+      time
+    };
+  }
+
+  public computeWindAtPosition(x: number, z: number, baseWind: BaseWindData): WindAtPositionData {
+    const elevation = this.getElevationAt(Math.floor(x), Math.floor(z));
+    const gradient = this.computeGradient(x, z);
+
+    const elevationFactor = 1 + elevation * 0.05;
+
+    const slopeX = gradient.gradientX;
+    const slopeZ = gradient.gradientZ;
+    const slopeMagnitude = Math.sqrt(slopeX * slopeX + slopeZ * slopeZ);
+
+    const windDotSlope = (baseWind.vector.x * slopeX + baseWind.vector.z * slopeZ) / (baseWind.speed || 1);
+    const deflectionFactor = windDotSlope > 0 ? 1 + windDotSlope * 0.5 : 1 - Math.abs(windDotSlope) * 0.3;
+
+    const localWindX = baseWind.vector.x * elevationFactor * deflectionFactor;
+    const localWindZ = baseWind.vector.z * elevationFactor * deflectionFactor;
+    const localSpeed = Math.sqrt(localWindX * localWindX + localWindZ * localWindZ);
+
+    const terrainType = this.getTerrainTypeAt(Math.floor(x), Math.floor(z));
+    const shelterFactor = terrainType === 'rough' ? 0.7 :
+                          terrainType === 'bunker' ? 0.9 :
+                          terrainType === 'water' ? 1.1 : 1.0;
+
+    return {
+      position: { x, z },
+      localWind: { x: localWindX * shelterFactor, z: localWindZ * shelterFactor },
+      localSpeed: localSpeed * shelterFactor,
+      elevationFactor,
+      deflectionFactor,
+      shelterFactor,
+      slopeMagnitude
+    };
+  }
+
+  public computeWindField(baseWind: BaseWindData, resolution: number = 2): WindFieldData {
+    const windField: Array<Array<{ x: number; z: number; speed: number }>> = [];
+    let maxSpeed = 0;
+    let totalSpeed = 0;
+
+    for (let z = 0; z < this.courseData.height; z += resolution) {
+      const row: Array<{ x: number; z: number; speed: number }> = [];
+      for (let x = 0; x < this.courseData.width; x += resolution) {
+        const windAt = this.computeWindAtPosition(x, z, baseWind);
+        row.push({
+          x: windAt.localWind.x,
+          z: windAt.localWind.z,
+          speed: windAt.localSpeed
+        });
+        maxSpeed = Math.max(maxSpeed, windAt.localSpeed);
+        totalSpeed += windAt.localSpeed;
+      }
+      windField.push(row);
+    }
+
+    const sampleCount = Math.ceil(this.courseData.width / resolution) * Math.ceil(this.courseData.height / resolution);
+
+    return {
+      windField,
+      width: Math.ceil(this.courseData.width / resolution),
+      height: Math.ceil(this.courseData.height / resolution),
+      resolution,
+      maxSpeed,
+      averageSpeed: totalSpeed / sampleCount,
+      baseWind
+    };
+  }
+
+  public computeGrassSwayAt(x: number, z: number, time: number, baseWind: BaseWindData): GrassSwayData {
+    const windAt = this.computeWindAtPosition(x, z, baseWind);
+
+    const swayFrequency = 2 + windAt.localSpeed * 0.3;
+    const swayAmplitude = Math.min(0.5, windAt.localSpeed * 0.05);
+
+    const phaseOffset = x * 0.3 + z * 0.3;
+    const swayAngle = Math.sin(time * swayFrequency + phaseOffset) * swayAmplitude;
+
+    const windAngle = Math.atan2(windAt.localWind.z, windAt.localWind.x);
+    const bendDirection = windAngle + swayAngle * 0.3;
+    const bendAmount = swayAmplitude * (0.5 + 0.5 * Math.sin(time * swayFrequency + phaseOffset));
+
+    return {
+      position: { x, z },
+      swayAngle,
+      bendDirection,
+      bendAmount,
+      swayFrequency,
+      swayAmplitude,
+      windSpeed: windAt.localSpeed
+    };
+  }
+
+  public computeWindZones(): WindZonesData {
+    const zones: Array<{ id: number; x: number; z: number; width: number; height: number; avgSpeed: number; type: string }> = [];
+    const baseWind = this.computeBaseWind(0, 5, 45);
+
+    const zoneSize = 8;
+    let zoneId = 0;
+
+    for (let zStart = 0; zStart < this.courseData.height; zStart += zoneSize) {
+      for (let xStart = 0; xStart < this.courseData.width; xStart += zoneSize) {
+        let totalSpeed = 0;
+        let count = 0;
+
+        for (let z = zStart; z < Math.min(zStart + zoneSize, this.courseData.height); z++) {
+          for (let x = xStart; x < Math.min(xStart + zoneSize, this.courseData.width); x++) {
+            const windAt = this.computeWindAtPosition(x, z, baseWind);
+            totalSpeed += windAt.localSpeed;
+            count++;
+          }
+        }
+
+        const avgSpeed = totalSpeed / count;
+        let zoneType = 'normal';
+        if (avgSpeed > baseWind.speed * 1.3) {
+          zoneType = 'exposed';
+        } else if (avgSpeed < baseWind.speed * 0.7) {
+          zoneType = 'sheltered';
+        }
+
+        zones.push({
+          id: zoneId++,
+          x: xStart,
+          z: zStart,
+          width: Math.min(zoneSize, this.courseData.width - xStart),
+          height: Math.min(zoneSize, this.courseData.height - zStart),
+          avgSpeed,
+          type: zoneType
+        });
+      }
+    }
+
+    return {
+      zones,
+      zoneCount: zones.length,
+      zoneSize,
+      exposedCount: zones.filter(z => z.type === 'exposed').length,
+      shelteredCount: zones.filter(z => z.type === 'sheltered').length
+    };
+  }
+
+  public simulateWindParticle(startX: number, startZ: number, baseWind: BaseWindData, steps: number = 50): WindParticlePathData {
+    const path: Array<{ x: number; z: number; speed: number }> = [];
+    let x = startX, z = startZ;
+    const dt = 0.1;
+
+    for (let i = 0; i < steps; i++) {
+      if (x < 0 || x >= this.courseData.width || z < 0 || z >= this.courseData.height) {
+        break;
+      }
+
+      const windAt = this.computeWindAtPosition(x, z, baseWind);
+      path.push({ x, z, speed: windAt.localSpeed });
+
+      x += windAt.localWind.x * dt;
+      z += windAt.localWind.z * dt;
+    }
+
+    return {
+      path,
+      startPosition: { x: startX, z: startZ },
+      endPosition: { x, z },
+      totalSteps: path.length,
+      totalDistance: path.length > 1 ? Math.sqrt(
+        Math.pow(path[path.length - 1].x - path[0].x, 2) +
+        Math.pow(path[path.length - 1].z - path[0].z, 2)
+      ) : 0
+    };
+  }
+
+  public computeWindStatistics(baseWind: BaseWindData): WindStatistics {
+    const windField = this.computeWindField(baseWind, 2);
+    const zones = this.computeWindZones();
+
+    let minSpeed = Infinity, maxSpeed = -Infinity;
+    let speedVariance = 0;
+
+    for (const row of windField.windField) {
+      for (const cell of row) {
+        minSpeed = Math.min(minSpeed, cell.speed);
+        maxSpeed = Math.max(maxSpeed, cell.speed);
+        const diff = cell.speed - windField.averageSpeed;
+        speedVariance += diff * diff;
+      }
+    }
+
+    const sampleCount = windField.width * windField.height;
+    speedVariance /= sampleCount;
+
+    return {
+      baseSpeed: baseWind.baseSpeed,
+      baseDirection: baseWind.direction,
+      minSpeed,
+      maxSpeed,
+      averageSpeed: windField.averageSpeed,
+      speedVariance,
+      speedStdDev: Math.sqrt(speedVariance),
+      exposedZones: zones.exposedCount,
+      shelteredZones: zones.shelteredCount,
+      totalZones: zones.zoneCount
+    };
+  }
 }
 
 export interface WaterTileData {
@@ -29989,4 +30212,73 @@ export interface LightingStatistics {
   sunElevation: number;
   sunAzimuth: number;
   isDaytime: boolean;
+}
+
+export interface BaseWindData {
+  direction: number;
+  speed: number;
+  baseSpeed: number;
+  vector: { x: number; z: number };
+  gustFactor: number;
+  turbulence: number;
+  time: number;
+}
+
+export interface WindAtPositionData {
+  position: { x: number; z: number };
+  localWind: { x: number; z: number };
+  localSpeed: number;
+  elevationFactor: number;
+  deflectionFactor: number;
+  shelterFactor: number;
+  slopeMagnitude: number;
+}
+
+export interface WindFieldData {
+  windField: Array<Array<{ x: number; z: number; speed: number }>>;
+  width: number;
+  height: number;
+  resolution: number;
+  maxSpeed: number;
+  averageSpeed: number;
+  baseWind: BaseWindData;
+}
+
+export interface GrassSwayData {
+  position: { x: number; z: number };
+  swayAngle: number;
+  bendDirection: number;
+  bendAmount: number;
+  swayFrequency: number;
+  swayAmplitude: number;
+  windSpeed: number;
+}
+
+export interface WindZonesData {
+  zones: Array<{ id: number; x: number; z: number; width: number; height: number; avgSpeed: number; type: string }>;
+  zoneCount: number;
+  zoneSize: number;
+  exposedCount: number;
+  shelteredCount: number;
+}
+
+export interface WindParticlePathData {
+  path: Array<{ x: number; z: number; speed: number }>;
+  startPosition: { x: number; z: number };
+  endPosition: { x: number; z: number };
+  totalSteps: number;
+  totalDistance: number;
+}
+
+export interface WindStatistics {
+  baseSpeed: number;
+  baseDirection: number;
+  minSpeed: number;
+  maxSpeed: number;
+  averageSpeed: number;
+  speedVariance: number;
+  speedStdDev: number;
+  exposedZones: number;
+  shelteredZones: number;
+  totalZones: number;
 }
