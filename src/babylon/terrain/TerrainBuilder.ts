@@ -7666,6 +7666,195 @@ export class TerrainBuilder {
     return largestRegion;
   }
 
+  public computeErosionRisk(rainfallIntensity: number = 1.0): number[][] {
+    const { width, height } = this.courseData;
+    const erosionRisk: number[][] = [];
+
+    const flowAccumulation = this.computeFlowAccumulation();
+
+    for (let y = 0; y < height; y++) {
+      erosionRisk[y] = [];
+      for (let x = 0; x < width; x++) {
+        const slope = this.getSlopeAngle(x, y);
+        const slopeRad = slope * Math.PI / 180;
+
+        const slopeFactor = Math.pow(Math.sin(slopeRad), 0.8) * Math.pow(Math.cos(slopeRad), 0.1);
+
+        const flowFactor = Math.min(1.0, flowAccumulation[y][x] / 20);
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        let coverFactor = 1.0;
+        if (terrainType === 'fairway' || terrainType === 'rough') {
+          coverFactor = 0.3;
+        } else if (terrainType === 'green') {
+          coverFactor = 0.2;
+        } else if (terrainType === 'bunker') {
+          coverFactor = 1.5;
+        } else if (terrainType === 'water') {
+          coverFactor = 0.0;
+        }
+
+        const risk = rainfallIntensity * slopeFactor * (0.4 + 0.6 * flowFactor) * coverFactor;
+        erosionRisk[y][x] = Math.min(1.0, Math.max(0, risk));
+      }
+    }
+
+    return erosionRisk;
+  }
+
+  public findErosionHotspots(threshold: number = 0.6, rainfallIntensity: number = 1.0): Array<{ x: number; y: number; riskLevel: number }> {
+    const erosionRisk = this.computeErosionRisk(rainfallIntensity);
+    const { width, height } = this.courseData;
+    const hotspots: Array<{ x: number; y: number; riskLevel: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (erosionRisk[y][x] >= threshold) {
+          hotspots.push({ x, y, riskLevel: erosionRisk[y][x] });
+        }
+      }
+    }
+
+    hotspots.sort((a, b) => b.riskLevel - a.riskLevel);
+    return hotspots;
+  }
+
+  public classifyErosionRisk(gridX: number, gridY: number, rainfallIntensity: number = 1.0): 'negligible' | 'low' | 'moderate' | 'high' | 'severe' {
+    const erosionRisk = this.computeErosionRisk(rainfallIntensity);
+    const risk = erosionRisk[gridY]?.[gridX] ?? 0;
+
+    if (risk < 0.1) return 'negligible';
+    if (risk < 0.3) return 'low';
+    if (risk < 0.5) return 'moderate';
+    if (risk < 0.7) return 'high';
+    return 'severe';
+  }
+
+  public computeSedimentTransportPath(startX: number, startY: number, maxSteps: number = 100): Array<{ x: number; y: number }> {
+    const path: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    let currentX = startX;
+    let currentY = startY;
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 }, { dx: -1, dy: 1 },
+      { dx: 1, dy: -1 }, { dx: -1, dy: -1 }
+    ];
+
+    for (let step = 0; step < maxSteps; step++) {
+      const currentElev = this.getElevationAt(currentX, currentY);
+      let steepestGradient = 0;
+      let nextX = currentX;
+      let nextY = currentY;
+
+      for (const n of neighbors) {
+        const nx = currentX + n.dx;
+        const ny = currentY + n.dy;
+        if (!this.isValidGridPosition(nx, ny)) continue;
+
+        const neighborElev = this.getElevationAt(nx, ny);
+        const distance = Math.sqrt(n.dx * n.dx + n.dy * n.dy);
+        const gradient = (currentElev - neighborElev) / distance;
+
+        if (gradient > steepestGradient) {
+          steepestGradient = gradient;
+          nextX = nx;
+          nextY = ny;
+        }
+      }
+
+      if (nextX === currentX && nextY === currentY) break;
+
+      const terrainType = this.getTerrainTypeAt(nextX, nextY);
+      if (terrainType === 'water') {
+        path.push({ x: nextX, y: nextY });
+        break;
+      }
+
+      path.push({ x: nextX, y: nextY });
+      currentX = nextX;
+      currentY = nextY;
+    }
+
+    return path;
+  }
+
+  public getErosionAnalysis(rainfallIntensity: number = 1.0): ErosionAnalysis {
+    const erosionRisk = this.computeErosionRisk(rainfallIntensity);
+    const { width, height } = this.courseData;
+
+    const counts = {
+      negligible: 0,
+      low: 0,
+      moderate: 0,
+      high: 0,
+      severe: 0
+    };
+
+    let totalRisk = 0;
+    let maxRisk = 0;
+    let maxRiskLocation = { x: 0, y: 0 };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const risk = erosionRisk[y][x];
+        totalRisk += risk;
+
+        if (risk > maxRisk) {
+          maxRisk = risk;
+          maxRiskLocation = { x, y };
+        }
+
+        if (risk < 0.1) counts.negligible++;
+        else if (risk < 0.3) counts.low++;
+        else if (risk < 0.5) counts.moderate++;
+        else if (risk < 0.7) counts.high++;
+        else counts.severe++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      averageRisk: totalRisk / totalTiles,
+      maxRisk,
+      maxRiskLocation,
+      negligibleCount: counts.negligible,
+      lowRiskCount: counts.low,
+      moderateRiskCount: counts.moderate,
+      highRiskCount: counts.high,
+      severeRiskCount: counts.severe,
+      atRiskPercentage: ((counts.moderate + counts.high + counts.severe) / totalTiles) * 100
+    };
+  }
+
+  public findErosionBarrierLocations(rainfallIntensity: number = 1.0): Array<{ x: number; y: number; priority: number }> {
+    const erosionRisk = this.computeErosionRisk(rainfallIntensity);
+    const flowAccumulation = this.computeFlowAccumulation();
+    const { width, height } = this.courseData;
+
+    const barrierLocations: Array<{ x: number; y: number; priority: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (erosionRisk[y][x] < 0.5) continue;
+
+        const downstreamFlow = flowAccumulation[y][x];
+        if (downstreamFlow < 3) continue;
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType === 'water' || terrainType === 'bunker') continue;
+
+        const priority = erosionRisk[y][x] * (1 + Math.log(1 + downstreamFlow) / 3);
+        barrierLocations.push({ x, y, priority });
+      }
+    }
+
+    barrierLocations.sort((a, b) => b.priority - a.priority);
+    return barrierLocations.slice(0, 20);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -12777,6 +12966,18 @@ export interface MicroclimateAnalysis {
   dominantZone: MicroclimateZone;
   zoneCount: number;
   diversityIndex: number;
+}
+
+export interface ErosionAnalysis {
+  averageRisk: number;
+  maxRisk: number;
+  maxRiskLocation: { x: number; y: number };
+  negligibleCount: number;
+  lowRiskCount: number;
+  moderateRiskCount: number;
+  highRiskCount: number;
+  severeRiskCount: number;
+  atRiskPercentage: number;
 }
 
 export interface LineSampleOptions {
