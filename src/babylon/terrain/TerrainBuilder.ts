@@ -6992,6 +6992,291 @@ export class TerrainBuilder {
 
     return chokepoints.sort((a, b) => b.score - a.score);
   }
+
+  public mirrorHorizontal(centerX?: number): number {
+    const { width, height } = this.courseData;
+    const center = centerX ?? Math.floor(width / 2);
+    let modifiedCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < center; x++) {
+        const mirrorX = width - 1 - x;
+        if (mirrorX <= center || mirrorX >= width) continue;
+
+        const elevation = this.getElevationAt(x, y);
+        if (this.getElevationAt(mirrorX, y) !== elevation) {
+          this.setElevationAtInternal(mirrorX, y, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public mirrorVertical(centerY?: number): number {
+    const { width, height } = this.courseData;
+    const center = centerY ?? Math.floor(height / 2);
+    let modifiedCount = 0;
+
+    for (let y = 0; y < center; y++) {
+      const mirrorY = height - 1 - y;
+      if (mirrorY <= center || mirrorY >= height) continue;
+
+      for (let x = 0; x < width; x++) {
+        const elevation = this.getElevationAt(x, y);
+        if (this.getElevationAt(x, mirrorY) !== elevation) {
+          this.setElevationAtInternal(x, mirrorY, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public flipHorizontal(): number {
+    const { width, height } = this.courseData;
+    let modifiedCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < width; x++) {
+        row.push(this.getElevationAt(x, y));
+      }
+      row.reverse();
+      for (let x = 0; x < width; x++) {
+        if (this.getElevationAt(x, y) !== row[x]) {
+          this.setElevationAtInternal(x, y, row[x]);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public flipVertical(): number {
+    const { width, height } = this.courseData;
+    let modifiedCount = 0;
+
+    const grid: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      grid[y] = [];
+      for (let x = 0; x < width; x++) {
+        grid[y][x] = this.getElevationAt(x, y);
+      }
+    }
+    grid.reverse();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.getElevationAt(x, y) !== grid[y][x]) {
+          this.setElevationAtInternal(x, y, grid[y][x]);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public rotateArea(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    angleDegrees: number
+  ): number {
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(this.courseData.width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(this.courseData.height - 1, centerY + radius);
+
+    const originalElevations: Map<string, number> = new Map();
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (distance <= radius) {
+          originalElevations.set(`${x}_${y}`, this.getElevationAt(x, y));
+        }
+      }
+    }
+
+    const angleRad = (angleDegrees * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (distance > radius) continue;
+
+        const relX = x - centerX;
+        const relY = y - centerY;
+        const srcX = Math.round(centerX + relX * cos + relY * sin);
+        const srcY = Math.round(centerY - relX * sin + relY * cos);
+
+        const srcKey = `${srcX}_${srcY}`;
+        if (originalElevations.has(srcKey)) {
+          const elevation = originalElevations.get(srcKey)!;
+          if (this.getElevationAt(x, y) !== elevation) {
+            this.setElevationAtInternal(x, y, elevation);
+            modifiedCount++;
+          }
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public scaleElevation(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    scaleFactor: number
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.round(currentElev * scaleFactor);
+        const clampedElev = Math.max(0, Math.min(50, newElev));
+
+        if (currentElev !== clampedElev) {
+          this.setElevationAtInternal(x, y, clampedElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public offsetElevation(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    offset: number
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = currentElev + offset;
+        const clampedElev = Math.max(0, Math.min(50, newElev));
+
+        if (currentElev !== clampedElev) {
+          this.setElevationAtInternal(x, y, clampedElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public invertElevation(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+      }
+    }
+
+    if (minElev === Infinity) return 0;
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        const invertedElev = maxElev - (currentElev - minElev);
+
+        if (currentElev !== invertedElev) {
+          this.setElevationAtInternal(x, y, invertedElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public normalizeElevation(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    targetMin: number = 0,
+    targetMax: number = 10
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let currentMin = Infinity;
+    let currentMax = -Infinity;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const elev = this.getElevationAt(x, y);
+        currentMin = Math.min(currentMin, elev);
+        currentMax = Math.max(currentMax, elev);
+      }
+    }
+
+    if (currentMin === Infinity || currentMax === currentMin) return 0;
+
+    let modifiedCount = 0;
+    const range = currentMax - currentMin;
+    const targetRange = targetMax - targetMin;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        const normalized = ((currentElev - currentMin) / range) * targetRange + targetMin;
+        const newElev = Math.round(normalized);
+
+        if (currentElev !== newElev) {
+          this.setElevationAtInternal(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
 }
 
 export interface TerrainRegion {
