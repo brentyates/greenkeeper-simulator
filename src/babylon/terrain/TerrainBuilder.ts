@@ -26328,6 +26328,288 @@ export class TerrainBuilder {
       estimatedMemoryMB: (grass.totalBlades * 32 + stones.totalStones * 40 + flowers.totalFlowers * 28) / (1024 * 1024)
     };
   }
+
+  public detectWaterTiles(): WaterTileData {
+    const waterTiles: Array<{ x: number; y: number; depth: number }> = [];
+    const waterLevel = 0;
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType === 'water') {
+          const elevation = this.getElevationAt(x, y);
+          const depth = waterLevel - elevation;
+          waterTiles.push({ x, y, depth: Math.max(0, depth) });
+        }
+      }
+    }
+
+    return {
+      waterTiles,
+      totalWaterTiles: waterTiles.length,
+      waterLevel,
+      averageDepth: waterTiles.length > 0 ? waterTiles.reduce((sum, t) => sum + t.depth, 0) / waterTiles.length : 0
+    };
+  }
+
+  public detectShoreline(): ShorelineData {
+    const shorelineSegments: Array<{ x1: number; z1: number; x2: number; z2: number; normalX: number; normalZ: number }> = [];
+
+    for (let y = 0; y < this.courseData.height - 1; y++) {
+      for (let x = 0; x < this.courseData.width - 1; x++) {
+        const isWater = this.getTerrainTypeAt(x, y) === 'water';
+        const rightIsWater = this.getTerrainTypeAt(x + 1, y) === 'water';
+        const bottomIsWater = this.getTerrainTypeAt(x, y + 1) === 'water';
+
+        if (isWater !== rightIsWater) {
+          const normalX = isWater ? 1 : -1;
+          shorelineSegments.push({
+            x1: x + 1, z1: y,
+            x2: x + 1, z2: y + 1,
+            normalX, normalZ: 0
+          });
+        }
+
+        if (isWater !== bottomIsWater) {
+          const normalZ = isWater ? 1 : -1;
+          shorelineSegments.push({
+            x1: x, z1: y + 1,
+            x2: x + 1, z2: y + 1,
+            normalX: 0, normalZ
+          });
+        }
+      }
+    }
+
+    return {
+      segments: shorelineSegments,
+      totalLength: shorelineSegments.length,
+      boundingBox: this.computeShorelineBoundingBox(shorelineSegments)
+    };
+  }
+
+  private computeShorelineBoundingBox(segments: Array<{ x1: number; z1: number; x2: number; z2: number }>): { minX: number; maxX: number; minZ: number; maxZ: number } {
+    if (segments.length === 0) {
+      return { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
+    }
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const seg of segments) {
+      minX = Math.min(minX, seg.x1, seg.x2);
+      maxX = Math.max(maxX, seg.x1, seg.x2);
+      minZ = Math.min(minZ, seg.z1, seg.z2);
+      maxZ = Math.max(maxZ, seg.z1, seg.z2);
+    }
+
+    return { minX, maxX, minZ, maxZ };
+  }
+
+  public generateWaveDisplacement(time: number, waveSpeed: number = 1.0, waveAmplitude: number = 0.1): WaveDisplacementData {
+    const displacementMap: number[][] = [];
+    const waterData = this.detectWaterTiles();
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      displacementMap[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType !== 'water') {
+          displacementMap[y][x] = 0;
+          continue;
+        }
+
+        const wave1 = Math.sin((x * 0.5 + time * waveSpeed) * Math.PI * 2) * waveAmplitude;
+        const wave2 = Math.sin((y * 0.3 + time * waveSpeed * 0.7) * Math.PI * 2) * waveAmplitude * 0.5;
+        const wave3 = Math.sin(((x + y) * 0.2 + time * waveSpeed * 1.3) * Math.PI * 2) * waveAmplitude * 0.3;
+
+        displacementMap[y][x] = wave1 + wave2 + wave3;
+      }
+    }
+
+    return {
+      displacementMap,
+      time,
+      waveSpeed,
+      waveAmplitude,
+      waterTileCount: waterData.totalWaterTiles
+    };
+  }
+
+  public computeWaterNormals(waveData: WaveDisplacementData): WaterNormalData {
+    const normalMap: Array<Array<{ x: number; y: number; z: number }>> = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      normalMap[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        if (this.getTerrainTypeAt(x, y) !== 'water') {
+          normalMap[y][x] = { x: 0, y: 1, z: 0 };
+          continue;
+        }
+
+        const dx = x < this.courseData.width - 1 ?
+          waveData.displacementMap[y][x + 1] - waveData.displacementMap[y][x] : 0;
+        const dz = y < this.courseData.height - 1 ?
+          waveData.displacementMap[y + 1][x] - waveData.displacementMap[y][x] : 0;
+
+        const nx = -dx;
+        const ny = 1;
+        const nz = -dz;
+        const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+        normalMap[y][x] = { x: nx / length, y: ny / length, z: nz / length };
+      }
+    }
+
+    return {
+      normalMap,
+      width: this.courseData.width,
+      height: this.courseData.height
+    };
+  }
+
+  public computeReflectionData(cameraX: number, cameraY: number, cameraZ: number): WaterReflectionData {
+    const waterLevel = 0;
+    const reflectedCameraY = waterLevel * 2 - cameraY;
+
+    const reflectionPlane = { a: 0, b: 1, c: 0, d: -waterLevel };
+
+    return {
+      reflectedCameraPosition: { x: cameraX, y: reflectedCameraY, z: cameraZ },
+      reflectionPlane,
+      waterLevel,
+      clipPlaneOffset: 0.1
+    };
+  }
+
+  public computeRefractionData(viewerX: number, viewerY: number, viewerZ: number, targetX: number, targetZ: number): WaterRefractionData {
+    const waterLevel = 0;
+    const refractionIndex = 1.33;
+
+    const waterDepth = this.sampleElevationBilinear(targetX, targetZ).elevation;
+    const depthAtTarget = Math.max(0, waterLevel - waterDepth);
+
+    const viewDirX = targetX - viewerX;
+    const viewDirY = waterLevel - viewerY;
+    const viewDirZ = targetZ - viewerZ;
+    const viewDirLen = Math.sqrt(viewDirX * viewDirX + viewDirY * viewDirY + viewDirZ * viewDirZ);
+    const normalizedViewY = viewDirY / (viewDirLen || 1);
+
+    const incidentAngle = Math.acos(Math.abs(normalizedViewY));
+    const refractedAngle = Math.asin(Math.sin(incidentAngle) / refractionIndex);
+    const bendFactor = Math.tan(refractedAngle) * depthAtTarget;
+
+    const distortionX = (viewDirX / (viewDirLen || 1)) * bendFactor + Math.sin(targetX * 0.5) * depthAtTarget * 0.1;
+    const distortionZ = (viewDirZ / (viewDirLen || 1)) * bendFactor + Math.sin(targetZ * 0.5) * depthAtTarget * 0.1;
+
+    return {
+      refractionIndex,
+      distortedPosition: { x: targetX + distortionX, z: targetZ + distortionZ },
+      waterDepth: depthAtTarget,
+      visibility: Math.exp(-depthAtTarget * 0.5)
+    };
+  }
+
+  public generateCausticPattern(time: number, resolution: number = 64): CausticPatternData {
+    const causticMap: number[][] = [];
+
+    for (let y = 0; y < resolution; y++) {
+      causticMap[y] = [];
+      for (let x = 0; x < resolution; x++) {
+        const worldX = (x / resolution) * this.courseData.width;
+        const worldZ = (y / resolution) * this.courseData.height;
+
+        const c1 = Math.sin(worldX * 0.3 + time) * Math.cos(worldZ * 0.3 + time * 0.7);
+        const c2 = Math.sin(worldX * 0.5 - time * 0.5) * Math.cos(worldZ * 0.5 + time * 0.3);
+        const c3 = Math.sin((worldX + worldZ) * 0.2 + time * 1.1);
+
+        const caustic = (c1 + c2 + c3) / 3;
+        causticMap[y][x] = Math.max(0, caustic * 0.5 + 0.5);
+      }
+    }
+
+    return {
+      causticMap,
+      resolution,
+      time,
+      intensity: 0.5
+    };
+  }
+
+  public computeWaterStatistics(): WaterStatistics {
+    const waterData = this.detectWaterTiles();
+    const shoreline = this.detectShoreline();
+
+    let minDepth = Infinity, maxDepth = -Infinity;
+    for (const tile of waterData.waterTiles) {
+      minDepth = Math.min(minDepth, tile.depth);
+      maxDepth = Math.max(maxDepth, tile.depth);
+    }
+
+    return {
+      totalWaterArea: waterData.totalWaterTiles,
+      shorelineLength: shoreline.totalLength,
+      averageDepth: waterData.averageDepth,
+      minDepth: waterData.totalWaterTiles > 0 ? minDepth : 0,
+      maxDepth: waterData.totalWaterTiles > 0 ? maxDepth : 0,
+      waterCoverage: waterData.totalWaterTiles / (this.courseData.width * this.courseData.height)
+    };
+  }
+}
+
+export interface WaterTileData {
+  waterTiles: Array<{ x: number; y: number; depth: number }>;
+  totalWaterTiles: number;
+  waterLevel: number;
+  averageDepth: number;
+}
+
+export interface ShorelineData {
+  segments: Array<{ x1: number; z1: number; x2: number; z2: number; normalX: number; normalZ: number }>;
+  totalLength: number;
+  boundingBox: { minX: number; maxX: number; minZ: number; maxZ: number };
+}
+
+export interface WaveDisplacementData {
+  displacementMap: number[][];
+  time: number;
+  waveSpeed: number;
+  waveAmplitude: number;
+  waterTileCount: number;
+}
+
+export interface WaterNormalData {
+  normalMap: Array<Array<{ x: number; y: number; z: number }>>;
+  width: number;
+  height: number;
+}
+
+export interface WaterReflectionData {
+  reflectedCameraPosition: { x: number; y: number; z: number };
+  reflectionPlane: { a: number; b: number; c: number; d: number };
+  waterLevel: number;
+  clipPlaneOffset: number;
+}
+
+export interface WaterRefractionData {
+  refractionIndex: number;
+  distortedPosition: { x: number; z: number };
+  waterDepth: number;
+  visibility: number;
+}
+
+export interface CausticPatternData {
+  causticMap: number[][];
+  resolution: number;
+  time: number;
+  intensity: number;
+}
+
+export interface WaterStatistics {
+  totalWaterArea: number;
+  shorelineLength: number;
+  averageDepth: number;
+  minDepth: number;
+  maxDepth: number;
+  waterCoverage: number;
 }
 
 export interface GrassBladeData {
