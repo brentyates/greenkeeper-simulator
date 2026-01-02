@@ -4377,6 +4377,232 @@ export class TerrainBuilder {
     };
   }
 
+  public getSlopeAngle(gridX: number, gridY: number): number {
+    const { width, height } = this.courseData;
+    if (!this.isValidGridPosition(gridX, gridY)) return 0;
+
+    const centerElev = this.getElevationAt(gridX, gridY);
+    let dz_dx = 0;
+    let dz_dy = 0;
+
+    if (gridX > 0 && gridX < width - 1) {
+      dz_dx = (this.getElevationAt(gridX + 1, gridY) - this.getElevationAt(gridX - 1, gridY)) / 2;
+    } else if (gridX > 0) {
+      dz_dx = centerElev - this.getElevationAt(gridX - 1, gridY);
+    } else {
+      dz_dx = this.getElevationAt(gridX + 1, gridY) - centerElev;
+    }
+
+    if (gridY > 0 && gridY < height - 1) {
+      dz_dy = (this.getElevationAt(gridX, gridY + 1) - this.getElevationAt(gridX, gridY - 1)) / 2;
+    } else if (gridY > 0) {
+      dz_dy = centerElev - this.getElevationAt(gridX, gridY - 1);
+    } else {
+      dz_dy = this.getElevationAt(gridX, gridY + 1) - centerElev;
+    }
+
+    const slopeRad = Math.atan(Math.sqrt(dz_dx * dz_dx + dz_dy * dz_dy) * ELEVATION_HEIGHT);
+    return slopeRad * 180 / Math.PI;
+  }
+
+  public getAspect(gridX: number, gridY: number): number {
+    const { width, height } = this.courseData;
+    if (!this.isValidGridPosition(gridX, gridY)) return -1;
+
+    const centerElev = this.getElevationAt(gridX, gridY);
+    let dz_dx = 0;
+    let dz_dy = 0;
+
+    if (gridX > 0 && gridX < width - 1) {
+      dz_dx = (this.getElevationAt(gridX + 1, gridY) - this.getElevationAt(gridX - 1, gridY)) / 2;
+    } else if (gridX > 0) {
+      dz_dx = centerElev - this.getElevationAt(gridX - 1, gridY);
+    } else {
+      dz_dx = this.getElevationAt(gridX + 1, gridY) - centerElev;
+    }
+
+    if (gridY > 0 && gridY < height - 1) {
+      dz_dy = (this.getElevationAt(gridX, gridY + 1) - this.getElevationAt(gridX, gridY - 1)) / 2;
+    } else if (gridY > 0) {
+      dz_dy = centerElev - this.getElevationAt(gridX, gridY - 1);
+    } else {
+      dz_dy = this.getElevationAt(gridX, gridY + 1) - centerElev;
+    }
+
+    if (dz_dx === 0 && dz_dy === 0) return -1;
+
+    let aspect = Math.atan2(-dz_dy, -dz_dx) * 180 / Math.PI;
+    if (aspect < 0) aspect += 360;
+    return aspect;
+  }
+
+  public getAspectDirection(gridX: number, gridY: number): string {
+    const aspect = this.getAspect(gridX, gridY);
+    if (aspect < 0) return 'flat';
+
+    if (aspect >= 337.5 || aspect < 22.5) return 'E';
+    if (aspect >= 22.5 && aspect < 67.5) return 'NE';
+    if (aspect >= 67.5 && aspect < 112.5) return 'N';
+    if (aspect >= 112.5 && aspect < 157.5) return 'NW';
+    if (aspect >= 157.5 && aspect < 202.5) return 'W';
+    if (aspect >= 202.5 && aspect < 247.5) return 'SW';
+    if (aspect >= 247.5 && aspect < 292.5) return 'S';
+    return 'SE';
+  }
+
+  public getCurvature(gridX: number, gridY: number): { plan: number; profile: number; total: number } {
+    const { width, height } = this.courseData;
+    if (!this.isValidGridPosition(gridX, gridY) || gridX < 1 || gridX >= width - 1 || gridY < 1 || gridY >= height - 1) {
+      return { plan: 0, profile: 0, total: 0 };
+    }
+
+    const z = this.getElevationAt(gridX, gridY);
+    const zN = this.getElevationAt(gridX, gridY - 1);
+    const zS = this.getElevationAt(gridX, gridY + 1);
+    const zE = this.getElevationAt(gridX + 1, gridY);
+    const zW = this.getElevationAt(gridX - 1, gridY);
+    const zNE = this.getElevationAt(gridX + 1, gridY - 1);
+    const zNW = this.getElevationAt(gridX - 1, gridY - 1);
+    const zSE = this.getElevationAt(gridX + 1, gridY + 1);
+    const zSW = this.getElevationAt(gridX - 1, gridY + 1);
+
+    const dz_dx = (zE - zW) / 2;
+    const dz_dy = (zS - zN) / 2;
+    const d2z_dx2 = zE - 2 * z + zW;
+    const d2z_dy2 = zS - 2 * z + zN;
+    const d2z_dxy = (zNE - zNW - zSE + zSW) / 4;
+
+    const p = dz_dx * dz_dx + dz_dy * dz_dy;
+    const q = p + 1;
+
+    const plan = p > 0.00001 ?
+      -(d2z_dx2 * dz_dy * dz_dy - 2 * d2z_dxy * dz_dx * dz_dy + d2z_dy2 * dz_dx * dz_dx) / (Math.pow(p, 1.5)) : 0;
+
+    const profile = p > 0.00001 ?
+      -(d2z_dx2 * dz_dx * dz_dx + 2 * d2z_dxy * dz_dx * dz_dy + d2z_dy2 * dz_dy * dz_dy) / (p * Math.pow(q, 1.5)) : 0;
+
+    const total = d2z_dx2 + d2z_dy2;
+
+    return { plan, profile, total };
+  }
+
+  public getSlopeClassification(gridX: number, gridY: number): string {
+    const slopeAngle = this.getSlopeAngle(gridX, gridY);
+
+    if (slopeAngle < 2) return 'flat';
+    if (slopeAngle < 5) return 'gentle';
+    if (slopeAngle < 15) return 'moderate';
+    if (slopeAngle < 30) return 'steep';
+    if (slopeAngle < 45) return 'very_steep';
+    return 'extreme';
+  }
+
+  public computeSlopeMap(): number[][] {
+    const { width, height } = this.courseData;
+    const slopeMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      slopeMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        slopeMap[y][x] = this.getSlopeAngle(x, y);
+      }
+    }
+
+    return slopeMap;
+  }
+
+  public computeAspectMap(): number[][] {
+    const { width, height } = this.courseData;
+    const aspectMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      aspectMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        aspectMap[y][x] = this.getAspect(x, y);
+      }
+    }
+
+    return aspectMap;
+  }
+
+  public getSlopeAnalysis(): {
+    minSlope: number;
+    maxSlope: number;
+    avgSlope: number;
+    flatPercentage: number;
+    gentlePercentage: number;
+    moderatePercentage: number;
+    steepPercentage: number;
+  } {
+    const { width, height } = this.courseData;
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    let count = 0;
+
+    const classifications: Record<string, number> = {
+      flat: 0, gentle: 0, moderate: 0, steep: 0, very_steep: 0, extreme: 0
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const slope = this.getSlopeAngle(x, y);
+        if (slope < min) min = slope;
+        if (slope > max) max = slope;
+        sum += slope;
+        count++;
+        classifications[this.getSlopeClassification(x, y)]++;
+      }
+    }
+
+    const total = count || 1;
+    return {
+      minSlope: min === Infinity ? 0 : min,
+      maxSlope: max === -Infinity ? 0 : max,
+      avgSlope: sum / total,
+      flatPercentage: (classifications.flat / total) * 100,
+      gentlePercentage: (classifications.gentle / total) * 100,
+      moderatePercentage: (classifications.moderate / total) * 100,
+      steepPercentage: ((classifications.steep + classifications.very_steep + classifications.extreme) / total) * 100
+    };
+  }
+
+  public findTilesWithSlopeInRange(
+    minSlope: number,
+    maxSlope: number
+  ): Array<{ x: number; y: number; slope: number }> {
+    const { width, height } = this.courseData;
+    const result: Array<{ x: number; y: number; slope: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const slope = this.getSlopeAngle(x, y);
+        if (slope >= minSlope && slope <= maxSlope) {
+          result.push({ x, y, slope });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  public findTilesByAspect(
+    direction: 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW'
+  ): Array<{ x: number; y: number; aspect: number }> {
+    const { width, height } = this.courseData;
+    const result: Array<{ x: number; y: number; aspect: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.getAspectDirection(x, y) === direction) {
+          result.push({ x, y, aspect: this.getAspect(x, y) });
+        }
+      }
+    }
+
+    return result;
+  }
+
   public getBilinearElevation(gridX: number, gridY: number): number {
     const { width, height } = this.courseData;
 
