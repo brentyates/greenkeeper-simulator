@@ -5804,6 +5804,362 @@ export class TerrainBuilder {
 
     return tiles;
   }
+
+  private isValidTile(gridX: number, gridY: number): boolean {
+    return gridX >= 0 && gridX < this.courseData.width &&
+           gridY >= 0 && gridY < this.courseData.height;
+  }
+
+  public flattenArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    targetElevation?: number
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let totalElevation = 0;
+    let tileCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        totalElevation += this.getElevationAt(x, y);
+        tileCount++;
+      }
+    }
+
+    const elevation = targetElevation !== undefined
+      ? targetElevation
+      : Math.round(totalElevation / tileCount);
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        if (currentElev !== elevation) {
+          this.setElevationAtInternal(x, y, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createPlateau(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    elevation: number,
+    createRamps: boolean = true
+  ): { flattened: number; rampsCreated: number } {
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(this.courseData.width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(this.courseData.height - 1, centerY + radius);
+
+    let flattened = 0;
+    const plateauTiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (distance <= radius) {
+          this.setElevationAtInternal(x, y, elevation);
+          plateauTiles.push({ x, y });
+          flattened++;
+        }
+      }
+    }
+
+    let rampsCreated = 0;
+    if (createRamps) {
+      for (const tile of plateauTiles) {
+        const neighbors = [
+          { x: tile.x - 1, y: tile.y },
+          { x: tile.x + 1, y: tile.y },
+          { x: tile.x, y: tile.y - 1 },
+          { x: tile.x, y: tile.y + 1 }
+        ];
+
+        for (const neighbor of neighbors) {
+          if (!this.isValidTile(neighbor.x, neighbor.y)) continue;
+          const neighborElev = this.getElevationAt(neighbor.x, neighbor.y);
+          const delta = Math.abs(elevation - neighborElev);
+
+          if (delta > this.constraints.maxSlopeDelta) {
+            const direction = elevation > neighborElev ? -1 : 1;
+            let currentElev = elevation;
+            let rampX = neighbor.x;
+            let rampY = neighbor.y;
+            const dx = neighbor.x - tile.x;
+            const dy = neighbor.y - tile.y;
+
+            while (
+              this.isValidTile(rampX, rampY) &&
+              Math.abs(currentElev - this.getElevationAt(rampX, rampY)) > this.constraints.maxSlopeDelta
+            ) {
+              currentElev += direction * this.constraints.maxSlopeDelta;
+              this.setElevationAtInternal(rampX, rampY, currentElev);
+              rampsCreated++;
+              rampX += dx;
+              rampY += dy;
+            }
+          }
+        }
+      }
+    }
+
+    return { flattened, rampsCreated };
+  }
+
+  public averageElevationInArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    iterations: number = 1
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let modifiedTotal = 0;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const newElevations: Map<string, number> = new Map();
+
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          let sum = this.getElevationAt(x, y);
+          let count = 1;
+
+          const neighbors = [
+            [x - 1, y], [x + 1, y],
+            [x, y - 1], [x, y + 1]
+          ];
+
+          for (const [nx, ny] of neighbors) {
+            if (nx >= minX && nx <= maxX && ny >= minY && ny <= maxY) {
+              sum += this.getElevationAt(nx, ny);
+              count++;
+            }
+          }
+
+          newElevations.set(`${x}_${y}`, Math.round(sum / count));
+        }
+      }
+
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const newElev = newElevations.get(`${x}_${y}`)!;
+          if (this.getElevationAt(x, y) !== newElev) {
+            this.setElevationAtInternal(x, y, newElev);
+            modifiedTotal++;
+          }
+        }
+      }
+    }
+
+    return modifiedTotal;
+  }
+
+  public createGradient(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    startElevation: number,
+    endElevation: number
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const maxDist = Math.sqrt(width * width + height * height);
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distFromStart = Math.sqrt((x - startX) ** 2 + (y - startY) ** 2);
+        const t = maxDist > 0 ? distFromStart / maxDist : 0;
+        const elevation = Math.round(startElevation + t * (endElevation - startElevation));
+
+        if (this.getElevationAt(x, y) !== elevation) {
+          this.setElevationAtInternal(x, y, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createRamp(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    width: number = 1
+  ): { tilesModified: number; isValid: boolean } {
+    const startElev = this.getElevationAt(startX, startY);
+    const endElev = this.getElevationAt(endX, endY);
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const steps = Math.ceil(distance);
+
+    if (steps === 0) {
+      return { tilesModified: 0, isValid: true };
+    }
+
+    const elevDelta = Math.abs(endElev - startElev);
+    const requiredSteps = Math.ceil(elevDelta / this.constraints.maxSlopeDelta);
+    const isValid = steps >= requiredSteps;
+
+    let tilesModified = 0;
+
+    const perpX = -dy / distance;
+    const perpY = dx / distance;
+
+    for (let step = 0; step <= steps; step++) {
+      const t = step / steps;
+      const centerX = Math.round(startX + t * dx);
+      const centerY = Math.round(startY + t * dy);
+      const elevation = Math.round(startElev + t * (endElev - startElev));
+
+      for (let w = -Math.floor(width / 2); w <= Math.floor(width / 2); w++) {
+        const tileX = Math.round(centerX + w * perpX);
+        const tileY = Math.round(centerY + w * perpY);
+
+        if (this.isValidTile(tileX, tileY)) {
+          if (this.getElevationAt(tileX, tileY) !== elevation) {
+            this.setElevationAtInternal(tileX, tileY, elevation);
+            tilesModified++;
+          }
+        }
+      }
+    }
+
+    return { tilesModified, isValid };
+  }
+
+  public matchEdgeElevations(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    depth: number = 2
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+
+    for (let d = 1; d <= depth; d++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (minY - d >= 0) {
+          const targetElev = this.getElevationAt(x, minY);
+          const neighborElev = this.getElevationAt(x, minY - d);
+          const blendElev = Math.round((targetElev * (depth - d + 1) + neighborElev * d) / (depth + 1));
+          if (this.getElevationAt(x, minY - d) !== blendElev) {
+            this.setElevationAtInternal(x, minY - d, blendElev);
+            modifiedCount++;
+          }
+        }
+        if (maxY + d < this.courseData.height) {
+          const targetElev = this.getElevationAt(x, maxY);
+          const neighborElev = this.getElevationAt(x, maxY + d);
+          const blendElev = Math.round((targetElev * (depth - d + 1) + neighborElev * d) / (depth + 1));
+          if (this.getElevationAt(x, maxY + d) !== blendElev) {
+            this.setElevationAtInternal(x, maxY + d, blendElev);
+            modifiedCount++;
+          }
+        }
+      }
+
+      for (let y = minY; y <= maxY; y++) {
+        if (minX - d >= 0) {
+          const targetElev = this.getElevationAt(minX, y);
+          const neighborElev = this.getElevationAt(minX - d, y);
+          const blendElev = Math.round((targetElev * (depth - d + 1) + neighborElev * d) / (depth + 1));
+          if (this.getElevationAt(minX - d, y) !== blendElev) {
+            this.setElevationAtInternal(minX - d, y, blendElev);
+            modifiedCount++;
+          }
+        }
+        if (maxX + d < this.courseData.width) {
+          const targetElev = this.getElevationAt(maxX, y);
+          const neighborElev = this.getElevationAt(maxX + d, y);
+          const blendElev = Math.round((targetElev * (depth - d + 1) + neighborElev * d) / (depth + 1));
+          if (this.getElevationAt(maxX + d, y) !== blendElev) {
+            this.setElevationAtInternal(maxX + d, y, blendElev);
+            modifiedCount++;
+          }
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public getAreaElevationStats(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): {
+    min: number;
+    max: number;
+    avg: number;
+    range: number;
+    flatPercentage: number;
+  } {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    let totalElev = 0;
+    let tileCount = 0;
+    let flatCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+        totalElev += elev;
+        tileCount++;
+
+        const corners = this.getCornerHeights(x, y);
+        if (corners.nw === corners.ne && corners.ne === corners.se && corners.se === corners.sw) {
+          flatCount++;
+        }
+      }
+    }
+
+    return {
+      min: minElev === Infinity ? 0 : minElev,
+      max: maxElev === -Infinity ? 0 : maxElev,
+      avg: tileCount > 0 ? totalElev / tileCount : 0,
+      range: maxElev - minElev,
+      flatPercentage: tileCount > 0 ? (flatCount / tileCount) * 100 : 0
+    };
+  }
 }
 
 export interface TerrainStatistics {
