@@ -21413,6 +21413,448 @@ export class TerrainBuilder {
       resultElevations
     };
   }
+
+  public floodFillAndReplaceTerrainType(startX: number, startY: number, newType: TerrainType): FloodFillResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const layout = this.courseData.layout;
+
+    if (startX < 0 || startX >= width || startY < 0 || startY >= height) {
+      return { filledTiles: [], count: 0, originalType: 'rough', newType, bounds: null };
+    }
+
+    const originalCode = layout[startY]?.[startX];
+    const originalType = getTerrainType(originalCode);
+    const newCode = getTerrainCode(newType);
+
+    if (originalType === newType) {
+      return { filledTiles: [], count: 0, originalType, newType, bounds: null };
+    }
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    const filledTiles: Array<{ x: number; y: number }> = [];
+    let minX = startX, maxX = startX, minY = startY, maxY = startY;
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+      const key = `${x}_${y}`;
+
+      if (visited.has(key)) continue;
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (layout[y]?.[x] !== originalCode) continue;
+
+      visited.add(key);
+      layout[y][x] = newCode;
+      filledTiles.push({ x, y });
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+
+      queue.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
+    }
+
+    return {
+      filledTiles,
+      count: filledTiles.length,
+      originalType,
+      newType,
+      bounds: { minX, maxX, minY, maxY }
+    };
+  }
+
+  public floodFillElevation(startX: number, startY: number, newElevation: number, tolerance: number = 0): FloodFillElevationResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    if (startX < 0 || startX >= width || startY < 0 || startY >= height) {
+      return { filledTiles: [], count: 0, originalElevation: 0, newElevation, bounds: null };
+    }
+
+    const originalElevation = this.getElevationAt(startX, startY);
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    const filledTiles: Array<{ x: number; y: number; oldElevation: number }> = [];
+    let minX = startX, maxX = startX, minY = startY, maxY = startY;
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+      const key = `${x}_${y}`;
+
+      if (visited.has(key)) continue;
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+      const elev = this.getElevationAt(x, y);
+      if (Math.abs(elev - originalElevation) > tolerance) continue;
+
+      visited.add(key);
+      const oldElev = elev;
+      this.setElevationAtInternal(x, y, newElevation);
+      filledTiles.push({ x, y, oldElevation: oldElev });
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+
+      queue.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
+    }
+
+    return {
+      filledTiles,
+      count: filledTiles.length,
+      originalElevation,
+      newElevation,
+      bounds: filledTiles.length > 0 ? { minX, maxX, minY, maxY } : null
+    };
+  }
+
+  public analyzeConnectedTerrainRegions(targetType?: TerrainType): ConnectedRegionsResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const layout = this.courseData.layout;
+    const visited = new Set<string>();
+    const regions: ConnectedRegion[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        if (visited.has(key)) continue;
+
+        const terrainCode = layout[y]?.[x];
+        const terrainType = getTerrainType(terrainCode);
+
+        if (targetType !== undefined && terrainType !== targetType) {
+          visited.add(key);
+          continue;
+        }
+
+        const queue: Array<{ x: number; y: number }> = [{ x, y }];
+        const tiles: Array<{ x: number; y: number }> = [];
+        let minX = x, maxX = x, minY = y, maxY = y;
+        let totalElev = 0;
+
+        while (queue.length > 0) {
+          const pos = queue.shift()!;
+          const posKey = `${pos.x}_${pos.y}`;
+
+          if (visited.has(posKey)) continue;
+          if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) continue;
+          if (layout[pos.y]?.[pos.x] !== terrainCode) continue;
+
+          visited.add(posKey);
+          tiles.push({ x: pos.x, y: pos.y });
+          totalElev += this.getElevationAt(pos.x, pos.y);
+
+          minX = Math.min(minX, pos.x);
+          maxX = Math.max(maxX, pos.x);
+          minY = Math.min(minY, pos.y);
+          maxY = Math.max(maxY, pos.y);
+
+          queue.push(
+            { x: pos.x + 1, y: pos.y },
+            { x: pos.x - 1, y: pos.y },
+            { x: pos.x, y: pos.y + 1 },
+            { x: pos.x, y: pos.y - 1 }
+          );
+        }
+
+        if (tiles.length > 0) {
+          let perimeter = 0;
+          for (const tile of tiles) {
+            const neighbors = [
+              { x: tile.x + 1, y: tile.y },
+              { x: tile.x - 1, y: tile.y },
+              { x: tile.x, y: tile.y + 1 },
+              { x: tile.x, y: tile.y - 1 }
+            ];
+            for (const n of neighbors) {
+              if (n.x < 0 || n.x >= width || n.y < 0 || n.y >= height ||
+                  layout[n.y]?.[n.x] !== terrainCode) {
+                perimeter++;
+              }
+            }
+          }
+
+          regions.push({
+            id: regions.length,
+            terrainType,
+            tiles,
+            area: tiles.length,
+            perimeter,
+            bounds: { minX, maxX, minY, maxY },
+            centroid: {
+              x: tiles.reduce((sum, t) => sum + t.x, 0) / tiles.length,
+              y: tiles.reduce((sum, t) => sum + t.y, 0) / tiles.length
+            },
+            averageElevation: totalElev / tiles.length,
+            compactness: (4 * Math.PI * tiles.length) / (perimeter * perimeter)
+          });
+        }
+      }
+    }
+
+    const regionsByType: Partial<Record<TerrainType, number>> = {};
+    for (const region of regions) {
+      regionsByType[region.terrainType] = (regionsByType[region.terrainType] || 0) + 1;
+    }
+
+    return {
+      regions,
+      totalRegions: regions.length,
+      regionsByType,
+      largestRegion: regions.length > 0 ? regions.reduce((max, r) => r.area > max.area ? r : max) : null,
+      smallestRegion: regions.length > 0 ? regions.reduce((min, r) => r.area < min.area ? r : min) : null,
+      averageRegionSize: regions.length > 0 ? regions.reduce((sum, r) => sum + r.area, 0) / regions.length : 0
+    };
+  }
+
+  public findConnectedElevationRegions(tolerance: number = 0): ConnectedElevationRegionsResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const visited = new Set<string>();
+    const regions: ConnectedElevationRegion[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        if (visited.has(key)) continue;
+
+        const baseElev = this.getElevationAt(x, y);
+        const queue: Array<{ x: number; y: number }> = [{ x, y }];
+        const tiles: Array<{ x: number; y: number; elevation: number }> = [];
+        let minX = x, maxX = x, minY = y, maxY = y;
+        let minElev = baseElev, maxElev = baseElev;
+        let totalElev = 0;
+
+        while (queue.length > 0) {
+          const pos = queue.shift()!;
+          const posKey = `${pos.x}_${pos.y}`;
+
+          if (visited.has(posKey)) continue;
+          if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) continue;
+
+          const elev = this.getElevationAt(pos.x, pos.y);
+          if (Math.abs(elev - baseElev) > tolerance) continue;
+
+          visited.add(posKey);
+          tiles.push({ x: pos.x, y: pos.y, elevation: elev });
+          totalElev += elev;
+          minElev = Math.min(minElev, elev);
+          maxElev = Math.max(maxElev, elev);
+
+          minX = Math.min(minX, pos.x);
+          maxX = Math.max(maxX, pos.x);
+          minY = Math.min(minY, pos.y);
+          maxY = Math.max(maxY, pos.y);
+
+          queue.push(
+            { x: pos.x + 1, y: pos.y },
+            { x: pos.x - 1, y: pos.y },
+            { x: pos.x, y: pos.y + 1 },
+            { x: pos.x, y: pos.y - 1 }
+          );
+        }
+
+        if (tiles.length > 0) {
+          regions.push({
+            id: regions.length,
+            baseElevation: baseElev,
+            tiles,
+            area: tiles.length,
+            bounds: { minX, maxX, minY, maxY },
+            centroid: {
+              x: tiles.reduce((sum, t) => sum + t.x, 0) / tiles.length,
+              y: tiles.reduce((sum, t) => sum + t.y, 0) / tiles.length
+            },
+            averageElevation: totalElev / tiles.length,
+            minElevation: minElev,
+            maxElevation: maxElev,
+            elevationRange: maxElev - minElev
+          });
+        }
+      }
+    }
+
+    return {
+      regions,
+      totalRegions: regions.length,
+      largestRegion: regions.length > 0 ? regions.reduce((max, r) => r.area > max.area ? r : max) : null,
+      smallestRegion: regions.length > 0 ? regions.reduce((min, r) => r.area < min.area ? r : min) : null,
+      averageRegionSize: regions.length > 0 ? regions.reduce((sum, r) => sum + r.area, 0) / regions.length : 0,
+      tolerance
+    };
+  }
+
+  public getRegionAtPointDetailed(x: number, y: number): ConnectedRegion | null {
+    const result = this.analyzeConnectedTerrainRegions();
+    for (const region of result.regions) {
+      if (region.tiles.some((t: { x: number; y: number }) => t.x === x && t.y === y)) {
+        return region;
+      }
+    }
+    return null;
+  }
+
+  public mergeTerrainRegions(region1Id: number, region2Id: number, newType: TerrainType): MergeRegionsResult {
+    const allRegions = this.analyzeConnectedTerrainRegions();
+    const region1 = allRegions.regions.find((r: ConnectedRegion) => r.id === region1Id);
+    const region2 = allRegions.regions.find((r: ConnectedRegion) => r.id === region2Id);
+
+    if (!region1 || !region2) {
+      return { success: false, mergedTiles: 0, newRegion: null, error: 'Region not found' };
+    }
+
+    const newCode = getTerrainCode(newType);
+    const layout = this.courseData.layout;
+    let mergedTiles = 0;
+
+    for (const tile of [...region1.tiles, ...region2.tiles]) {
+      if (layout[tile.y]) {
+        layout[tile.y][tile.x] = newCode;
+        mergedTiles++;
+      }
+    }
+
+    const newRegion = this.getRegionAtPointDetailed(region1.tiles[0].x, region1.tiles[0].y);
+    return { success: true, mergedTiles, newRegion, error: null };
+  }
+
+  public computeTerrainRegionAdjacency(): RegionAdjacencyResult {
+    const regionsResult = this.analyzeConnectedTerrainRegions();
+    const regions = regionsResult.regions;
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const tileToRegion = new Map<string, number>();
+    for (const region of regions) {
+      for (const tile of region.tiles) {
+        tileToRegion.set(`${tile.x}_${tile.y}`, region.id);
+      }
+    }
+
+    const adjacencyList: Map<number, Set<number>> = new Map();
+    const adjacencyPairs: Array<{ region1: number; region2: number; sharedBoundary: number }> = [];
+    const boundaryLengths: Map<string, number> = new Map();
+
+    for (const region of regions) {
+      adjacencyList.set(region.id, new Set());
+    }
+
+    for (const region of regions) {
+      for (const tile of region.tiles) {
+        const neighbors = [
+          { x: tile.x + 1, y: tile.y },
+          { x: tile.x - 1, y: tile.y },
+          { x: tile.x, y: tile.y + 1 },
+          { x: tile.x, y: tile.y - 1 }
+        ];
+
+        for (const n of neighbors) {
+          if (n.x >= 0 && n.x < width && n.y >= 0 && n.y < height) {
+            const neighborRegionId = tileToRegion.get(`${n.x}_${n.y}`);
+            if (neighborRegionId !== undefined && neighborRegionId !== region.id) {
+              adjacencyList.get(region.id)?.add(neighborRegionId);
+
+              const pairKey = region.id < neighborRegionId
+                ? `${region.id}_${neighborRegionId}`
+                : `${neighborRegionId}_${region.id}`;
+              boundaryLengths.set(pairKey, (boundaryLengths.get(pairKey) || 0) + 1);
+            }
+          }
+        }
+      }
+    }
+
+    for (const [key, length] of boundaryLengths) {
+      const [r1, r2] = key.split('_').map(Number);
+      adjacencyPairs.push({ region1: r1, region2: r2, sharedBoundary: length });
+    }
+
+    return {
+      adjacencyList: Object.fromEntries([...adjacencyList].map(([k, v]) => [k, [...v]])),
+      adjacencyPairs,
+      totalBoundaryLength: [...boundaryLengths.values()].reduce((sum, l) => sum + l, 0),
+      averageNeighborCount: regions.length > 0
+        ? [...adjacencyList.values()].reduce((sum, s) => sum + s.size, 0) / regions.length
+        : 0
+    };
+  }
+}
+
+export interface FloodFillResult {
+  filledTiles: Array<{ x: number; y: number }>;
+  count: number;
+  originalType: TerrainType;
+  newType: TerrainType;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+}
+
+export interface FloodFillElevationResult {
+  filledTiles: Array<{ x: number; y: number; oldElevation: number }>;
+  count: number;
+  originalElevation: number;
+  newElevation: number;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+}
+
+export interface ConnectedRegion {
+  id: number;
+  terrainType: TerrainType;
+  tiles: Array<{ x: number; y: number }>;
+  area: number;
+  perimeter: number;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  centroid: { x: number; y: number };
+  averageElevation: number;
+  compactness: number;
+}
+
+export interface ConnectedRegionsResult {
+  regions: ConnectedRegion[];
+  totalRegions: number;
+  regionsByType: Partial<Record<TerrainType, number>>;
+  largestRegion: ConnectedRegion | null;
+  smallestRegion: ConnectedRegion | null;
+  averageRegionSize: number;
+}
+
+export interface ConnectedElevationRegion {
+  id: number;
+  baseElevation: number;
+  tiles: Array<{ x: number; y: number; elevation: number }>;
+  area: number;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  centroid: { x: number; y: number };
+  averageElevation: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationRange: number;
+}
+
+export interface ConnectedElevationRegionsResult {
+  regions: ConnectedElevationRegion[];
+  totalRegions: number;
+  largestRegion: ConnectedElevationRegion | null;
+  smallestRegion: ConnectedElevationRegion | null;
+  averageRegionSize: number;
+  tolerance: number;
+}
+
+export interface MergeRegionsResult {
+  success: boolean;
+  mergedTiles: number;
+  newRegion: ConnectedRegion | null;
+  error: string | null;
+}
+
+export interface RegionAdjacencyResult {
+  adjacencyList: Record<number, number[]>;
+  adjacencyPairs: Array<{ region1: number; region2: number; sharedBoundary: number }>;
+  totalBoundaryLength: number;
+  averageNeighborCount: number;
 }
 
 export interface MorphologyResult {
