@@ -102,6 +102,15 @@ export class TerrainBuilder {
     isActive: false
   };
   private brushEnabled: boolean = false;
+  private culling: CullingConfig = {
+    enabled: false,
+    padding: 5,
+    updateInterval: 100,
+    lastUpdate: 0,
+    visibleTileCount: 0,
+    hiddenTileCount: 0
+  };
+  private lastViewportBounds: ViewportBounds | null = null;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -4667,6 +4676,187 @@ export class TerrainBuilder {
   public getBrushPreview(centerX: number, centerY: number): Array<{ x: number; y: number; weight: number }> {
     return this.getTilesInBrushShape(centerX, centerY);
   }
+
+  public setCullingEnabled(enabled: boolean): void {
+    this.culling.enabled = enabled;
+    if (!enabled) {
+      this.resetCullingAndShowAll();
+    }
+  }
+
+  public isCullingEnabled(): boolean {
+    return this.culling.enabled;
+  }
+
+  public setCullingPadding(padding: number): void {
+    this.culling.padding = Math.max(0, Math.min(50, padding));
+  }
+
+  public getCullingPadding(): number {
+    return this.culling.padding;
+  }
+
+  public setCullingUpdateInterval(interval: number): void {
+    this.culling.updateInterval = Math.max(16, interval);
+  }
+
+  public getCullingUpdateInterval(): number {
+    return this.culling.updateInterval;
+  }
+
+  public getCullingStatistics(): { visible: number; hidden: number; total: number; percentage: number } {
+    return {
+      visible: this.culling.visibleTileCount,
+      hidden: this.culling.hiddenTileCount,
+      total: this.culling.visibleTileCount + this.culling.hiddenTileCount,
+      percentage: this.culling.visibleTileCount / Math.max(1, this.culling.visibleTileCount + this.culling.hiddenTileCount) * 100
+    };
+  }
+
+  public getViewportBounds(): ViewportBounds | null {
+    return this.lastViewportBounds;
+  }
+
+  public updateCulling(viewportMinX: number, viewportMinY: number, viewportMaxX: number, viewportMaxY: number): void {
+    if (!this.culling.enabled) return;
+
+    const now = Date.now();
+    if (now - this.culling.lastUpdate < this.culling.updateInterval) return;
+    this.culling.lastUpdate = now;
+
+    const padding = this.culling.padding;
+    const bounds: ViewportBounds = {
+      minX: Math.floor(viewportMinX - padding),
+      maxX: Math.ceil(viewportMaxX + padding),
+      minY: Math.floor(viewportMinY - padding),
+      maxY: Math.ceil(viewportMaxY + padding)
+    };
+
+    if (this.lastViewportBounds &&
+        bounds.minX === this.lastViewportBounds.minX &&
+        bounds.maxX === this.lastViewportBounds.maxX &&
+        bounds.minY === this.lastViewportBounds.minY &&
+        bounds.maxY === this.lastViewportBounds.maxY) {
+      return;
+    }
+
+    this.lastViewportBounds = bounds;
+    this.applyCulling(bounds);
+  }
+
+  private applyCulling(bounds: ViewportBounds): void {
+    let visible = 0;
+    let hidden = 0;
+
+    for (const [key, mesh] of this.tileMap) {
+      const [x, y] = key.split('_').map(Number);
+      const isVisible = x >= bounds.minX && x <= bounds.maxX &&
+                        y >= bounds.minY && y <= bounds.maxY;
+
+      if (isVisible) {
+        mesh.setEnabled(true);
+        visible++;
+      } else {
+        mesh.setEnabled(false);
+        hidden++;
+      }
+    }
+
+    this.culling.visibleTileCount = visible;
+    this.culling.hiddenTileCount = hidden;
+  }
+
+  public resetCullingAndShowAll(): void {
+    for (const mesh of this.tileMap.values()) {
+      mesh.setEnabled(true);
+    }
+    this.culling.visibleTileCount = this.tileMap.size;
+    this.culling.hiddenTileCount = 0;
+    this.lastViewportBounds = null;
+  }
+
+  public hideAllForCulling(): void {
+    for (const mesh of this.tileMap.values()) {
+      mesh.setEnabled(false);
+    }
+    this.culling.visibleTileCount = 0;
+    this.culling.hiddenTileCount = this.tileMap.size;
+  }
+
+  public setTileVisibility(gridX: number, gridY: number, visible: boolean): void {
+    const key = `${gridX}_${gridY}`;
+    const mesh = this.tileMap.get(key);
+    if (mesh) {
+      mesh.setEnabled(visible);
+    }
+  }
+
+  public isTileVisibleInViewport(gridX: number, gridY: number): boolean {
+    if (!this.lastViewportBounds) return true;
+    return gridX >= this.lastViewportBounds.minX &&
+           gridX <= this.lastViewportBounds.maxX &&
+           gridY >= this.lastViewportBounds.minY &&
+           gridY <= this.lastViewportBounds.maxY;
+  }
+
+  public getTilesInViewport(): Array<{ x: number; y: number }> {
+    if (!this.lastViewportBounds) {
+      const tiles: Array<{ x: number; y: number }> = [];
+      for (const key of this.tileMap.keys()) {
+        const [x, y] = key.split('_').map(Number);
+        tiles.push({ x, y });
+      }
+      return tiles;
+    }
+
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+    const { minX, maxX, minY, maxY } = this.lastViewportBounds;
+
+    for (let y = Math.max(0, minY); y <= Math.min(height - 1, maxY); y++) {
+      for (let x = Math.max(0, minX); x <= Math.min(width - 1, maxX); x++) {
+        tiles.push({ x, y });
+      }
+    }
+
+    return tiles;
+  }
+
+  public forceUpdateCulling(viewportMinX: number, viewportMinY: number, viewportMaxX: number, viewportMaxY: number): void {
+    if (!this.culling.enabled) return;
+
+    const padding = this.culling.padding;
+    const bounds: ViewportBounds = {
+      minX: Math.floor(viewportMinX - padding),
+      maxX: Math.ceil(viewportMaxX + padding),
+      minY: Math.floor(viewportMinY - padding),
+      maxY: Math.ceil(viewportMaxY + padding)
+    };
+
+    this.lastViewportBounds = bounds;
+    this.culling.lastUpdate = Date.now();
+    this.applyCulling(bounds);
+  }
+
+  public getCullingVisibleCount(): number {
+    return this.culling.visibleTileCount;
+  }
+
+  public getCullingHiddenCount(): number {
+    return this.culling.hiddenTileCount;
+  }
+
+  public estimateViewportFromCamera(cameraX: number, cameraY: number, viewWidth: number, viewHeight: number): ViewportBounds {
+    const halfWidth = viewWidth / 2;
+    const halfHeight = viewHeight / 2;
+
+    return {
+      minX: Math.floor(cameraX - halfWidth),
+      maxX: Math.ceil(cameraX + halfWidth),
+      minY: Math.floor(cameraY - halfHeight),
+      maxY: Math.ceil(cameraY + halfHeight)
+    };
+  }
 }
 
 export interface TerrainStatistics {
@@ -4878,4 +5068,20 @@ export interface TerrainBrush {
   strength: number;
   falloff: number;
   isActive: boolean;
+}
+
+export interface ViewportBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export interface CullingConfig {
+  enabled: boolean;
+  padding: number;
+  updateInterval: number;
+  lastUpdate: number;
+  visibleTileCount: number;
+  hiddenTileCount: number;
 }
