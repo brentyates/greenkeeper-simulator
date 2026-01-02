@@ -6455,6 +6455,282 @@ export class TerrainBuilder {
 
     return preview;
   }
+
+  public applyThermalErosion(
+    iterations: number = 10,
+    talusAngle: number = 1.5,
+    erosionRate: number = 0.3
+  ): number {
+    const { width, height } = this.courseData;
+    let totalMoved = 0;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const sediment: Map<string, number> = new Map();
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const currentElev = this.getElevationAt(x, y);
+
+          const neighbors = [
+            { x: x - 1, y, elev: x > 0 ? this.getElevationAt(x - 1, y) : currentElev },
+            { x: x + 1, y, elev: x < width - 1 ? this.getElevationAt(x + 1, y) : currentElev },
+            { x, y: y - 1, elev: y > 0 ? this.getElevationAt(x, y - 1) : currentElev },
+            { x, y: y + 1, elev: y < height - 1 ? this.getElevationAt(x, y + 1) : currentElev }
+          ];
+
+          for (const neighbor of neighbors) {
+            const delta = currentElev - neighbor.elev;
+            if (delta > talusAngle) {
+              const transfer = (delta - talusAngle) * erosionRate * 0.5;
+
+              const currentKey = `${x}_${y}`;
+              const neighborKey = `${neighbor.x}_${neighbor.y}`;
+
+              sediment.set(currentKey, (sediment.get(currentKey) || 0) - transfer);
+              sediment.set(neighborKey, (sediment.get(neighborKey) || 0) + transfer);
+              totalMoved += transfer;
+            }
+          }
+        }
+      }
+
+      for (const [key, amount] of sediment.entries()) {
+        if (Math.abs(amount) < 0.01) continue;
+        const [x, y] = key.split('_').map(Number);
+        const newElev = Math.round(this.getElevationAt(x, y) + amount);
+        const clampedElev = Math.max(0, Math.min(50, newElev));
+        this.setElevationAtInternal(x, y, clampedElev);
+      }
+    }
+
+    return Math.round(totalMoved);
+  }
+
+  public applyHydraulicErosion(
+    droplets: number = 1000,
+    inertia: number = 0.05,
+    sedimentCapacity: number = 4,
+    minSlope: number = 0.01,
+    erosionRate: number = 0.3,
+    depositionRate: number = 0.3,
+    evaporationRate: number = 0.01,
+    maxSteps: number = 64
+  ): number {
+    const { width, height } = this.courseData;
+    let totalEroded = 0;
+
+    for (let d = 0; d < droplets; d++) {
+      let posX = Math.random() * (width - 1);
+      let posY = Math.random() * (height - 1);
+      let dirX = 0;
+      let dirY = 0;
+      let speed = 1;
+      let water = 1;
+      let sediment = 0;
+
+      for (let step = 0; step < maxSteps; step++) {
+        const cellX = Math.floor(posX);
+        const cellY = Math.floor(posY);
+
+        if (cellX < 0 || cellX >= width - 1 || cellY < 0 || cellY >= height - 1) break;
+
+        const gradX = this.getElevationAt(cellX + 1, cellY) - this.getElevationAt(cellX, cellY);
+        const gradY = this.getElevationAt(cellX, cellY + 1) - this.getElevationAt(cellX, cellY);
+
+        dirX = dirX * inertia - gradX * (1 - inertia);
+        dirY = dirY * inertia - gradY * (1 - inertia);
+
+        const len = Math.sqrt(dirX * dirX + dirY * dirY);
+        if (len > 0) {
+          dirX /= len;
+          dirY /= len;
+        } else {
+          dirX = Math.random() * 2 - 1;
+          dirY = Math.random() * 2 - 1;
+        }
+
+        const newPosX = posX + dirX;
+        const newPosY = posY + dirY;
+
+        if (newPosX < 0 || newPosX >= width - 1 || newPosY < 0 || newPosY >= height - 1) break;
+
+        const oldHeight = this.getElevationAt(cellX, cellY);
+        const newCellX = Math.floor(newPosX);
+        const newCellY = Math.floor(newPosY);
+        const newHeight = this.getElevationAt(newCellX, newCellY);
+
+        const deltaHeight = newHeight - oldHeight;
+
+        const capacity = Math.max(-deltaHeight, minSlope) * speed * water * sedimentCapacity;
+
+        if (sediment > capacity || deltaHeight > 0) {
+          const toDeposit = deltaHeight > 0
+            ? Math.min(deltaHeight, sediment)
+            : (sediment - capacity) * depositionRate;
+
+          sediment -= toDeposit;
+          const depositElev = Math.round(oldHeight + toDeposit);
+          this.setElevationAtInternal(cellX, cellY, Math.min(50, depositElev));
+        } else {
+          const toErode = Math.min((capacity - sediment) * erosionRate, -deltaHeight);
+          sediment += toErode;
+          const erodeElev = Math.round(oldHeight - toErode);
+          this.setElevationAtInternal(cellX, cellY, Math.max(0, erodeElev));
+          totalEroded += toErode;
+        }
+
+        speed = Math.sqrt(Math.max(0, speed * speed + deltaHeight));
+        water *= (1 - evaporationRate);
+
+        posX = newPosX;
+        posY = newPosY;
+
+        if (water < 0.01) break;
+      }
+    }
+
+    return Math.round(totalEroded);
+  }
+
+  public applyWindErosion(
+    iterations: number = 5,
+    windDirX: number = 1,
+    windDirY: number = 0,
+    windStrength: number = 0.5,
+    particleSize: number = 0.1
+  ): number {
+    const { width, height } = this.courseData;
+    let totalMoved = 0;
+
+    const len = Math.sqrt(windDirX * windDirX + windDirY * windDirY);
+    const normX = len > 0 ? windDirX / len : 1;
+    const normY = len > 0 ? windDirY / len : 0;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const changes: Map<string, number> = new Map();
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const currentElev = this.getElevationAt(x, y);
+
+          const upwindX = Math.round(x - normX);
+          const upwindY = Math.round(y - normY);
+          const downwindX = Math.round(x + normX);
+          const downwindY = Math.round(y + normY);
+
+          const upwindElev = this.isValidTile(upwindX, upwindY)
+            ? this.getElevationAt(upwindX, upwindY)
+            : currentElev;
+
+          const exposure = currentElev - upwindElev;
+          if (exposure <= 0) continue;
+
+          const erosionAmount = exposure * windStrength * particleSize;
+
+          const currentKey = `${x}_${y}`;
+          changes.set(currentKey, (changes.get(currentKey) || 0) - erosionAmount);
+
+          if (this.isValidTile(downwindX, downwindY)) {
+            const downwindKey = `${downwindX}_${downwindY}`;
+            changes.set(downwindKey, (changes.get(downwindKey) || 0) + erosionAmount);
+          }
+
+          totalMoved += erosionAmount;
+        }
+      }
+
+      for (const [key, amount] of changes.entries()) {
+        if (Math.abs(amount) < 0.01) continue;
+        const [x, y] = key.split('_').map(Number);
+        const newElev = Math.round(this.getElevationAt(x, y) + amount);
+        const clampedElev = Math.max(0, Math.min(50, newElev));
+        this.setElevationAtInternal(x, y, clampedElev);
+      }
+    }
+
+    return Math.round(totalMoved);
+  }
+
+  public getErosionPreview(
+    type: 'thermal' | 'hydraulic' | 'wind',
+    config: ErosionConfig
+  ): Array<{ x: number; y: number; change: number }> {
+    const { width, height } = this.courseData;
+    const preview: Array<{ x: number; y: number; change: number }> = [];
+
+    const originalElevations: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    switch (type) {
+      case 'thermal':
+        this.applyThermalErosion(
+          config.iterations || 5,
+          config.talusAngle || 1.5,
+          config.erosionRate || 0.3
+        );
+        break;
+      case 'hydraulic':
+        this.applyHydraulicErosion(
+          config.droplets || 500,
+          config.inertia || 0.05,
+          config.sedimentCapacity || 4,
+          config.minSlope || 0.01,
+          config.erosionRate || 0.3,
+          config.depositionRate || 0.3,
+          config.evaporationRate || 0.01,
+          config.maxSteps || 64
+        );
+        break;
+      case 'wind':
+        this.applyWindErosion(
+          config.iterations || 3,
+          config.windDirX || 1,
+          config.windDirY || 0,
+          config.windStrength || 0.5,
+          config.particleSize || 0.1
+        );
+        break;
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const change = this.getElevationAt(x, y) - originalElevations[y][x];
+        if (change !== 0) {
+          preview.push({ x, y, change });
+        }
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, originalElevations[y][x]);
+      }
+    }
+
+    return preview;
+  }
+}
+
+export interface ErosionConfig {
+  iterations?: number;
+  talusAngle?: number;
+  erosionRate?: number;
+  depositionRate?: number;
+  droplets?: number;
+  inertia?: number;
+  sedimentCapacity?: number;
+  minSlope?: number;
+  evaporationRate?: number;
+  maxSteps?: number;
+  windDirX?: number;
+  windDirY?: number;
+  windStrength?: number;
+  particleSize?: number;
 }
 
 export interface NoiseConfig {
