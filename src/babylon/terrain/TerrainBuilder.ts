@@ -35,6 +35,7 @@ export class TerrainBuilder {
   private obstacleMeshes: Mesh[] = [];
   private faceIdToMetadata: Map<number, FaceMetadata> = new Map();
   private meshToFaceOffset: Map<Mesh, number> = new Map();
+  private gridToFaceIds: Map<string, { mesh: Mesh; faceIds: number[] }[]> = new Map();
   private nextFaceId: number = 0;
   private waterLevel: number = DEFAULT_WATER_LEVEL;
   private waterMesh: Mesh | null = null;
@@ -127,6 +128,7 @@ export class TerrainBuilder {
   public build(): void {
     this.faceIdToMetadata.clear();
     this.meshToFaceOffset.clear();
+    this.gridToFaceIds.clear();
     this.nextFaceId = 0;
     this.initMowedState();
     this.buildTiles();
@@ -1109,9 +1111,16 @@ export class TerrainBuilder {
       isCliff
     };
 
+    const faceIds: number[] = [];
     for (let i = 0; i < faceCount; i++) {
       this.faceIdToMetadata.set(startFaceId + i, metadata);
+      faceIds.push(startFaceId + i);
     }
+
+    const gridKey = `${gridX},${gridY}`;
+    const existingEntries = this.gridToFaceIds.get(gridKey) ?? [];
+    existingEntries.push({ mesh, faceIds });
+    this.gridToFaceIds.set(gridKey, existingEntries);
 
     this.nextFaceId += faceCount;
   }
@@ -1143,6 +1152,141 @@ export class TerrainBuilder {
     return metadata?.isCliff ?? false;
   }
 
+  public getFacesAtGridPosition(gridX: number, gridY: number): Array<{ mesh: Mesh; faceIds: number[] }> {
+    const gridKey = `${gridX},${gridY}`;
+    return this.gridToFaceIds.get(gridKey) ?? [];
+  }
+
+  public getMeshesAtGridPosition(gridX: number, gridY: number): Mesh[] {
+    const entries = this.getFacesAtGridPosition(gridX, gridY);
+    return entries.map(entry => entry.mesh);
+  }
+
+  public getAllFaceIdsAtGridPosition(gridX: number, gridY: number): number[] {
+    const entries = this.getFacesAtGridPosition(gridX, gridY);
+    const allFaceIds: number[] = [];
+    for (const entry of entries) {
+      allFaceIds.push(...entry.faceIds);
+    }
+    return allFaceIds;
+  }
+
+  public getFaceCountAtGridPosition(gridX: number, gridY: number): number {
+    return this.getAllFaceIdsAtGridPosition(gridX, gridY).length;
+  }
+
+  public hasFacesAtGridPosition(gridX: number, gridY: number): boolean {
+    const gridKey = `${gridX},${gridY}`;
+    const entries = this.gridToFaceIds.get(gridKey);
+    return entries !== undefined && entries.length > 0;
+  }
+
+  public getTotalFaceCount(): number {
+    return this.faceIdToMetadata.size;
+  }
+
+  public getTotalRegisteredTiles(): number {
+    return this.gridToFaceIds.size;
+  }
+
+  public getFaceStatistics(): {
+    totalFaces: number;
+    totalTilesWithFaces: number;
+    averageFacesPerTile: number;
+    cliffFaces: number;
+    terrainFaces: number;
+    tilesWithCliffs: number;
+  } {
+    let cliffFaces = 0;
+    let terrainFaces = 0;
+    const tilesWithCliffs = new Set<string>();
+
+    for (const metadata of this.faceIdToMetadata.values()) {
+      if (metadata.isCliff) {
+        cliffFaces++;
+        tilesWithCliffs.add(`${metadata.gridX},${metadata.gridY}`);
+      } else {
+        terrainFaces++;
+      }
+    }
+
+    const totalFaces = this.faceIdToMetadata.size;
+    const totalTilesWithFaces = this.gridToFaceIds.size;
+
+    return {
+      totalFaces,
+      totalTilesWithFaces,
+      averageFacesPerTile: totalTilesWithFaces > 0 ? totalFaces / totalTilesWithFaces : 0,
+      cliffFaces,
+      terrainFaces,
+      tilesWithCliffs: tilesWithCliffs.size
+    };
+  }
+
+  public findTilesWithMostFaces(limit: number = 10): Array<{ gridX: number; gridY: number; faceCount: number }> {
+    const tileFaceCounts: Array<{ gridX: number; gridY: number; faceCount: number }> = [];
+
+    for (const [gridKey, entries] of this.gridToFaceIds) {
+      const [gridX, gridY] = gridKey.split(',').map(Number);
+      let faceCount = 0;
+      for (const entry of entries) {
+        faceCount += entry.faceIds.length;
+      }
+      tileFaceCounts.push({ gridX, gridY, faceCount });
+    }
+
+    tileFaceCounts.sort((a, b) => b.faceCount - a.faceCount);
+    return tileFaceCounts.slice(0, limit);
+  }
+
+  public getFacesByTerrainType(terrainType: TerrainType): Array<{ gridX: number; gridY: number; faceId: number }> {
+    const result: Array<{ gridX: number; gridY: number; faceId: number }> = [];
+
+    for (const [faceId, metadata] of this.faceIdToMetadata) {
+      if (metadata.terrainType === terrainType && !metadata.isCliff) {
+        result.push({ gridX: metadata.gridX, gridY: metadata.gridY, faceId });
+      }
+    }
+
+    return result;
+  }
+
+  public getCliffFaces(): Array<{ gridX: number; gridY: number; faceId: number }> {
+    const result: Array<{ gridX: number; gridY: number; faceId: number }> = [];
+
+    for (const [faceId, metadata] of this.faceIdToMetadata) {
+      if (metadata.isCliff) {
+        result.push({ gridX: metadata.gridX, gridY: metadata.gridY, faceId });
+      }
+    }
+
+    return result;
+  }
+
+  public getFacesInArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): Map<string, Array<{ mesh: Mesh; faceIds: number[] }>> {
+    const result = new Map<string, Array<{ mesh: Mesh; faceIds: number[] }>>();
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const faces = this.getFacesAtGridPosition(x, y);
+        if (faces.length > 0) {
+          result.set(`${x},${y}`, faces);
+        }
+      }
+    }
+
+    return result;
+  }
+
   public dispose(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -1151,6 +1295,7 @@ export class TerrainBuilder {
     this.tileMap.clear();
     this.faceIdToMetadata.clear();
     this.meshToFaceOffset.clear();
+    this.gridToFaceIds.clear();
     this.nextFaceId = 0;
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
