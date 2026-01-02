@@ -1022,4 +1022,115 @@ export class TerrainBuilder {
   public getWaterLevel(): number {
     return this.waterLevel;
   }
+
+  public getTerrainStatistics(): TerrainStatistics {
+    const { width, height, layout, elevation } = this.courseData;
+    const terrainCounts: Record<TerrainType, number> = {
+      fairway: 0,
+      rough: 0,
+      green: 0,
+      bunker: 0,
+      water: 0
+    };
+
+    let minElevation = Infinity;
+    let maxElevation = -Infinity;
+    let totalElevation = 0;
+    let slopeCount = 0;
+    let flatCount = 0;
+    let cliffFaceCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const code = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
+        const type = getTerrainType(code);
+        terrainCounts[type]++;
+
+        if (elevation) {
+          const elev = elevation[y]?.[x] ?? 0;
+          minElevation = Math.min(minElevation, elev);
+          maxElevation = Math.max(maxElevation, elev);
+          totalElevation += elev;
+
+          const corners = this.getCornerHeights(x, y);
+          const isFlat = corners.nw === corners.ne && corners.ne === corners.se && corners.se === corners.sw;
+          if (isFlat) {
+            flatCount++;
+          } else {
+            slopeCount++;
+          }
+
+          if (y + 1 < height) {
+            const neighborCorners = this.getCornerHeights(x, y + 1);
+            if (corners.sw > neighborCorners.nw || corners.se > neighborCorners.ne) {
+              cliffFaceCount++;
+            }
+          }
+          if (x + 1 < width) {
+            const neighborCorners = this.getCornerHeights(x + 1, y);
+            if (corners.ne > neighborCorners.nw || corners.se > neighborCorners.sw) {
+              cliffFaceCount++;
+            }
+          }
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    const avgElevation = elevation ? totalElevation / totalTiles : 0;
+
+    return {
+      width,
+      height,
+      totalTiles,
+      terrainCounts,
+      minElevation: elevation ? minElevation : 0,
+      maxElevation: elevation ? maxElevation : 0,
+      avgElevation,
+      flatTileCount: flatCount,
+      slopedTileCount: slopeCount,
+      cliffFaceCount,
+      waterLevel: this.waterLevel
+    };
+  }
+
+  public getTerrainTypePercentages(): Record<TerrainType, number> {
+    const stats = this.getTerrainStatistics();
+    const percentages: Record<TerrainType, number> = {
+      fairway: 0,
+      rough: 0,
+      green: 0,
+      bunker: 0,
+      water: 0
+    };
+
+    for (const [type, count] of Object.entries(stats.terrainCounts)) {
+      percentages[type as TerrainType] = (count / stats.totalTiles) * 100;
+    }
+
+    return percentages;
+  }
+
+  public getElevationRange(): { min: number; max: number; range: number } {
+    const stats = this.getTerrainStatistics();
+    return {
+      min: stats.minElevation,
+      max: stats.maxElevation,
+      range: stats.maxElevation - stats.minElevation
+    };
+  }
+}
+
+export interface TerrainStatistics {
+  width: number;
+  height: number;
+  totalTiles: number;
+  terrainCounts: Record<TerrainType, number>;
+  minElevation: number;
+  maxElevation: number;
+  avgElevation: number;
+  flatTileCount: number;
+  slopedTileCount: number;
+  cliffFaceCount: number;
+  waterLevel: number;
 }
