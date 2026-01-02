@@ -7269,6 +7269,218 @@ export class TerrainBuilder {
     return areas.sort((a, b) => b.avgShadeHours - a.avgShadeHours).slice(0, 10);
   }
 
+  public getSeasonDayOfYear(season: 'spring' | 'summer' | 'autumn' | 'winter'): number {
+    switch (season) {
+      case 'spring': return 80;
+      case 'summer': return 172;
+      case 'autumn': return 266;
+      case 'winter': return 355;
+    }
+  }
+
+  public computeSeasonalSunExposure(latitude: number = 45): { spring: number[][]; summer: number[][]; autumn: number[][]; winter: number[][] } {
+    return {
+      spring: this.computeDailyInsolation(latitude, this.getSeasonDayOfYear('spring')),
+      summer: this.computeDailyInsolation(latitude, this.getSeasonDayOfYear('summer')),
+      autumn: this.computeDailyInsolation(latitude, this.getSeasonDayOfYear('autumn')),
+      winter: this.computeDailyInsolation(latitude, this.getSeasonDayOfYear('winter'))
+    };
+  }
+
+  public computeSeasonalFrostRisk(): { spring: number[][]; summer: number[][]; autumn: number[][]; winter: number[][] } {
+    const springTemp = 2;
+    const summerTemp = 15;
+    const autumnTemp = 5;
+    const winterTemp = -8;
+
+    return {
+      spring: this.computeFrostRisk(springTemp),
+      summer: this.computeFrostRisk(summerTemp),
+      autumn: this.computeFrostRisk(autumnTemp),
+      winter: this.computeFrostRisk(winterTemp)
+    };
+  }
+
+  public computeAnnualSunVariation(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const variation: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      variation[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return variation;
+
+    const seasonal = this.computeSeasonalSunExposure();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const values = [
+          seasonal.spring[y]?.[x] ?? 0,
+          seasonal.summer[y]?.[x] ?? 0,
+          seasonal.autumn[y]?.[x] ?? 0,
+          seasonal.winter[y]?.[x] ?? 0
+        ];
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        variation[y][x] = max - min;
+      }
+    }
+
+    return variation;
+  }
+
+  public classifySeasonalPattern(gridX: number, gridY: number): 'year_round_sunny' | 'year_round_shaded' | 'summer_sunny' | 'variable' {
+    if (!this.isValidGridPosition(gridX, gridY)) return 'variable';
+
+    const seasonal = this.computeSeasonalSunExposure();
+    const summer = seasonal.summer[gridY]?.[gridX] ?? 0;
+    const winter = seasonal.winter[gridY]?.[gridX] ?? 0;
+
+    const avgSummer = this.getArrayAverage(seasonal.summer);
+    const avgWinter = this.getArrayAverage(seasonal.winter);
+
+    if (summer > avgSummer * 1.2 && winter > avgWinter * 1.2) {
+      return 'year_round_sunny';
+    }
+    if (summer < avgSummer * 0.8 && winter < avgWinter * 0.8) {
+      return 'year_round_shaded';
+    }
+    if (summer > avgSummer * 1.2 && winter < avgWinter * 0.8) {
+      return 'summer_sunny';
+    }
+    return 'variable';
+  }
+
+  private getArrayAverage(arr: number[][]): number {
+    let total = 0;
+    let count = 0;
+    for (const row of arr) {
+      for (const val of row) {
+        total += val;
+        count++;
+      }
+    }
+    return count > 0 ? total / count : 0;
+  }
+
+  public getSeasonalAnalysis(latitude: number = 45): SeasonalTerrainAnalysis {
+    const sunExposure = this.computeSeasonalSunExposure(latitude);
+    const frostRisk = this.computeSeasonalFrostRisk();
+    const annualVariation = this.computeAnnualSunVariation();
+    const { width, height } = this.courseData;
+
+    const calcStats = (arr: number[][]) => {
+      let min = Infinity, max = 0, total = 0, count = 0;
+      for (const row of arr) {
+        for (const val of row) {
+          min = Math.min(min, val);
+          max = Math.max(max, val);
+          total += val;
+          count++;
+        }
+      }
+      return { min, max, avg: count > 0 ? total / count : 0 };
+    };
+
+    const springSun = calcStats(sunExposure.spring);
+    const summerSun = calcStats(sunExposure.summer);
+    const autumnSun = calcStats(sunExposure.autumn);
+    const winterSun = calcStats(sunExposure.winter);
+
+    const springFrost = calcStats(frostRisk.spring);
+    const summerFrost = calcStats(frostRisk.summer);
+    const autumnFrost = calcStats(frostRisk.autumn);
+    const winterFrost = calcStats(frostRisk.winter);
+
+    const variationStats = calcStats(annualVariation);
+
+    let yearRoundSunny = 0, yearRoundShaded = 0, summerSunny = 0, variable = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pattern = this.classifySeasonalPattern(x, y);
+        switch (pattern) {
+          case 'year_round_sunny': yearRoundSunny++; break;
+          case 'year_round_shaded': yearRoundShaded++; break;
+          case 'summer_sunny': summerSunny++; break;
+          case 'variable': variable++; break;
+        }
+      }
+    }
+
+    return {
+      springSunAvg: springSun.avg,
+      summerSunAvg: summerSun.avg,
+      autumnSunAvg: autumnSun.avg,
+      winterSunAvg: winterSun.avg,
+      springFrostRiskAvg: springFrost.avg,
+      summerFrostRiskAvg: summerFrost.avg,
+      autumnFrostRiskAvg: autumnFrost.avg,
+      winterFrostRiskAvg: winterFrost.avg,
+      annualSunVariationAvg: variationStats.avg,
+      yearRoundSunnyCount: yearRoundSunny,
+      yearRoundShadedCount: yearRoundShaded,
+      summerSunnyOnlyCount: summerSunny,
+      variablePatternCount: variable
+    };
+  }
+
+  public findBestYearRoundSunAreas(latitude: number = 45, minSize: number = 5): Array<{ x: number; y: number; avgAnnualSun: number }> {
+    const seasonal = this.computeSeasonalSunExposure(latitude);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgAnnualSun: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            const spring = seasonal.spring[y + dy]?.[x + dx] ?? 0;
+            const summer = seasonal.summer[y + dy]?.[x + dx] ?? 0;
+            const autumn = seasonal.autumn[y + dy]?.[x + dx] ?? 0;
+            const winter = seasonal.winter[y + dy]?.[x + dx] ?? 0;
+            total += (spring + summer + autumn + winter) / 4;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgAnnualSun: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgAnnualSun - a.avgAnnualSun).slice(0, 10);
+  }
+
+  public findLowestAnnualFrostRisk(minSize: number = 5): Array<{ x: number; y: number; avgFrostRisk: number }> {
+    const seasonal = this.computeSeasonalFrostRisk();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgFrostRisk: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            const spring = seasonal.spring[y + dy]?.[x + dx] ?? 0;
+            const summer = seasonal.summer[y + dy]?.[x + dx] ?? 0;
+            const autumn = seasonal.autumn[y + dy]?.[x + dx] ?? 0;
+            const winter = seasonal.winter[y + dy]?.[x + dx] ?? 0;
+            total += (spring + summer + autumn + winter) / 4;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgFrostRisk: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => a.avgFrostRisk - b.avgFrostRisk).slice(0, 10);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -12341,6 +12553,22 @@ export interface DiurnalShadowAnalysis {
   fullShadeTileCount: number;
   avgConsistency: number;
   sunnyPercentage: number;
+}
+
+export interface SeasonalTerrainAnalysis {
+  springSunAvg: number;
+  summerSunAvg: number;
+  autumnSunAvg: number;
+  winterSunAvg: number;
+  springFrostRiskAvg: number;
+  summerFrostRiskAvg: number;
+  autumnFrostRiskAvg: number;
+  winterFrostRiskAvg: number;
+  annualSunVariationAvg: number;
+  yearRoundSunnyCount: number;
+  yearRoundShadedCount: number;
+  summerSunnyOnlyCount: number;
+  variablePatternCount: number;
 }
 
 export interface LineSampleOptions {
