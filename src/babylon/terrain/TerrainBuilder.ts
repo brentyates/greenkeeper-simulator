@@ -110,6 +110,7 @@ export class TerrainBuilder {
     const positions: number[] = [];
     const indices: number[] = [];
     const colors: number[] = [];
+    const uvs: number[] = [];
 
     const nwOffset = (corners.nw - baseElev) * ELEVATION_HEIGHT;
     const neOffset = (corners.ne - baseElev) * ELEVATION_HEIGHT;
@@ -120,6 +121,12 @@ export class TerrainBuilder {
     positions.push(center.x + hw, center.y + neOffset, center.z);
     positions.push(center.x, center.y - hh + seOffset, center.z);
     positions.push(center.x - hw, center.y + swOffset, center.z);
+
+    const atlasUVs = this.getTextureAtlasUVs(terrainType);
+    uvs.push(atlasUVs.u0, atlasUVs.v1);
+    uvs.push(atlasUVs.u1, atlasUVs.v0 + (atlasUVs.v1 - atlasUVs.v0) / 2);
+    uvs.push(atlasUVs.u0, atlasUVs.v0);
+    uvs.push(atlasUVs.u0 - (atlasUVs.u1 - atlasUVs.u0) / 2, atlasUVs.v0 + (atlasUVs.v1 - atlasUVs.v0) / 2);
 
     const diagonal = this.getOptimalDiagonal(corners);
     if (diagonal === 'nwse') {
@@ -145,6 +152,7 @@ export class TerrainBuilder {
     vertexData.positions = positions;
     vertexData.indices = indices;
     vertexData.colors = colors;
+    vertexData.uvs = uvs;
 
     const mesh = new Mesh(`tile_${gridX}_${gridY}`, this.scene);
     vertexData.applyToMesh(mesh);
@@ -296,6 +304,7 @@ export class TerrainBuilder {
     const positions: number[] = [];
     const indices: number[] = [];
     const colors: number[] = [];
+    const uvs: number[] = [];
 
     positions.push(x1, y1, z);
     positions.push(x2, y2, z);
@@ -313,10 +322,17 @@ export class TerrainBuilder {
       colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1);
     }
 
+    const cliffUVs = this.getCliffTextureAtlasUVs();
+    uvs.push(cliffUVs.u0, cliffUVs.v0);
+    uvs.push(cliffUVs.u1, cliffUVs.v0);
+    uvs.push(cliffUVs.u1, cliffUVs.v1);
+    uvs.push(cliffUVs.u0, cliffUVs.v1);
+
     const vertexData = new VertexData();
     vertexData.positions = positions;
     vertexData.indices = indices;
     vertexData.colors = colors;
+    vertexData.uvs = uvs;
 
     const mesh = new Mesh(`cliff_${side}_${x1}_${y1}`, this.scene);
     vertexData.applyToMesh(mesh);
@@ -456,6 +472,57 @@ export class TerrainBuilder {
       case 4: return new Color3(0.2, 0.4, 0.65);   // Water - deeper blue
       default: return new Color3(0.4, 0.6, 0.3);
     }
+  }
+
+  private getTextureAtlasUVs(terrainType: number): { u0: number; v0: number; u1: number; v1: number } {
+    const atlasColumns = 4;
+    const atlasRows = 2;
+    const tileU = 1 / atlasColumns;
+    const tileV = 1 / atlasRows;
+
+    let col = 0;
+    let row = 0;
+
+    switch (terrainType) {
+      case TERRAIN_CODES.FAIRWAY:
+        col = 0; row = 0;
+        break;
+      case TERRAIN_CODES.ROUGH:
+        col = 1; row = 0;
+        break;
+      case TERRAIN_CODES.GREEN:
+        col = 2; row = 0;
+        break;
+      case TERRAIN_CODES.BUNKER:
+        col = 3; row = 0;
+        break;
+      case TERRAIN_CODES.WATER:
+        col = 0; row = 1;
+        break;
+      default:
+        col = 1; row = 0;
+    }
+
+    return {
+      u0: col * tileU,
+      v0: row * tileV,
+      u1: (col + 1) * tileU,
+      v1: (row + 1) * tileV
+    };
+  }
+
+  public getCliffTextureAtlasUVs(): { u0: number; v0: number; u1: number; v1: number } {
+    const atlasColumns = 4;
+    const atlasRows = 2;
+    const tileU = 1 / atlasColumns;
+    const tileV = 1 / atlasRows;
+
+    return {
+      u0: 1 * tileU,
+      v0: 1 * tileV,
+      u1: 2 * tileU,
+      v1: 2 * tileV
+    };
   }
 
   private buildObstacles(): void {
