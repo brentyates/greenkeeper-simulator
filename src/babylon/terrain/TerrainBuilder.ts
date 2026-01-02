@@ -1182,6 +1182,301 @@ export class TerrainBuilder {
     return getTileNormal(corners, ELEVATION_HEIGHT);
   }
 
+  public getInterpolatedElevation(worldX: number, worldZ: number): number {
+    const gridX = Math.floor(worldX / TILE_WIDTH);
+    const gridY = Math.floor(worldZ / TILE_HEIGHT);
+
+    if (!this.isValidGridPosition(gridX, gridY)) {
+      return this.getElevationAt(
+        Math.max(0, Math.min(this.courseData.width - 1, gridX)),
+        Math.max(0, Math.min(this.courseData.height - 1, gridY))
+      ) * ELEVATION_HEIGHT;
+    }
+
+    const corners = this.getCornerHeights(gridX, gridY);
+    const localX = (worldX / TILE_WIDTH) - gridX;
+    const localZ = (worldZ / TILE_HEIGHT) - gridY;
+
+    const topInterp = corners.nw + (corners.ne - corners.nw) * localX;
+    const bottomInterp = corners.sw + (corners.se - corners.sw) * localX;
+    const elevation = topInterp + (bottomInterp - topInterp) * localZ;
+
+    return elevation * ELEVATION_HEIGHT;
+  }
+
+  public getInterpolatedNormal(worldX: number, worldZ: number): { x: number; y: number; z: number } {
+    const gridX = Math.floor(worldX / TILE_WIDTH);
+    const gridY = Math.floor(worldZ / TILE_HEIGHT);
+
+    if (!this.isValidGridPosition(gridX, gridY)) {
+      return { x: 0, y: 1, z: 0 };
+    }
+
+    const corners = this.getCornerHeights(gridX, gridY);
+    const dx = ((corners.ne - corners.nw) + (corners.se - corners.sw)) * 0.5 * ELEVATION_HEIGHT / TILE_WIDTH;
+    const dz = ((corners.sw - corners.nw) + (corners.se - corners.ne)) * 0.5 * ELEVATION_HEIGHT / TILE_HEIGHT;
+    const length = Math.sqrt(dx * dx + 1 + dz * dz);
+
+    return { x: -dx / length, y: 1 / length, z: -dz / length };
+  }
+
+  public smoothElevationArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    iterations: number = 1,
+    strength: number = 0.5
+  ): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+    const clampedStrength = Math.max(0, Math.min(1, strength));
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const tempElevation: number[][] = [];
+      for (let y = minY; y <= maxY; y++) {
+        tempElevation[y - minY] = [];
+        for (let x = minX; x <= maxX; x++) {
+          const currentElev = elevation[y][x];
+          let sum = currentElev;
+          let count = 1;
+
+          const neighbors = [
+            [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
+            [x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1], [x + 1, y + 1]
+          ];
+
+          for (const [nx, ny] of neighbors) {
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              sum += elevation[ny][nx];
+              count++;
+            }
+          }
+
+          const avgElev = sum / count;
+          tempElevation[y - minY][x - minX] = currentElev + (avgElev - currentElev) * clampedStrength;
+        }
+      }
+
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const newElev = Math.round(tempElevation[y - minY][x - minX]);
+          if (elevation[y][x] !== newElev) {
+            elevation[y][x] = newElev;
+            modifiedCount++;
+          }
+        }
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.rebuildArea(minX, minY, maxX, maxY);
+    }
+
+    return modifiedCount;
+  }
+
+  public flattenElevationArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    targetElevation?: number
+  ): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    let target = targetElevation;
+    if (target === undefined) {
+      let sum = 0;
+      let count = 0;
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          sum += elevation[y][x];
+          count++;
+        }
+      }
+      target = Math.round(sum / count);
+    }
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (elevation[y][x] !== target) {
+          elevation[y][x] = target;
+          modifiedCount++;
+        }
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.rebuildArea(minX, minY, maxX, maxY);
+    }
+
+    return modifiedCount;
+  }
+
+  public raiseElevationArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    amount: number = 1
+  ): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        elevation[y][x] += amount;
+        modifiedCount++;
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.rebuildArea(minX, minY, maxX, maxY);
+    }
+
+    return modifiedCount;
+  }
+
+  public createElevationGradient(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    startElevation: number,
+    endElevation: number
+  ): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) return 0;
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const px = x - startX;
+        const py = y - startY;
+        const proj = (px * dx + py * dy) / (length * length);
+        const t = Math.max(0, Math.min(1, proj));
+        const newElev = Math.round(startElevation + (endElevation - startElevation) * t);
+        if (elevation[y][x] !== newElev) {
+          elevation[y][x] = newElev;
+          modifiedCount++;
+        }
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.rebuildArea(minX, minY, maxX, maxY);
+    }
+
+    return modifiedCount;
+  }
+
+  public createHill(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    peakElevation: number,
+    baseElevation: number = 0,
+    falloff: 'linear' | 'quadratic' | 'cosine' = 'cosine'
+  ): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const minX = Math.max(0, Math.floor(centerX - radius));
+    const maxX = Math.min(width - 1, Math.ceil(centerX + radius));
+    const minY = Math.max(0, Math.floor(centerY - radius));
+    const maxY = Math.min(height - 1, Math.ceil(centerY + radius));
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist <= radius) {
+          const t = dist / radius;
+          let factor: number;
+          switch (falloff) {
+            case 'linear':
+              factor = 1 - t;
+              break;
+            case 'quadratic':
+              factor = 1 - t * t;
+              break;
+            case 'cosine':
+              factor = (Math.cos(t * Math.PI) + 1) * 0.5;
+              break;
+          }
+          const newElev = Math.round(baseElevation + (peakElevation - baseElevation) * factor);
+          if (elevation[y][x] !== newElev) {
+            elevation[y][x] = newElev;
+            modifiedCount++;
+          }
+        }
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.rebuildArea(minX, minY, maxX, maxY);
+    }
+
+    return modifiedCount;
+  }
+
+  private rebuildArea(minX: number, minY: number, maxX: number, maxY: number): void {
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const key = `${x}_${y}`;
+        const oldMesh = this.tileMap.get(key);
+        if (oldMesh) {
+          const idx = this.tileMeshes.indexOf(oldMesh);
+          if (idx !== -1) this.tileMeshes.splice(idx, 1);
+          oldMesh.dispose();
+        }
+
+        const elev = this.courseData.elevation?.[y]?.[x] ?? 0;
+        const code = this.courseData.layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
+        const isMowed = this.mowedState[y]?.[x] ?? false;
+        const newTile = this.createIsometricTile(x, y, elev, code, isMowed);
+        this.tileMeshes.push(newTile);
+        this.tileMap.set(key, newTile);
+      }
+    }
+
+    this.buildGridLines();
+  }
+
   public isValidGridPosition(gridX: number, gridY: number): boolean {
     const { width, height } = this.courseData;
     return gridX >= 0 && gridX < width && gridY >= 0 && gridY < height;
