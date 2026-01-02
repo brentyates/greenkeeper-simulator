@@ -12391,6 +12391,263 @@ export class TerrainBuilder {
     return centerlineLength / result.avgWidth;
   }
 
+  public computeConvexHull(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    if (points.length < 3) return [...points];
+
+    const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+
+    const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    };
+
+    const lower: Array<{ x: number; y: number }> = [];
+    for (const p of sorted) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+        lower.pop();
+      }
+      lower.push(p);
+    }
+
+    const upper: Array<{ x: number; y: number }> = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const p = sorted[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+        upper.pop();
+      }
+      upper.push(p);
+    }
+
+    lower.pop();
+    upper.pop();
+    return lower.concat(upper);
+  }
+
+  public getTerrainTypeConvexHull(targetType: TerrainType): TerrainConvexHull {
+    const { width, height, layout } = this.courseData;
+    const points: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (getTerrainType(layout[y][x]) === targetType) {
+          points.push({ x, y });
+        }
+      }
+    }
+
+    if (points.length === 0) {
+      return {
+        targetType,
+        hull: [],
+        area: 0,
+        perimeter: 0,
+        pointCount: 0,
+        hullPointCount: 0,
+        convexityRatio: 0
+      };
+    }
+
+    const hull = this.computeConvexHull(points);
+    const hullArea = this.computePolygonArea(hull);
+    const hullPerimeter = this.computePolygonPerimeter(hull);
+
+    return {
+      targetType,
+      hull,
+      area: hullArea,
+      perimeter: hullPerimeter,
+      pointCount: points.length,
+      hullPointCount: hull.length,
+      convexityRatio: points.length > 0 ? points.length / hullArea : 0
+    };
+  }
+
+  private computePolygonArea(vertices: Array<{ x: number; y: number }>): number {
+    if (vertices.length < 3) return 0;
+
+    let area = 0;
+    const n = vertices.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      area += vertices[i].x * vertices[j].y;
+      area -= vertices[j].x * vertices[i].y;
+    }
+
+    return Math.abs(area) / 2;
+  }
+
+  private computePolygonPerimeter(vertices: Array<{ x: number; y: number }>): number {
+    if (vertices.length < 2) return 0;
+
+    let perimeter = 0;
+    const n = vertices.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const dx = vertices[j].x - vertices[i].x;
+      const dy = vertices[j].y - vertices[i].y;
+      perimeter += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    return perimeter;
+  }
+
+  public getTerrainTypeShapeMetrics(targetType: TerrainType): TerrainShapeMetrics {
+    const convexHull = this.getTerrainTypeConvexHull(targetType);
+
+    if (convexHull.pointCount === 0) {
+      return {
+        targetType,
+        area: 0,
+        perimeter: 0,
+        compactness: 0,
+        circularity: 0,
+        elongation: 0,
+        convexity: 0,
+        solidity: 0,
+        centroid: { x: 0, y: 0 }
+      };
+    }
+
+    const { width, height, layout } = this.courseData;
+    let sumX = 0, sumY = 0, count = 0;
+    const boundaryPoints: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (getTerrainType(layout[y][x]) === targetType) {
+          sumX += x;
+          sumY += y;
+          count++;
+
+          const neighbors = [
+            { nx: x - 1, ny: y }, { nx: x + 1, ny: y },
+            { nx: x, ny: y - 1 }, { nx: x, ny: y + 1 }
+          ];
+
+          for (const { nx, ny } of neighbors) {
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height ||
+                getTerrainType(layout[ny][nx]) !== targetType) {
+              boundaryPoints.push({ x, y });
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const actualArea = count;
+    let actualPerimeter = 0;
+
+    for (let i = 0; i < boundaryPoints.length; i++) {
+      for (let j = i + 1; j < boundaryPoints.length; j++) {
+        const dx = Math.abs(boundaryPoints[i].x - boundaryPoints[j].x);
+        const dy = Math.abs(boundaryPoints[i].y - boundaryPoints[j].y);
+        if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+          actualPerimeter++;
+        }
+      }
+    }
+    actualPerimeter = Math.max(actualPerimeter, boundaryPoints.length);
+
+    const compactness = actualPerimeter > 0 ? (4 * Math.PI * actualArea) / (actualPerimeter * actualPerimeter) : 0;
+    const circularity = compactness;
+    const convexity = convexHull.perimeter > 0 ? actualPerimeter / convexHull.perimeter : 0;
+    const solidity = convexHull.area > 0 ? actualArea / convexHull.area : 0;
+
+    return {
+      targetType,
+      area: actualArea,
+      perimeter: actualPerimeter,
+      compactness,
+      circularity,
+      elongation: this.getRegionElongation(targetType),
+      convexity,
+      solidity,
+      centroid: { x: count > 0 ? sumX / count : 0, y: count > 0 ? sumY / count : 0 }
+    };
+  }
+
+  public getOrientedBoundingBox(points: Array<{ x: number; y: number }>): OrientedBoundingBox {
+    if (points.length === 0) {
+      return { centerX: 0, centerY: 0, width: 0, height: 0, angle: 0, area: 0 };
+    }
+
+    const hull = this.computeConvexHull(points);
+    if (hull.length < 3) {
+      const minX = Math.min(...points.map(p => p.x));
+      const maxX = Math.max(...points.map(p => p.x));
+      const minY = Math.min(...points.map(p => p.y));
+      const maxY = Math.max(...points.map(p => p.y));
+      return {
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2,
+        width: maxX - minX,
+        height: maxY - minY,
+        angle: 0,
+        area: (maxX - minX) * (maxY - minY)
+      };
+    }
+
+    let minArea = Infinity;
+    let bestBox: OrientedBoundingBox = { centerX: 0, centerY: 0, width: 0, height: 0, angle: 0, area: 0 };
+
+    for (let i = 0; i < hull.length; i++) {
+      const j = (i + 1) % hull.length;
+      const edgeX = hull[j].x - hull[i].x;
+      const edgeY = hull[j].y - hull[i].y;
+      const angle = Math.atan2(edgeY, edgeX);
+
+      const cos = Math.cos(-angle);
+      const sin = Math.sin(-angle);
+
+      let minRotX = Infinity, maxRotX = -Infinity;
+      let minRotY = Infinity, maxRotY = -Infinity;
+
+      for (const p of hull) {
+        const rotX = p.x * cos - p.y * sin;
+        const rotY = p.x * sin + p.y * cos;
+        minRotX = Math.min(minRotX, rotX);
+        maxRotX = Math.max(maxRotX, rotX);
+        minRotY = Math.min(minRotY, rotY);
+        maxRotY = Math.max(maxRotY, rotY);
+      }
+
+      const boxWidth = maxRotX - minRotX;
+      const boxHeight = maxRotY - minRotY;
+      const boxArea = boxWidth * boxHeight;
+
+      if (boxArea < minArea) {
+        minArea = boxArea;
+        const centerRotX = (minRotX + maxRotX) / 2;
+        const centerRotY = (minRotY + maxRotY) / 2;
+        bestBox = {
+          centerX: centerRotX * Math.cos(angle) - centerRotY * Math.sin(angle),
+          centerY: centerRotX * Math.sin(angle) + centerRotY * Math.cos(angle),
+          width: boxWidth,
+          height: boxHeight,
+          angle: angle * 180 / Math.PI,
+          area: boxArea
+        };
+      }
+    }
+
+    return bestBox;
+  }
+
+  public getTerrainTypeOrientedBoundingBox(targetType: TerrainType): OrientedBoundingBox {
+    const { width, height, layout } = this.courseData;
+    const points: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (getTerrainType(layout[y][x]) === targetType) {
+          points.push({ x, y });
+        }
+      }
+    }
+
+    return this.getOrientedBoundingBox(points);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -18316,4 +18573,35 @@ export interface MedialAxisResult {
   avgWidth: number;
   maxWidth: number;
   minWidth: number;
+}
+
+export interface TerrainConvexHull {
+  targetType: TerrainType;
+  hull: Array<{ x: number; y: number }>;
+  area: number;
+  perimeter: number;
+  pointCount: number;
+  hullPointCount: number;
+  convexityRatio: number;
+}
+
+export interface TerrainShapeMetrics {
+  targetType: TerrainType;
+  area: number;
+  perimeter: number;
+  compactness: number;
+  circularity: number;
+  elongation: number;
+  convexity: number;
+  solidity: number;
+  centroid: { x: number; y: number };
+}
+
+export interface OrientedBoundingBox {
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  angle: number;
+  area: number;
 }
