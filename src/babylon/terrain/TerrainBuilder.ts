@@ -25217,6 +25217,367 @@ export class TerrainBuilder {
       byteSize: (positions.length + normals.length + uvs.length + colors.length) * 4 + indices.length * 4
     };
   }
+
+  public sampleElevationBilinear(worldX: number, worldZ: number): BilinearSampleResult {
+    const tileX = Math.floor(worldX);
+    const tileZ = Math.floor(worldZ);
+
+    const fracX = worldX - tileX;
+    const fracZ = worldZ - tileZ;
+
+    const clampedX = Math.max(0, Math.min(this.courseData.width - 2, tileX));
+    const clampedZ = Math.max(0, Math.min(this.courseData.height - 2, tileZ));
+
+    const e00 = this.getElevationAt(clampedX, clampedZ);
+    const e10 = this.getElevationAt(clampedX + 1, clampedZ);
+    const e01 = this.getElevationAt(clampedX, clampedZ + 1);
+    const e11 = this.getElevationAt(clampedX + 1, clampedZ + 1);
+
+    const top = e00 * (1 - fracX) + e10 * fracX;
+    const bottom = e01 * (1 - fracX) + e11 * fracX;
+    const elevation = top * (1 - fracZ) + bottom * fracZ;
+
+    return {
+      elevation,
+      tileX: clampedX,
+      tileZ: clampedZ,
+      fracX,
+      fracZ,
+      corners: { e00, e10, e01, e11 }
+    };
+  }
+
+  public sampleNormalBilinear(worldX: number, worldZ: number): BilinearNormalResult {
+    const delta = 0.01;
+
+    const sample = this.sampleElevationBilinear(worldX, worldZ);
+    const samplePlusX = this.sampleElevationBilinear(worldX + delta, worldZ);
+    const samplePlusZ = this.sampleElevationBilinear(worldX, worldZ + delta);
+
+    const dx = (samplePlusX.elevation - sample.elevation) / delta;
+    const dz = (samplePlusZ.elevation - sample.elevation) / delta;
+
+    const nx = -dx;
+    const ny = 1;
+    const nz = -dz;
+    const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+    return {
+      normal: { x: nx / length, y: ny / length, z: nz / length },
+      slope: Math.atan(Math.sqrt(dx * dx + dz * dz)),
+      slopeDirection: Math.atan2(dz, dx),
+      worldPosition: { x: worldX, y: sample.elevation, z: worldZ }
+    };
+  }
+
+  public sampleTerrainTypeBilinear(worldX: number, worldZ: number): BilinearTerrainTypeResult {
+    const tileX = Math.floor(worldX);
+    const tileZ = Math.floor(worldZ);
+
+    const fracX = worldX - tileX;
+    const fracZ = worldZ - tileZ;
+
+    const clampedX = Math.max(0, Math.min(this.courseData.width - 2, tileX));
+    const clampedZ = Math.max(0, Math.min(this.courseData.height - 2, tileZ));
+
+    const t00 = this.getTerrainTypeAt(clampedX, clampedZ);
+    const t10 = this.getTerrainTypeAt(clampedX + 1, clampedZ);
+    const t01 = this.getTerrainTypeAt(clampedX, clampedZ + 1);
+    const t11 = this.getTerrainTypeAt(clampedX + 1, clampedZ + 1);
+
+    const weights = {
+      [t00]: (1 - fracX) * (1 - fracZ),
+      [t10]: fracX * (1 - fracZ),
+      [t01]: (1 - fracX) * fracZ,
+      [t11]: fracX * fracZ
+    };
+
+    const aggregatedWeights: Record<string, number> = {};
+    for (const [type, weight] of Object.entries(weights)) {
+      aggregatedWeights[type] = (aggregatedWeights[type] || 0) + weight;
+    }
+
+    let dominantType = t00;
+    let maxWeight = 0;
+    for (const [type, weight] of Object.entries(aggregatedWeights)) {
+      if (weight > maxWeight) {
+        maxWeight = weight;
+        dominantType = type as TerrainType;
+      }
+    }
+
+    return {
+      dominantType,
+      typeWeights: aggregatedWeights,
+      cornerTypes: { t00, t10, t01, t11 },
+      confidence: maxWeight,
+      isHomogeneous: t00 === t10 && t10 === t01 && t01 === t11
+    };
+  }
+
+  public sampleFriction(worldX: number, worldZ: number): FrictionSampleResult {
+    const frictionMap: Record<string, number> = {
+      fairway: 0.3,
+      rough: 0.6,
+      green: 0.2,
+      bunker: 0.8,
+      water: 0.95
+    };
+
+    const terrainResult = this.sampleTerrainTypeBilinear(worldX, worldZ);
+
+    let blendedFriction = 0;
+    for (const [type, weight] of Object.entries(terrainResult.typeWeights)) {
+      blendedFriction += (frictionMap[type] ?? 0.5) * weight;
+    }
+
+    const normalResult = this.sampleNormalBilinear(worldX, worldZ);
+    const slopeFactor = 1 + Math.sin(normalResult.slope) * 0.5;
+
+    return {
+      baseFriction: frictionMap[terrainResult.dominantType] ?? 0.5,
+      blendedFriction,
+      slopeAdjustedFriction: blendedFriction * slopeFactor,
+      terrainType: terrainResult.dominantType,
+      slopeAngle: normalResult.slope
+    };
+  }
+
+  public castRayToTerrain(
+    originX: number, originY: number, originZ: number,
+    dirX: number, dirY: number, dirZ: number
+  ): TerrainRaycastResult | null {
+    const length = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+    dirX /= length;
+    dirY /= length;
+    dirZ /= length;
+
+    const maxDistance = Math.max(this.courseData.width, this.courseData.height) * 2;
+    const stepSize = 0.25;
+
+    for (let t = 0; t < maxDistance; t += stepSize) {
+      const x = originX + dirX * t;
+      const y = originY + dirY * t;
+      const z = originZ + dirZ * t;
+
+      if (x < 0 || x >= this.courseData.width - 1 || z < 0 || z >= this.courseData.height - 1) {
+        continue;
+      }
+
+      const sample = this.sampleElevationBilinear(x, z);
+
+      if (y <= sample.elevation) {
+        const normal = this.sampleNormalBilinear(x, z);
+        const terrain = this.sampleTerrainTypeBilinear(x, z);
+
+        return {
+          hit: true,
+          worldPosition: { x, y: sample.elevation, z },
+          normal: normal.normal,
+          distance: t,
+          terrainType: terrain.dominantType,
+          tileX: sample.tileX,
+          tileZ: sample.tileZ
+        };
+      }
+    }
+
+    return null;
+  }
+
+  public computeGradient(worldX: number, worldZ: number): TerrainGradientResult {
+    const delta = 0.1;
+
+    const sampleMinusX = this.sampleElevationBilinear(worldX - delta, worldZ);
+    const samplePlusX = this.sampleElevationBilinear(worldX + delta, worldZ);
+    const sampleMinusZ = this.sampleElevationBilinear(worldX, worldZ - delta);
+    const samplePlusZ = this.sampleElevationBilinear(worldX, worldZ + delta);
+
+    const gradX = (samplePlusX.elevation - sampleMinusX.elevation) / (2 * delta);
+    const gradZ = (samplePlusZ.elevation - sampleMinusZ.elevation) / (2 * delta);
+
+    const magnitude = Math.sqrt(gradX * gradX + gradZ * gradZ);
+
+    return {
+      gradientX: gradX,
+      gradientZ: gradZ,
+      magnitude,
+      direction: Math.atan2(gradZ, gradX),
+      steepestDescentX: -gradX / (magnitude || 1),
+      steepestDescentZ: -gradZ / (magnitude || 1)
+    };
+  }
+
+  public sampleCurvature(worldX: number, worldZ: number): BilinearCurvatureResult {
+    const delta = 0.2;
+
+    const center = this.sampleElevationBilinear(worldX, worldZ);
+    const px = this.sampleElevationBilinear(worldX + delta, worldZ);
+    const mx = this.sampleElevationBilinear(worldX - delta, worldZ);
+    const pz = this.sampleElevationBilinear(worldX, worldZ + delta);
+    const mz = this.sampleElevationBilinear(worldX, worldZ - delta);
+    const pxpz = this.sampleElevationBilinear(worldX + delta, worldZ + delta);
+
+    const d2x = (px.elevation - 2 * center.elevation + mx.elevation) / (delta * delta);
+    const d2z = (pz.elevation - 2 * center.elevation + mz.elevation) / (delta * delta);
+    const d2xz = (pxpz.elevation - px.elevation - pz.elevation + center.elevation) / (delta * delta);
+
+    const meanCurvature = (d2x + d2z) / 2;
+    const gaussianCurvature = d2x * d2z - d2xz * d2xz;
+
+    let shape: 'convex' | 'concave' | 'saddle' | 'flat';
+    if (Math.abs(meanCurvature) < 0.01) {
+      shape = 'flat';
+    } else if (gaussianCurvature > 0 && meanCurvature < 0) {
+      shape = 'concave';
+    } else if (gaussianCurvature > 0 && meanCurvature > 0) {
+      shape = 'convex';
+    } else {
+      shape = 'saddle';
+    }
+
+    return {
+      principalCurvatureX: d2x,
+      principalCurvatureZ: d2z,
+      meanCurvature,
+      gaussianCurvature,
+      shape
+    };
+  }
+
+  public interpolatePath(
+    startX: number, startZ: number,
+    endX: number, endZ: number,
+    numSamples: number = 10
+  ): PathInterpolationResult {
+    const samples: Array<{
+      position: { x: number; y: number; z: number };
+      t: number;
+      terrainType: TerrainType;
+      slope: number;
+    }> = [];
+
+    let totalDistance = 0;
+    let totalClimb = 0;
+    let totalDescent = 0;
+    let prevElevation = 0;
+
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const x = startX + (endX - startX) * t;
+      const z = startZ + (endZ - startZ) * t;
+
+      const elevSample = this.sampleElevationBilinear(x, z);
+      const normalSample = this.sampleNormalBilinear(x, z);
+      const terrainSample = this.sampleTerrainTypeBilinear(x, z);
+
+      samples.push({
+        position: { x, y: elevSample.elevation, z },
+        t,
+        terrainType: terrainSample.dominantType,
+        slope: normalSample.slope
+      });
+
+      if (i > 0) {
+        const dx = samples[i].position.x - samples[i - 1].position.x;
+        const dy = samples[i].position.y - samples[i - 1].position.y;
+        const dz = samples[i].position.z - samples[i - 1].position.z;
+        totalDistance += Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (elevSample.elevation > prevElevation) {
+          totalClimb += elevSample.elevation - prevElevation;
+        } else {
+          totalDescent += prevElevation - elevSample.elevation;
+        }
+      }
+      prevElevation = elevSample.elevation;
+    }
+
+    const maxSlope = Math.max(...samples.map(s => s.slope));
+    const avgSlope = samples.reduce((sum, s) => sum + s.slope, 0) / samples.length;
+
+    return {
+      samples,
+      totalDistance,
+      totalClimb,
+      totalDescent,
+      maxSlope,
+      averageSlope: avgSlope
+    };
+  }
+}
+
+export interface BilinearSampleResult {
+  elevation: number;
+  tileX: number;
+  tileZ: number;
+  fracX: number;
+  fracZ: number;
+  corners: { e00: number; e10: number; e01: number; e11: number };
+}
+
+export interface BilinearNormalResult {
+  normal: { x: number; y: number; z: number };
+  slope: number;
+  slopeDirection: number;
+  worldPosition: { x: number; y: number; z: number };
+}
+
+export interface BilinearTerrainTypeResult {
+  dominantType: TerrainType;
+  typeWeights: Record<string, number>;
+  cornerTypes: { t00: TerrainType; t10: TerrainType; t01: TerrainType; t11: TerrainType };
+  confidence: number;
+  isHomogeneous: boolean;
+}
+
+export interface FrictionSampleResult {
+  baseFriction: number;
+  blendedFriction: number;
+  slopeAdjustedFriction: number;
+  terrainType: TerrainType;
+  slopeAngle: number;
+}
+
+export interface TerrainRaycastResult {
+  hit: boolean;
+  worldPosition: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  distance: number;
+  terrainType: TerrainType;
+  tileX: number;
+  tileZ: number;
+}
+
+export interface TerrainGradientResult {
+  gradientX: number;
+  gradientZ: number;
+  magnitude: number;
+  direction: number;
+  steepestDescentX: number;
+  steepestDescentZ: number;
+}
+
+export interface BilinearCurvatureResult {
+  principalCurvatureX: number;
+  principalCurvatureZ: number;
+  meanCurvature: number;
+  gaussianCurvature: number;
+  shape: 'convex' | 'concave' | 'saddle' | 'flat';
+}
+
+export interface PathInterpolationResult {
+  samples: Array<{
+    position: { x: number; y: number; z: number };
+    t: number;
+    terrainType: TerrainType;
+    slope: number;
+  }>;
+  totalDistance: number;
+  totalClimb: number;
+  totalDescent: number;
+  maxSlope: number;
+  averageSlope: number;
 }
 
 export interface CompressedElevationData {
