@@ -13757,6 +13757,227 @@ export class TerrainBuilder {
     };
   }
 
+  public computeTerrainSignature(): TerrainSignature {
+    const { width, height, elevation, layout } = this.courseData;
+
+    const elevDist = this.computeElevationDistribution();
+    const slopeDist = this.computeSlopeDistribution();
+
+    const terrainTypeCounts: Record<string, number> = {};
+    if (layout) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const type = getTerrainType(layout[y][x]);
+          terrainTypeCounts[type] = (terrainTypeCounts[type] || 0) + 1;
+        }
+      }
+    }
+
+    let elevHash = 0;
+    if (elevation) {
+      for (let y = 0; y < height; y += 4) {
+        for (let x = 0; x < width; x += 4) {
+          elevHash = ((elevHash << 5) - elevHash + elevation[y][x]) | 0;
+        }
+      }
+    }
+
+    const signature: TerrainSignature = {
+      width,
+      height,
+      totalTiles: width * height,
+      elevationStats: {
+        min: elevDist.min,
+        max: elevDist.max,
+        mean: elevDist.mean,
+        stdDev: elevDist.stdDev,
+        skewness: elevDist.skewness
+      },
+      slopeStats: {
+        min: slopeDist.minSlope,
+        max: slopeDist.maxSlope,
+        mean: slopeDist.meanSlope,
+        stdDev: slopeDist.stdDev
+      },
+      terrainTypeCounts,
+      elevationHash: elevHash,
+      timestamp: Date.now()
+    };
+
+    return signature;
+  }
+
+  public compareTerrainSignatures(sig1: TerrainSignature, sig2: TerrainSignature): TerrainSignatureComparison {
+    const dimMatch = sig1.width === sig2.width && sig1.height === sig2.height;
+
+    const elevMeanDiff = Math.abs(sig1.elevationStats.mean - sig2.elevationStats.mean);
+    const elevStdDiff = Math.abs(sig1.elevationStats.stdDev - sig2.elevationStats.stdDev);
+    const slopeMeanDiff = Math.abs(sig1.slopeStats.mean - sig2.slopeStats.mean);
+
+    const terrainTypeChanges: Record<string, number> = {};
+    const allTypes = new Set([
+      ...Object.keys(sig1.terrainTypeCounts),
+      ...Object.keys(sig2.terrainTypeCounts)
+    ]);
+
+    for (const type of allTypes) {
+      const count1 = sig1.terrainTypeCounts[type] || 0;
+      const count2 = sig2.terrainTypeCounts[type] || 0;
+      if (count1 !== count2) {
+        terrainTypeChanges[type] = count2 - count1;
+      }
+    }
+
+    const elevSimilarity = 1 - Math.min(1, elevMeanDiff / Math.max(1, sig1.elevationStats.stdDev));
+    const slopeSimilarity = 1 - Math.min(1, slopeMeanDiff / 45);
+    const hashMatch = sig1.elevationHash === sig2.elevationHash;
+
+    const overallSimilarity = hashMatch ? 1.0 :
+      (elevSimilarity * 0.4 + slopeSimilarity * 0.3 + (dimMatch ? 0.3 : 0));
+
+    return {
+      dimensionsMatch: dimMatch,
+      elevationMeanDifference: elevMeanDiff,
+      elevationStdDevDifference: elevStdDiff,
+      slopeMeanDifference: slopeMeanDiff,
+      terrainTypeChanges,
+      elevationHashMatch: hashMatch,
+      overallSimilarity,
+      significantChange: overallSimilarity < 0.9
+    };
+  }
+
+  public getTerrainChangesSince(previousSignature: TerrainSignature): TerrainChangeReport {
+    const currentSignature = this.computeTerrainSignature();
+    const comparison = this.compareTerrainSignatures(previousSignature, currentSignature);
+
+    const changes: string[] = [];
+
+    if (!comparison.dimensionsMatch) {
+      changes.push(`Dimensions changed from ${previousSignature.width}x${previousSignature.height} to ${currentSignature.width}x${currentSignature.height}`);
+    }
+
+    if (comparison.elevationMeanDifference > 0.5) {
+      changes.push(`Mean elevation changed by ${comparison.elevationMeanDifference.toFixed(2)}`);
+    }
+
+    if (comparison.slopeMeanDifference > 2) {
+      changes.push(`Mean slope changed by ${comparison.slopeMeanDifference.toFixed(1)}°`);
+    }
+
+    for (const [type, delta] of Object.entries(comparison.terrainTypeChanges)) {
+      if (Math.abs(delta) > 10) {
+        changes.push(`${type} tiles: ${delta > 0 ? '+' : ''}${delta}`);
+      }
+    }
+
+    return {
+      previousSignature,
+      currentSignature,
+      comparison,
+      changes,
+      hasSignificantChanges: comparison.significantChange,
+      timeSinceLastSignature: currentSignature.timestamp - previousSignature.timestamp
+    };
+  }
+
+  public computeLocalTerrainSignature(centerX: number, centerY: number, radius: number): LocalTerrainSignature {
+    const { width, height, elevation, layout } = this.courseData;
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(height - 1, centerY + radius);
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    let sumElev = 0;
+    let sumSlope = 0;
+    let count = 0;
+    const typeCounts: Record<string, number> = {};
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (dist > radius) continue;
+
+        count++;
+        const elev = elevation ? elevation[y][x] : 0;
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+        sumElev += elev;
+
+        const slope = this.getSlopeVectorAt(x, y);
+        sumSlope += slope.angle;
+
+        if (layout) {
+          const type = getTerrainType(layout[y][x]);
+          typeCounts[type] = (typeCounts[type] || 0) + 1;
+        }
+      }
+    }
+
+    const meanElev = count > 0 ? sumElev / count : 0;
+    const meanSlope = count > 0 ? sumSlope / count : 0;
+
+    let dominantType: TerrainType = 'fairway';
+    let maxTypeCount = 0;
+    for (const [type, c] of Object.entries(typeCounts)) {
+      if (c > maxTypeCount) {
+        maxTypeCount = c;
+        dominantType = type as TerrainType;
+      }
+    }
+
+    return {
+      centerX,
+      centerY,
+      radius,
+      tileCount: count,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      meanElevation: meanElev,
+      meanSlope,
+      elevationRange: maxElev - minElev,
+      terrainTypeCounts: typeCounts,
+      dominantTerrainType: dominantType
+    };
+  }
+
+  public findSimilarTerrainRegions(targetSignature: LocalTerrainSignature, threshold: number = 0.8): Array<{ x: number; y: number; similarity: number }> {
+    const { width, height } = this.courseData;
+    const results: Array<{ x: number; y: number; similarity: number }> = [];
+    const step = Math.max(1, Math.floor(targetSignature.radius / 2));
+
+    for (let y = targetSignature.radius; y < height - targetSignature.radius; y += step) {
+      for (let x = targetSignature.radius; x < width - targetSignature.radius; x += step) {
+        if (Math.abs(x - targetSignature.centerX) < targetSignature.radius &&
+            Math.abs(y - targetSignature.centerY) < targetSignature.radius) {
+          continue;
+        }
+
+        const localSig = this.computeLocalTerrainSignature(x, y, targetSignature.radius);
+        const similarity = this.compareLocalSignatures(targetSignature, localSig);
+
+        if (similarity >= threshold) {
+          results.push({ x, y, similarity });
+        }
+      }
+    }
+
+    return results.sort((a, b) => b.similarity - a.similarity);
+  }
+
+  private compareLocalSignatures(sig1: LocalTerrainSignature, sig2: LocalTerrainSignature): number {
+    const elevRangeSim = 1 - Math.abs(sig1.elevationRange - sig2.elevationRange) /
+      Math.max(1, Math.max(sig1.elevationRange, sig2.elevationRange));
+    const meanElevSim = 1 - Math.abs(sig1.meanElevation - sig2.meanElevation) /
+      Math.max(1, Math.max(sig1.meanElevation, sig2.meanElevation));
+    const slopeSim = 1 - Math.abs(sig1.meanSlope - sig2.meanSlope) / 45;
+    const typeSim = sig1.dominantTerrainType === sig2.dominantTerrainType ? 1 : 0.5;
+
+    return (elevRangeSim * 0.25 + meanElevSim * 0.25 + slopeSim * 0.25 + typeSim * 0.25);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -19827,4 +20048,60 @@ export interface TerrainCorrelationSummary {
   spatialStructure: 'random' | 'clustered' | 'regular';
   terrainSmoothnessIndex: number;
   spatialDependenceStrength: number;
+}
+
+export interface TerrainSignature {
+  width: number;
+  height: number;
+  totalTiles: number;
+  elevationStats: {
+    min: number;
+    max: number;
+    mean: number;
+    stdDev: number;
+    skewness: number;
+  };
+  slopeStats: {
+    min: number;
+    max: number;
+    mean: number;
+    stdDev: number;
+  };
+  terrainTypeCounts: Record<string, number>;
+  elevationHash: number;
+  timestamp: number;
+}
+
+export interface TerrainSignatureComparison {
+  dimensionsMatch: boolean;
+  elevationMeanDifference: number;
+  elevationStdDevDifference: number;
+  slopeMeanDifference: number;
+  terrainTypeChanges: Record<string, number>;
+  elevationHashMatch: boolean;
+  overallSimilarity: number;
+  significantChange: boolean;
+}
+
+export interface TerrainChangeReport {
+  previousSignature: TerrainSignature;
+  currentSignature: TerrainSignature;
+  comparison: TerrainSignatureComparison;
+  changes: string[];
+  hasSignificantChanges: boolean;
+  timeSinceLastSignature: number;
+}
+
+export interface LocalTerrainSignature {
+  centerX: number;
+  centerY: number;
+  radius: number;
+  tileCount: number;
+  minElevation: number;
+  maxElevation: number;
+  meanElevation: number;
+  meanSlope: number;
+  elevationRange: number;
+  terrainTypeCounts: Record<string, number>;
+  dominantTerrainType: TerrainType;
 }
