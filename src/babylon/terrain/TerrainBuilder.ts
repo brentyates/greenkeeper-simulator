@@ -59,6 +59,9 @@ export class TerrainBuilder {
     chunkSize: 8,
     enabled: true
   };
+  private eventListeners: Map<TerrainEventType, TerrainEventCallback[]> = new Map();
+  private eventQueue: TerrainEvent[] = [];
+  private eventsEnabled: boolean = true;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -3033,6 +3036,193 @@ export class TerrainBuilder {
 
     return profile;
   }
+
+  public addEventListener(type: TerrainEventType, callback: TerrainEventCallback): void {
+    if (!this.eventListeners.has(type)) {
+      this.eventListeners.set(type, []);
+    }
+    this.eventListeners.get(type)!.push(callback);
+  }
+
+  public removeEventListener(type: TerrainEventType, callback: TerrainEventCallback): void {
+    const listeners = this.eventListeners.get(type);
+    if (!listeners) return;
+
+    const index = listeners.indexOf(callback);
+    if (index !== -1) {
+      listeners.splice(index, 1);
+    }
+  }
+
+  public removeAllEventListeners(type?: TerrainEventType): void {
+    if (type) {
+      this.eventListeners.delete(type);
+    } else {
+      this.eventListeners.clear();
+    }
+  }
+
+  private emitEvent(event: TerrainEvent): void {
+    if (!this.eventsEnabled) return;
+
+    const listeners = this.eventListeners.get(event.type);
+    if (listeners) {
+      for (const callback of listeners) {
+        callback(event);
+      }
+    }
+  }
+
+  public queueEvent(event: TerrainEvent): void {
+    this.eventQueue.push(event);
+  }
+
+  public processEventQueue(): number {
+    const count = this.eventQueue.length;
+    for (const event of this.eventQueue) {
+      this.emitEvent(event);
+    }
+    this.eventQueue = [];
+    return count;
+  }
+
+  public clearEventQueue(): void {
+    this.eventQueue = [];
+  }
+
+  public getEventQueueLength(): number {
+    return this.eventQueue.length;
+  }
+
+  public setEventsEnabled(enabled: boolean): void {
+    this.eventsEnabled = enabled;
+  }
+
+  public isEventsEnabled(): boolean {
+    return this.eventsEnabled;
+  }
+
+  public getListenerCount(type?: TerrainEventType): number {
+    if (type) {
+      return this.eventListeners.get(type)?.length ?? 0;
+    }
+
+    let total = 0;
+    for (const listeners of this.eventListeners.values()) {
+      total += listeners.length;
+    }
+    return total;
+  }
+
+  public onMowed(callback: (gridX: number, gridY: number) => void): () => void {
+    const wrapper: TerrainEventCallback = (event) => {
+      if (event.gridX !== undefined && event.gridY !== undefined) {
+        callback(event.gridX, event.gridY);
+      }
+    };
+    this.addEventListener('mowed', wrapper);
+    return () => this.removeEventListener('mowed', wrapper);
+  }
+
+  public onUnmowed(callback: (gridX: number, gridY: number) => void): () => void {
+    const wrapper: TerrainEventCallback = (event) => {
+      if (event.gridX !== undefined && event.gridY !== undefined) {
+        callback(event.gridX, event.gridY);
+      }
+    };
+    this.addEventListener('unmowed', wrapper);
+    return () => this.removeEventListener('unmowed', wrapper);
+  }
+
+  public onTileVisibilityChange(callback: (gridX: number, gridY: number, visible: boolean) => void): () => void {
+    const wrapperShow: TerrainEventCallback = (event) => {
+      if (event.gridX !== undefined && event.gridY !== undefined) {
+        callback(event.gridX, event.gridY, true);
+      }
+    };
+    const wrapperHide: TerrainEventCallback = (event) => {
+      if (event.gridX !== undefined && event.gridY !== undefined) {
+        callback(event.gridX, event.gridY, false);
+      }
+    };
+    this.addEventListener('tileVisible', wrapperShow);
+    this.addEventListener('tileHidden', wrapperHide);
+    return () => {
+      this.removeEventListener('tileVisible', wrapperShow);
+      this.removeEventListener('tileHidden', wrapperHide);
+    };
+  }
+
+  public onChunkVisibilityChange(callback: (chunkId: string, visible: boolean) => void): () => void {
+    const wrapperShow: TerrainEventCallback = (event) => {
+      if (event.chunkId !== undefined) {
+        callback(event.chunkId, true);
+      }
+    };
+    const wrapperHide: TerrainEventCallback = (event) => {
+      if (event.chunkId !== undefined) {
+        callback(event.chunkId, false);
+      }
+    };
+    this.addEventListener('chunkVisible', wrapperShow);
+    this.addEventListener('chunkHidden', wrapperHide);
+    return () => {
+      this.removeEventListener('chunkVisible', wrapperShow);
+      this.removeEventListener('chunkHidden', wrapperHide);
+    };
+  }
+
+  public emitMowedEvent(gridX: number, gridY: number): void {
+    this.emitEvent({
+      type: 'mowed',
+      gridX,
+      gridY,
+      timestamp: Date.now()
+    });
+  }
+
+  public emitUnmowedEvent(gridX: number, gridY: number): void {
+    this.emitEvent({
+      type: 'unmowed',
+      gridX,
+      gridY,
+      timestamp: Date.now()
+    });
+  }
+
+  public emitTileVisibleEvent(gridX: number, gridY: number): void {
+    this.emitEvent({
+      type: 'tileVisible',
+      gridX,
+      gridY,
+      timestamp: Date.now()
+    });
+  }
+
+  public emitTileHiddenEvent(gridX: number, gridY: number): void {
+    this.emitEvent({
+      type: 'tileHidden',
+      gridX,
+      gridY,
+      timestamp: Date.now()
+    });
+  }
+
+  public emitChunkVisibleEvent(chunkId: string): void {
+    this.emitEvent({
+      type: 'chunkVisible',
+      chunkId,
+      timestamp: Date.now()
+    });
+  }
+
+  public emitChunkHiddenEvent(chunkId: string): void {
+    this.emitEvent({
+      type: 'chunkHidden',
+      chunkId,
+      timestamp: Date.now()
+    });
+  }
 }
 
 export interface TerrainStatistics {
@@ -3164,3 +3354,15 @@ export interface RaycastResult {
   distance: number;
   terrainType: TerrainType;
 }
+
+export type TerrainEventType = 'mowed' | 'unmowed' | 'tileVisible' | 'tileHidden' | 'chunkVisible' | 'chunkHidden';
+
+export interface TerrainEvent {
+  type: TerrainEventType;
+  gridX?: number;
+  gridY?: number;
+  chunkId?: string;
+  timestamp: number;
+}
+
+export type TerrainEventCallback = (event: TerrainEvent) => void;
