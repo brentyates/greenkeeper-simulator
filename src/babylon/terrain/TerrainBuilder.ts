@@ -7054,6 +7054,190 @@ export class TerrainBuilder {
     return comparison;
   }
 
+  public sampleTerrainLine(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    options: LineSampleOptions = {}
+  ): TerrainLineSample {
+    const {
+      numSamples = 10,
+      includeCornerHeights = false,
+      includePhysics = false,
+      includeSlope = true
+    } = options;
+
+    const samples: TerrainSamplePoint[] = [];
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    let minElevation = Infinity;
+    let maxElevation = -Infinity;
+    let totalElevation = 0;
+    let totalSlope = 0;
+    let maxSlope = 0;
+    const terrainTypes: TerrainType[] = [];
+
+    for (let i = 0; i < numSamples; i++) {
+      const t = numSamples > 1 ? i / (numSamples - 1) : 0;
+      const x = startX + dx * t;
+      const y = startY + dy * t;
+
+      const gridX = Math.floor(x);
+      const gridY = Math.floor(y);
+
+      if (!this.isValidTile(gridX, gridY)) continue;
+
+      const elevation = this.interpolateElevation(x, y);
+      const terrainType = this.getTerrainTypeAt(gridX, gridY);
+
+      minElevation = Math.min(minElevation, elevation);
+      maxElevation = Math.max(maxElevation, elevation);
+      totalElevation += elevation;
+      terrainTypes.push(terrainType);
+
+      const sample: TerrainSamplePoint = {
+        x,
+        y,
+        gridX,
+        gridY,
+        t,
+        distanceFromStart: t * distance,
+        elevation,
+        terrainType
+      };
+
+      if (includeSlope) {
+        const slope = this.getSlopeVectorAt(gridX, gridY);
+        sample.slopeAngle = slope.angle;
+        sample.slopeDirection = slope.direction;
+        sample.slopeMagnitude = slope.magnitude;
+        totalSlope += slope.angle;
+        maxSlope = Math.max(maxSlope, slope.angle);
+      }
+
+      if (includeCornerHeights) {
+        sample.cornerHeights = this.getCornerHeights(gridX, gridY);
+      }
+
+      if (includePhysics) {
+        sample.physics = this.getSurfacePhysicsAt(gridX, gridY);
+      }
+
+      samples.push(sample);
+    }
+
+    const validSamples = samples.length;
+    const avgElevation = validSamples > 0 ? totalElevation / validSamples : 0;
+    const avgSlope = validSamples > 0 ? totalSlope / validSamples : 0;
+
+    const elevationChange = validSamples > 0
+      ? samples[validSamples - 1].elevation - samples[0].elevation
+      : 0;
+    const overallGrade = distance > 0 ? (elevationChange / distance) * 100 : 0;
+
+    const terrainTypeChanges = this.countTerrainTypeChanges(terrainTypes);
+    const dominantTerrainType = this.getDominantTerrainType(terrainTypes);
+
+    return {
+      samples,
+      totalDistance: distance,
+      numValidSamples: validSamples,
+      elevationChange,
+      minElevation: minElevation === Infinity ? 0 : minElevation,
+      maxElevation: maxElevation === -Infinity ? 0 : maxElevation,
+      avgElevation,
+      avgSlope,
+      maxSlope,
+      overallGrade,
+      terrainTypeChanges,
+      dominantTerrainType
+    };
+  }
+
+  private countTerrainTypeChanges(types: TerrainType[]): number {
+    let changes = 0;
+    for (let i = 1; i < types.length; i++) {
+      if (types[i] !== types[i - 1]) changes++;
+    }
+    return changes;
+  }
+
+  private getDominantTerrainType(types: TerrainType[]): TerrainType {
+    const counts: Record<string, number> = {};
+    for (const type of types) {
+      counts[type] = (counts[type] || 0) + 1;
+    }
+    let dominant: TerrainType = 'rough';
+    let maxCount = 0;
+    for (const [type, count] of Object.entries(counts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        dominant = type as TerrainType;
+      }
+    }
+    return dominant;
+  }
+
+  public sampleTerrainPath(
+    points: Array<{ x: number; y: number }>,
+    options: LineSampleOptions = {}
+  ): TerrainPathSample {
+    const segments: TerrainLineSample[] = [];
+    let totalDistance = 0;
+    let totalElevationChange = 0;
+    let minElevation = Infinity;
+    let maxElevation = -Infinity;
+    let totalSlope = 0;
+    let maxSlope = 0;
+    let sampleCount = 0;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      const segment = this.sampleTerrainLine(start.x, start.y, end.x, end.y, options);
+      segments.push(segment);
+
+      totalDistance += segment.totalDistance;
+      totalElevationChange += segment.elevationChange;
+      minElevation = Math.min(minElevation, segment.minElevation);
+      maxElevation = Math.max(maxElevation, segment.maxElevation);
+      maxSlope = Math.max(maxSlope, segment.maxSlope);
+      totalSlope += segment.avgSlope * segment.numValidSamples;
+      sampleCount += segment.numValidSamples;
+    }
+
+    const avgSlope = sampleCount > 0 ? totalSlope / sampleCount : 0;
+
+    return {
+      segments,
+      numSegments: segments.length,
+      totalDistance,
+      totalElevationChange,
+      minElevation: minElevation === Infinity ? 0 : minElevation,
+      maxElevation: maxElevation === -Infinity ? 0 : maxElevation,
+      avgSlope,
+      maxSlope,
+      overallGrade: totalDistance > 0 ? (totalElevationChange / totalDistance) * 100 : 0
+    };
+  }
+
+  public getElevationProfile(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    numSamples: number = 50
+  ): Array<{ distance: number; elevation: number }> {
+    const sample = this.sampleTerrainLine(startX, startY, endX, endY, { numSamples, includeSlope: false });
+    return sample.samples.map(s => ({
+      distance: s.distanceFromStart,
+      elevation: s.elevation
+    }));
+  }
+
   public getNoisePreview(
     width: number,
     height: number,
@@ -8088,6 +8272,56 @@ export interface HeightmapComparison {
     otherValue: number;
     difference: number;
   }>;
+}
+
+export interface LineSampleOptions {
+  numSamples?: number;
+  includeCornerHeights?: boolean;
+  includePhysics?: boolean;
+  includeSlope?: boolean;
+}
+
+export interface TerrainSamplePoint {
+  x: number;
+  y: number;
+  gridX: number;
+  gridY: number;
+  t: number;
+  distanceFromStart: number;
+  elevation: number;
+  terrainType: TerrainType;
+  slopeAngle?: number;
+  slopeDirection?: number;
+  slopeMagnitude?: number;
+  cornerHeights?: CornerHeights;
+  physics?: SurfacePhysics;
+}
+
+export interface TerrainLineSample {
+  samples: TerrainSamplePoint[];
+  totalDistance: number;
+  numValidSamples: number;
+  elevationChange: number;
+  minElevation: number;
+  maxElevation: number;
+  avgElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  overallGrade: number;
+  terrainTypeChanges: number;
+  dominantTerrainType: TerrainType;
+}
+
+export interface TerrainPathSample {
+  segments: TerrainLineSample[];
+  numSegments: number;
+  totalDistance: number;
+  totalElevationChange: number;
+  minElevation: number;
+  maxElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  overallGrade: number;
 }
 
 export interface TerrainDebugInfo {
