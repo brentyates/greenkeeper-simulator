@@ -9025,6 +9025,178 @@ export class TerrainBuilder {
     return 'difficult';
   }
 
+  public computeGaussianSmoothedElevation(gridX: number, gridY: number, sigma: number = 1.0): number {
+    const radius = Math.ceil(sigma * 3);
+    let weightSum = 0;
+    let elevSum = 0;
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = gridX + dx;
+        const ny = gridY + dy;
+        if (!this.isValidGridPosition(nx, ny)) continue;
+
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+
+        elevSum += this.getElevationAt(nx, ny) * weight;
+        weightSum += weight;
+      }
+    }
+
+    return weightSum > 0 ? elevSum / weightSum : this.getElevationAt(gridX, gridY);
+  }
+
+  public computeSmoothedElevationMap(sigma: number = 1.0): number[][] {
+    const { width, height } = this.courseData;
+    const smoothed: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      smoothed[y] = [];
+      for (let x = 0; x < width; x++) {
+        smoothed[y][x] = this.computeGaussianSmoothedElevation(x, y, sigma);
+      }
+    }
+
+    return smoothed;
+  }
+
+  public computeSmoothingDelta(gridX: number, gridY: number, sigma: number = 1.0): number {
+    const original = this.getElevationAt(gridX, gridY);
+    const smoothed = this.computeGaussianSmoothedElevation(gridX, gridY, sigma);
+    return smoothed - original;
+  }
+
+  public findAreasNeedingSmoothing(threshold: number = 0.3, sigma: number = 1.0): Array<{ x: number; y: number; delta: number }> {
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; delta: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const delta = Math.abs(this.computeSmoothingDelta(x, y, sigma));
+        if (delta >= threshold) {
+          areas.push({ x, y, delta });
+        }
+      }
+    }
+
+    areas.sort((a, b) => b.delta - a.delta);
+    return areas;
+  }
+
+  public computeSmoothGradient(gridX: number, gridY: number, sigma: number = 1.0): { dx: number; dy: number; magnitude: number; direction: number } {
+    const h = 0.5;
+    const smoothedCenter = this.computeGaussianSmoothedElevation(gridX, gridY, sigma);
+
+    let smoothedRight = smoothedCenter;
+    let smoothedUp = smoothedCenter;
+
+    if (this.isValidGridPosition(gridX + 1, gridY)) {
+      smoothedRight = this.computeGaussianSmoothedElevation(gridX + 1, gridY, sigma);
+    }
+    if (this.isValidGridPosition(gridX, gridY + 1)) {
+      smoothedUp = this.computeGaussianSmoothedElevation(gridX, gridY + 1, sigma);
+    }
+
+    const dx = (smoothedRight - smoothedCenter) / h;
+    const dy = (smoothedUp - smoothedCenter) / h;
+    const magnitude = Math.sqrt(dx * dx + dy * dy);
+    const direction = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    return { dx, dy, magnitude, direction };
+  }
+
+  public computeLaplacianSmoothing(gridX: number, gridY: number): number {
+    const center = this.getElevationAt(gridX, gridY);
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    let neighborSum = 0;
+    let count = 0;
+
+    for (const n of neighbors) {
+      const nx = gridX + n.dx;
+      const ny = gridY + n.dy;
+      if (this.isValidGridPosition(nx, ny)) {
+        neighborSum += this.getElevationAt(nx, ny);
+        count++;
+      }
+    }
+
+    return count > 0 ? (neighborSum / count) - center : 0;
+  }
+
+  public getSmoothingAnalysis(sigma: number = 1.0): SmoothingAnalysis {
+    const { width, height } = this.courseData;
+
+    let totalDelta = 0;
+    let maxDelta = 0;
+    let maxDeltaLocation = { x: 0, y: 0 };
+    let smoothAreasCount = 0;
+    let roughAreasCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const delta = Math.abs(this.computeSmoothingDelta(x, y, sigma));
+        totalDelta += delta;
+
+        if (delta > maxDelta) {
+          maxDelta = delta;
+          maxDeltaLocation = { x, y };
+        }
+
+        if (delta < 0.1) smoothAreasCount++;
+        else roughAreasCount++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      averageDelta: totalDelta / totalTiles,
+      maxDelta,
+      maxDeltaLocation,
+      smoothAreasCount,
+      roughAreasCount,
+      smoothnessPercentage: (smoothAreasCount / totalTiles) * 100,
+      recommendedSigma: maxDelta > 0.5 ? sigma * 1.5 : sigma
+    };
+  }
+
+  public computeCubicInterpolatedElevation(x: number, y: number): number {
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const tx = x - x0;
+    const ty = y - y0;
+
+    const getElev = (gx: number, gy: number): number => {
+      const cx = Math.max(0, Math.min(this.courseData.width - 1, gx));
+      const cy = Math.max(0, Math.min(this.courseData.height - 1, gy));
+      return this.getElevationAt(cx, cy);
+    };
+
+    const cubicInterp = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
+      const a = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
+      const b = p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3;
+      const c = -0.5 * p0 + 0.5 * p2;
+      const d = p1;
+      return a * t * t * t + b * t * t + c * t + d;
+    };
+
+    const rows: number[] = [];
+    for (let j = -1; j <= 2; j++) {
+      const p0 = getElev(x0 - 1, y0 + j);
+      const p1 = getElev(x0, y0 + j);
+      const p2 = getElev(x0 + 1, y0 + j);
+      const p3 = getElev(x0 + 2, y0 + j);
+      rows.push(cubicInterp(p0, p1, p2, p3, tx));
+    }
+
+    return cubicInterp(rows[0], rows[1], rows[2], rows[3], ty);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -14243,6 +14415,16 @@ export interface ProfileAnalysis {
   flatPercentage: number;
   steepestSection: number;
   difficulty: 'flat' | 'easy' | 'moderate' | 'challenging' | 'difficult';
+}
+
+export interface SmoothingAnalysis {
+  averageDelta: number;
+  maxDelta: number;
+  maxDeltaLocation: { x: number; y: number };
+  smoothAreasCount: number;
+  roughAreasCount: number;
+  smoothnessPercentage: number;
+  recommendedSigma: number;
 }
 
 export interface LineSampleOptions {
