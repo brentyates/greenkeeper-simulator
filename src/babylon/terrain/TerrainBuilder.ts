@@ -13081,6 +13081,393 @@ export class TerrainBuilder {
     return { dx: flowDx, dy: flowDy, magnitude: maxDrop };
   }
 
+  public computeTerrainMoments(): TerrainMomentAnalysis {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        centroid: { x: width / 2, y: height / 2, z: 0 },
+        momentOfInertiaX: 0,
+        momentOfInertiaY: 0,
+        productOfInertia: 0,
+        principalAxis1: 0,
+        principalAxis2: 0,
+        gyrationRadiusX: 0,
+        gyrationRadiusY: 0,
+        totalMass: 0
+      };
+    }
+
+    let totalMass = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let sumZ = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = elevation[y][x];
+        totalMass += elev;
+        sumX += x * elev;
+        sumY += y * elev;
+        sumZ += elev * elev;
+      }
+    }
+
+    const cx = totalMass > 0 ? sumX / totalMass : width / 2;
+    const cy = totalMass > 0 ? sumY / totalMass : height / 2;
+    const cz = totalMass > 0 ? sumZ / totalMass : 0;
+
+    let Ixx = 0;
+    let Iyy = 0;
+    let Ixy = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = elevation[y][x];
+        const dx = x - cx;
+        const dy = y - cy;
+        Ixx += elev * dy * dy;
+        Iyy += elev * dx * dx;
+        Ixy += elev * dx * dy;
+      }
+    }
+
+    const avg = (Ixx + Iyy) / 2;
+    const diff = (Ixx - Iyy) / 2;
+    const discriminant = Math.sqrt(diff * diff + Ixy * Ixy);
+    const principal1 = avg + discriminant;
+    const principal2 = avg - discriminant;
+
+    return {
+      centroid: { x: cx, y: cy, z: cz },
+      momentOfInertiaX: Ixx,
+      momentOfInertiaY: Iyy,
+      productOfInertia: Ixy,
+      principalAxis1: principal1,
+      principalAxis2: principal2,
+      gyrationRadiusX: totalMass > 0 ? Math.sqrt(Ixx / totalMass) : 0,
+      gyrationRadiusY: totalMass > 0 ? Math.sqrt(Iyy / totalMass) : 0,
+      totalMass
+    };
+  }
+
+  public computeTerrainTypeMoments(targetType: TerrainType): TerrainMomentAnalysis {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) {
+      return {
+        centroid: { x: 0, y: 0, z: 0 },
+        momentOfInertiaX: 0,
+        momentOfInertiaY: 0,
+        productOfInertia: 0,
+        principalAxis1: 0,
+        principalAxis2: 0,
+        gyrationRadiusX: 0,
+        gyrationRadiusY: 0,
+        totalMass: 0
+      };
+    }
+
+    let totalMass = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let sumZ = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (getTerrainType(layout[y][x]) !== targetType) continue;
+        const elev = elevation[y][x];
+        const mass = Math.max(1, elev);
+        totalMass += mass;
+        sumX += x * mass;
+        sumY += y * mass;
+        sumZ += elev * mass;
+      }
+    }
+
+    if (totalMass === 0) {
+      return {
+        centroid: { x: 0, y: 0, z: 0 },
+        momentOfInertiaX: 0,
+        momentOfInertiaY: 0,
+        productOfInertia: 0,
+        principalAxis1: 0,
+        principalAxis2: 0,
+        gyrationRadiusX: 0,
+        gyrationRadiusY: 0,
+        totalMass: 0
+      };
+    }
+
+    const cx = sumX / totalMass;
+    const cy = sumY / totalMass;
+    const cz = sumZ / totalMass;
+
+    let Ixx = 0;
+    let Iyy = 0;
+    let Ixy = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (getTerrainType(layout[y][x]) !== targetType) continue;
+        const elev = elevation[y][x];
+        const mass = Math.max(1, elev);
+        const dx = x - cx;
+        const dy = y - cy;
+        Ixx += mass * dy * dy;
+        Iyy += mass * dx * dx;
+        Ixy += mass * dx * dy;
+      }
+    }
+
+    const avg = (Ixx + Iyy) / 2;
+    const diff = (Ixx - Iyy) / 2;
+    const discriminant = Math.sqrt(diff * diff + Ixy * Ixy);
+    const principal1 = avg + discriminant;
+    const principal2 = avg - discriminant;
+
+    return {
+      centroid: { x: cx, y: cy, z: cz },
+      momentOfInertiaX: Ixx,
+      momentOfInertiaY: Iyy,
+      productOfInertia: Ixy,
+      principalAxis1: principal1,
+      principalAxis2: principal2,
+      gyrationRadiusX: Math.sqrt(Ixx / totalMass),
+      gyrationRadiusY: Math.sqrt(Iyy / totalMass),
+      totalMass
+    };
+  }
+
+  public computeElevationDistribution(): ElevationDistribution {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        histogram: [],
+        min: 0,
+        max: 0,
+        mean: 0,
+        median: 0,
+        stdDev: 0,
+        skewness: 0,
+        kurtosis: 0,
+        percentiles: { p10: 0, p25: 0, p50: 0, p75: 0, p90: 0 }
+      };
+    }
+
+    const values: number[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        values.push(elevation[y][x]);
+      }
+    }
+
+    values.sort((a, b) => a - b);
+    const n = values.length;
+    const min = values[0];
+    const max = values[n - 1];
+    const mean = values.reduce((sum, v) => sum + v, 0) / n;
+    const median = n % 2 === 0 ? (values[n / 2 - 1] + values[n / 2]) / 2 : values[Math.floor(n / 2)];
+
+    let variance = 0;
+    let skewSum = 0;
+    let kurtSum = 0;
+
+    for (const v of values) {
+      const diff = v - mean;
+      variance += diff * diff;
+      skewSum += diff * diff * diff;
+      kurtSum += diff * diff * diff * diff;
+    }
+
+    const stdDev = Math.sqrt(variance / n);
+    const skewness = stdDev > 0 ? (skewSum / n) / (stdDev * stdDev * stdDev) : 0;
+    const kurtosis = stdDev > 0 ? (kurtSum / n) / (stdDev * stdDev * stdDev * stdDev) - 3 : 0;
+
+    const percentile = (p: number) => values[Math.floor((n - 1) * p / 100)];
+
+    const numBins = Math.min(20, max - min + 1);
+    const binSize = numBins > 0 ? (max - min) / numBins : 1;
+    const histogram: Array<{ binStart: number; binEnd: number; count: number }> = [];
+
+    for (let i = 0; i < numBins; i++) {
+      histogram.push({
+        binStart: min + i * binSize,
+        binEnd: min + (i + 1) * binSize,
+        count: 0
+      });
+    }
+
+    for (const v of values) {
+      const binIdx = Math.min(Math.floor((v - min) / binSize), numBins - 1);
+      if (binIdx >= 0 && binIdx < histogram.length) {
+        histogram[binIdx].count++;
+      }
+    }
+
+    return {
+      histogram,
+      min,
+      max,
+      mean,
+      median,
+      stdDev,
+      skewness,
+      kurtosis,
+      percentiles: {
+        p10: percentile(10),
+        p25: percentile(25),
+        p50: percentile(50),
+        p75: percentile(75),
+        p90: percentile(90)
+      }
+    };
+  }
+
+  public computeSlopeDistribution(): SlopeDistribution {
+    const { width, height } = this.courseData;
+    const slopes: number[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const slopeVec = this.getSlopeVectorAt(x, y);
+        slopes.push(slopeVec.angle);
+      }
+    }
+
+    slopes.sort((a, b) => a - b);
+    const n = slopes.length;
+    if (n === 0) {
+      return {
+        histogram: [],
+        minSlope: 0,
+        maxSlope: 0,
+        meanSlope: 0,
+        medianSlope: 0,
+        stdDev: 0,
+        flatCount: 0,
+        gentleCount: 0,
+        moderateCount: 0,
+        steepCount: 0,
+        extremeCount: 0
+      };
+    }
+
+    const minSlope = slopes[0];
+    const maxSlope = slopes[n - 1];
+    const meanSlope = slopes.reduce((sum, v) => sum + v, 0) / n;
+    const medianSlope = n % 2 === 0 ? (slopes[n / 2 - 1] + slopes[n / 2]) / 2 : slopes[Math.floor(n / 2)];
+
+    let variance = 0;
+    for (const s of slopes) {
+      variance += (s - meanSlope) * (s - meanSlope);
+    }
+    const stdDev = Math.sqrt(variance / n);
+
+    let flatCount = 0;
+    let gentleCount = 0;
+    let moderateCount = 0;
+    let steepCount = 0;
+    let extremeCount = 0;
+
+    for (const s of slopes) {
+      if (s < 5) flatCount++;
+      else if (s < 15) gentleCount++;
+      else if (s < 30) moderateCount++;
+      else if (s < 45) steepCount++;
+      else extremeCount++;
+    }
+
+    const binSize = 5;
+    const numBins = Math.ceil(90 / binSize);
+    const histogram: Array<{ binStart: number; binEnd: number; count: number }> = [];
+
+    for (let i = 0; i < numBins; i++) {
+      histogram.push({
+        binStart: i * binSize,
+        binEnd: (i + 1) * binSize,
+        count: 0
+      });
+    }
+
+    for (const s of slopes) {
+      const binIdx = Math.min(Math.floor(s / binSize), numBins - 1);
+      if (binIdx >= 0 && binIdx < histogram.length) {
+        histogram[binIdx].count++;
+      }
+    }
+
+    return {
+      histogram,
+      minSlope,
+      maxSlope,
+      meanSlope,
+      medianSlope,
+      stdDev,
+      flatCount,
+      gentleCount,
+      moderateCount,
+      steepCount,
+      extremeCount
+    };
+  }
+
+  public getTerrainBalanceScore(): TerrainBalanceScore {
+    const moments = this.computeTerrainMoments();
+    const { width, height } = this.courseData;
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const distFromCenter = Math.sqrt(
+      Math.pow(moments.centroid.x - centerX, 2) +
+      Math.pow(moments.centroid.y - centerY, 2)
+    );
+    const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+    const centroidBalance = 1 - (distFromCenter / maxDist);
+
+    const inertiaRatio = moments.principalAxis2 > 0
+      ? moments.principalAxis1 / moments.principalAxis2
+      : 1;
+    const inertiaBalance = 1 / (1 + Math.abs(Math.log(inertiaRatio)));
+
+    const elevDist = this.computeElevationDistribution();
+    const skewnessScore = 1 / (1 + Math.abs(elevDist.skewness));
+
+    const overallScore = (centroidBalance * 0.4 + inertiaBalance * 0.4 + skewnessScore * 0.2) * 100;
+
+    return {
+      overallScore,
+      centroidBalance,
+      inertiaBalance,
+      skewnessScore,
+      centroid: moments.centroid,
+      inertiaRatio,
+      recommendations: this.getBalanceRecommendations(centroidBalance, inertiaBalance, elevDist.skewness)
+    };
+  }
+
+  private getBalanceRecommendations(centroidBalance: number, inertiaBalance: number, skewness: number): string[] {
+    const recommendations: string[] = [];
+
+    if (centroidBalance < 0.7) {
+      recommendations.push('Terrain mass center is off-center; consider redistributing elevation');
+    }
+
+    if (inertiaBalance < 0.5) {
+      recommendations.push('Terrain is elongated; consider more uniform distribution');
+    }
+
+    if (skewness > 0.5) {
+      recommendations.push('Terrain is positively skewed; many low areas with few high peaks');
+    } else if (skewness < -0.5) {
+      recommendations.push('Terrain is negatively skewed; many high areas with few valleys');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('Terrain is well-balanced');
+    }
+
+    return recommendations;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -19068,4 +19455,52 @@ export interface FlowAccumulationResult {
   highFlowCells: Array<{ x: number; y: number; value: number }>;
   width: number;
   height: number;
+}
+
+export interface TerrainMomentAnalysis {
+  centroid: { x: number; y: number; z: number };
+  momentOfInertiaX: number;
+  momentOfInertiaY: number;
+  productOfInertia: number;
+  principalAxis1: number;
+  principalAxis2: number;
+  gyrationRadiusX: number;
+  gyrationRadiusY: number;
+  totalMass: number;
+}
+
+export interface ElevationDistribution {
+  histogram: Array<{ binStart: number; binEnd: number; count: number }>;
+  min: number;
+  max: number;
+  mean: number;
+  median: number;
+  stdDev: number;
+  skewness: number;
+  kurtosis: number;
+  percentiles: { p10: number; p25: number; p50: number; p75: number; p90: number };
+}
+
+export interface SlopeDistribution {
+  histogram: Array<{ binStart: number; binEnd: number; count: number }>;
+  minSlope: number;
+  maxSlope: number;
+  meanSlope: number;
+  medianSlope: number;
+  stdDev: number;
+  flatCount: number;
+  gentleCount: number;
+  moderateCount: number;
+  steepCount: number;
+  extremeCount: number;
+}
+
+export interface TerrainBalanceScore {
+  overallScore: number;
+  centroidBalance: number;
+  inertiaBalance: number;
+  skewnessScore: number;
+  centroid: { x: number; y: number; z: number };
+  inertiaRatio: number;
+  recommendations: string[];
 }
