@@ -5858,6 +5858,193 @@ export class TerrainBuilder {
     return areas.sort((a, b) => a.avgInsolation - b.avgInsolation).slice(0, 10);
   }
 
+  public computeWindExposure(windAzimuth: number, maxFetchDistance: number = 20): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const exposure: number[][] = [];
+    const windAzRad = (windAzimuth * Math.PI) / 180;
+    const windDirX = Math.sin(windAzRad);
+    const windDirY = Math.cos(windAzRad);
+
+    for (let y = 0; y < height; y++) {
+      exposure[y] = [];
+      for (let x = 0; x < width; x++) {
+        const currentElev = elevation[y][x];
+        let fetchDistance = 0;
+        let maxUpwindElev = currentElev;
+        let totalElevDiff = 0;
+
+        for (let d = 1; d <= maxFetchDistance; d++) {
+          const upwindX = Math.round(x - windDirX * d);
+          const upwindY = Math.round(y - windDirY * d);
+
+          if (upwindX < 0 || upwindX >= width || upwindY < 0 || upwindY >= height) break;
+
+          const upwindElev = elevation[upwindY][upwindX];
+          if (upwindElev > maxUpwindElev) {
+            maxUpwindElev = upwindElev;
+          }
+          totalElevDiff += currentElev - upwindElev;
+          fetchDistance = d;
+        }
+
+        const shelteredFactor = maxUpwindElev > currentElev ?
+          Math.max(0, 1 - (maxUpwindElev - currentElev) / 3) : 1;
+        const fetchFactor = fetchDistance / maxFetchDistance;
+        const exposureFactor = totalElevDiff > 0 ? Math.min(1, totalElevDiff / (fetchDistance * 2 + 1)) : 0;
+
+        exposure[y][x] = shelteredFactor * (0.5 + 0.3 * fetchFactor + 0.2 * exposureFactor);
+      }
+    }
+
+    return exposure;
+  }
+
+  public computeMultiDirectionalWindExposure(directions: number[] = [0, 45, 90, 135, 180, 225, 270, 315]): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const combinedExposure: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      combinedExposure[y] = [];
+      for (let x = 0; x < width; x++) {
+        combinedExposure[y][x] = 0;
+      }
+    }
+
+    for (const dir of directions) {
+      const dirExposure = this.computeWindExposure(dir);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          combinedExposure[y][x] += dirExposure[y]?.[x] ?? 0;
+        }
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        combinedExposure[y][x] /= directions.length;
+      }
+    }
+
+    return combinedExposure;
+  }
+
+  public classifyWindExposure(gridX: number, gridY: number, windAzimuth: number): 'windward' | 'leeward' | 'neutral' {
+    const { elevation } = this.courseData;
+    if (!elevation || !this.isValidGridPosition(gridX, gridY)) return 'neutral';
+
+    const aspect = this.getAspect(gridX, gridY);
+    const angleDiff = Math.abs(((aspect - windAzimuth + 180) % 360) - 180);
+
+    if (angleDiff < 60) return 'windward';
+    if (angleDiff > 120) return 'leeward';
+    return 'neutral';
+  }
+
+  public getWindExposureAnalysis(windAzimuth: number = 270): WindExposureAnalysis {
+    const exposure = this.computeWindExposure(windAzimuth);
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        windDirection: windAzimuth,
+        minExposure: 0,
+        maxExposure: 0,
+        avgExposure: 0,
+        windwardTileCount: 0,
+        leewardTileCount: 0,
+        neutralTileCount: 0,
+        highlyExposedPercentage: 0,
+        shelteredPercentage: 0
+      };
+    }
+
+    let minExposure = Infinity;
+    let maxExposure = -Infinity;
+    let totalExposure = 0;
+    let count = 0;
+    let windwardCount = 0;
+    let leewardCount = 0;
+    let neutralCount = 0;
+    let highlyExposedCount = 0;
+    let shelteredCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const exp = exposure[y]?.[x] ?? 0;
+        minExposure = Math.min(minExposure, exp);
+        maxExposure = Math.max(maxExposure, exp);
+        totalExposure += exp;
+        count++;
+
+        if (exp > 0.8) highlyExposedCount++;
+        if (exp < 0.3) shelteredCount++;
+
+        const classification = this.classifyWindExposure(x, y, windAzimuth);
+        if (classification === 'windward') windwardCount++;
+        else if (classification === 'leeward') leewardCount++;
+        else neutralCount++;
+      }
+    }
+
+    return {
+      windDirection: windAzimuth,
+      minExposure: count > 0 ? minExposure : 0,
+      maxExposure: count > 0 ? maxExposure : 0,
+      avgExposure: count > 0 ? totalExposure / count : 0,
+      windwardTileCount: windwardCount,
+      leewardTileCount: leewardCount,
+      neutralTileCount: neutralCount,
+      highlyExposedPercentage: count > 0 ? (highlyExposedCount / count) * 100 : 0,
+      shelteredPercentage: count > 0 ? (shelteredCount / count) * 100 : 0
+    };
+  }
+
+  public findMostExposedAreas(windAzimuth: number = 270, minSize: number = 5): Array<{ x: number; y: number; avgExposure: number }> {
+    const exposure = this.computeWindExposure(windAzimuth);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgExposure: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += exposure[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+        areas.push({ x, y, avgExposure: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgExposure - a.avgExposure).slice(0, 10);
+  }
+
+  public findMostShelteredAreas(windAzimuth: number = 270, minSize: number = 5): Array<{ x: number; y: number; avgExposure: number }> {
+    const exposure = this.computeWindExposure(windAzimuth);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgExposure: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += exposure[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+        areas.push({ x, y, avgExposure: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => a.avgExposure - b.avgExposure).slice(0, 10);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -10847,6 +11034,18 @@ export interface SolarAnalysis {
   partialSunTileCount: number;
   shadedPercentage: number;
   fullSunPercentage: number;
+}
+
+export interface WindExposureAnalysis {
+  windDirection: number;
+  minExposure: number;
+  maxExposure: number;
+  avgExposure: number;
+  windwardTileCount: number;
+  leewardTileCount: number;
+  neutralTileCount: number;
+  highlyExposedPercentage: number;
+  shelteredPercentage: number;
 }
 
 export interface LineSampleOptions {
