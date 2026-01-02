@@ -5607,6 +5607,203 @@ export class TerrainBuilder {
       avgSlopeDelta: totalTiles > 0 ? totalDelta / totalTiles : 0
     };
   }
+
+  public isTileSubmerged(gridX: number, gridY: number): boolean {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const maxHeight = Math.max(corners.nw, corners.ne, corners.se, corners.sw);
+    return maxHeight < this.waterLevel;
+  }
+
+  public isTilePartiallySubmerged(gridX: number, gridY: number): boolean {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const minHeight = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+    const maxHeight = Math.max(corners.nw, corners.ne, corners.se, corners.sw);
+    return minHeight < this.waterLevel && maxHeight >= this.waterLevel;
+  }
+
+  public getTileSubmersionDepth(gridX: number, gridY: number): number {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const avgHeight = (corners.nw + corners.ne + corners.se + corners.sw) / 4;
+    return Math.max(0, this.waterLevel - avgHeight);
+  }
+
+  public getSubmergedTiles(): Array<{ x: number; y: number; depth: number }> {
+    const { width, height } = this.courseData;
+    const submerged: Array<{ x: number; y: number; depth: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.isTileSubmerged(x, y)) {
+          submerged.push({
+            x,
+            y,
+            depth: this.getTileSubmersionDepth(x, y)
+          });
+        }
+      }
+    }
+
+    return submerged;
+  }
+
+  public getPartiallySubmergedTiles(): Array<{ x: number; y: number; submergedCorners: string[] }> {
+    const { width, height } = this.courseData;
+    const partial: Array<{ x: number; y: number; submergedCorners: string[] }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.isTilePartiallySubmerged(x, y)) {
+          const corners = this.getCornerHeights(x, y);
+          const submergedCorners: string[] = [];
+          if (corners.nw < this.waterLevel) submergedCorners.push('nw');
+          if (corners.ne < this.waterLevel) submergedCorners.push('ne');
+          if (corners.se < this.waterLevel) submergedCorners.push('se');
+          if (corners.sw < this.waterLevel) submergedCorners.push('sw');
+          partial.push({ x, y, submergedCorners });
+        }
+      }
+    }
+
+    return partial;
+  }
+
+  public getSubmergedTileCount(): number {
+    const { width, height } = this.courseData;
+    let count = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.isTileSubmerged(x, y)) {
+          count++;
+        }
+      }
+    }
+
+    return count;
+  }
+
+  public getSubmersionStatistics(): {
+    totalSubmerged: number;
+    partiallySubmerged: number;
+    aboveWater: number;
+    avgSubmersionDepth: number;
+    maxSubmersionDepth: number;
+    waterLevel: number;
+  } {
+    const { width, height } = this.courseData;
+    let totalSubmerged = 0;
+    let partiallySubmerged = 0;
+    let totalDepth = 0;
+    let maxDepth = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.isTileSubmerged(x, y)) {
+          totalSubmerged++;
+          const depth = this.getTileSubmersionDepth(x, y);
+          totalDepth += depth;
+          maxDepth = Math.max(maxDepth, depth);
+        } else if (this.isTilePartiallySubmerged(x, y)) {
+          partiallySubmerged++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      totalSubmerged,
+      partiallySubmerged,
+      aboveWater: totalTiles - totalSubmerged - partiallySubmerged,
+      avgSubmersionDepth: totalSubmerged > 0 ? totalDepth / totalSubmerged : 0,
+      maxSubmersionDepth: maxDepth,
+      waterLevel: this.waterLevel
+    };
+  }
+
+  public getCornerSubmersionState(gridX: number, gridY: number): {
+    nw: boolean;
+    ne: boolean;
+    se: boolean;
+    sw: boolean;
+    submergedCount: number;
+  } {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const nw = corners.nw < this.waterLevel;
+    const ne = corners.ne < this.waterLevel;
+    const se = corners.se < this.waterLevel;
+    const sw = corners.sw < this.waterLevel;
+
+    return {
+      nw,
+      ne,
+      se,
+      sw,
+      submergedCount: (nw ? 1 : 0) + (ne ? 1 : 0) + (se ? 1 : 0) + (sw ? 1 : 0)
+    };
+  }
+
+  public findShoreline(): Array<{ x: number; y: number; edge: 'n' | 's' | 'e' | 'w' }> {
+    const { width, height } = this.courseData;
+    const shoreline: Array<{ x: number; y: number; edge: 'n' | 's' | 'e' | 'w' }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const submerged = this.isTileSubmerged(x, y) || this.isTilePartiallySubmerged(x, y);
+        if (!submerged) continue;
+
+        if (y > 0) {
+          const northSubmerged = this.isTileSubmerged(x, y - 1) || this.isTilePartiallySubmerged(x, y - 1);
+          if (!northSubmerged) shoreline.push({ x, y, edge: 'n' });
+        } else {
+          shoreline.push({ x, y, edge: 'n' });
+        }
+
+        if (y < height - 1) {
+          const southSubmerged = this.isTileSubmerged(x, y + 1) || this.isTilePartiallySubmerged(x, y + 1);
+          if (!southSubmerged) shoreline.push({ x, y, edge: 's' });
+        } else {
+          shoreline.push({ x, y, edge: 's' });
+        }
+
+        if (x > 0) {
+          const westSubmerged = this.isTileSubmerged(x - 1, y) || this.isTilePartiallySubmerged(x - 1, y);
+          if (!westSubmerged) shoreline.push({ x, y, edge: 'w' });
+        } else {
+          shoreline.push({ x, y, edge: 'w' });
+        }
+
+        if (x < width - 1) {
+          const eastSubmerged = this.isTileSubmerged(x + 1, y) || this.isTilePartiallySubmerged(x + 1, y);
+          if (!eastSubmerged) shoreline.push({ x, y, edge: 'e' });
+        } else {
+          shoreline.push({ x, y, edge: 'e' });
+        }
+      }
+    }
+
+    return shoreline;
+  }
+
+  public getTilesAtWaterLevel(): Array<{ x: number; y: number }> {
+    const { width, height } = this.courseData;
+    const tiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const corners = this.getCornerHeights(x, y);
+        const hasCornerAtWaterLevel =
+          corners.nw === this.waterLevel ||
+          corners.ne === this.waterLevel ||
+          corners.se === this.waterLevel ||
+          corners.sw === this.waterLevel;
+        if (hasCornerAtWaterLevel) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+
+    return tiles;
+  }
 }
 
 export interface TerrainStatistics {
