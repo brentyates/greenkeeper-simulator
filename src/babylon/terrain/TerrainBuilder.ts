@@ -7855,6 +7855,215 @@ export class TerrainBuilder {
     return barrierLocations.slice(0, 20);
   }
 
+  public computeSurfaceWaterAccumulation(rainfallAmount: number = 1.0, iterations: number = 50): number[][] {
+    const { width, height } = this.courseData;
+    const waterDepth: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      waterDepth[y] = [];
+      for (let x = 0; x < width; x++) {
+        waterDepth[y][x] = rainfallAmount;
+      }
+    }
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const newWater: number[][] = [];
+      for (let y = 0; y < height; y++) {
+        newWater[y] = [];
+        for (let x = 0; x < width; x++) {
+          newWater[y][x] = waterDepth[y][x];
+        }
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (waterDepth[y][x] <= 0) continue;
+
+          const currentElev = this.getElevationAt(x, y);
+          const waterSurface = currentElev + waterDepth[y][x];
+
+          let totalOutflow = 0;
+          const outflows: Array<{ nx: number; ny: number; amount: number }> = [];
+
+          for (const n of neighbors) {
+            const nx = x + n.dx;
+            const ny = y + n.dy;
+            if (!this.isValidGridPosition(nx, ny)) continue;
+
+            const neighborElev = this.getElevationAt(nx, ny);
+            const neighborWaterSurface = neighborElev + waterDepth[ny][nx];
+
+            if (waterSurface > neighborWaterSurface) {
+              const diff = waterSurface - neighborWaterSurface;
+              const flow = Math.min(waterDepth[y][x] * 0.25, diff * 0.5);
+              if (flow > 0.001) {
+                outflows.push({ nx, ny, amount: flow });
+                totalOutflow += flow;
+              }
+            }
+          }
+
+          if (totalOutflow > waterDepth[y][x]) {
+            const scale = waterDepth[y][x] / totalOutflow;
+            for (const outflow of outflows) {
+              outflow.amount *= scale;
+            }
+            totalOutflow = waterDepth[y][x];
+          }
+
+          newWater[y][x] -= totalOutflow;
+          for (const outflow of outflows) {
+            newWater[outflow.ny][outflow.nx] += outflow.amount;
+          }
+        }
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          waterDepth[y][x] = newWater[y][x];
+        }
+      }
+    }
+
+    return waterDepth;
+  }
+
+  public findPondingAreas(rainfallAmount: number = 1.0, threshold: number = 0.5): Array<{ x: number; y: number; depth: number }> {
+    const waterDepth = this.computeSurfaceWaterAccumulation(rainfallAmount);
+    const { width, height } = this.courseData;
+    const pondingAreas: Array<{ x: number; y: number; depth: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (waterDepth[y][x] >= threshold) {
+          pondingAreas.push({ x, y, depth: waterDepth[y][x] });
+        }
+      }
+    }
+
+    pondingAreas.sort((a, b) => b.depth - a.depth);
+    return pondingAreas;
+  }
+
+  public classifyPondingRisk(gridX: number, gridY: number, rainfallAmount: number = 1.0): 'none' | 'minimal' | 'moderate' | 'significant' | 'severe' {
+    const waterDepth = this.computeSurfaceWaterAccumulation(rainfallAmount);
+    const depth = waterDepth[gridY]?.[gridX] ?? 0;
+
+    if (depth < 0.1) return 'none';
+    if (depth < 0.3) return 'minimal';
+    if (depth < 0.6) return 'moderate';
+    if (depth < 1.0) return 'significant';
+    return 'severe';
+  }
+
+  public getPondingAnalysis(rainfallAmount: number = 1.0): PondingAnalysis {
+    const waterDepth = this.computeSurfaceWaterAccumulation(rainfallAmount);
+    const { width, height } = this.courseData;
+
+    const counts = {
+      none: 0,
+      minimal: 0,
+      moderate: 0,
+      significant: 0,
+      severe: 0
+    };
+
+    let totalDepth = 0;
+    let maxDepth = 0;
+    let maxDepthLocation = { x: 0, y: 0 };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const depth = waterDepth[y][x];
+        totalDepth += depth;
+
+        if (depth > maxDepth) {
+          maxDepth = depth;
+          maxDepthLocation = { x, y };
+        }
+
+        if (depth < 0.1) counts.none++;
+        else if (depth < 0.3) counts.minimal++;
+        else if (depth < 0.6) counts.moderate++;
+        else if (depth < 1.0) counts.significant++;
+        else counts.severe++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      averageDepth: totalDepth / totalTiles,
+      maxDepth,
+      maxDepthLocation,
+      noneCount: counts.none,
+      minimalCount: counts.minimal,
+      moderateCount: counts.moderate,
+      significantCount: counts.significant,
+      severeCount: counts.severe,
+      pondingPercentage: ((counts.moderate + counts.significant + counts.severe) / totalTiles) * 100
+    };
+  }
+
+  public findDrainageOutlets(rainfallAmount: number = 1.0): Array<{ x: number; y: number }> {
+    const waterDepth = this.computeSurfaceWaterAccumulation(rainfallAmount);
+    const { width, height } = this.courseData;
+    const outlets: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+          if (waterDepth[y][x] > 0.1) {
+            outlets.push({ x, y });
+          }
+        }
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType === 'water' && waterDepth[y][x] > 0.1) {
+          outlets.push({ x, y });
+        }
+      }
+    }
+
+    return outlets;
+  }
+
+  public findOptimalDrainLocations(rainfallAmount: number = 1.0, count: number = 5): Array<{ x: number; y: number; impact: number }> {
+    const waterDepth = this.computeSurfaceWaterAccumulation(rainfallAmount);
+    const { width, height } = this.courseData;
+
+    const candidates: Array<{ x: number; y: number; impact: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (waterDepth[y][x] < 0.3) continue;
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType === 'water' || terrainType === 'bunker') continue;
+
+        let neighboringWater = 0;
+        const neighbors = [
+          { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+          { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+        ];
+        for (const n of neighbors) {
+          neighboringWater += waterDepth[y + n.dy]?.[x + n.dx] ?? 0;
+        }
+
+        const impact = waterDepth[y][x] + neighboringWater * 0.5;
+        candidates.push({ x, y, impact });
+      }
+    }
+
+    candidates.sort((a, b) => b.impact - a.impact);
+    return candidates.slice(0, count);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -12978,6 +13187,18 @@ export interface ErosionAnalysis {
   highRiskCount: number;
   severeRiskCount: number;
   atRiskPercentage: number;
+}
+
+export interface PondingAnalysis {
+  averageDepth: number;
+  maxDepth: number;
+  maxDepthLocation: { x: number; y: number };
+  noneCount: number;
+  minimalCount: number;
+  moderateCount: number;
+  significantCount: number;
+  severeCount: number;
+  pondingPercentage: number;
 }
 
 export interface LineSampleOptions {
