@@ -1444,6 +1444,126 @@ export class TerrainBuilder {
     count += this.obstacleMeshes.filter(m => m.isEnabled()).length;
     return count;
   }
+
+  public setTileVisibilityInRegion(
+    minGridX: number,
+    minGridY: number,
+    maxGridX: number,
+    maxGridY: number,
+    visible: boolean
+  ): number {
+    let count = 0;
+    const { width, height } = this.courseData;
+
+    const clampedMinX = Math.max(0, minGridX);
+    const clampedMaxX = Math.min(width - 1, maxGridX);
+    const clampedMinY = Math.max(0, minGridY);
+    const clampedMaxY = Math.min(height - 1, maxGridY);
+
+    for (let y = clampedMinY; y <= clampedMaxY; y++) {
+      for (let x = clampedMinX; x <= clampedMaxX; x++) {
+        const key = `${x}_${y}`;
+        const mesh = this.tileMap.get(key);
+        if (mesh && mesh.isEnabled() !== visible) {
+          mesh.setEnabled(visible);
+          count++;
+        }
+      }
+    }
+
+    return count;
+  }
+
+  public hideAllTiles(): void {
+    for (const mesh of this.tileMeshes) {
+      mesh.setEnabled(false);
+    }
+  }
+
+  public showAllTiles(): void {
+    for (const mesh of this.tileMeshes) {
+      mesh.setEnabled(true);
+    }
+  }
+
+  public updateVisibleRegion(
+    centerGridX: number,
+    centerGridY: number,
+    viewRadius: number
+  ): { shown: number; hidden: number } {
+    const { width, height } = this.courseData;
+
+    const minX = Math.max(0, Math.floor(centerGridX - viewRadius));
+    const maxX = Math.min(width - 1, Math.ceil(centerGridX + viewRadius));
+    const minY = Math.max(0, Math.floor(centerGridY - viewRadius));
+    const maxY = Math.min(height - 1, Math.ceil(centerGridY + viewRadius));
+
+    let shown = 0;
+    let hidden = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        const mesh = this.tileMap.get(key);
+        if (!mesh) continue;
+
+        const inRegion = x >= minX && x <= maxX && y >= minY && y <= maxY;
+        if (inRegion && !mesh.isEnabled()) {
+          mesh.setEnabled(true);
+          shown++;
+        } else if (!inRegion && mesh.isEnabled()) {
+          mesh.setEnabled(false);
+          hidden++;
+        }
+      }
+    }
+
+    return { shown, hidden };
+  }
+
+  public getVisibleTileCount(): number {
+    let count = 0;
+    for (const mesh of this.tileMeshes) {
+      if (mesh.isEnabled()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public getTerrainBounds(): {
+    minWorldX: number;
+    maxWorldX: number;
+    minWorldY: number;
+    maxWorldY: number;
+  } {
+    const { width, height } = this.courseData;
+
+    const topLeft = this.gridToWorld(0, 0);
+    const topRight = this.gridToWorld(width - 1, 0);
+    const bottomLeft = this.gridToWorld(0, height - 1);
+    const bottomRight = this.gridToWorld(width - 1, height - 1);
+
+    return {
+      minWorldX: Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x),
+      maxWorldX: Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x),
+      minWorldY: Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y),
+      maxWorldY: Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)
+    };
+  }
+
+  public isPointInTerrain(worldX: number, worldY: number): boolean {
+    const grid = this.worldToGrid(worldX, worldY);
+    return this.isValidGridPosition(grid.x, grid.y);
+  }
+
+  public clampToTerrain(gridX: number, gridY: number): { x: number; y: number } {
+    const { width, height } = this.courseData;
+    return {
+      x: Math.max(0, Math.min(width - 1, gridX)),
+      y: Math.max(0, Math.min(height - 1, gridY))
+    };
+  }
 }
 
 export interface TerrainStatistics {
