@@ -13978,6 +13978,261 @@ export class TerrainBuilder {
     return (elevRangeSim * 0.25 + meanElevSim * 0.25 + slopeSim * 0.25 + typeSim * 0.25);
   }
 
+  public computeTerrainHomogeneity(windowSize: number = 5): TerrainHomogeneityResult {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        homogeneityMap: [],
+        meanHomogeneity: 0,
+        minHomogeneity: 0,
+        maxHomogeneity: 0,
+        heterogeneousRegions: [],
+        homogeneousRegions: []
+      };
+    }
+
+    const homogeneityMap: number[][] = [];
+    let sumHomogeneity = 0;
+    let minHomogeneity = Infinity;
+    let maxHomogeneity = -Infinity;
+    let count = 0;
+
+    for (let y = 0; y < height; y++) {
+      homogeneityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const halfWindow = Math.floor(windowSize / 2);
+        let localSum = 0;
+        let localSumSq = 0;
+        let localCount = 0;
+
+        for (let dy = -halfWindow; dy <= halfWindow; dy++) {
+          for (let dx = -halfWindow; dx <= halfWindow; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const elev = elevation[ny][nx];
+              localSum += elev;
+              localSumSq += elev * elev;
+              localCount++;
+            }
+          }
+        }
+
+        const localVariance = localCount > 1 ?
+          (localSumSq - localSum * localSum / localCount) / (localCount - 1) : 0;
+        const homogeneity = 1 / (1 + Math.sqrt(localVariance));
+
+        homogeneityMap[y][x] = homogeneity;
+        sumHomogeneity += homogeneity;
+        minHomogeneity = Math.min(minHomogeneity, homogeneity);
+        maxHomogeneity = Math.max(maxHomogeneity, homogeneity);
+        count++;
+      }
+    }
+
+    const meanHomogeneity = count > 0 ? sumHomogeneity / count : 0;
+    const threshold = meanHomogeneity;
+
+    const heterogeneousRegions: Array<{ x: number; y: number; homogeneity: number }> = [];
+    const homogeneousRegions: Array<{ x: number; y: number; homogeneity: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const h = homogeneityMap[y][x];
+        if (h < threshold * 0.7) {
+          heterogeneousRegions.push({ x, y, homogeneity: h });
+        } else if (h > threshold * 1.3) {
+          homogeneousRegions.push({ x, y, homogeneity: h });
+        }
+      }
+    }
+
+    return {
+      homogeneityMap,
+      meanHomogeneity,
+      minHomogeneity: minHomogeneity === Infinity ? 0 : minHomogeneity,
+      maxHomogeneity: maxHomogeneity === -Infinity ? 0 : maxHomogeneity,
+      heterogeneousRegions: heterogeneousRegions.slice(0, 50),
+      homogeneousRegions: homogeneousRegions.slice(0, 50)
+    };
+  }
+
+  public computeElevationGLCM(numLevels: number = 8, distance: number = 1): GLCMResult {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        matrix: [],
+        contrast: 0,
+        dissimilarity: 0,
+        homogeneity: 0,
+        energy: 0,
+        correlation: 0,
+        entropy: 0
+      };
+    }
+
+    const minElev = this.courseData.elevation?.flat().reduce((a, b) => Math.min(a, b), Infinity) ?? 0;
+    const maxElev = this.courseData.elevation?.flat().reduce((a, b) => Math.max(a, b), -Infinity) ?? 1;
+    const range = maxElev - minElev || 1;
+
+    const quantize = (val: number) => {
+      const normalized = (val - minElev) / range;
+      return Math.min(numLevels - 1, Math.floor(normalized * numLevels));
+    };
+
+    const glcm: number[][] = [];
+    for (let i = 0; i < numLevels; i++) {
+      glcm[i] = new Array(numLevels).fill(0);
+    }
+
+    let totalPairs = 0;
+    const directions = [
+      { dx: distance, dy: 0 },
+      { dx: 0, dy: distance },
+      { dx: distance, dy: distance },
+      { dx: -distance, dy: distance }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const level1 = quantize(elevation[y][x]);
+
+        for (const { dx, dy } of directions) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const level2 = quantize(elevation[ny][nx]);
+            glcm[level1][level2]++;
+            glcm[level2][level1]++;
+            totalPairs += 2;
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < numLevels; i++) {
+      for (let j = 0; j < numLevels; j++) {
+        glcm[i][j] /= totalPairs || 1;
+      }
+    }
+
+    let contrast = 0;
+    let dissimilarity = 0;
+    let homogeneity = 0;
+    let energy = 0;
+    let entropy = 0;
+
+    let muI = 0, muJ = 0;
+    for (let i = 0; i < numLevels; i++) {
+      for (let j = 0; j < numLevels; j++) {
+        muI += i * glcm[i][j];
+        muJ += j * glcm[i][j];
+      }
+    }
+
+    let sigmaI = 0, sigmaJ = 0;
+    for (let i = 0; i < numLevels; i++) {
+      for (let j = 0; j < numLevels; j++) {
+        sigmaI += (i - muI) * (i - muI) * glcm[i][j];
+        sigmaJ += (j - muJ) * (j - muJ) * glcm[i][j];
+      }
+    }
+    sigmaI = Math.sqrt(sigmaI);
+    sigmaJ = Math.sqrt(sigmaJ);
+
+    let correlation = 0;
+
+    for (let i = 0; i < numLevels; i++) {
+      for (let j = 0; j < numLevels; j++) {
+        const p = glcm[i][j];
+        const diff = Math.abs(i - j);
+
+        contrast += diff * diff * p;
+        dissimilarity += diff * p;
+        homogeneity += p / (1 + diff * diff);
+        energy += p * p;
+        if (p > 0) {
+          entropy -= p * Math.log2(p);
+        }
+        if (sigmaI > 0 && sigmaJ > 0) {
+          correlation += (i - muI) * (j - muJ) * p / (sigmaI * sigmaJ);
+        }
+      }
+    }
+
+    return {
+      matrix: glcm,
+      contrast,
+      dissimilarity,
+      homogeneity,
+      energy,
+      correlation,
+      entropy
+    };
+  }
+
+  public analyzeTextureAtScale(scale: number): TextureAnalysisResult {
+    const glcm = this.computeElevationGLCM(8, scale);
+    const homogeneity = this.computeTerrainHomogeneity(scale * 2 + 1);
+
+    let textureType: 'smooth' | 'rough' | 'periodic' | 'random' = 'random';
+    if (glcm.homogeneity > 0.7) textureType = 'smooth';
+    else if (glcm.contrast > 5) textureType = 'rough';
+    else if (glcm.correlation > 0.5) textureType = 'periodic';
+
+    return {
+      scale,
+      glcmFeatures: {
+        contrast: glcm.contrast,
+        dissimilarity: glcm.dissimilarity,
+        homogeneity: glcm.homogeneity,
+        energy: glcm.energy,
+        correlation: glcm.correlation,
+        entropy: glcm.entropy
+      },
+      localHomogeneity: homogeneity.meanHomogeneity,
+      textureType,
+      roughnessIndex: glcm.contrast / (glcm.homogeneity + 0.001),
+      regularityIndex: glcm.energy * 100
+    };
+  }
+
+  public computeMultiscaleTextureAnalysis(scales: number[] = [1, 2, 4, 8]): MultiscaleTextureResult {
+    const analyses: Array<{ scale: number; analysis: TextureAnalysisResult }> = [];
+
+    for (const scale of scales) {
+      analyses.push({
+        scale,
+        analysis: this.analyzeTextureAtScale(scale)
+      });
+    }
+
+    const avgRoughness = analyses.reduce((sum, a) => sum + a.analysis.roughnessIndex, 0) / analyses.length;
+    const avgRegularity = analyses.reduce((sum, a) => sum + a.analysis.regularityIndex, 0) / analyses.length;
+
+    const roughnessChange = analyses.length > 1 ?
+      analyses[analyses.length - 1].analysis.roughnessIndex - analyses[0].analysis.roughnessIndex : 0;
+
+    let dominantScale = scales[0];
+    let maxVariation = 0;
+    for (const a of analyses) {
+      const variation = a.analysis.glcmFeatures.entropy * a.analysis.roughnessIndex;
+      if (variation > maxVariation) {
+        maxVariation = variation;
+        dominantScale = a.scale;
+      }
+    }
+
+    return {
+      scaleAnalyses: analyses,
+      averageRoughness: avgRoughness,
+      averageRegularity: avgRegularity,
+      roughnessScaleDependence: roughnessChange,
+      dominantTextureScale: dominantScale,
+      isFractal: Math.abs(roughnessChange) < avgRoughness * 0.3
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -20104,4 +20359,48 @@ export interface LocalTerrainSignature {
   elevationRange: number;
   terrainTypeCounts: Record<string, number>;
   dominantTerrainType: TerrainType;
+}
+
+export interface TerrainHomogeneityResult {
+  homogeneityMap: number[][];
+  meanHomogeneity: number;
+  minHomogeneity: number;
+  maxHomogeneity: number;
+  heterogeneousRegions: Array<{ x: number; y: number; homogeneity: number }>;
+  homogeneousRegions: Array<{ x: number; y: number; homogeneity: number }>;
+}
+
+export interface GLCMResult {
+  matrix: number[][];
+  contrast: number;
+  dissimilarity: number;
+  homogeneity: number;
+  energy: number;
+  correlation: number;
+  entropy: number;
+}
+
+export interface TextureAnalysisResult {
+  scale: number;
+  glcmFeatures: {
+    contrast: number;
+    dissimilarity: number;
+    homogeneity: number;
+    energy: number;
+    correlation: number;
+    entropy: number;
+  };
+  localHomogeneity: number;
+  textureType: 'smooth' | 'rough' | 'periodic' | 'random';
+  roughnessIndex: number;
+  regularityIndex: number;
+}
+
+export interface MultiscaleTextureResult {
+  scaleAnalyses: Array<{ scale: number; analysis: TextureAnalysisResult }>;
+  averageRoughness: number;
+  averageRegularity: number;
+  roughnessScaleDependence: number;
+  dominantTextureScale: number;
+  isFractal: boolean;
 }
