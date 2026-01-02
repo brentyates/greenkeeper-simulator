@@ -8,13 +8,21 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 
 import { CourseData } from '../../data/courseData';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES } from '../../core/terrain';
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics } from '../../core/terrain';
 
 export interface CornerHeights {
   nw: number;
   ne: number;
   se: number;
   sw: number;
+}
+
+export interface FaceMetadata {
+  gridX: number;
+  gridY: number;
+  terrainType: TerrainType;
+  physics: SurfacePhysics;
+  isCliff: boolean;
 }
 
 export class TerrainBuilder {
@@ -25,6 +33,9 @@ export class TerrainBuilder {
   private mowedState: boolean[][] = [];
   private gridLines: LinesMesh | null = null;
   private obstacleMeshes: Mesh[] = [];
+  private faceIdToMetadata: Map<number, FaceMetadata> = new Map();
+  private meshToFaceOffset: Map<Mesh, number> = new Map();
+  private nextFaceId: number = 0;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -32,6 +43,9 @@ export class TerrainBuilder {
   }
 
   public build(): void {
+    this.faceIdToMetadata.clear();
+    this.meshToFaceOffset.clear();
+    this.nextFaceId = 0;
     this.initMowedState();
     this.buildTiles();
     this.buildGridLines();
@@ -77,7 +91,7 @@ export class TerrainBuilder {
     }
   }
 
-  private createIsometricTile(gridX: number, gridY: number, elevation: number, terrainType: number, isMowed: boolean = false): Mesh {
+  private createIsometricTile(gridX: number, gridY: number, _elevation: number, terrainType: number, isMowed: boolean = false): Mesh {
     const corners = this.getCornerHeights(gridX, gridY);
     const baseElev = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
     const center = this.gridToScreen(gridX, gridY, baseElev);
@@ -136,6 +150,10 @@ export class TerrainBuilder {
     const material = this.getTileMaterial();
     mesh.material = material;
     mesh.useVertexColors = true;
+
+    const tType = getTerrainType(terrainType);
+    const physics = getSurfacePhysics(tType);
+    this.registerFaceMetadata(mesh, gridX, gridY, tType, physics, false);
 
     return mesh;
   }
@@ -205,10 +223,14 @@ export class TerrainBuilder {
     mesh.material = material;
     mesh.useVertexColors = true;
 
+    const tType = getTerrainType(terrainType);
+    const physics = getSurfacePhysics(tType);
+    this.registerFaceMetadata(mesh, gridX, gridY, tType, physics, false);
+
     return mesh;
   }
 
-  private createCliffFaces(gridX: number, gridY: number, elevation: number, terrainType: number): void {
+  private createCliffFaces(gridX: number, gridY: number, _elevation: number, terrainType: number): void {
     const { width, height, elevation: elevData } = this.courseData;
     if (!elevData) return;
 
@@ -230,10 +252,10 @@ export class TerrainBuilder {
 
         this.createCliffQuadWithCorners(
           center.x - hw, center.y + swOffset, cliffZ,
-          center.x, center.y - hh + seOffset, cliffZ,
+          center.x, center.y - hh + seOffset,
           Math.max(swDiff, 0) * ELEVATION_HEIGHT,
           Math.max(seDiff, 0) * ELEVATION_HEIGHT,
-          terrainType, 'sw'
+          terrainType, 'sw', gridX, gridY
         );
       }
     }
@@ -250,10 +272,10 @@ export class TerrainBuilder {
 
         this.createCliffQuadWithCorners(
           center.x, center.y - hh + seOffset, cliffZ,
-          center.x + hw, center.y + neOffset, cliffZ,
+          center.x + hw, center.y + neOffset,
           Math.max(seDiff, 0) * ELEVATION_HEIGHT,
           Math.max(neDiff, 0) * ELEVATION_HEIGHT,
-          terrainType, 'se'
+          terrainType, 'se', gridX, gridY
         );
       }
     }
@@ -263,7 +285,8 @@ export class TerrainBuilder {
     x1: number, y1: number, z: number,
     x2: number, y2: number,
     height1: number, height2: number,
-    terrainType: number, side: string
+    terrainType: number, side: string,
+    gridX: number, gridY: number
   ): void {
     if (height1 <= 0 && height2 <= 0) return;
 
@@ -300,11 +323,11 @@ export class TerrainBuilder {
     mesh.material = material;
     mesh.useVertexColors = true;
 
-    this.tileMeshes.push(mesh);
-  }
+    const tType = getTerrainType(terrainType);
+    const physics = getSurfacePhysics(tType);
+    this.registerFaceMetadata(mesh, gridX, gridY, tType, physics, true);
 
-  private createCliffQuad(x1: number, y1: number, z: number, x2: number, y2: number, _z2: number, height: number, terrainType: number, side: string): void {
-    this.createCliffQuadWithCorners(x1, y1, z, x2, y2, height, height, terrainType, side);
+    this.tileMeshes.push(mesh);
   }
 
   private buildGridLines(): void {
@@ -637,12 +660,69 @@ export class TerrainBuilder {
     return new Vector3(pos.x, pos.y, pos.z);
   }
 
+  private registerFaceMetadata(
+    mesh: Mesh,
+    gridX: number,
+    gridY: number,
+    terrainType: TerrainType,
+    physics: SurfacePhysics,
+    isCliff: boolean
+  ): void {
+    const faceCount = mesh.getTotalIndices() / 3;
+    const startFaceId = this.nextFaceId;
+    this.meshToFaceOffset.set(mesh, startFaceId);
+
+    const metadata: FaceMetadata = {
+      gridX,
+      gridY,
+      terrainType,
+      physics,
+      isCliff
+    };
+
+    for (let i = 0; i < faceCount; i++) {
+      this.faceIdToMetadata.set(startFaceId + i, metadata);
+    }
+
+    this.nextFaceId += faceCount;
+  }
+
+  public getFaceMetadata(mesh: Mesh, faceId: number): FaceMetadata | null {
+    const offset = this.meshToFaceOffset.get(mesh);
+    if (offset === undefined) return null;
+    return this.faceIdToMetadata.get(offset + faceId) ?? null;
+  }
+
+  public getSurfacePhysicsAtFace(mesh: Mesh, faceId: number): SurfacePhysics | null {
+    const metadata = this.getFaceMetadata(mesh, faceId);
+    return metadata?.physics ?? null;
+  }
+
+  public getTerrainTypeAtFace(mesh: Mesh, faceId: number): TerrainType | null {
+    const metadata = this.getFaceMetadata(mesh, faceId);
+    return metadata?.terrainType ?? null;
+  }
+
+  public getGridPositionAtFace(mesh: Mesh, faceId: number): { x: number; y: number } | null {
+    const metadata = this.getFaceMetadata(mesh, faceId);
+    if (!metadata) return null;
+    return { x: metadata.gridX, y: metadata.gridY };
+  }
+
+  public isCliffFace(mesh: Mesh, faceId: number): boolean {
+    const metadata = this.getFaceMetadata(mesh, faceId);
+    return metadata?.isCliff ?? false;
+  }
+
   public dispose(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
     }
     this.tileMeshes = [];
     this.tileMap.clear();
+    this.faceIdToMetadata.clear();
+    this.meshToFaceOffset.clear();
+    this.nextFaceId = 0;
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
     }

@@ -37,7 +37,6 @@ import {
   CellState,
   CornerHeights,
   RCTCornerHeights,
-  SurfacePhysics,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
