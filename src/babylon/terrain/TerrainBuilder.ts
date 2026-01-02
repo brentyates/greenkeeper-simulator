@@ -8399,6 +8399,252 @@ export class TerrainBuilder {
     return patches;
   }
 
+  public detectTerrainTypeEdges(): Array<{ x: number; y: number; fromType: string; toType: string; direction: string }> {
+    const { width, height } = this.courseData;
+    const edges: Array<{ x: number; y: number; fromType: string; toType: string; direction: string }> = [];
+
+    const directions = [
+      { dx: 1, dy: 0, name: 'east' },
+      { dx: 0, dy: 1, name: 'south' }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentType = this.getTerrainTypeAt(x, y);
+
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+          if (!this.isValidGridPosition(nx, ny)) continue;
+
+          const neighborType = this.getTerrainTypeAt(nx, ny);
+          if (currentType !== neighborType) {
+            edges.push({
+              x, y,
+              fromType: currentType,
+              toType: neighborType,
+              direction: dir.name
+            });
+          }
+        }
+      }
+    }
+
+    return edges;
+  }
+
+  public detectElevationEdges(minDelta: number = 0.5): Array<{ x: number; y: number; elevDelta: number; direction: string }> {
+    const { width, height } = this.courseData;
+    const edges: Array<{ x: number; y: number; elevDelta: number; direction: string }> = [];
+
+    const directions = [
+      { dx: 1, dy: 0, name: 'east' },
+      { dx: 0, dy: 1, name: 'south' }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentElev = this.getElevationAt(x, y);
+
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+          if (!this.isValidGridPosition(nx, ny)) continue;
+
+          const neighborElev = this.getElevationAt(nx, ny);
+          const delta = Math.abs(currentElev - neighborElev);
+
+          if (delta >= minDelta) {
+            edges.push({
+              x, y,
+              elevDelta: delta,
+              direction: dir.name
+            });
+          }
+        }
+      }
+    }
+
+    return edges;
+  }
+
+  public computeEdgeDensityMap(): number[][] {
+    const { width, height } = this.courseData;
+    const densityMap: number[][] = [];
+    const radius = 2;
+
+    for (let y = 0; y < height; y++) {
+      densityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        let edgeCount = 0;
+
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (!this.isValidGridPosition(nx, ny)) continue;
+
+            const currentType = this.getTerrainTypeAt(nx, ny);
+            if (nx + 1 < width && this.getTerrainTypeAt(nx + 1, ny) !== currentType) edgeCount++;
+            if (ny + 1 < height && this.getTerrainTypeAt(nx, ny + 1) !== currentType) edgeCount++;
+          }
+        }
+
+        densityMap[y][x] = edgeCount / ((2 * radius + 1) * (2 * radius + 1));
+      }
+    }
+
+    return densityMap;
+  }
+
+  public findBoundaryZones(bufferDistance: number = 2): Set<string> {
+    const typeEdges = this.detectTerrainTypeEdges();
+    const boundaryZone = new Set<string>();
+
+    for (const edge of typeEdges) {
+      for (let dy = -bufferDistance; dy <= bufferDistance; dy++) {
+        for (let dx = -bufferDistance; dx <= bufferDistance; dx++) {
+          const bx = edge.x + dx;
+          const by = edge.y + dy;
+          if (this.isValidGridPosition(bx, by)) {
+            boundaryZone.add(`${bx},${by}`);
+          }
+        }
+      }
+    }
+
+    return boundaryZone;
+  }
+
+  public classifyEdgeType(gridX: number, gridY: number): 'interior' | 'edge' | 'corner' | 'boundary' {
+    const currentType = this.getTerrainTypeAt(gridX, gridY);
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    let differentCount = 0;
+    let adjacentDifferent = false;
+
+    for (let i = 0; i < neighbors.length; i++) {
+      const n = neighbors[i];
+      const nx = gridX + n.dx;
+      const ny = gridY + n.dy;
+
+      if (!this.isValidGridPosition(nx, ny)) {
+        differentCount++;
+        continue;
+      }
+
+      if (this.getTerrainTypeAt(nx, ny) !== currentType) {
+        differentCount++;
+        const nextIdx = (i + 1) % neighbors.length;
+        const next = neighbors[nextIdx];
+        const nnx = gridX + next.dx;
+        const nny = gridY + next.dy;
+        if (this.isValidGridPosition(nnx, nny) && this.getTerrainTypeAt(nnx, nny) !== currentType) {
+          adjacentDifferent = true;
+        }
+      }
+    }
+
+    if (differentCount === 0) return 'interior';
+    if (differentCount >= 3) return 'boundary';
+    if (adjacentDifferent) return 'corner';
+    return 'edge';
+  }
+
+  public getEdgeAnalysis(): EdgeAnalysis {
+    const typeEdges = this.detectTerrainTypeEdges();
+    const elevEdges = this.detectElevationEdges();
+    const { width, height } = this.courseData;
+
+    const edgeTypes = {
+      interior: 0,
+      edge: 0,
+      corner: 0,
+      boundary: 0
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        edgeTypes[this.classifyEdgeType(x, y)]++;
+      }
+    }
+
+    const transitionCounts: Map<string, number> = new Map();
+    for (const edge of typeEdges) {
+      const key = `${edge.fromType}->${edge.toType}`;
+      transitionCounts.set(key, (transitionCounts.get(key) || 0) + 1);
+    }
+
+    let mostCommonTransition = '';
+    let maxCount = 0;
+    for (const [key, count] of transitionCounts) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonTransition = key;
+      }
+    }
+
+    return {
+      terrainTypeEdgeCount: typeEdges.length,
+      elevationEdgeCount: elevEdges.length,
+      interiorCount: edgeTypes.interior,
+      edgeCount: edgeTypes.edge,
+      cornerCount: edgeTypes.corner,
+      boundaryCount: edgeTypes.boundary,
+      mostCommonTransition,
+      transitionCount: transitionCounts.size
+    };
+  }
+
+  public findIsolatedPatches(terrainType: string, minSize: number = 1, maxSize: number = 9): Array<Array<{ x: number; y: number }>> {
+    const { width, height } = this.courseData;
+    const visited = new Set<string>();
+    const patches: Array<Array<{ x: number; y: number }>> = [];
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x},${y}`;
+        if (visited.has(key)) continue;
+        if (this.getTerrainTypeAt(x, y) !== terrainType) continue;
+
+        const patch: Array<{ x: number; y: number }> = [];
+        const queue: Array<{ x: number; y: number }> = [{ x, y }];
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          const curKey = `${current.x},${current.y}`;
+          if (visited.has(curKey)) continue;
+          visited.add(curKey);
+          patch.push(current);
+
+          for (const n of neighbors) {
+            const nx = current.x + n.dx;
+            const ny = current.y + n.dy;
+            if (this.isValidGridPosition(nx, ny) &&
+                this.getTerrainTypeAt(nx, ny) === terrainType &&
+                !visited.has(`${nx},${ny}`)) {
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+
+        if (patch.length >= minSize && patch.length <= maxSize) {
+          patches.push(patch);
+        }
+      }
+    }
+
+    return patches;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -13563,6 +13809,17 @@ export interface RoughnessAnalysis {
   roughCount: number;
   veryRoughCount: number;
   smoothPercentage: number;
+}
+
+export interface EdgeAnalysis {
+  terrainTypeEdgeCount: number;
+  elevationEdgeCount: number;
+  interiorCount: number;
+  edgeCount: number;
+  cornerCount: number;
+  boundaryCount: number;
+  mostCommonTransition: string;
+  transitionCount: number;
 }
 
 export interface LineSampleOptions {
