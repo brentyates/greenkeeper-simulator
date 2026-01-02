@@ -484,3 +484,130 @@ export function getGrassState(cell: CellState): 'mown' | 'growing' | 'unmown' {
   if (cell.height <= thresholds.growingHeight) return 'growing';
   return 'unmown';
 }
+
+export interface RCTTileFlags {
+  water: boolean;
+  protected: boolean;
+}
+
+export interface RCTTileData {
+  pos: [number, number];
+  heights: [number, number, number, number];
+  type: TerrainType;
+  flags: RCTTileFlags;
+}
+
+export interface RCTTerrainData {
+  gridSize: [number, number];
+  heightStep: number;
+  tiles: RCTTileData[];
+}
+
+export function createRCTTileData(
+  x: number,
+  y: number,
+  corners: RCTCornerHeights,
+  type: TerrainType,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): RCTTileData {
+  return {
+    pos: [x, y],
+    heights: [corners.nw, corners.ne, corners.se, corners.sw],
+    type,
+    flags: {
+      water: isSubmerged(corners, waterLevel),
+      protected: type === 'green'
+    }
+  };
+}
+
+export function parseRCTTileHeights(heights: [number, number, number, number]): RCTCornerHeights {
+  return {
+    nw: heights[0],
+    ne: heights[1],
+    se: heights[2],
+    sw: heights[3]
+  };
+}
+
+export function exportToRCTFormat(
+  layout: number[][],
+  elevation: number[][] | undefined,
+  heightStep: number = ELEVATION_HEIGHT,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): RCTTerrainData {
+  const height = layout.length;
+  const width = height > 0 ? layout[0].length : 0;
+  const tiles: RCTTileData[] = [];
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const terrainCode = layout[y][x];
+      const type = getTerrainType(terrainCode);
+      const baseElev = elevation?.[y]?.[x] ?? 0;
+
+      const nElev = elevation?.[y - 1]?.[x] ?? baseElev;
+      const sElev = elevation?.[y + 1]?.[x] ?? baseElev;
+      const eElev = elevation?.[y]?.[x + 1] ?? baseElev;
+      const wElev = elevation?.[y]?.[x - 1] ?? baseElev;
+      const neElev = elevation?.[y - 1]?.[x + 1] ?? baseElev;
+      const nwElev = elevation?.[y - 1]?.[x - 1] ?? baseElev;
+      const seElev = elevation?.[y + 1]?.[x + 1] ?? baseElev;
+      const swElev = elevation?.[y + 1]?.[x - 1] ?? baseElev;
+
+      const corners: RCTCornerHeights = {
+        nw: Math.max(baseElev, nElev, wElev, nwElev),
+        ne: Math.max(baseElev, nElev, eElev, neElev),
+        se: Math.max(baseElev, sElev, eElev, seElev),
+        sw: Math.max(baseElev, sElev, wElev, swElev)
+      };
+
+      tiles.push(createRCTTileData(x, y, corners, type, waterLevel));
+    }
+  }
+
+  return {
+    gridSize: [width, height],
+    heightStep,
+    tiles
+  };
+}
+
+export function importFromRCTFormat(data: RCTTerrainData): CourseLayout {
+  const [width, height] = data.gridSize;
+  const layout: number[][] = [];
+  const elevation: number[][] = [];
+
+  for (let y = 0; y < height; y++) {
+    layout[y] = [];
+    elevation[y] = [];
+    for (let x = 0; x < width; x++) {
+      layout[y][x] = TERRAIN_CODES.ROUGH;
+      elevation[y][x] = 0;
+    }
+  }
+
+  for (const tile of data.tiles) {
+    const [x, y] = tile.pos;
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      const corners = parseRCTTileHeights(tile.heights);
+      const avgElev = Math.round((corners.nw + corners.ne + corners.se + corners.sw) / 4);
+
+      layout[y][x] = getTerrainCode(tile.type);
+      elevation[y][x] = avgElev;
+    }
+  }
+
+  return { width, height, layout, elevation };
+}
+
+export function getTerrainCode(type: TerrainType): number {
+  switch (type) {
+    case 'fairway': return TERRAIN_CODES.FAIRWAY;
+    case 'rough': return TERRAIN_CODES.ROUGH;
+    case 'green': return TERRAIN_CODES.GREEN;
+    case 'bunker': return TERRAIN_CODES.BUNKER;
+    case 'water': return TERRAIN_CODES.WATER;
+    default: return TERRAIN_CODES.ROUGH;
+  }
+}

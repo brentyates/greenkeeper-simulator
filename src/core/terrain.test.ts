@@ -37,6 +37,12 @@ import {
   getWaterDepth,
   getEffectiveTerrainType,
   DEFAULT_WATER_LEVEL,
+  createRCTTileData,
+  parseRCTTileHeights,
+  exportToRCTFormat,
+  importFromRCTFormat,
+  getTerrainCode,
+  RCTTerrainData,
   CellState,
   CornerHeights,
   RCTCornerHeights,
@@ -1396,6 +1402,188 @@ describe('Slope Calculations', () => {
       const normalNS = getTileNormal(cornersNS);
       const normalEW = getTileNormal(cornersEW);
       expect(normalNS.x).not.toBeCloseTo(normalEW.x, 3);
+    });
+  });
+});
+
+describe('RCT Data Format', () => {
+  describe('createRCTTileData', () => {
+    it('creates tile with correct position', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const tile = createRCTTileData(5, 10, corners, 'fairway');
+      expect(tile.pos).toEqual([5, 10]);
+    });
+
+    it('creates tile with correct heights array', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 2, se: 3, sw: 4 };
+      const tile = createRCTTileData(0, 0, corners, 'rough');
+      expect(tile.heights).toEqual([1, 2, 3, 4]);
+    });
+
+    it('preserves terrain type', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const tile = createRCTTileData(0, 0, corners, 'green');
+      expect(tile.type).toBe('green');
+    });
+
+    it('sets water flag for submerged tiles', () => {
+      const corners: RCTCornerHeights = { nw: -1, ne: -1, se: -1, sw: -1 };
+      const tile = createRCTTileData(0, 0, corners, 'fairway', 0);
+      expect(tile.flags.water).toBe(true);
+    });
+
+    it('clears water flag for elevated tiles', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 1, sw: 1 };
+      const tile = createRCTTileData(0, 0, corners, 'fairway', 0);
+      expect(tile.flags.water).toBe(false);
+    });
+
+    it('sets protected flag for green terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const tile = createRCTTileData(0, 0, corners, 'green');
+      expect(tile.flags.protected).toBe(true);
+    });
+
+    it('clears protected flag for non-green terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const tile = createRCTTileData(0, 0, corners, 'fairway');
+      expect(tile.flags.protected).toBe(false);
+    });
+  });
+
+  describe('parseRCTTileHeights', () => {
+    it('parses heights array to corner heights', () => {
+      const corners = parseRCTTileHeights([1, 2, 3, 4]);
+      expect(corners.nw).toBe(1);
+      expect(corners.ne).toBe(2);
+      expect(corners.se).toBe(3);
+      expect(corners.sw).toBe(4);
+    });
+
+    it('handles zero heights', () => {
+      const corners = parseRCTTileHeights([0, 0, 0, 0]);
+      expect(corners).toEqual({ nw: 0, ne: 0, se: 0, sw: 0 });
+    });
+  });
+
+  describe('getTerrainCode', () => {
+    it('returns correct code for fairway', () => {
+      expect(getTerrainCode('fairway')).toBe(TERRAIN_CODES.FAIRWAY);
+    });
+
+    it('returns correct code for rough', () => {
+      expect(getTerrainCode('rough')).toBe(TERRAIN_CODES.ROUGH);
+    });
+
+    it('returns correct code for green', () => {
+      expect(getTerrainCode('green')).toBe(TERRAIN_CODES.GREEN);
+    });
+
+    it('returns correct code for bunker', () => {
+      expect(getTerrainCode('bunker')).toBe(TERRAIN_CODES.BUNKER);
+    });
+
+    it('returns correct code for water', () => {
+      expect(getTerrainCode('water')).toBe(TERRAIN_CODES.WATER);
+    });
+  });
+
+  describe('exportToRCTFormat', () => {
+    it('exports empty layout', () => {
+      const data = exportToRCTFormat([], undefined);
+      expect(data.gridSize).toEqual([0, 0]);
+      expect(data.tiles).toEqual([]);
+    });
+
+    it('exports simple 2x2 layout', () => {
+      const layout = [[0, 1], [2, 3]];
+      const data = exportToRCTFormat(layout, undefined);
+      expect(data.gridSize).toEqual([2, 2]);
+      expect(data.tiles.length).toBe(4);
+    });
+
+    it('includes height step', () => {
+      const data = exportToRCTFormat([[0]], undefined, 16);
+      expect(data.heightStep).toBe(16);
+    });
+
+    it('preserves terrain types', () => {
+      const layout = [[0]];
+      const data = exportToRCTFormat(layout, undefined);
+      expect(data.tiles[0].type).toBe('fairway');
+    });
+
+    it('calculates corner heights from elevation', () => {
+      const layout = [[0]];
+      const elevation = [[2]];
+      const data = exportToRCTFormat(layout, elevation);
+      expect(data.tiles[0].heights).toEqual([2, 2, 2, 2]);
+    });
+  });
+
+  describe('importFromRCTFormat', () => {
+    it('creates layout from RCT data', () => {
+      const data: RCTTerrainData = {
+        gridSize: [2, 2],
+        heightStep: 16,
+        tiles: [
+          { pos: [0, 0], heights: [0, 0, 0, 0], type: 'fairway', flags: { water: false, protected: false } },
+          { pos: [1, 0], heights: [0, 0, 0, 0], type: 'rough', flags: { water: false, protected: false } },
+          { pos: [0, 1], heights: [0, 0, 0, 0], type: 'green', flags: { water: false, protected: true } },
+          { pos: [1, 1], heights: [0, 0, 0, 0], type: 'bunker', flags: { water: false, protected: false } }
+        ]
+      };
+      const result = importFromRCTFormat(data);
+      expect(result.width).toBe(2);
+      expect(result.height).toBe(2);
+      expect(result.layout[0][0]).toBe(TERRAIN_CODES.FAIRWAY);
+      expect(result.layout[0][1]).toBe(TERRAIN_CODES.ROUGH);
+      expect(result.layout[1][0]).toBe(TERRAIN_CODES.GREEN);
+      expect(result.layout[1][1]).toBe(TERRAIN_CODES.BUNKER);
+    });
+
+    it('calculates average elevation from corner heights', () => {
+      const data: RCTTerrainData = {
+        gridSize: [1, 1],
+        heightStep: 16,
+        tiles: [
+          { pos: [0, 0], heights: [2, 2, 4, 4], type: 'fairway', flags: { water: false, protected: false } }
+        ]
+      };
+      const result = importFromRCTFormat(data);
+      expect(result.elevation?.[0][0]).toBe(3);
+    });
+
+    it('ignores out-of-bounds tiles', () => {
+      const data: RCTTerrainData = {
+        gridSize: [2, 2],
+        heightStep: 16,
+        tiles: [
+          { pos: [5, 5], heights: [0, 0, 0, 0], type: 'water', flags: { water: true, protected: false } }
+        ]
+      };
+      const result = importFromRCTFormat(data);
+      expect(result.layout[0][0]).toBe(TERRAIN_CODES.ROUGH);
+    });
+
+    it('handles empty tiles array', () => {
+      const data: RCTTerrainData = {
+        gridSize: [2, 2],
+        heightStep: 16,
+        tiles: []
+      };
+      const result = importFromRCTFormat(data);
+      expect(result.width).toBe(2);
+      expect(result.height).toBe(2);
+    });
+  });
+
+  describe('roundtrip conversion', () => {
+    it('preserves terrain types through export/import', () => {
+      const layout = [[0, 1, 2], [3, 4, 1]];
+      const exported = exportToRCTFormat(layout, undefined);
+      const imported = importFromRCTFormat(exported);
+      expect(imported.layout).toEqual(layout);
     });
   });
 });
