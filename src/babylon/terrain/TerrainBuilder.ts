@@ -62,6 +62,17 @@ export class TerrainBuilder {
   private eventListeners: Map<TerrainEventType, TerrainEventCallback[]> = new Map();
   private eventQueue: TerrainEvent[] = [];
   private eventsEnabled: boolean = true;
+  private cache: TerrainCache = {
+    elevationCache: new Map(),
+    cornerHeightsCache: new Map(),
+    terrainTypeCache: new Map(),
+    physicsCache: new Map(),
+    slopeCache: new Map(),
+    cacheHits: 0,
+    cacheMisses: 0,
+    lastClearTime: Date.now()
+  };
+  private cacheEnabled: boolean = false;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -3223,6 +3234,198 @@ export class TerrainBuilder {
       timestamp: Date.now()
     });
   }
+
+  public setCacheEnabled(enabled: boolean): void {
+    this.cacheEnabled = enabled;
+    if (!enabled) {
+      this.clearCache();
+    }
+  }
+
+  public isCacheEnabled(): boolean {
+    return this.cacheEnabled;
+  }
+
+  public clearCache(): void {
+    this.cache.elevationCache.clear();
+    this.cache.cornerHeightsCache.clear();
+    this.cache.terrainTypeCache.clear();
+    this.cache.physicsCache.clear();
+    this.cache.slopeCache.clear();
+    this.cache.cacheHits = 0;
+    this.cache.cacheMisses = 0;
+    this.cache.lastClearTime = Date.now();
+  }
+
+  public getCacheStatistics(): {
+    elevationCacheSize: number;
+    cornerHeightsCacheSize: number;
+    terrainTypeCacheSize: number;
+    physicsCacheSize: number;
+    slopeCacheSize: number;
+    cacheHits: number;
+    cacheMisses: number;
+    hitRate: number;
+    lastClearTime: number;
+  } {
+    const total = this.cache.cacheHits + this.cache.cacheMisses;
+    return {
+      elevationCacheSize: this.cache.elevationCache.size,
+      cornerHeightsCacheSize: this.cache.cornerHeightsCache.size,
+      terrainTypeCacheSize: this.cache.terrainTypeCache.size,
+      physicsCacheSize: this.cache.physicsCache.size,
+      slopeCacheSize: this.cache.slopeCache.size,
+      cacheHits: this.cache.cacheHits,
+      cacheMisses: this.cache.cacheMisses,
+      hitRate: total > 0 ? this.cache.cacheHits / total : 0,
+      lastClearTime: this.cache.lastClearTime
+    };
+  }
+
+  public getCachedElevation(gridX: number, gridY: number): number {
+    if (!this.cacheEnabled) {
+      return this.getElevationAt(gridX, gridY);
+    }
+
+    const key = `${gridX}_${gridY}`;
+    if (this.cache.elevationCache.has(key)) {
+      this.cache.cacheHits++;
+      return this.cache.elevationCache.get(key)!;
+    }
+
+    this.cache.cacheMisses++;
+    const value = this.getElevationAt(gridX, gridY);
+    this.cache.elevationCache.set(key, value);
+    return value;
+  }
+
+  public getCachedCornerHeights(gridX: number, gridY: number): CornerHeights {
+    if (!this.cacheEnabled) {
+      return this.getCornerHeights(gridX, gridY);
+    }
+
+    const key = `${gridX}_${gridY}`;
+    if (this.cache.cornerHeightsCache.has(key)) {
+      this.cache.cacheHits++;
+      return this.cache.cornerHeightsCache.get(key)!;
+    }
+
+    this.cache.cacheMisses++;
+    const value = this.getCornerHeights(gridX, gridY);
+    this.cache.cornerHeightsCache.set(key, value);
+    return value;
+  }
+
+  public getCachedTerrainType(gridX: number, gridY: number): TerrainType {
+    if (!this.cacheEnabled) {
+      return this.getTerrainTypeAt(gridX, gridY);
+    }
+
+    const key = `${gridX}_${gridY}`;
+    if (this.cache.terrainTypeCache.has(key)) {
+      this.cache.cacheHits++;
+      return this.cache.terrainTypeCache.get(key)!;
+    }
+
+    this.cache.cacheMisses++;
+    const value = this.getTerrainTypeAt(gridX, gridY);
+    this.cache.terrainTypeCache.set(key, value);
+    return value;
+  }
+
+  public getCachedSurfacePhysics(gridX: number, gridY: number): SurfacePhysics {
+    if (!this.cacheEnabled) {
+      return this.getSurfacePhysicsAt(gridX, gridY);
+    }
+
+    const key = `${gridX}_${gridY}`;
+    if (this.cache.physicsCache.has(key)) {
+      this.cache.cacheHits++;
+      return this.cache.physicsCache.get(key)!;
+    }
+
+    this.cache.cacheMisses++;
+    const value = this.getSurfacePhysicsAt(gridX, gridY);
+    this.cache.physicsCache.set(key, value);
+    return value;
+  }
+
+  public getCachedSlopeVector(gridX: number, gridY: number): { angle: number; direction: number; magnitude: number } {
+    if (!this.cacheEnabled) {
+      return this.getSlopeVectorAt(gridX, gridY);
+    }
+
+    const key = `${gridX}_${gridY}`;
+    if (this.cache.slopeCache.has(key)) {
+      this.cache.cacheHits++;
+      return this.cache.slopeCache.get(key)!;
+    }
+
+    this.cache.cacheMisses++;
+    const value = this.getSlopeVectorAt(gridX, gridY);
+    this.cache.slopeCache.set(key, value);
+    return value;
+  }
+
+  public invalidateCacheAt(gridX: number, gridY: number): void {
+    const key = `${gridX}_${gridY}`;
+    this.cache.elevationCache.delete(key);
+    this.cache.cornerHeightsCache.delete(key);
+    this.cache.terrainTypeCache.delete(key);
+    this.cache.physicsCache.delete(key);
+    this.cache.slopeCache.delete(key);
+
+    const neighbors = this.getNeighborTiles(gridX, gridY, true);
+    for (const neighbor of neighbors) {
+      const nKey = `${neighbor.x}_${neighbor.y}`;
+      this.cache.cornerHeightsCache.delete(nKey);
+      this.cache.slopeCache.delete(nKey);
+    }
+  }
+
+  public warmupCache(): void {
+    if (!this.cacheEnabled) return;
+
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.getCachedElevation(x, y);
+        this.getCachedTerrainType(x, y);
+        this.getCachedCornerHeights(x, y);
+      }
+    }
+  }
+
+  public warmupCacheInRadius(centerX: number, centerY: number, radius: number): void {
+    if (!this.cacheEnabled) return;
+
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    for (const tile of tiles) {
+      this.getCachedElevation(tile.x, tile.y);
+      this.getCachedTerrainType(tile.x, tile.y);
+      this.getCachedCornerHeights(tile.x, tile.y);
+    }
+  }
+
+  public getTotalCacheSize(): number {
+    return (
+      this.cache.elevationCache.size +
+      this.cache.cornerHeightsCache.size +
+      this.cache.terrainTypeCache.size +
+      this.cache.physicsCache.size +
+      this.cache.slopeCache.size
+    );
+  }
+
+  public getCacheMemoryEstimate(): number {
+    const elevationSize = this.cache.elevationCache.size * 16;
+    const cornerHeightsSize = this.cache.cornerHeightsCache.size * 64;
+    const terrainTypeSize = this.cache.terrainTypeCache.size * 24;
+    const physicsSize = this.cache.physicsCache.size * 48;
+    const slopeSize = this.cache.slopeCache.size * 48;
+
+    return elevationSize + cornerHeightsSize + terrainTypeSize + physicsSize + slopeSize;
+  }
 }
 
 export interface TerrainStatistics {
@@ -3366,3 +3569,14 @@ export interface TerrainEvent {
 }
 
 export type TerrainEventCallback = (event: TerrainEvent) => void;
+
+export interface TerrainCache {
+  elevationCache: Map<string, number>;
+  cornerHeightsCache: Map<string, CornerHeights>;
+  terrainTypeCache: Map<string, TerrainType>;
+  physicsCache: Map<string, SurfacePhysics>;
+  slopeCache: Map<string, { angle: number; direction: number; magnitude: number }>;
+  cacheHits: number;
+  cacheMisses: number;
+  lastClearTime: number;
+}
