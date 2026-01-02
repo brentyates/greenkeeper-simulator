@@ -19458,6 +19458,441 @@ export class TerrainBuilder {
       }))
     };
   }
+
+  public sampleElevationAt(x: number, y: number): number {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const x1 = Math.min(x0 + 1, width - 1);
+    const y1 = Math.min(y0 + 1, height - 1);
+
+    const fx = x - x0;
+    const fy = y - y0;
+
+    const e00 = this.getElevationAt(Math.max(0, x0), Math.max(0, y0));
+    const e10 = this.getElevationAt(Math.min(width - 1, x1), Math.max(0, y0));
+    const e01 = this.getElevationAt(Math.max(0, x0), Math.min(height - 1, y1));
+    const e11 = this.getElevationAt(Math.min(width - 1, x1), Math.min(height - 1, y1));
+
+    const e0 = e00 * (1 - fx) + e10 * fx;
+    const e1 = e01 * (1 - fx) + e11 * fx;
+
+    return e0 * (1 - fy) + e1 * fy;
+  }
+
+  public sampleBicubicElevationAt(x: number, y: number): number {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const cubicInterpolate = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
+      const a = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
+      const b = p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3;
+      const c = -0.5 * p0 + 0.5 * p2;
+      const d = p1;
+      return a * t * t * t + b * t * t + c * t + d;
+    };
+
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const fx = x - xi;
+    const fy = y - yi;
+
+    const getClampedElevation = (gx: number, gy: number): number => {
+      const cx = Math.max(0, Math.min(width - 1, gx));
+      const cy = Math.max(0, Math.min(height - 1, gy));
+      return this.getElevationAt(cx, cy);
+    };
+
+    const rows: number[] = [];
+    for (let j = -1; j <= 2; j++) {
+      const p0 = getClampedElevation(xi - 1, yi + j);
+      const p1 = getClampedElevation(xi, yi + j);
+      const p2 = getClampedElevation(xi + 1, yi + j);
+      const p3 = getClampedElevation(xi + 2, yi + j);
+      rows.push(cubicInterpolate(p0, p1, p2, p3, fx));
+    }
+
+    return cubicInterpolate(rows[0], rows[1], rows[2], rows[3], fy);
+  }
+
+  public sampleTerrainGradientAt(x: number, y: number, delta: number = 0.5): { dx: number; dy: number; magnitude: number; direction: number } {
+    const ex0 = this.sampleElevationAt(x - delta, y);
+    const ex1 = this.sampleElevationAt(x + delta, y);
+    const ey0 = this.sampleElevationAt(x, y - delta);
+    const ey1 = this.sampleElevationAt(x, y + delta);
+
+    const dx = (ex1 - ex0) / (2 * delta);
+    const dy = (ey1 - ey0) / (2 * delta);
+    const magnitude = Math.sqrt(dx * dx + dy * dy);
+    const direction = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    return { dx, dy, magnitude, direction };
+  }
+
+  public resampleTerrain(newWidth: number, newHeight: number, useBicubic: boolean = false): ResampledTerrainResult {
+    const oldWidth = this.courseData.width;
+    const oldHeight = this.courseData.height;
+
+    const elevations: number[][] = [];
+    const terrainTypes: TerrainType[][] = [];
+
+    const scaleX = (oldWidth - 1) / (newWidth - 1);
+    const scaleY = (oldHeight - 1) / (newHeight - 1);
+
+    for (let ny = 0; ny < newHeight; ny++) {
+      elevations[ny] = [];
+      terrainTypes[ny] = [];
+
+      for (let nx = 0; nx < newWidth; nx++) {
+        const ox = nx * scaleX;
+        const oy = ny * scaleY;
+
+        if (useBicubic) {
+          elevations[ny][nx] = this.sampleBicubicElevationAt(ox, oy);
+        } else {
+          elevations[ny][nx] = this.sampleElevationAt(ox, oy);
+        }
+
+        const nearestX = Math.round(ox);
+        const nearestY = Math.round(oy);
+        const clampedX = Math.max(0, Math.min(oldWidth - 1, nearestX));
+        const clampedY = Math.max(0, Math.min(oldHeight - 1, nearestY));
+        terrainTypes[ny][nx] = getTerrainType(this.courseData.layout[clampedY]?.[clampedX] ?? 0);
+      }
+    }
+
+    return {
+      width: newWidth,
+      height: newHeight,
+      elevations,
+      terrainTypes,
+      scaleX,
+      scaleY,
+      originalWidth: oldWidth,
+      originalHeight: oldHeight,
+      interpolationMethod: useBicubic ? 'bicubic' : 'bilinear'
+    };
+  }
+
+  public generateTerrainMipmap(levels: number = 4): TerrainMipmapResult {
+    const mipmaps: Array<{ level: number; width: number; height: number; elevations: number[][] }> = [];
+
+    let currentWidth = this.courseData.width;
+    let currentHeight = this.courseData.height;
+
+    const baseElevations: number[][] = [];
+    for (let y = 0; y < currentHeight; y++) {
+      baseElevations[y] = [];
+      for (let x = 0; x < currentWidth; x++) {
+        baseElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    mipmaps.push({ level: 0, width: currentWidth, height: currentHeight, elevations: baseElevations });
+
+    for (let level = 1; level < levels; level++) {
+      const prevMipmap = mipmaps[level - 1];
+      const newWidth = Math.max(1, Math.floor(prevMipmap.width / 2));
+      const newHeight = Math.max(1, Math.floor(prevMipmap.height / 2));
+
+      const newElevations: number[][] = [];
+
+      for (let ny = 0; ny < newHeight; ny++) {
+        newElevations[ny] = [];
+        for (let nx = 0; nx < newWidth; nx++) {
+          const ox = nx * 2;
+          const oy = ny * 2;
+
+          let sum = 0;
+          let count = 0;
+
+          for (let dy = 0; dy < 2; dy++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const px = ox + dx;
+              const py = oy + dy;
+              if (px < prevMipmap.width && py < prevMipmap.height) {
+                sum += prevMipmap.elevations[py][px];
+                count++;
+              }
+            }
+          }
+
+          newElevations[ny][nx] = count > 0 ? sum / count : 0;
+        }
+      }
+
+      mipmaps.push({ level, width: newWidth, height: newHeight, elevations: newElevations });
+
+      if (newWidth <= 1 && newHeight <= 1) break;
+    }
+
+    return {
+      levels: mipmaps.length,
+      mipmaps,
+      originalWidth: this.courseData.width,
+      originalHeight: this.courseData.height
+    };
+  }
+
+  public sampleTerrainProfile(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    numSamples: number = 50
+  ): TerrainProfileResult {
+    const samples: Array<{ x: number; y: number; elevation: number; distance: number; terrainType: TerrainType }> = [];
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const totalDistance = Math.sqrt(dx * dx + dy * dy);
+
+    for (let i = 0; i < numSamples; i++) {
+      const t = i / (numSamples - 1);
+      const x = startX + dx * t;
+      const y = startY + dy * t;
+      const distance = t * totalDistance;
+
+      const elevation = this.sampleElevationAt(x, y);
+      const gridX = Math.floor(x);
+      const gridY = Math.floor(y);
+      const clampedX = Math.max(0, Math.min(this.courseData.width - 1, gridX));
+      const clampedY = Math.max(0, Math.min(this.courseData.height - 1, gridY));
+      const terrainType = getTerrainType(this.courseData.layout[clampedY]?.[clampedX] ?? 0);
+
+      samples.push({ x, y, elevation, distance, terrainType });
+    }
+
+    const elevations = samples.map(s => s.elevation);
+    const minElevation = Math.min(...elevations);
+    const maxElevation = Math.max(...elevations);
+
+    let totalAscent = 0;
+    let totalDescent = 0;
+    let maxSlope = 0;
+
+    for (let i = 1; i < samples.length; i++) {
+      const elevDiff = samples[i].elevation - samples[i - 1].elevation;
+      const distDiff = samples[i].distance - samples[i - 1].distance;
+
+      if (elevDiff > 0) totalAscent += elevDiff;
+      else totalDescent += Math.abs(elevDiff);
+
+      if (distDiff > 0) {
+        const slope = Math.abs(elevDiff / distDiff);
+        maxSlope = Math.max(maxSlope, slope);
+      }
+    }
+
+    return {
+      samples,
+      totalDistance,
+      minElevation,
+      maxElevation,
+      elevationRange: maxElevation - minElevation,
+      totalAscent,
+      totalDescent,
+      netElevationChange: samples[samples.length - 1].elevation - samples[0].elevation,
+      maxSlope,
+      averageSlope: totalDistance > 0 ? (totalAscent + totalDescent) / totalDistance : 0
+    };
+  }
+
+  public sampleGridRegion(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    sampleDensity: number = 1
+  ): GridRegionSampleResult {
+    const samples: Array<{ x: number; y: number; elevation: number; terrainType: TerrainType }> = [];
+
+    const step = 1 / sampleDensity;
+
+    for (let dy = -radius; dy <= radius; dy += step) {
+      for (let dx = -radius; dx <= radius; dx += step) {
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= radius) {
+          const x = centerX + dx;
+          const y = centerY + dy;
+
+          if (x >= 0 && x < this.courseData.width && y >= 0 && y < this.courseData.height) {
+            const elevation = this.sampleElevationAt(x, y);
+            const gridX = Math.floor(x);
+            const gridY = Math.floor(y);
+            const terrainType = getTerrainType(this.courseData.layout[gridY]?.[gridX] ?? 0);
+
+            samples.push({ x, y, elevation, terrainType });
+          }
+        }
+      }
+    }
+
+    const elevations = samples.map(s => s.elevation);
+    const meanElevation = samples.length > 0 ? elevations.reduce((a, b) => a + b, 0) / samples.length : 0;
+    const variance = samples.length > 0
+      ? elevations.reduce((sum, e) => sum + (e - meanElevation) ** 2, 0) / samples.length
+      : 0;
+
+    const terrainCounts: Record<string, number> = {};
+    for (const sample of samples) {
+      terrainCounts[sample.terrainType] = (terrainCounts[sample.terrainType] || 0) + 1;
+    }
+
+    const dominantTerrain = Object.entries(terrainCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] as TerrainType || 'rough';
+
+    return {
+      centerX,
+      centerY,
+      radius,
+      sampleCount: samples.length,
+      samples,
+      meanElevation,
+      stdDevElevation: Math.sqrt(variance),
+      minElevation: samples.length > 0 ? Math.min(...elevations) : 0,
+      maxElevation: samples.length > 0 ? Math.max(...elevations) : 0,
+      terrainCounts,
+      dominantTerrain
+    };
+  }
+
+  public computeTerrainLaplacian(x: number, y: number): number {
+    const h = 1;
+    const center = this.sampleElevationAt(x, y);
+    const left = this.sampleElevationAt(x - h, y);
+    const right = this.sampleElevationAt(x + h, y);
+    const up = this.sampleElevationAt(x, y - h);
+    const down = this.sampleElevationAt(x, y + h);
+
+    return (left + right + up + down - 4 * center) / (h * h);
+  }
+
+  public computeTerrainCurvature(x: number, y: number): TerrainCurvatureResult {
+    const h = 0.5;
+
+    const z = this.sampleElevationAt(x, y);
+    const zx_plus = this.sampleElevationAt(x + h, y);
+    const zx_minus = this.sampleElevationAt(x - h, y);
+    const zy_plus = this.sampleElevationAt(x, y + h);
+    const zy_minus = this.sampleElevationAt(x, y - h);
+
+    const zxx = (zx_plus - 2 * z + zx_minus) / (h * h);
+    const zyy = (zy_plus - 2 * z + zy_minus) / (h * h);
+
+    const zxy_pp = this.sampleElevationAt(x + h, y + h);
+    const zxy_pm = this.sampleElevationAt(x + h, y - h);
+    const zxy_mp = this.sampleElevationAt(x - h, y + h);
+    const zxy_mm = this.sampleElevationAt(x - h, y - h);
+    const zxy = (zxy_pp - zxy_pm - zxy_mp + zxy_mm) / (4 * h * h);
+
+    const zx = (zx_plus - zx_minus) / (2 * h);
+    const zy = (zy_plus - zy_minus) / (2 * h);
+
+    const p = zx * zx + zy * zy;
+    const q = p + 1;
+
+    const meanCurvature = p > 0.0001
+      ? ((1 + zy * zy) * zxx - 2 * zx * zy * zxy + (1 + zx * zx) * zyy) / (2 * Math.pow(q, 1.5))
+      : (zxx + zyy) / 2;
+
+    const gaussianCurvature = p > 0.0001
+      ? (zxx * zyy - zxy * zxy) / (q * q)
+      : zxx * zyy - zxy * zxy;
+
+    const profileCurvature = p > 0.0001
+      ? -(zx * zx * zxx + 2 * zx * zy * zxy + zy * zy * zyy) / (p * Math.pow(q, 1.5))
+      : -zxx;
+
+    const planCurvature = p > 0.0001
+      ? -(zy * zy * zxx - 2 * zx * zy * zxy + zx * zx * zyy) / (Math.pow(p, 1.5))
+      : -zyy;
+
+    let curvatureType: 'convex' | 'concave' | 'saddle' | 'flat';
+    if (Math.abs(gaussianCurvature) < 0.001 && Math.abs(meanCurvature) < 0.001) {
+      curvatureType = 'flat';
+    } else if (gaussianCurvature > 0) {
+      curvatureType = meanCurvature > 0 ? 'concave' : 'convex';
+    } else if (gaussianCurvature < 0) {
+      curvatureType = 'saddle';
+    } else {
+      curvatureType = meanCurvature > 0 ? 'concave' : 'convex';
+    }
+
+    return {
+      x,
+      y,
+      meanCurvature,
+      gaussianCurvature,
+      profileCurvature,
+      planCurvature,
+      laplacian: this.computeTerrainLaplacian(x, y),
+      curvatureType
+    };
+  }
+}
+
+export interface ResampledTerrainResult {
+  width: number;
+  height: number;
+  elevations: number[][];
+  terrainTypes: TerrainType[][];
+  scaleX: number;
+  scaleY: number;
+  originalWidth: number;
+  originalHeight: number;
+  interpolationMethod: 'bilinear' | 'bicubic';
+}
+
+export interface TerrainMipmapResult {
+  levels: number;
+  mipmaps: Array<{
+    level: number;
+    width: number;
+    height: number;
+    elevations: number[][];
+  }>;
+  originalWidth: number;
+  originalHeight: number;
+}
+
+export interface TerrainProfileResult {
+  samples: Array<{ x: number; y: number; elevation: number; distance: number; terrainType: TerrainType }>;
+  totalDistance: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationRange: number;
+  totalAscent: number;
+  totalDescent: number;
+  netElevationChange: number;
+  maxSlope: number;
+  averageSlope: number;
+}
+
+export interface GridRegionSampleResult {
+  centerX: number;
+  centerY: number;
+  radius: number;
+  sampleCount: number;
+  samples: Array<{ x: number; y: number; elevation: number; terrainType: TerrainType }>;
+  meanElevation: number;
+  stdDevElevation: number;
+  minElevation: number;
+  maxElevation: number;
+  terrainCounts: Record<string, number>;
+  dominantTerrain: TerrainType;
+}
+
+export interface TerrainCurvatureResult {
+  x: number;
+  y: number;
+  meanCurvature: number;
+  gaussianCurvature: number;
+  profileCurvature: number;
+  planCurvature: number;
+  laplacian: number;
+  curvatureType: 'convex' | 'concave' | 'saddle' | 'flat';
 }
 
 export interface TerrainBoundarySegment {
