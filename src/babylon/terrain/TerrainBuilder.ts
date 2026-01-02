@@ -10,6 +10,13 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { CourseData } from '../../data/courseData';
 import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES } from '../../core/terrain';
 
+export interface CornerHeights {
+  nw: number;
+  ne: number;
+  se: number;
+  sw: number;
+}
+
 export class TerrainBuilder {
   private scene: Scene;
   private courseData: CourseData;
@@ -71,7 +78,9 @@ export class TerrainBuilder {
   }
 
   private createIsometricTile(gridX: number, gridY: number, elevation: number, terrainType: number, isMowed: boolean = false): Mesh {
-    const center = this.gridToScreen(gridX, gridY, elevation);
+    const corners = this.getCornerHeights(gridX, gridY);
+    const baseElev = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+    const center = this.gridToScreen(gridX, gridY, baseElev);
     const hw = TILE_WIDTH / 2;
     const hh = TILE_HEIGHT / 2;
 
@@ -83,16 +92,26 @@ export class TerrainBuilder {
 
     const positions: number[] = [];
     const indices: number[] = [];
-    const normals: number[] = [];
     const colors: number[] = [];
 
-    positions.push(center.x, center.y + hh, center.z);
-    positions.push(center.x + hw, center.y, center.z);
-    positions.push(center.x, center.y - hh, center.z);
-    positions.push(center.x - hw, center.y, center.z);
+    const nwOffset = (corners.nw - baseElev) * ELEVATION_HEIGHT;
+    const neOffset = (corners.ne - baseElev) * ELEVATION_HEIGHT;
+    const seOffset = (corners.se - baseElev) * ELEVATION_HEIGHT;
+    const swOffset = (corners.sw - baseElev) * ELEVATION_HEIGHT;
 
-    indices.push(0, 2, 1);
-    indices.push(0, 3, 2);
+    positions.push(center.x, center.y + hh + nwOffset, center.z);
+    positions.push(center.x + hw, center.y + neOffset, center.z);
+    positions.push(center.x, center.y - hh + seOffset, center.z);
+    positions.push(center.x - hw, center.y + swOffset, center.z);
+
+    const diagonal = this.getOptimalDiagonal(corners);
+    if (diagonal === 'nwse') {
+      indices.push(0, 2, 1);
+      indices.push(0, 3, 2);
+    } else {
+      indices.push(0, 3, 1);
+      indices.push(1, 3, 2);
+    }
 
     const baseColor = this.getTerrainColor(terrainType);
     const variation = ((gridX * 7 + gridY * 13) % 10) / 100 - 0.05;
@@ -105,16 +124,14 @@ export class TerrainBuilder {
       colors.push(color.r, color.g, color.b, 1);
     }
 
-    VertexData.ComputeNormals(positions, indices, normals);
-
     const vertexData = new VertexData();
     vertexData.positions = positions;
     vertexData.indices = indices;
-    vertexData.normals = normals;
     vertexData.colors = colors;
 
     const mesh = new Mesh(`tile_${gridX}_${gridY}`, this.scene);
     vertexData.applyToMesh(mesh);
+    mesh.convertToFlatShadedMesh();
 
     const material = this.getTileMaterial();
     mesh.material = material;
@@ -195,47 +212,69 @@ export class TerrainBuilder {
     const { width, height, elevation: elevData } = this.courseData;
     if (!elevData) return;
 
-    const center = this.gridToScreen(gridX, gridY, elevation);
+    const corners = this.getCornerHeights(gridX, gridY);
+    const baseElev = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+    const center = this.gridToScreen(gridX, gridY, baseElev);
     const hw = TILE_WIDTH / 2;
     const hh = TILE_HEIGHT / 2;
 
-    const sNeighborElev = (gridY + 1 < height) ? (elevData[gridY + 1]?.[gridX] ?? 0) : 0;
-    if (elevation > sNeighborElev) {
-      const elevDiff = elevation - sNeighborElev;
-      const cliffHeight = elevDiff * ELEVATION_HEIGHT;
-      const cliffZ = center.z - 0.05;
+    if (gridY + 1 < height) {
+      const neighborCorners = this.getCornerHeights(gridX, gridY + 1);
+      const swDiff = corners.sw - neighborCorners.nw;
+      const seDiff = corners.se - neighborCorners.ne;
 
-      this.createCliffQuad(
-        center.x - hw, center.y, cliffZ,
-        center.x, center.y - hh, cliffZ,
-        cliffHeight, terrainType, 'sw'
-      );
+      if (swDiff > 0 || seDiff > 0) {
+        const swOffset = (corners.sw - baseElev) * ELEVATION_HEIGHT;
+        const seOffset = (corners.se - baseElev) * ELEVATION_HEIGHT;
+        const cliffZ = center.z - 0.05;
+
+        this.createCliffQuadWithCorners(
+          center.x - hw, center.y + swOffset, cliffZ,
+          center.x, center.y - hh + seOffset, cliffZ,
+          Math.max(swDiff, 0) * ELEVATION_HEIGHT,
+          Math.max(seDiff, 0) * ELEVATION_HEIGHT,
+          terrainType, 'sw'
+        );
+      }
     }
 
-    const eNeighborElev = (gridX + 1 < width) ? (elevData[gridY]?.[gridX + 1] ?? 0) : 0;
-    if (elevation > eNeighborElev) {
-      const elevDiff = elevation - eNeighborElev;
-      const cliffHeight = elevDiff * ELEVATION_HEIGHT;
-      const cliffZ = center.z - 0.05;
+    if (gridX + 1 < width) {
+      const neighborCorners = this.getCornerHeights(gridX + 1, gridY);
+      const neDiff = corners.ne - neighborCorners.nw;
+      const seDiff = corners.se - neighborCorners.sw;
 
-      this.createCliffQuad(
-        center.x, center.y - hh, cliffZ,
-        center.x + hw, center.y, cliffZ,
-        cliffHeight, terrainType, 'se'
-      );
+      if (neDiff > 0 || seDiff > 0) {
+        const neOffset = (corners.ne - baseElev) * ELEVATION_HEIGHT;
+        const seOffset = (corners.se - baseElev) * ELEVATION_HEIGHT;
+        const cliffZ = center.z - 0.05;
+
+        this.createCliffQuadWithCorners(
+          center.x, center.y - hh + seOffset, cliffZ,
+          center.x + hw, center.y + neOffset, cliffZ,
+          Math.max(seDiff, 0) * ELEVATION_HEIGHT,
+          Math.max(neDiff, 0) * ELEVATION_HEIGHT,
+          terrainType, 'se'
+        );
+      }
     }
   }
 
-  private createCliffQuad(x1: number, y1: number, z: number, x2: number, y2: number, _z2: number, height: number, terrainType: number, side: string): void {
+  private createCliffQuadWithCorners(
+    x1: number, y1: number, z: number,
+    x2: number, y2: number,
+    height1: number, height2: number,
+    terrainType: number, side: string
+  ): void {
+    if (height1 <= 0 && height2 <= 0) return;
+
     const positions: number[] = [];
     const indices: number[] = [];
-    const normals: number[] = [];
     const colors: number[] = [];
 
     positions.push(x1, y1, z);
     positions.push(x2, y2, z);
-    positions.push(x2, y2 + height, z);
-    positions.push(x1, y1 + height, z);
+    positions.push(x2, y2 + height2, z);
+    positions.push(x1, y1 + height1, z);
 
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
@@ -248,22 +287,24 @@ export class TerrainBuilder {
       colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1);
     }
 
-    VertexData.ComputeNormals(positions, indices, normals);
-
     const vertexData = new VertexData();
     vertexData.positions = positions;
     vertexData.indices = indices;
-    vertexData.normals = normals;
     vertexData.colors = colors;
 
     const mesh = new Mesh(`cliff_${side}_${x1}_${y1}`, this.scene);
     vertexData.applyToMesh(mesh);
+    mesh.convertToFlatShadedMesh();
 
     const material = this.getTileMaterial();
     mesh.material = material;
     mesh.useVertexColors = true;
 
     this.tileMeshes.push(mesh);
+  }
+
+  private createCliffQuad(x1: number, y1: number, z: number, x2: number, y2: number, _z2: number, height: number, terrainType: number, side: string): void {
+    this.createCliffQuadWithCorners(x1, y1, z, x2, y2, height, height, terrainType, side);
   }
 
   private buildGridLines(): void {
@@ -533,6 +574,31 @@ export class TerrainBuilder {
     const clampedX = Math.min(Math.max(0, gridX), this.courseData.width - 1);
     const clampedY = Math.min(Math.max(0, gridY), this.courseData.height - 1);
     return this.courseData.elevation[clampedY]?.[clampedX] ?? 0;
+  }
+
+  public getCornerHeights(gridX: number, gridY: number): CornerHeights {
+    const baseElev = this.getElevationAt(gridX, gridY);
+    const nElev = this.getElevationAt(gridX, gridY - 1);
+    const sElev = this.getElevationAt(gridX, gridY + 1);
+    const eElev = this.getElevationAt(gridX + 1, gridY);
+    const wElev = this.getElevationAt(gridX - 1, gridY);
+    const neElev = this.getElevationAt(gridX + 1, gridY - 1);
+    const nwElev = this.getElevationAt(gridX - 1, gridY - 1);
+    const seElev = this.getElevationAt(gridX + 1, gridY + 1);
+    const swElev = this.getElevationAt(gridX - 1, gridY + 1);
+
+    const nw = Math.max(baseElev, nElev, wElev, nwElev);
+    const ne = Math.max(baseElev, nElev, eElev, neElev);
+    const se = Math.max(baseElev, sElev, eElev, seElev);
+    const sw = Math.max(baseElev, sElev, wElev, swElev);
+
+    return { nw, ne, se, sw };
+  }
+
+  private getOptimalDiagonal(corners: CornerHeights): 'nwse' | 'nesw' {
+    const diagA = Math.abs(corners.nw - corners.se);
+    const diagB = Math.abs(corners.ne - corners.sw);
+    return diagA <= diagB ? 'nwse' : 'nesw';
   }
 
   public setMowed(gridX: number, gridY: number, mowed: boolean): void {
