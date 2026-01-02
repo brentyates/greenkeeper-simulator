@@ -26097,6 +26097,279 @@ export class TerrainBuilder {
 
     return cascade.shadowMap[texY][texX];
   }
+
+  public generateGrassBladePositions(density: number = 1.0): GrassBladeData {
+    const positions: Array<{ x: number; y: number; z: number; rotation: number; scale: number; tilt: number }> = [];
+
+    const seedHash = (x: number, y: number) => {
+      let h = (x * 374761393 + y * 668265263) >>> 0;
+      h = (((h ^ (h >>> 13)) * 1274126177) >>> 0);
+      return (h >>> 0) / 4294967296;
+    };
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+
+        if (terrainType !== 'fairway' && terrainType !== 'rough' && terrainType !== 'green') {
+          continue;
+        }
+
+        const bladesPerTile = terrainType === 'rough' ? Math.floor(8 * density) :
+                             terrainType === 'fairway' ? Math.floor(4 * density) :
+                             Math.floor(2 * density);
+
+        for (let i = 0; i < bladesPerTile; i++) {
+          const offsetX = seedHash(x * 100 + i, y);
+          const offsetZ = seedHash(x, y * 100 + i);
+
+          const worldX = x + offsetX;
+          const worldZ = y + offsetZ;
+          const elevation = this.sampleElevationBilinear(worldX, worldZ).elevation;
+
+          const rotation = seedHash(x + i, y + i) * Math.PI * 2;
+          const scaleBase = terrainType === 'rough' ? 1.5 : terrainType === 'fairway' ? 0.8 : 0.5;
+          const scale = scaleBase * (0.7 + seedHash(i + x, i + y) * 0.6);
+          const tilt = (seedHash(x * i, y * i) - 0.5) * 0.3;
+
+          positions.push({ x: worldX, y: elevation, z: worldZ, rotation, scale, tilt });
+        }
+      }
+    }
+
+    return {
+      bladePositions: positions,
+      totalBlades: positions.length,
+      density
+    };
+  }
+
+  public generateStonePositions(coverage: number = 0.1): StoneData {
+    const positions: Array<{ x: number; y: number; z: number; rotation: number; scaleX: number; scaleY: number; scaleZ: number; type: number }> = [];
+
+    const seedHash = (x: number, y: number, seed: number) => {
+      let h = (x * 374761393 + y * 668265263 + seed * 982451653) >>> 0;
+      h = (((h ^ (h >>> 13)) * 1274126177) >>> 0);
+      return (h >>> 0) / 4294967296;
+    };
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+
+        if (terrainType !== 'rough' && terrainType !== 'bunker') {
+          continue;
+        }
+
+        if (seedHash(x, y, 0) > coverage) {
+          continue;
+        }
+
+        const offsetX = seedHash(x, y, 1) * 0.8 + 0.1;
+        const offsetZ = seedHash(x, y, 2) * 0.8 + 0.1;
+
+        const worldX = x + offsetX;
+        const worldZ = y + offsetZ;
+        const elevation = this.sampleElevationBilinear(worldX, worldZ).elevation;
+
+        const rotation = seedHash(x, y, 3) * Math.PI * 2;
+        const scaleBase = terrainType === 'bunker' ? 0.15 : 0.25;
+        const scaleX = scaleBase * (0.5 + seedHash(x, y, 4) * 0.5);
+        const scaleY = scaleBase * (0.3 + seedHash(x, y, 5) * 0.4);
+        const scaleZ = scaleBase * (0.5 + seedHash(x, y, 6) * 0.5);
+        const stoneType = Math.floor(seedHash(x, y, 7) * 4);
+
+        positions.push({ x: worldX, y: elevation, z: worldZ, rotation, scaleX, scaleY, scaleZ, type: stoneType });
+      }
+    }
+
+    return {
+      stonePositions: positions,
+      totalStones: positions.length,
+      coverage
+    };
+  }
+
+  public generateTextureVariation(resolution: number = 64): TextureVariationData {
+    const variationMap: number[][] = [];
+
+    const seedHash = (x: number, y: number) => {
+      let h = (x * 374761393 + y * 668265263) >>> 0;
+      h = (((h ^ (h >>> 13)) * 1274126177) >>> 0);
+      return (h >>> 0) / 4294967296;
+    };
+
+    for (let y = 0; y < resolution; y++) {
+      variationMap[y] = [];
+      for (let x = 0; x < resolution; x++) {
+        const worldX = (x / resolution) * this.courseData.width;
+        const worldY = (y / resolution) * this.courseData.height;
+
+        let value = 0;
+        let amplitude = 1;
+        let frequency = 1;
+
+        for (let octave = 0; octave < 4; octave++) {
+          const sx = Math.floor(worldX * frequency);
+          const sy = Math.floor(worldY * frequency);
+          value += seedHash(sx + octave * 1000, sy + octave * 1000) * amplitude;
+          amplitude *= 0.5;
+          frequency *= 2;
+        }
+
+        variationMap[y][x] = value / 1.875;
+      }
+    }
+
+    return {
+      variationMap,
+      resolution,
+      worldWidth: this.courseData.width,
+      worldHeight: this.courseData.height
+    };
+  }
+
+  public generateDetailLOD(distance: number, maxDetails: number = 1000): DetailLODResult {
+    const lodFactor = Math.max(0.1, 1.0 - distance / 100);
+    const detailCount = Math.floor(maxDetails * lodFactor);
+
+    return {
+      lodLevel: distance < 20 ? 0 : distance < 40 ? 1 : distance < 60 ? 2 : 3,
+      lodFactor,
+      detailCount,
+      grassEnabled: distance < 40,
+      stonesEnabled: distance < 60,
+      textureDetailEnabled: distance < 80
+    };
+  }
+
+  public sampleDetailNoise(worldX: number, worldZ: number, frequency: number = 10): number {
+    const seedHash = (x: number, y: number) => {
+      let h = (x * 374761393 + y * 668265263) >>> 0;
+      h = (((h ^ (h >>> 13)) * 1274126177) >>> 0);
+      return (h >>> 0) / 4294967296;
+    };
+
+    const scaledX = worldX * frequency;
+    const scaledZ = worldZ * frequency;
+
+    const x0 = Math.floor(scaledX);
+    const z0 = Math.floor(scaledZ);
+    const x1 = x0 + 1;
+    const z1 = z0 + 1;
+
+    const fx = scaledX - x0;
+    const fz = scaledZ - z0;
+
+    const n00 = seedHash(x0, z0);
+    const n10 = seedHash(x1, z0);
+    const n01 = seedHash(x0, z1);
+    const n11 = seedHash(x1, z1);
+
+    const nx0 = n00 * (1 - fx) + n10 * fx;
+    const nx1 = n01 * (1 - fx) + n11 * fx;
+
+    return nx0 * (1 - fz) + nx1 * fz;
+  }
+
+  public generateFlowerPositions(coverage: number = 0.05): FlowerData {
+    const positions: Array<{ x: number; y: number; z: number; rotation: number; scale: number; colorVariant: number }> = [];
+
+    const seedHash = (x: number, y: number, seed: number) => {
+      let h = (x * 374761393 + y * 668265263 + seed * 982451653) >>> 0;
+      h = (((h ^ (h >>> 13)) * 1274126177) >>> 0);
+      return (h >>> 0) / 4294967296;
+    };
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+
+        if (terrainType !== 'rough') {
+          continue;
+        }
+
+        if (seedHash(x, y, 100) > coverage) {
+          continue;
+        }
+
+        const offsetX = seedHash(x, y, 101) * 0.9 + 0.05;
+        const offsetZ = seedHash(x, y, 102) * 0.9 + 0.05;
+
+        const worldX = x + offsetX;
+        const worldZ = y + offsetZ;
+        const elevation = this.sampleElevationBilinear(worldX, worldZ).elevation;
+
+        const rotation = seedHash(x, y, 103) * Math.PI * 2;
+        const scale = 0.3 + seedHash(x, y, 104) * 0.4;
+        const colorVariant = Math.floor(seedHash(x, y, 105) * 5);
+
+        positions.push({ x: worldX, y: elevation, z: worldZ, rotation, scale, colorVariant });
+      }
+    }
+
+    return {
+      flowerPositions: positions,
+      totalFlowers: positions.length,
+      coverage
+    };
+  }
+
+  public computeDetailStatistics(): DetailStatistics {
+    const grass = this.generateGrassBladePositions(0.5);
+    const stones = this.generateStonePositions(0.1);
+    const flowers = this.generateFlowerPositions(0.05);
+
+    return {
+      totalGrassBlades: grass.totalBlades,
+      totalStones: stones.totalStones,
+      totalFlowers: flowers.totalFlowers,
+      totalDetails: grass.totalBlades + stones.totalStones + flowers.totalFlowers,
+      estimatedMemoryMB: (grass.totalBlades * 32 + stones.totalStones * 40 + flowers.totalFlowers * 28) / (1024 * 1024)
+    };
+  }
+}
+
+export interface GrassBladeData {
+  bladePositions: Array<{ x: number; y: number; z: number; rotation: number; scale: number; tilt: number }>;
+  totalBlades: number;
+  density: number;
+}
+
+export interface StoneData {
+  stonePositions: Array<{ x: number; y: number; z: number; rotation: number; scaleX: number; scaleY: number; scaleZ: number; type: number }>;
+  totalStones: number;
+  coverage: number;
+}
+
+export interface TextureVariationData {
+  variationMap: number[][];
+  resolution: number;
+  worldWidth: number;
+  worldHeight: number;
+}
+
+export interface DetailLODResult {
+  lodLevel: number;
+  lodFactor: number;
+  detailCount: number;
+  grassEnabled: boolean;
+  stonesEnabled: boolean;
+  textureDetailEnabled: boolean;
+}
+
+export interface FlowerData {
+  flowerPositions: Array<{ x: number; y: number; z: number; rotation: number; scale: number; colorVariant: number }>;
+  totalFlowers: number;
+  coverage: number;
+}
+
+export interface DetailStatistics {
+  totalGrassBlades: number;
+  totalStones: number;
+  totalFlowers: number;
+  totalDetails: number;
+  estimatedMemoryMB: number;
 }
 
 export interface RayTracedShadowMapResult {
