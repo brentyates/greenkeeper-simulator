@@ -6786,6 +6786,280 @@ export class TerrainBuilder {
     return 'very_complex';
   }
 
+  public computeTeeSuitability(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const suitability: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      suitability[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return suitability;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainCode = this.courseData.layout[y][x];
+        if (terrainCode === 4 || terrainCode === 5) {
+          suitability[y][x] = 0;
+          continue;
+        }
+
+        const slope = this.getSlopeAngle(x, y);
+        const slopeFactor = Math.max(0, 1 - slope / 5);
+
+        const roughness = this.getLocalRoughness(x, y, 2);
+        const roughnessFactor = Math.max(0, 1 - roughness);
+
+        const accessibility = this.computeAccessibility(x, y, 30);
+        let accessibleCount = 0;
+        let totalNeighbors = 0;
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (this.isValidGridPosition(nx, ny)) {
+              totalNeighbors++;
+              if (accessibility[ny][nx] !== Infinity) accessibleCount++;
+            }
+          }
+        }
+        const accessibilityFactor = totalNeighbors > 0 ? accessibleCount / totalNeighbors : 0;
+
+        suitability[y][x] = slopeFactor * 0.5 + roughnessFactor * 0.3 + accessibilityFactor * 0.2;
+      }
+    }
+
+    return suitability;
+  }
+
+  public computeGreenSuitability(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const suitability: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      suitability[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return suitability;
+
+    const flowAccumulation = this.computeFlowAccumulation();
+    const frostRisk = this.computeFrostRisk();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainCode = this.courseData.layout[y][x];
+        if (terrainCode === 4 || terrainCode === 5) {
+          suitability[y][x] = 0;
+          continue;
+        }
+
+        const slope = this.getSlopeAngle(x, y);
+        const slopeFactor = Math.max(0, 1 - Math.abs(slope - 3) / 10);
+
+        const roughness = this.getLocalRoughness(x, y, 3);
+        const smoothnessFactor = Math.max(0, 1 - roughness * 2);
+
+        const drainage = flowAccumulation[y]?.[x] ?? 0;
+        const drainageFactor = Math.max(0, 1 - Math.min(drainage / 20, 1));
+
+        const frost = frostRisk[y]?.[x] ?? 0;
+        const frostFactor = 1 - frost;
+
+        suitability[y][x] = slopeFactor * 0.35 + smoothnessFactor * 0.30 + drainageFactor * 0.20 + frostFactor * 0.15;
+      }
+    }
+
+    return suitability;
+  }
+
+  public computeFairwaySuitability(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const suitability: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      suitability[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return suitability;
+
+    const complexity = this.computeTerrainComplexity();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainCode = this.courseData.layout[y][x];
+        if (terrainCode === 4 || terrainCode === 5) {
+          suitability[y][x] = 0;
+          continue;
+        }
+
+        const slope = this.getSlopeAngle(x, y);
+        const slopeFactor = Math.max(0, 1 - slope / 25);
+
+        const comp = complexity[y][x];
+        const simpleFactor = 1 - comp;
+
+        const roughness = this.getLocalRoughness(x, y, 2);
+        const roughnessFactor = Math.max(0, 1 - roughness);
+
+        suitability[y][x] = slopeFactor * 0.45 + simpleFactor * 0.30 + roughnessFactor * 0.25;
+      }
+    }
+
+    return suitability;
+  }
+
+  public getGolfSuitabilityAnalysis(): GolfSuitabilityAnalysis {
+    const teeSuitability = this.computeTeeSuitability();
+    const greenSuitability = this.computeGreenSuitability();
+    const fairwaySuitability = this.computeFairwaySuitability();
+    const { width, height } = this.courseData;
+
+    let teeStats = { min: Infinity, max: 0, total: 0, excellentCount: 0 };
+    let greenStats = { min: Infinity, max: 0, total: 0, excellentCount: 0 };
+    let fairwayStats = { min: Infinity, max: 0, total: 0, excellentCount: 0 };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const tee = teeSuitability[y][x];
+        const green = greenSuitability[y][x];
+        const fairway = fairwaySuitability[y][x];
+
+        teeStats.min = Math.min(teeStats.min, tee);
+        teeStats.max = Math.max(teeStats.max, tee);
+        teeStats.total += tee;
+        if (tee >= 0.8) teeStats.excellentCount++;
+
+        greenStats.min = Math.min(greenStats.min, green);
+        greenStats.max = Math.max(greenStats.max, green);
+        greenStats.total += green;
+        if (green >= 0.8) greenStats.excellentCount++;
+
+        fairwayStats.min = Math.min(fairwayStats.min, fairway);
+        fairwayStats.max = Math.max(fairwayStats.max, fairway);
+        fairwayStats.total += fairway;
+        if (fairway >= 0.8) fairwayStats.excellentCount++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      teeMinSuitability: teeStats.min,
+      teeMaxSuitability: teeStats.max,
+      teeAvgSuitability: teeStats.total / totalTiles,
+      teeExcellentCount: teeStats.excellentCount,
+      greenMinSuitability: greenStats.min,
+      greenMaxSuitability: greenStats.max,
+      greenAvgSuitability: greenStats.total / totalTiles,
+      greenExcellentCount: greenStats.excellentCount,
+      fairwayMinSuitability: fairwayStats.min,
+      fairwayMaxSuitability: fairwayStats.max,
+      fairwayAvgSuitability: fairwayStats.total / totalTiles,
+      fairwayExcellentCount: fairwayStats.excellentCount,
+      overallPlayabilityScore: ((teeStats.total + greenStats.total + fairwayStats.total) / (totalTiles * 3)) * 100
+    };
+  }
+
+  public findBestTeeLocations(minSize: number = 3): Array<{ x: number; y: number; avgSuitability: number }> {
+    const suitability = this.computeTeeSuitability();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgSuitability: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += suitability[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgSuitability: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgSuitability - a.avgSuitability).slice(0, 10);
+  }
+
+  public findBestGreenLocations(minSize: number = 5): Array<{ x: number; y: number; avgSuitability: number }> {
+    const suitability = this.computeGreenSuitability();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgSuitability: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += suitability[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgSuitability: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgSuitability - a.avgSuitability).slice(0, 10);
+  }
+
+  public findBestFairwayRoutes(startX: number, startY: number, endX: number, endY: number): Array<{ x: number; y: number }> {
+    const suitability = this.computeFairwaySuitability();
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number; path: Array<{ x: number; y: number }>; cost: number }> = [
+      { x: startX, y: startY, path: [{ x: startX, y: startY }], cost: 0 }
+    ];
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
+      { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
+    ];
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => a.cost - b.cost);
+      const current = queue.shift()!;
+      const key = `${current.x},${current.y}`;
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      if (current.x === endX && current.y === endY) {
+        return current.path;
+      }
+
+      for (const n of neighbors) {
+        const nx = current.x + n.dx;
+        const ny = current.y + n.dy;
+
+        if (!this.isValidGridPosition(nx, ny)) continue;
+        if (visited.has(`${nx},${ny}`)) continue;
+
+        const suit = suitability[ny]?.[nx] ?? 0;
+        const moveCost = 1 / (suit + 0.1);
+        const dist = Math.sqrt(n.dx * n.dx + n.dy * n.dy);
+        const heuristic = Math.sqrt(Math.pow(endX - nx, 2) + Math.pow(endY - ny, 2));
+
+        queue.push({
+          x: nx,
+          y: ny,
+          path: [...current.path, { x: nx, y: ny }],
+          cost: current.cost + moveCost * dist + heuristic * 0.5
+        });
+      }
+    }
+
+    return [];
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -11828,6 +12102,22 @@ export interface TerrainComplexityAnalysis {
   valleyCount: number;
   ridgeLineCount: number;
   overallComplexityScore: number;
+}
+
+export interface GolfSuitabilityAnalysis {
+  teeMinSuitability: number;
+  teeMaxSuitability: number;
+  teeAvgSuitability: number;
+  teeExcellentCount: number;
+  greenMinSuitability: number;
+  greenMaxSuitability: number;
+  greenAvgSuitability: number;
+  greenExcellentCount: number;
+  fairwayMinSuitability: number;
+  fairwayMaxSuitability: number;
+  fairwayAvgSuitability: number;
+  fairwayExcellentCount: number;
+  overallPlayabilityScore: number;
 }
 
 export interface LineSampleOptions {
