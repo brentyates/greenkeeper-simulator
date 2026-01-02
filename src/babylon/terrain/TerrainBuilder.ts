@@ -73,6 +73,8 @@ export class TerrainBuilder {
     lastClearTime: Date.now()
   };
   private cacheEnabled: boolean = false;
+  private zones: Map<string, TerrainZone> = new Map();
+  private tileToZones: Map<string, string[]> = new Map();
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -3426,6 +3428,280 @@ export class TerrainBuilder {
 
     return elevationSize + cornerHeightsSize + terrainTypeSize + physicsSize + slopeSize;
   }
+
+  public createZone(
+    id: string,
+    name: string,
+    tiles: Array<{ x: number; y: number }>,
+    properties: Record<string, unknown> = {},
+    priority: number = 0,
+    color?: { r: number; g: number; b: number }
+  ): TerrainZone {
+    const zone: TerrainZone = {
+      id,
+      name,
+      tiles: [...tiles],
+      properties,
+      color,
+      priority
+    };
+
+    this.zones.set(id, zone);
+
+    for (const tile of tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      if (!this.tileToZones.has(key)) {
+        this.tileToZones.set(key, []);
+      }
+      const zoneList = this.tileToZones.get(key)!;
+      if (!zoneList.includes(id)) {
+        zoneList.push(id);
+      }
+    }
+
+    return zone;
+  }
+
+  public deleteZone(id: string): boolean {
+    const zone = this.zones.get(id);
+    if (!zone) return false;
+
+    for (const tile of zone.tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      const zoneList = this.tileToZones.get(key);
+      if (zoneList) {
+        const index = zoneList.indexOf(id);
+        if (index !== -1) {
+          zoneList.splice(index, 1);
+        }
+        if (zoneList.length === 0) {
+          this.tileToZones.delete(key);
+        }
+      }
+    }
+
+    this.zones.delete(id);
+    return true;
+  }
+
+  public getZone(id: string): TerrainZone | null {
+    return this.zones.get(id) ?? null;
+  }
+
+  public getZoneByName(name: string): TerrainZone | null {
+    for (const zone of this.zones.values()) {
+      if (zone.name === name) {
+        return zone;
+      }
+    }
+    return null;
+  }
+
+  public getAllZones(): TerrainZone[] {
+    return Array.from(this.zones.values());
+  }
+
+  public getZonesAt(gridX: number, gridY: number): TerrainZone[] {
+    const key = `${gridX}_${gridY}`;
+    const zoneIds = this.tileToZones.get(key) ?? [];
+    const zones: TerrainZone[] = [];
+
+    for (const id of zoneIds) {
+      const zone = this.zones.get(id);
+      if (zone) {
+        zones.push(zone);
+      }
+    }
+
+    return zones.sort((a, b) => b.priority - a.priority);
+  }
+
+  public getPrimaryZoneAt(gridX: number, gridY: number): TerrainZone | null {
+    const zones = this.getZonesAt(gridX, gridY);
+    return zones.length > 0 ? zones[0] : null;
+  }
+
+  public isInZone(gridX: number, gridY: number, zoneId: string): boolean {
+    const key = `${gridX}_${gridY}`;
+    const zoneIds = this.tileToZones.get(key);
+    return zoneIds?.includes(zoneId) ?? false;
+  }
+
+  public addTileToZone(zoneId: string, gridX: number, gridY: number): boolean {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return false;
+
+    const exists = zone.tiles.some(t => t.x === gridX && t.y === gridY);
+    if (exists) return false;
+
+    zone.tiles.push({ x: gridX, y: gridY });
+
+    const key = `${gridX}_${gridY}`;
+    if (!this.tileToZones.has(key)) {
+      this.tileToZones.set(key, []);
+    }
+    this.tileToZones.get(key)!.push(zoneId);
+
+    return true;
+  }
+
+  public removeTileFromZone(zoneId: string, gridX: number, gridY: number): boolean {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return false;
+
+    const index = zone.tiles.findIndex(t => t.x === gridX && t.y === gridY);
+    if (index === -1) return false;
+
+    zone.tiles.splice(index, 1);
+
+    const key = `${gridX}_${gridY}`;
+    const zoneList = this.tileToZones.get(key);
+    if (zoneList) {
+      const zIdx = zoneList.indexOf(zoneId);
+      if (zIdx !== -1) {
+        zoneList.splice(zIdx, 1);
+      }
+      if (zoneList.length === 0) {
+        this.tileToZones.delete(key);
+      }
+    }
+
+    return true;
+  }
+
+  public setZoneProperty(zoneId: string, key: string, value: unknown): boolean {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return false;
+    zone.properties[key] = value;
+    return true;
+  }
+
+  public getZoneProperty<T>(zoneId: string, key: string): T | null {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return null;
+    return (zone.properties[key] as T) ?? null;
+  }
+
+  public setZoneColor(zoneId: string, color: { r: number; g: number; b: number }): boolean {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return false;
+    zone.color = color;
+    return true;
+  }
+
+  public setZonePriority(zoneId: string, priority: number): boolean {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return false;
+    zone.priority = priority;
+    return true;
+  }
+
+  public getZoneCount(): number {
+    return this.zones.size;
+  }
+
+  public getZoneStatistics(zoneId: string): {
+    tileCount: number;
+    bounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+    center: { x: number; y: number } | null;
+    terrainTypes: Record<TerrainType, number>;
+  } | null {
+    const zone = this.zones.get(zoneId);
+    if (!zone) return null;
+
+    const terrainTypes: Record<TerrainType, number> = {
+      fairway: 0,
+      rough: 0,
+      green: 0,
+      bunker: 0,
+      water: 0
+    };
+
+    if (zone.tiles.length === 0) {
+      return {
+        tileCount: 0,
+        bounds: null,
+        center: null,
+        terrainTypes
+      };
+    }
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let sumX = 0, sumY = 0;
+
+    for (const tile of zone.tiles) {
+      minX = Math.min(minX, tile.x);
+      maxX = Math.max(maxX, tile.x);
+      minY = Math.min(minY, tile.y);
+      maxY = Math.max(maxY, tile.y);
+      sumX += tile.x;
+      sumY += tile.y;
+
+      const type = this.getTerrainTypeAt(tile.x, tile.y);
+      terrainTypes[type]++;
+    }
+
+    return {
+      tileCount: zone.tiles.length,
+      bounds: { minX, maxX, minY, maxY },
+      center: {
+        x: Math.round(sumX / zone.tiles.length),
+        y: Math.round(sumY / zone.tiles.length)
+      },
+      terrainTypes
+    };
+  }
+
+  public clearAllZones(): void {
+    this.zones.clear();
+    this.tileToZones.clear();
+  }
+
+  public createZoneFromTerrainType(
+    id: string,
+    name: string,
+    terrainType: TerrainType,
+    priority: number = 0
+  ): TerrainZone {
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.getTerrainTypeAt(x, y) === terrainType) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+
+    return this.createZone(id, name, tiles, { terrainType }, priority);
+  }
+
+  public createZoneFromRect(
+    id: string,
+    name: string,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    priority: number = 0
+  ): TerrainZone {
+    const tiles = this.getTilesInRect(minX, minY, maxX, maxY);
+    return this.createZone(id, name, tiles, {}, priority);
+  }
+
+  public createZoneFromRadius(
+    id: string,
+    name: string,
+    centerX: number,
+    centerY: number,
+    radius: number,
+    priority: number = 0
+  ): TerrainZone {
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    return this.createZone(id, name, tiles, {}, priority);
+  }
 }
 
 export interface TerrainStatistics {
@@ -3579,4 +3855,13 @@ export interface TerrainCache {
   cacheHits: number;
   cacheMisses: number;
   lastClearTime: number;
+}
+
+export interface TerrainZone {
+  id: string;
+  name: string;
+  tiles: Array<{ x: number; y: number }>;
+  properties: Record<string, unknown>;
+  color?: { r: number; g: number; b: number };
+  priority: number;
 }
