@@ -25809,6 +25809,334 @@ export class TerrainBuilder {
       totalTiles: Array.from(visibleBatches.values()).reduce((sum, b) => sum + b.instanceCount, 0)
     };
   }
+
+  public computeRayTracedShadowMap(
+    lightDirX: number, lightDirY: number, lightDirZ: number,
+    resolution: number = 256
+  ): RayTracedShadowMapResult {
+    const length = Math.sqrt(lightDirX * lightDirX + lightDirY * lightDirY + lightDirZ * lightDirZ);
+    lightDirX /= length;
+    lightDirY /= length;
+    lightDirZ /= length;
+
+    const shadowMap: number[][] = [];
+
+    for (let y = 0; y < resolution; y++) {
+      shadowMap[y] = [];
+      for (let x = 0; x < resolution; x++) {
+        const worldX = (x / resolution) * this.courseData.width;
+        const worldZ = (y / resolution) * this.courseData.height;
+        const elevation = this.sampleElevationBilinear(worldX, worldZ).elevation;
+
+        let inShadow = false;
+        const stepSize = 0.5;
+        const maxSteps = 100;
+
+        for (let step = 1; step < maxSteps; step++) {
+          const sampleX = worldX + lightDirX * step * stepSize;
+          const sampleY = elevation + lightDirY * step * stepSize;
+          const sampleZ = worldZ + lightDirZ * step * stepSize;
+
+          if (sampleX < 0 || sampleX >= this.courseData.width - 1 ||
+              sampleZ < 0 || sampleZ >= this.courseData.height - 1) {
+            break;
+          }
+
+          const terrainHeight = this.sampleElevationBilinear(sampleX, sampleZ).elevation;
+          if (terrainHeight > sampleY) {
+            inShadow = true;
+            break;
+          }
+        }
+
+        shadowMap[y][x] = inShadow ? 0 : 1;
+      }
+    }
+
+    return {
+      shadowMap,
+      resolution,
+      lightDirection: { x: lightDirX, y: lightDirY, z: lightDirZ }
+    };
+  }
+
+  public computeRayTracedShadowCascades(
+    lightDirX: number, lightDirY: number, lightDirZ: number,
+    cascadeCount: number = 4
+  ): RayTracedShadowCascadeResult {
+    const cascades: Array<{
+      shadowMap: number[][];
+      resolution: number;
+      worldSize: number;
+      centerX: number;
+      centerZ: number;
+    }> = [];
+
+    const cascadeSizes = [16, 32, 64, 128];
+    const resolutions = [256, 128, 64, 32];
+
+    for (let i = 0; i < cascadeCount; i++) {
+      const worldSize = cascadeSizes[i] || cascadeSizes[cascadeSizes.length - 1];
+      const resolution = resolutions[i] || resolutions[resolutions.length - 1];
+
+      const shadowMap: number[][] = [];
+
+      for (let y = 0; y < resolution; y++) {
+        shadowMap[y] = [];
+        for (let x = 0; x < resolution; x++) {
+          const worldX = this.courseData.width / 2 + ((x / resolution) - 0.5) * worldSize;
+          const worldZ = this.courseData.height / 2 + ((y / resolution) - 0.5) * worldSize;
+
+          if (worldX < 0 || worldX >= this.courseData.width - 1 ||
+              worldZ < 0 || worldZ >= this.courseData.height - 1) {
+            shadowMap[y][x] = 1;
+            continue;
+          }
+
+          const elevation = this.sampleElevationBilinear(worldX, worldZ).elevation;
+          let inShadow = false;
+
+          for (let step = 1; step < 50; step++) {
+            const sampleX = worldX + lightDirX * step * 0.5;
+            const sampleY = elevation + lightDirY * step * 0.5;
+            const sampleZ = worldZ + lightDirZ * step * 0.5;
+
+            if (sampleX < 0 || sampleX >= this.courseData.width - 1 ||
+                sampleZ < 0 || sampleZ >= this.courseData.height - 1) {
+              break;
+            }
+
+            const terrainHeight = this.sampleElevationBilinear(sampleX, sampleZ).elevation;
+            if (terrainHeight > sampleY) {
+              inShadow = true;
+              break;
+            }
+          }
+
+          shadowMap[y][x] = inShadow ? 0 : 1;
+        }
+      }
+
+      cascades.push({
+        shadowMap,
+        resolution,
+        worldSize,
+        centerX: this.courseData.width / 2,
+        centerZ: this.courseData.height / 2
+      });
+    }
+
+    return {
+      cascades,
+      cascadeCount,
+      cascadeSplits: cascadeSizes.slice(0, cascadeCount)
+    };
+  }
+
+  public sampleRayTracedShadowValue(
+    shadowMap: RayTracedShadowMapResult,
+    worldX: number, worldZ: number
+  ): number {
+    const texX = Math.floor((worldX / this.courseData.width) * shadowMap.resolution);
+    const texY = Math.floor((worldZ / this.courseData.height) * shadowMap.resolution);
+
+    const clampedX = Math.max(0, Math.min(shadowMap.resolution - 1, texX));
+    const clampedY = Math.max(0, Math.min(shadowMap.resolution - 1, texY));
+
+    return shadowMap.shadowMap[clampedY][clampedX];
+  }
+
+  public sampleRayTracedShadowPCF(
+    shadowMap: RayTracedShadowMapResult,
+    worldX: number, worldZ: number,
+    kernelSize: number = 3
+  ): number {
+    const texX = (worldX / this.courseData.width) * shadowMap.resolution;
+    const texY = (worldZ / this.courseData.height) * shadowMap.resolution;
+
+    let total = 0;
+    let count = 0;
+    const halfKernel = Math.floor(kernelSize / 2);
+
+    for (let dy = -halfKernel; dy <= halfKernel; dy++) {
+      for (let dx = -halfKernel; dx <= halfKernel; dx++) {
+        const sx = Math.floor(texX + dx);
+        const sy = Math.floor(texY + dy);
+
+        if (sx >= 0 && sx < shadowMap.resolution && sy >= 0 && sy < shadowMap.resolution) {
+          total += shadowMap.shadowMap[sy][sx];
+          count++;
+        }
+      }
+    }
+
+    return count > 0 ? total / count : 1;
+  }
+
+  public computeTerrainAmbientOcclusion(sampleCount: number = 8): RayTracedAmbientOcclusionResult {
+    const aoMap: number[][] = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      aoMap[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const elevation = this.getElevationAt(x, y);
+        let occlusion = 0;
+
+        for (let i = 0; i < sampleCount; i++) {
+          const angle = (i / sampleCount) * Math.PI * 2;
+          const dirX = Math.cos(angle);
+          const dirZ = Math.sin(angle);
+          const radius = 2;
+
+          const sampleX = x + dirX * radius;
+          const sampleZ = y + dirZ * radius;
+
+          if (sampleX >= 0 && sampleX < this.courseData.width - 1 &&
+              sampleZ >= 0 && sampleZ < this.courseData.height - 1) {
+            const sampleElev = this.sampleElevationBilinear(sampleX, sampleZ).elevation;
+            if (sampleElev > elevation) {
+              occlusion += 1 / sampleCount;
+            }
+          }
+        }
+
+        aoMap[y][x] = 1 - Math.min(occlusion, 0.8);
+      }
+    }
+
+    return {
+      aoMap,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      sampleCount
+    };
+  }
+
+  public computeTerrainSunlightExposure(
+    sunAzimuth: number,
+    sunElevation: number
+  ): RayTracedSunlightExposureResult {
+    const lightDirX = Math.cos(sunAzimuth) * Math.cos(sunElevation);
+    const lightDirY = Math.sin(sunElevation);
+    const lightDirZ = Math.sin(sunAzimuth) * Math.cos(sunElevation);
+
+    const exposureMap: number[][] = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      exposureMap[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const normal = this.sampleNormalBilinear(x + 0.5, y + 0.5);
+
+        const nDotL = Math.max(0,
+          normal.normal.x * lightDirX +
+          normal.normal.y * lightDirY +
+          normal.normal.z * lightDirZ
+        );
+
+        exposureMap[y][x] = nDotL;
+      }
+    }
+
+    return {
+      exposureMap,
+      sunDirection: { x: lightDirX, y: lightDirY, z: lightDirZ },
+      sunAzimuth,
+      sunElevation
+    };
+  }
+
+  public computeRayTracedShadowStatistics(shadowMap: RayTracedShadowMapResult): RayTracedShadowStatistics {
+    let shadowedPixels = 0;
+    let litPixels = 0;
+
+    for (let y = 0; y < shadowMap.resolution; y++) {
+      for (let x = 0; x < shadowMap.resolution; x++) {
+        if (shadowMap.shadowMap[y][x] < 0.5) {
+          shadowedPixels++;
+        } else {
+          litPixels++;
+        }
+      }
+    }
+
+    const totalPixels = shadowMap.resolution * shadowMap.resolution;
+
+    return {
+      shadowedPixels,
+      litPixels,
+      totalPixels,
+      shadowCoverage: shadowedPixels / totalPixels,
+      averageShadowValue: litPixels / totalPixels
+    };
+  }
+
+  public blendRayTracedShadowCascades(
+    cascades: RayTracedShadowCascadeResult,
+    worldX: number, worldZ: number,
+    cameraDistance: number
+  ): number {
+    let cascadeIndex = 0;
+    for (let i = 0; i < cascades.cascadeCount; i++) {
+      if (cameraDistance < cascades.cascadeSplits[i]) {
+        cascadeIndex = i;
+        break;
+      }
+      cascadeIndex = i;
+    }
+
+    const cascade = cascades.cascades[cascadeIndex];
+    const localX = (worldX - cascade.centerX + cascade.worldSize / 2) / cascade.worldSize;
+    const localZ = (worldZ - cascade.centerZ + cascade.worldSize / 2) / cascade.worldSize;
+
+    const texX = Math.floor(localX * cascade.resolution);
+    const texY = Math.floor(localZ * cascade.resolution);
+
+    if (texX < 0 || texX >= cascade.resolution || texY < 0 || texY >= cascade.resolution) {
+      return 1;
+    }
+
+    return cascade.shadowMap[texY][texX];
+  }
+}
+
+export interface RayTracedShadowMapResult {
+  shadowMap: number[][];
+  resolution: number;
+  lightDirection: { x: number; y: number; z: number };
+}
+
+export interface RayTracedShadowCascadeResult {
+  cascades: Array<{
+    shadowMap: number[][];
+    resolution: number;
+    worldSize: number;
+    centerX: number;
+    centerZ: number;
+  }>;
+  cascadeCount: number;
+  cascadeSplits: number[];
+}
+
+export interface RayTracedAmbientOcclusionResult {
+  aoMap: number[][];
+  width: number;
+  height: number;
+  sampleCount: number;
+}
+
+export interface RayTracedSunlightExposureResult {
+  exposureMap: number[][];
+  sunDirection: { x: number; y: number; z: number };
+  sunAzimuth: number;
+  sunElevation: number;
+}
+
+export interface RayTracedShadowStatistics {
+  shadowedPixels: number;
+  litPixels: number;
+  totalPixels: number;
+  shadowCoverage: number;
+  averageShadowValue: number;
 }
 
 export interface TileBatch {
