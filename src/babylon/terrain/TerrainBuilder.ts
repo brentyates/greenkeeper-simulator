@@ -75,6 +75,14 @@ export class TerrainBuilder {
   private cacheEnabled: boolean = false;
   private zones: Map<string, TerrainZone> = new Map();
   private tileToZones: Map<string, string[]> = new Map();
+  private history: TerrainHistory = {
+    undoStack: [],
+    redoStack: [],
+    maxHistorySize: 100,
+    currentBatch: null,
+    batchDescription: null
+  };
+  private historyEnabled: boolean = false;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -3702,6 +3710,278 @@ export class TerrainBuilder {
     const tiles = this.getTilesInRadius(centerX, centerY, radius);
     return this.createZone(id, name, tiles, {}, priority);
   }
+
+  public setHistoryEnabled(enabled: boolean): void {
+    this.historyEnabled = enabled;
+    if (!enabled) {
+      this.clearHistory();
+    }
+  }
+
+  public isHistoryEnabled(): boolean {
+    return this.historyEnabled;
+  }
+
+  public setMaxHistorySize(size: number): void {
+    this.history.maxHistorySize = Math.max(1, size);
+    while (this.history.undoStack.length > this.history.maxHistorySize) {
+      this.history.undoStack.shift();
+    }
+  }
+
+  public getMaxHistorySize(): number {
+    return this.history.maxHistorySize;
+  }
+
+  public clearHistory(): void {
+    this.history.undoStack = [];
+    this.history.redoStack = [];
+    this.history.currentBatch = null;
+    this.history.batchDescription = null;
+  }
+
+  public getUndoStackSize(): number {
+    return this.history.undoStack.length;
+  }
+
+  public getRedoStackSize(): number {
+    return this.history.redoStack.length;
+  }
+
+  public canUndo(): boolean {
+    return this.history.undoStack.length > 0;
+  }
+
+  public canRedo(): boolean {
+    return this.history.redoStack.length > 0;
+  }
+
+  public beginBatch(description: string): void {
+    if (this.history.currentBatch !== null) {
+      this.endBatch();
+    }
+    this.history.currentBatch = [];
+    this.history.batchDescription = description;
+  }
+
+  public endBatch(): void {
+    if (this.history.currentBatch !== null && this.history.currentBatch.length > 0) {
+      this.pushHistoryState({
+        modifications: this.history.currentBatch,
+        description: this.history.batchDescription || 'Batch modification',
+        timestamp: Date.now()
+      });
+    }
+    this.history.currentBatch = null;
+    this.history.batchDescription = null;
+  }
+
+  public isInBatch(): boolean {
+    return this.history.currentBatch !== null;
+  }
+
+  private pushHistoryState(state: TerrainHistoryState): void {
+    this.history.undoStack.push(state);
+    this.history.redoStack = [];
+    while (this.history.undoStack.length > this.history.maxHistorySize) {
+      this.history.undoStack.shift();
+    }
+  }
+
+  public recordModification(
+    type: TerrainModificationType,
+    gridX: number,
+    gridY: number,
+    previousValue: unknown,
+    newValue: unknown
+  ): void {
+    if (!this.historyEnabled) return;
+
+    const modification: TerrainModification = {
+      type,
+      gridX,
+      gridY,
+      previousValue,
+      newValue,
+      timestamp: Date.now()
+    };
+
+    if (this.history.currentBatch !== null) {
+      this.history.currentBatch.push(modification);
+    } else {
+      this.pushHistoryState({
+        modifications: [modification],
+        description: `${type} at (${gridX}, ${gridY})`,
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  public undo(): boolean {
+    if (!this.canUndo()) return false;
+
+    const state = this.history.undoStack.pop()!;
+    const redoModifications: TerrainModification[] = [];
+
+    for (let i = state.modifications.length - 1; i >= 0; i--) {
+      const mod = state.modifications[i];
+      const currentValue = this.getModificationValue(mod.type, mod.gridX, mod.gridY);
+      this.applyModificationValue(mod.type, mod.gridX, mod.gridY, mod.previousValue);
+      redoModifications.unshift({
+        ...mod,
+        previousValue: currentValue,
+        newValue: mod.previousValue
+      });
+    }
+
+    this.history.redoStack.push({
+      modifications: redoModifications,
+      description: state.description,
+      timestamp: Date.now()
+    });
+
+    return true;
+  }
+
+  public redo(): boolean {
+    if (!this.canRedo()) return false;
+
+    const state = this.history.redoStack.pop()!;
+    const undoModifications: TerrainModification[] = [];
+
+    for (const mod of state.modifications) {
+      const currentValue = this.getModificationValue(mod.type, mod.gridX, mod.gridY);
+      this.applyModificationValue(mod.type, mod.gridX, mod.gridY, mod.newValue);
+      undoModifications.push({
+        ...mod,
+        previousValue: currentValue
+      });
+    }
+
+    this.history.undoStack.push({
+      modifications: undoModifications,
+      description: state.description,
+      timestamp: Date.now()
+    });
+
+    return true;
+  }
+
+  private getModificationValue(type: TerrainModificationType, gridX: number, gridY: number): unknown {
+    switch (type) {
+      case 'elevation':
+        return this.getElevationAt(gridX, gridY);
+      case 'mowed':
+        return this.isMowed(gridX, gridY);
+      case 'terrainType':
+        return this.getTerrainTypeAt(gridX, gridY);
+      case 'cornerHeights':
+        return this.getCornerHeights(gridX, gridY);
+      default:
+        return null;
+    }
+  }
+
+  private applyModificationValue(type: TerrainModificationType, gridX: number, gridY: number, value: unknown): void {
+    switch (type) {
+      case 'elevation':
+        this.setElevationAtInternal(gridX, gridY, value as number);
+        break;
+      case 'mowed':
+        this.setMowed(gridX, gridY, value as boolean);
+        break;
+      case 'cornerHeights':
+        break;
+    }
+    this.invalidateCacheAt(gridX, gridY);
+  }
+
+  private setElevationAtInternal(gridX: number, gridY: number, elevation: number): void {
+    const { width, height, layout } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) return;
+
+    if (this.courseData.elevation) {
+      this.courseData.elevation[gridY][gridX] = elevation;
+
+      const key = `${gridX}_${gridY}`;
+      const oldMesh = this.tileMap.get(key);
+      if (oldMesh) {
+        const idx = this.tileMeshes.indexOf(oldMesh);
+        if (idx !== -1) this.tileMeshes.splice(idx, 1);
+        oldMesh.dispose();
+      }
+
+      const terrainType = layout[gridY]?.[gridX] ?? TERRAIN_CODES.ROUGH;
+      const isMowedState = this.mowedState[gridY]?.[gridX] ?? false;
+      const newTile = this.createIsometricTile(gridX, gridY, elevation, terrainType, isMowedState);
+      this.tileMeshes.push(newTile);
+      this.tileMap.set(key, newTile);
+    }
+  }
+
+  public setElevationWithHistory(gridX: number, gridY: number, elevation: number): void {
+    const previousValue = this.getElevationAt(gridX, gridY);
+    this.recordModification('elevation', gridX, gridY, previousValue, elevation);
+    this.setElevationAtInternal(gridX, gridY, elevation);
+    this.invalidateCacheAt(gridX, gridY);
+  }
+
+  public setMowedWithHistory(gridX: number, gridY: number, mowed: boolean): void {
+    const previousValue = this.isMowed(gridX, gridY);
+    if (previousValue !== mowed) {
+      this.recordModification('mowed', gridX, gridY, previousValue, mowed);
+      this.setMowed(gridX, gridY, mowed);
+    }
+  }
+
+  public getHistoryState(): { undoCount: number; redoCount: number; isInBatch: boolean; maxSize: number } {
+    return {
+      undoCount: this.history.undoStack.length,
+      redoCount: this.history.redoStack.length,
+      isInBatch: this.history.currentBatch !== null,
+      maxSize: this.history.maxHistorySize
+    };
+  }
+
+  public getLastUndoDescription(): string | null {
+    if (this.history.undoStack.length === 0) return null;
+    return this.history.undoStack[this.history.undoStack.length - 1].description;
+  }
+
+  public getLastRedoDescription(): string | null {
+    if (this.history.redoStack.length === 0) return null;
+    return this.history.redoStack[this.history.redoStack.length - 1].description;
+  }
+
+  public getHistoryStatistics(): {
+    undoCount: number;
+    redoCount: number;
+    totalModifications: number;
+    oldestTimestamp: number | null;
+    newestTimestamp: number | null;
+  } {
+    let totalModifications = 0;
+    let oldestTimestamp: number | null = null;
+    let newestTimestamp: number | null = null;
+
+    for (const state of this.history.undoStack) {
+      totalModifications += state.modifications.length;
+      if (oldestTimestamp === null || state.timestamp < oldestTimestamp) {
+        oldestTimestamp = state.timestamp;
+      }
+      if (newestTimestamp === null || state.timestamp > newestTimestamp) {
+        newestTimestamp = state.timestamp;
+      }
+    }
+
+    return {
+      undoCount: this.history.undoStack.length,
+      redoCount: this.history.redoStack.length,
+      totalModifications,
+      oldestTimestamp,
+      newestTimestamp
+    };
+  }
 }
 
 export interface TerrainStatistics {
@@ -3864,4 +4144,29 @@ export interface TerrainZone {
   properties: Record<string, unknown>;
   color?: { r: number; g: number; b: number };
   priority: number;
+}
+
+export type TerrainModificationType = 'elevation' | 'mowed' | 'terrainType' | 'cornerHeights' | 'batch';
+
+export interface TerrainModification {
+  type: TerrainModificationType;
+  gridX: number;
+  gridY: number;
+  previousValue: unknown;
+  newValue: unknown;
+  timestamp: number;
+}
+
+export interface TerrainHistoryState {
+  modifications: TerrainModification[];
+  description: string;
+  timestamp: number;
+}
+
+export interface TerrainHistory {
+  undoStack: TerrainHistoryState[];
+  redoStack: TerrainHistoryState[];
+  maxHistorySize: number;
+  currentBatch: TerrainModification[] | null;
+  batchDescription: string | null;
 }
