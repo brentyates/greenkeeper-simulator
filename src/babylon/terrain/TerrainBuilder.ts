@@ -6278,6 +6278,255 @@ export class TerrainBuilder {
     return bestArea;
   }
 
+  public computeFrostRisk(nighttimeTemperature: number = -2): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const frostRisk: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      frostRisk[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return frostRisk;
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = elevation[y][x];
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+      }
+    }
+    const elevRange = maxElev - minElev || 1;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = elevation[y][x];
+        const normalizedElev = (elev - minElev) / elevRange;
+
+        const coldAirDrainage = 1 - normalizedElev;
+
+        const aspect = this.getAspect(x, y);
+        const aspectRad = aspect * (Math.PI / 180);
+        const northFacing = Math.cos(aspectRad);
+        const solarExposure = (northFacing + 1) / 2;
+
+        const isSink = this.getFlowDirection(x, y);
+        const sinkFactor = (isSink && isSink.dx === 0 && isSink.dy === 0) ? 0.3 : 0;
+
+        const slope = this.getSlopeAngle(x, y);
+        const slopeFactor = 1 - Math.min(slope / 45, 1) * 0.3;
+
+        const temperatureFactor = Math.max(0, Math.min(1, (-nighttimeTemperature) / 10));
+
+        const risk = (
+          coldAirDrainage * 0.4 +
+          solarExposure * 0.25 +
+          sinkFactor +
+          (1 - slopeFactor) * 0.05
+        ) * temperatureFactor;
+
+        frostRisk[y][x] = Math.max(0, Math.min(1, risk));
+      }
+    }
+
+    return frostRisk;
+  }
+
+  public findFrostPockets(threshold: number = 0.6): Array<{ x: number; y: number; riskLevel: number }> {
+    const frostRisk = this.computeFrostRisk();
+    const { width, height } = this.courseData;
+    const pockets: Array<{ x: number; y: number; riskLevel: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (frostRisk[y][x] >= threshold) {
+          let isLocalMax = true;
+          const neighbors = [
+            { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+            { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+          ];
+
+          for (const n of neighbors) {
+            const nx = x + n.dx;
+            const ny = y + n.dy;
+            if (this.isValidGridPosition(nx, ny) && frostRisk[ny][nx] > frostRisk[y][x]) {
+              isLocalMax = false;
+              break;
+            }
+          }
+
+          if (isLocalMax) {
+            pockets.push({ x, y, riskLevel: frostRisk[y][x] });
+          }
+        }
+      }
+    }
+
+    return pockets.sort((a, b) => b.riskLevel - a.riskLevel);
+  }
+
+  public computeColdAirDrainage(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const drainage: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      drainage[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return drainage;
+
+    const elevations: Array<{ x: number; y: number; elev: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        elevations.push({ x, y, elev: elevation[y][x] });
+        drainage[y][x] = 1;
+      }
+    }
+
+    elevations.sort((a, b) => b.elev - a.elev);
+
+    for (const tile of elevations) {
+      const flow = this.getFlowDirection(tile.x, tile.y);
+      if (flow && (flow.dx !== 0 || flow.dy !== 0)) {
+        const nx = tile.x + flow.dx;
+        const ny = tile.y + flow.dy;
+        if (this.isValidGridPosition(nx, ny)) {
+          drainage[ny][nx] += drainage[tile.y][tile.x] * 0.8;
+        }
+      }
+    }
+
+    let maxDrainage = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        maxDrainage = Math.max(maxDrainage, drainage[y][x]);
+      }
+    }
+
+    if (maxDrainage > 0) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          drainage[y][x] = drainage[y][x] / maxDrainage;
+        }
+      }
+    }
+
+    return drainage;
+  }
+
+  public classifyFrostRisk(gridX: number, gridY: number, frostRisk: number[][]): 'none' | 'low' | 'moderate' | 'high' | 'severe' {
+    if (!this.isValidGridPosition(gridX, gridY)) return 'none';
+
+    const risk = frostRisk[gridY][gridX];
+
+    if (risk < 0.2) return 'none';
+    if (risk < 0.4) return 'low';
+    if (risk < 0.6) return 'moderate';
+    if (risk < 0.8) return 'high';
+    return 'severe';
+  }
+
+  public getFrostAnalysis(nighttimeTemperature: number = -2): FrostAnalysis {
+    const frostRisk = this.computeFrostRisk(nighttimeTemperature);
+    const { width, height } = this.courseData;
+
+    let minRisk = Infinity;
+    let maxRisk = 0;
+    let totalRisk = 0;
+    let noneCount = 0;
+    let lowCount = 0;
+    let moderateCount = 0;
+    let highCount = 0;
+    let severeCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const risk = frostRisk[y][x];
+        minRisk = Math.min(minRisk, risk);
+        maxRisk = Math.max(maxRisk, risk);
+        totalRisk += risk;
+
+        const classification = this.classifyFrostRisk(x, y, frostRisk);
+        switch (classification) {
+          case 'none': noneCount++; break;
+          case 'low': lowCount++; break;
+          case 'moderate': moderateCount++; break;
+          case 'high': highCount++; break;
+          case 'severe': severeCount++; break;
+        }
+      }
+    }
+
+    const frostPockets = this.findFrostPockets();
+    const totalTiles = width * height;
+
+    return {
+      nighttimeTemperature,
+      minFrostRisk: minRisk,
+      maxFrostRisk: maxRisk,
+      avgFrostRisk: totalRisk / totalTiles,
+      frostPocketCount: frostPockets.length,
+      noneRiskCount: noneCount,
+      lowRiskCount: lowCount,
+      moderateRiskCount: moderateCount,
+      highRiskCount: highCount,
+      severeRiskCount: severeCount,
+      atRiskPercentage: ((lowCount + moderateCount + highCount + severeCount) / totalTiles) * 100
+    };
+  }
+
+  public findSafestFromFrost(minSize: number = 5): { x: number; y: number; avgRisk: number } | null {
+    const frostRisk = this.computeFrostRisk();
+    const { width, height } = this.courseData;
+    let safestArea: { x: number; y: number; avgRisk: number } | null = null;
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += frostRisk[y + dy]?.[x + dx] ?? 1;
+            count++;
+          }
+        }
+
+        const avgRisk = total / count;
+        if (!safestArea || avgRisk < safestArea.avgRisk) {
+          safestArea = { x, y, avgRisk };
+        }
+      }
+    }
+
+    return safestArea;
+  }
+
+  public findMostFrostProneAreas(minSize: number = 5): Array<{ x: number; y: number; avgRisk: number }> {
+    const frostRisk = this.computeFrostRisk();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgRisk: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += frostRisk[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgRisk: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgRisk - a.avgRisk).slice(0, 10);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -11292,6 +11541,20 @@ export interface AccessibilityAnalysis {
   moderateAccessCount: number;
   difficultAccessCount: number;
   accessibilityPercentage: number;
+}
+
+export interface FrostAnalysis {
+  nighttimeTemperature: number;
+  minFrostRisk: number;
+  maxFrostRisk: number;
+  avgFrostRisk: number;
+  frostPocketCount: number;
+  noneRiskCount: number;
+  lowRiskCount: number;
+  moderateRiskCount: number;
+  highRiskCount: number;
+  severeRiskCount: number;
+  atRiskPercentage: number;
 }
 
 export interface LineSampleOptions {
