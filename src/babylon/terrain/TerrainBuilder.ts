@@ -847,6 +847,97 @@ export class TerrainBuilder {
     return { width: this.courseData.width, height: this.courseData.height };
   }
 
+  public getTilesInRadius(centerX: number, centerY: number, radius: number): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+    const radiusSq = radius * radius;
+
+    const minX = Math.max(0, Math.floor(centerX - radius));
+    const maxX = Math.min(width - 1, Math.ceil(centerX + radius));
+    const minY = Math.max(0, Math.floor(centerY - radius));
+    const maxY = Math.min(height - 1, Math.ceil(centerY + radius));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        if (dx * dx + dy * dy <= radiusSq) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+
+    return tiles;
+  }
+
+  public getTilesInRect(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    const minX = Math.max(0, Math.min(x1, x2));
+    const maxX = Math.min(width - 1, Math.max(x1, x2));
+    const minY = Math.max(0, Math.min(y1, y2));
+    const maxY = Math.min(height - 1, Math.max(y1, y2));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        tiles.push({ x, y });
+      }
+    }
+
+    return tiles;
+  }
+
+  public getNeighborTiles(gridX: number, gridY: number, includeDiagonals: boolean = false): Array<{ x: number; y: number }> {
+    const neighbors: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    const offsets = includeDiagonals
+      ? [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]
+      : [[0, -1], [-1, 0], [1, 0], [0, 1]];
+
+    for (const [dx, dy] of offsets) {
+      const nx = gridX + dx;
+      const ny = gridY + dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        neighbors.push({ x: nx, y: ny });
+      }
+    }
+
+    return neighbors;
+  }
+
+  public forEachTileInRadius(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    callback: (x: number, y: number, distance: number) => void
+  ): void {
+    const { width, height } = this.courseData;
+    const radiusSq = radius * radius;
+
+    const minX = Math.max(0, Math.floor(centerX - radius));
+    const maxX = Math.min(width - 1, Math.ceil(centerX + radius));
+    const minY = Math.max(0, Math.floor(centerY - radius));
+    const maxY = Math.min(height - 1, Math.ceil(centerY + radius));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= radiusSq) {
+          callback(x, y, Math.sqrt(distSq));
+        }
+      }
+    }
+  }
+
   private registerFaceMetadata(
     mesh: Mesh,
     gridX: number,
