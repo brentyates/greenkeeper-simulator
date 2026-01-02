@@ -7060,6 +7060,215 @@ export class TerrainBuilder {
     return [];
   }
 
+  public computeDiurnalShadowPattern(
+    latitude: number = 45,
+    dayOfYear: number = 172,
+    hourInterval: number = 1
+  ): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const shadowHours: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      shadowHours[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return shadowHours;
+
+    const latRad = latitude * (Math.PI / 180);
+    const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81)) * (Math.PI / 180);
+
+    const sunriseHourAngle = Math.acos(-Math.tan(latRad) * Math.tan(declination));
+    const sunriseHour = 12 - (sunriseHourAngle * 12 / Math.PI);
+    const sunsetHour = 12 + (sunriseHourAngle * 12 / Math.PI);
+
+    let sampleCount = 0;
+
+    for (let hour = sunriseHour; hour <= sunsetHour; hour += hourInterval) {
+      const hourAngle = (hour - 12) * 15 * (Math.PI / 180);
+      const sinAlt = Math.sin(latRad) * Math.sin(declination) +
+        Math.cos(latRad) * Math.cos(declination) * Math.cos(hourAngle);
+      const altitude = Math.asin(sinAlt) * (180 / Math.PI);
+
+      if (altitude <= 0) continue;
+
+      const cosAz = (Math.sin(declination) - Math.sin(latRad) * sinAlt) /
+        (Math.cos(latRad) * Math.cos(Math.asin(sinAlt)));
+      let azimuth = Math.acos(Math.max(-1, Math.min(1, cosAz))) * (180 / Math.PI);
+      if (hour > 12) azimuth = 360 - azimuth;
+
+      const shadowMap = this.computeSolarExposureWithShadows(azimuth, altitude);
+      sampleCount++;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (shadowMap[y][x] < 0.5) {
+            shadowHours[y][x] += hourInterval;
+          }
+        }
+      }
+    }
+
+    return shadowHours;
+  }
+
+  public computeShadowConsistency(latitude: number = 45, dayOfYear: number = 172): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const consistency: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      consistency[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return consistency;
+
+    const morningPattern = this.computeDiurnalShadowPattern(latitude, dayOfYear, 0.5);
+    const latRad = latitude * (Math.PI / 180);
+    const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81)) * (Math.PI / 180);
+    const sunriseHourAngle = Math.acos(-Math.tan(latRad) * Math.tan(declination));
+    const daylightHours = (2 * sunriseHourAngle * 12 / Math.PI);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const shadowTime = morningPattern[y][x];
+        const shadowRatio = shadowTime / daylightHours;
+
+        if (shadowRatio < 0.1) {
+          consistency[y][x] = 1;
+        } else if (shadowRatio > 0.9) {
+          consistency[y][x] = 1;
+        } else {
+          consistency[y][x] = 1 - 2 * Math.abs(shadowRatio - 0.5);
+        }
+      }
+    }
+
+    return consistency;
+  }
+
+  public classifyShadowPattern(gridX: number, gridY: number, shadowHours: number[][], daylightHours: number): 'full_sun' | 'mostly_sun' | 'partial_shade' | 'mostly_shade' | 'full_shade' {
+    if (!this.isValidGridPosition(gridX, gridY)) return 'partial_shade';
+
+    const hours = shadowHours[gridY][gridX];
+    const ratio = hours / daylightHours;
+
+    if (ratio < 0.1) return 'full_sun';
+    if (ratio < 0.3) return 'mostly_sun';
+    if (ratio < 0.7) return 'partial_shade';
+    if (ratio < 0.9) return 'mostly_shade';
+    return 'full_shade';
+  }
+
+  public getDiurnalShadowAnalysis(latitude: number = 45, dayOfYear: number = 172): DiurnalShadowAnalysis {
+    const shadowHours = this.computeDiurnalShadowPattern(latitude, dayOfYear);
+    const consistency = this.computeShadowConsistency(latitude, dayOfYear);
+    const { width, height } = this.courseData;
+
+    const latRad = latitude * (Math.PI / 180);
+    const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81)) * (Math.PI / 180);
+    const sunriseHourAngle = Math.acos(-Math.tan(latRad) * Math.tan(declination));
+    const daylightHours = (2 * sunriseHourAngle * 12 / Math.PI);
+
+    let minShadowHours = Infinity;
+    let maxShadowHours = 0;
+    let totalShadowHours = 0;
+    let fullSunCount = 0;
+    let mostlySunCount = 0;
+    let partialShadeCount = 0;
+    let mostlyShadeCount = 0;
+    let fullShadeCount = 0;
+    let totalConsistency = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const hours = shadowHours[y][x];
+        minShadowHours = Math.min(minShadowHours, hours);
+        maxShadowHours = Math.max(maxShadowHours, hours);
+        totalShadowHours += hours;
+        totalConsistency += consistency[y][x];
+
+        const classification = this.classifyShadowPattern(x, y, shadowHours, daylightHours);
+        switch (classification) {
+          case 'full_sun': fullSunCount++; break;
+          case 'mostly_sun': mostlySunCount++; break;
+          case 'partial_shade': partialShadeCount++; break;
+          case 'mostly_shade': mostlyShadeCount++; break;
+          case 'full_shade': fullShadeCount++; break;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      daylightHours,
+      minShadowHours,
+      maxShadowHours,
+      avgShadowHours: totalShadowHours / totalTiles,
+      fullSunTileCount: fullSunCount,
+      mostlySunTileCount: mostlySunCount,
+      partialShadeTileCount: partialShadeCount,
+      mostlyShadeTileCount: mostlyShadeCount,
+      fullShadeTileCount: fullShadeCount,
+      avgConsistency: totalConsistency / totalTiles,
+      sunnyPercentage: ((fullSunCount + mostlySunCount) / totalTiles) * 100
+    };
+  }
+
+  public findConsistentlySunnyAreas(latitude: number = 45, dayOfYear: number = 172, minSize: number = 5): Array<{ x: number; y: number; avgSunHours: number }> {
+    const shadowHours = this.computeDiurnalShadowPattern(latitude, dayOfYear);
+    const { width, height } = this.courseData;
+
+    const latRad = latitude * (Math.PI / 180);
+    const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81)) * (Math.PI / 180);
+    const sunriseHourAngle = Math.acos(-Math.tan(latRad) * Math.tan(declination));
+    const daylightHours = (2 * sunriseHourAngle * 12 / Math.PI);
+
+    const areas: Array<{ x: number; y: number; avgSunHours: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let totalSun = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            const shadow = shadowHours[y + dy]?.[x + dx] ?? daylightHours;
+            totalSun += (daylightHours - shadow);
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgSunHours: totalSun / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgSunHours - a.avgSunHours).slice(0, 10);
+  }
+
+  public findConsistentlyShadyAreas(latitude: number = 45, dayOfYear: number = 172, minSize: number = 5): Array<{ x: number; y: number; avgShadeHours: number }> {
+    const shadowHours = this.computeDiurnalShadowPattern(latitude, dayOfYear);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgShadeHours: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let totalShade = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            totalShade += shadowHours[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgShadeHours: totalShade / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgShadeHours - a.avgShadeHours).slice(0, 10);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -12118,6 +12327,20 @@ export interface GolfSuitabilityAnalysis {
   fairwayAvgSuitability: number;
   fairwayExcellentCount: number;
   overallPlayabilityScore: number;
+}
+
+export interface DiurnalShadowAnalysis {
+  daylightHours: number;
+  minShadowHours: number;
+  maxShadowHours: number;
+  avgShadowHours: number;
+  fullSunTileCount: number;
+  mostlySunTileCount: number;
+  partialShadeTileCount: number;
+  mostlyShadeTileCount: number;
+  fullShadeTileCount: number;
+  avgConsistency: number;
+  sunnyPercentage: number;
 }
 
 export interface LineSampleOptions {
