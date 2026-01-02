@@ -795,6 +795,76 @@ export class TerrainBuilder {
     return this.mowedState[gridY]?.[gridX] ?? false;
   }
 
+  public setMowedInRadius(centerX: number, centerY: number, radius: number, mowed: boolean): number {
+    let count = 0;
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    for (const tile of tiles) {
+      const wasMowed = this.isMowed(tile.x, tile.y);
+      this.setMowed(tile.x, tile.y, mowed);
+      if (this.isMowed(tile.x, tile.y) !== wasMowed) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public setMowedInRect(x1: number, y1: number, x2: number, y2: number, mowed: boolean): number {
+    let count = 0;
+    const tiles = this.getTilesInRect(x1, y1, x2, y2);
+    for (const tile of tiles) {
+      const wasMowed = this.isMowed(tile.x, tile.y);
+      this.setMowed(tile.x, tile.y, mowed);
+      if (this.isMowed(tile.x, tile.y) !== wasMowed) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  public getMowedCount(): number {
+    let count = 0;
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.mowedState[y]?.[x]) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  public getMowableCount(): number {
+    let count = 0;
+    const { width, height, layout } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const code = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
+        if (code === TERRAIN_CODES.FAIRWAY || code === TERRAIN_CODES.ROUGH || code === TERRAIN_CODES.GREEN) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  public getMowedPercentage(): number {
+    const mowable = this.getMowableCount();
+    if (mowable === 0) return 0;
+    return (this.getMowedCount() / mowable) * 100;
+  }
+
+  public resetAllMowed(): void {
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.mowedState[y]?.[x]) {
+          this.setMowed(x, y, false);
+        }
+      }
+    }
+  }
+
   public gridToWorld(gridX: number, gridY: number, elevation?: number): Vector3 {
     const elev = elevation ?? this.getElevationAt(gridX, gridY);
     const pos = this.gridToScreen(gridX, gridY, elev);
