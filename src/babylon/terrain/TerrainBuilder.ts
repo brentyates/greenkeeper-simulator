@@ -2026,6 +2026,94 @@ export class TerrainBuilder {
       }
     }
   }
+
+  public setGridLinesVisible(visible: boolean): void {
+    if (this.gridLines) {
+      this.gridLines.setEnabled(visible);
+    }
+  }
+
+  public isGridLinesVisible(): boolean {
+    return this.gridLines?.isEnabled() ?? false;
+  }
+
+  public setWaterVisible(visible: boolean): void {
+    if (this.waterMesh) {
+      this.waterMesh.setEnabled(visible);
+    }
+  }
+
+  public isWaterVisible(): boolean {
+    return this.waterMesh?.isEnabled() ?? false;
+  }
+
+  public setObstaclesVisible(visible: boolean): void {
+    for (const mesh of this.obstacleMeshes) {
+      mesh.setEnabled(visible);
+    }
+  }
+
+  public getTerrainDebugInfo(): TerrainDebugInfo {
+    const stats = this.getTerrainStatistics();
+    const bounds = this.getTerrainBounds();
+
+    return {
+      dimensions: { width: stats.width, height: stats.height },
+      totalTiles: stats.totalTiles,
+      tileMeshCount: this.getTileMeshCount(),
+      visibleMeshCount: this.getVisibleMeshCount(),
+      drawCallEstimate: this.getDrawCallEstimate(),
+      isBatched: this.isBatchedMode(),
+      mowedCount: this.getMowedCount(),
+      mowedPercentage: this.getMowedPercentage(),
+      terrainCounts: stats.terrainCounts,
+      elevationRange: this.getElevationRange(),
+      bounds,
+      waterLevel: this.waterLevel,
+      gridLinesVisible: this.isGridLinesVisible(),
+      waterVisible: this.isWaterVisible()
+    };
+  }
+
+  public logTerrainDebugInfo(): void {
+    const info = this.getTerrainDebugInfo();
+    console.log('=== Terrain Debug Info ===');
+    console.log(`Dimensions: ${info.dimensions.width}x${info.dimensions.height}`);
+    console.log(`Total tiles: ${info.totalTiles}`);
+    console.log(`Tile meshes: ${info.tileMeshCount}`);
+    console.log(`Visible meshes: ${info.visibleMeshCount}`);
+    console.log(`Draw calls (est): ${info.drawCallEstimate}`);
+    console.log(`Batched: ${info.isBatched}`);
+    console.log(`Mowed: ${info.mowedCount} (${info.mowedPercentage.toFixed(1)}%)`);
+    console.log(`Elevation: ${info.elevationRange.min} to ${info.elevationRange.max}`);
+    console.log('Terrain types:', info.terrainCounts);
+  }
+
+  public getTerrainHeatmap(
+    valueFunc: (x: number, y: number) => number
+  ): Array<{ x: number; y: number; value: number }> {
+    const { width, height } = this.courseData;
+    const heatmap: Array<{ x: number; y: number; value: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        heatmap.push({ x, y, value: valueFunc(x, y) });
+      }
+    }
+
+    return heatmap;
+  }
+
+  public getElevationHeatmap(): Array<{ x: number; y: number; value: number }> {
+    return this.getTerrainHeatmap((x, y) => this.getElevationAt(x, y));
+  }
+
+  public getSlopeHeatmap(): Array<{ x: number; y: number; value: number }> {
+    return this.getTerrainHeatmap((x, y) => {
+      const slope = this.getSlopeVectorAt(x, y);
+      return slope.magnitude;
+    });
+  }
 }
 
 export interface TerrainStatistics {
@@ -2081,4 +2169,26 @@ export interface RCTTerrainData {
   heightStep: number;
   waterLevel: number;
   tiles: RCTTileData[];
+}
+
+export interface TerrainDebugInfo {
+  dimensions: { width: number; height: number };
+  totalTiles: number;
+  tileMeshCount: number;
+  visibleMeshCount: number;
+  drawCallEstimate: number;
+  isBatched: boolean;
+  mowedCount: number;
+  mowedPercentage: number;
+  terrainCounts: Record<TerrainType, number>;
+  elevationRange: { min: number; max: number; range: number };
+  bounds: {
+    minWorldX: number;
+    maxWorldX: number;
+    minWorldY: number;
+    maxWorldY: number;
+  };
+  waterLevel: number;
+  gridLinesVisible: boolean;
+  waterVisible: boolean;
 }
