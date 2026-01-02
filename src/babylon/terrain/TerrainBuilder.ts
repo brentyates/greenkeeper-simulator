@@ -1119,6 +1119,145 @@ export class TerrainBuilder {
       range: stats.maxElevation - stats.minElevation
     };
   }
+
+  public getTilesAlongLine(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+    const sx = x1 < x2 ? 1 : -1;
+    const sy = y1 < y2 ? 1 : -1;
+    let err = dx - dy;
+
+    let x = Math.floor(x1);
+    let y = Math.floor(y1);
+    const endX = Math.floor(x2);
+    const endY = Math.floor(y2);
+
+    while (true) {
+      if (x >= 0 && x < width && y >= 0 && y < height) {
+        tiles.push({ x, y });
+      }
+
+      if (x === endX && y === endY) break;
+
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+
+    return tiles;
+  }
+
+  public hasLineOfSight(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    maxElevationDiff: number = 2
+  ): boolean {
+    const tiles = this.getTilesAlongLine(x1, y1, x2, y2);
+    if (tiles.length < 2) return true;
+
+    const startElev = this.getElevationAt(tiles[0].x, tiles[0].y);
+    const endElev = this.getElevationAt(tiles[tiles.length - 1].x, tiles[tiles.length - 1].y);
+    const baselineSlope = (endElev - startElev) / tiles.length;
+
+    for (let i = 1; i < tiles.length - 1; i++) {
+      const tile = tiles[i];
+      const elev = this.getElevationAt(tile.x, tile.y);
+      const expectedElev = startElev + baselineSlope * i;
+
+      if (elev > expectedElev + maxElevationDiff) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  public getElevationAtWorldPos(worldX: number, worldY: number): number {
+    const grid = this.worldToGrid(worldX, worldY);
+    return this.getElevationAt(grid.x, grid.y);
+  }
+
+  public interpolateElevation(gridX: number, gridY: number): number {
+    const { width, height } = this.courseData;
+
+    const baseX = Math.floor(gridX);
+    const baseY = Math.floor(gridY);
+    const fracX = gridX - baseX;
+    const fracY = gridY - baseY;
+
+    const e00 = this.getElevationAt(baseX, baseY);
+    const e10 = this.getElevationAt(Math.min(baseX + 1, width - 1), baseY);
+    const e01 = this.getElevationAt(baseX, Math.min(baseY + 1, height - 1));
+    const e11 = this.getElevationAt(Math.min(baseX + 1, width - 1), Math.min(baseY + 1, height - 1));
+
+    const top = e00 + (e10 - e00) * fracX;
+    const bottom = e01 + (e11 - e01) * fracX;
+
+    return top + (bottom - top) * fracY;
+  }
+
+  public getDistanceBetweenTiles(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    includeElevation: boolean = true
+  ): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const horizontalDist = Math.sqrt(dx * dx + dy * dy);
+
+    if (!includeElevation) {
+      return horizontalDist;
+    }
+
+    const elev1 = this.getElevationAt(x1, y1);
+    const elev2 = this.getElevationAt(x2, y2);
+    const dz = (elev2 - elev1) * ELEVATION_HEIGHT;
+
+    return Math.sqrt(horizontalDist * horizontalDist + dz * dz);
+  }
+
+  public canTraverse(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    maxSlopeDelta: number = 2
+  ): boolean {
+    if (!this.isValidGridPosition(fromX, fromY) || !this.isValidGridPosition(toX, toY)) {
+      return false;
+    }
+
+    const fromType = this.getTerrainTypeAt(fromX, fromY);
+    const toType = this.getTerrainTypeAt(toX, toY);
+
+    if (fromType === 'water' || toType === 'water') {
+      return false;
+    }
+
+    const fromElev = this.getElevationAt(fromX, fromY);
+    const toElev = this.getElevationAt(toX, toY);
+    const elevDiff = Math.abs(toElev - fromElev);
+
+    return elevDiff <= maxSlopeDelta;
+  }
 }
 
 export interface TerrainStatistics {
