@@ -1,5 +1,6 @@
 import { GameState, createDefaultGameState, GrassCellState } from '../systems/GameState';
-import { COURSE_HOLE_1, getTerrainType } from './courseData';
+import { COURSE_HOLE_1 } from './courseData';
+import { getTerrainType } from '../core/terrain';
 
 interface CellModification extends Partial<GrassCellState> {
   elevation?: number;

@@ -11,10 +11,21 @@ import {
   getRampDirection,
   getTextureForCell,
   getCellsInRadius,
+  getCornerHeights,
+  getSlopeType,
+  getSlopeTexture,
+  getBaseElevationForSlope,
+  getTerrainSpeedModifier,
+  getTerrainMowable,
+  getTerrainWaterable,
+  getTerrainFertilizable,
+  clampToGrid,
   CellState,
+  CornerHeights,
   TILE_WIDTH,
-  TILE_HEIGHT,
-  ELEVATION_HEIGHT
+  ELEVATION_HEIGHT,
+  TERRAIN_CODES,
+  OBSTACLE_CODES,
 } from './terrain';
 
 describe('Terrain Type Mapping', () => {
@@ -513,5 +524,302 @@ describe('Area Selection', () => {
     const cells = getCellsInRadius(-5, -5, 1);
     expect(cells).toContainEqual({ x: -5, y: -5 });
     expect(cells).toContainEqual({ x: -6, y: -5 });
+  });
+
+  it('returns empty array for negative radius', () => {
+    const cells = getCellsInRadius(5, 5, -1);
+    expect(cells).toEqual([]);
+  });
+});
+
+describe('Corner Heights Calculation', () => {
+  it('returns all zeros for flat terrain', () => {
+    const corners = getCornerHeights(0, 0, 0, 0, 0, null, null, null, null);
+    expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
+  });
+
+  it('marks north corner as raised when north neighbor is higher', () => {
+    const corners = getCornerHeights(0, 1, 0, 0, 0, null, null, null, null);
+    expect(corners.n).toBe(1);
+    expect(corners.e).toBe(0);
+    expect(corners.s).toBe(0);
+    expect(corners.w).toBe(0);
+  });
+
+  it('marks east corner as raised when east neighbor is higher', () => {
+    const corners = getCornerHeights(0, 0, 1, 0, 0, null, null, null, null);
+    expect(corners.e).toBe(1);
+  });
+
+  it('marks south corner as raised when south neighbor is higher', () => {
+    const corners = getCornerHeights(0, 0, 0, 1, 0, null, null, null, null);
+    expect(corners.s).toBe(1);
+  });
+
+  it('marks west corner as raised when west neighbor is higher', () => {
+    const corners = getCornerHeights(0, 0, 0, 0, 1, null, null, null, null);
+    expect(corners.w).toBe(1);
+  });
+
+  it('marks all corners raised when all neighbors are higher', () => {
+    const corners = getCornerHeights(0, 1, 1, 1, 1, null, null, null, null);
+    expect(corners).toEqual({ n: 1, e: 1, s: 1, w: 1 });
+  });
+
+  it('treats null neighbors as same elevation', () => {
+    const corners = getCornerHeights(0, null, null, null, null, null, null, null, null);
+    expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
+  });
+
+  it('only marks raised if neighbor is strictly higher', () => {
+    const corners = getCornerHeights(1, 1, 1, 1, 1, null, null, null, null);
+    expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
+  });
+
+  it('correctly identifies adjacent raised corners (NE edge)', () => {
+    const corners = getCornerHeights(0, 1, 1, 0, 0, null, null, null, null);
+    expect(corners.n).toBe(1);
+    expect(corners.e).toBe(1);
+    expect(corners.s).toBe(0);
+    expect(corners.w).toBe(0);
+  });
+});
+
+describe('Slope Type Detection', () => {
+  it('returns flat when no corners are raised', () => {
+    const corners: CornerHeights = { n: 0, e: 0, s: 0, w: 0 };
+    expect(getSlopeType(corners)).toBe('flat');
+  });
+
+  describe('single corner slopes', () => {
+    it('detects slope_n when north corner is raised', () => {
+      expect(getSlopeType({ n: 1, e: 0, s: 0, w: 0 })).toBe('slope_n');
+    });
+
+    it('detects slope_e when east corner is raised', () => {
+      expect(getSlopeType({ n: 0, e: 1, s: 0, w: 0 })).toBe('slope_e');
+    });
+
+    it('detects slope_s when south corner is raised', () => {
+      expect(getSlopeType({ n: 0, e: 0, s: 1, w: 0 })).toBe('slope_s');
+    });
+
+    it('detects slope_w when west corner is raised', () => {
+      expect(getSlopeType({ n: 0, e: 0, s: 0, w: 1 })).toBe('slope_w');
+    });
+  });
+
+  describe('edge slopes (two adjacent corners)', () => {
+    it('detects slope_ne when N and E corners are raised', () => {
+      expect(getSlopeType({ n: 1, e: 1, s: 0, w: 0 })).toBe('slope_ne');
+    });
+
+    it('detects slope_se when E and S corners are raised', () => {
+      expect(getSlopeType({ n: 0, e: 1, s: 1, w: 0 })).toBe('slope_se');
+    });
+
+    it('detects slope_sw when S and W corners are raised', () => {
+      expect(getSlopeType({ n: 0, e: 0, s: 1, w: 1 })).toBe('slope_sw');
+    });
+
+    it('detects slope_nw when N and W corners are raised', () => {
+      expect(getSlopeType({ n: 1, e: 0, s: 0, w: 1 })).toBe('slope_nw');
+    });
+  });
+
+  describe('saddle slopes (two opposite corners)', () => {
+    it('detects saddle_ns when N and S corners are raised', () => {
+      expect(getSlopeType({ n: 1, e: 0, s: 1, w: 0 })).toBe('saddle_ns');
+    });
+
+    it('detects saddle_ew when E and W corners are raised', () => {
+      expect(getSlopeType({ n: 0, e: 1, s: 0, w: 1 })).toBe('saddle_ew');
+    });
+  });
+
+  describe('valley slopes (three corners raised, one lowered)', () => {
+    it('detects valley_n when all except N are raised', () => {
+      expect(getSlopeType({ n: 0, e: 1, s: 1, w: 1 })).toBe('valley_n');
+    });
+
+    it('detects valley_e when all except E are raised', () => {
+      expect(getSlopeType({ n: 1, e: 0, s: 1, w: 1 })).toBe('valley_e');
+    });
+
+    it('detects valley_s when all except S are raised', () => {
+      expect(getSlopeType({ n: 1, e: 1, s: 0, w: 1 })).toBe('valley_s');
+    });
+
+    it('detects valley_w when all except W are raised', () => {
+      expect(getSlopeType({ n: 1, e: 1, s: 1, w: 0 })).toBe('valley_w');
+    });
+  });
+
+  describe('all corners raised', () => {
+    it('returns flat when all corners are equally raised', () => {
+      expect(getSlopeType({ n: 1, e: 1, s: 1, w: 1 })).toBe('flat');
+    });
+  });
+});
+
+describe('Slope Texture Generation', () => {
+  it('returns empty string for flat terrain', () => {
+    expect(getSlopeTexture('flat')).toBe('');
+  });
+
+  it('generates correct texture names for single corner slopes', () => {
+    expect(getSlopeTexture('slope_n')).toBe('iso_slope_n');
+    expect(getSlopeTexture('slope_e')).toBe('iso_slope_e');
+    expect(getSlopeTexture('slope_s')).toBe('iso_slope_s');
+    expect(getSlopeTexture('slope_w')).toBe('iso_slope_w');
+  });
+
+  it('generates correct texture names for edge slopes', () => {
+    expect(getSlopeTexture('slope_ne')).toBe('iso_slope_ne');
+    expect(getSlopeTexture('slope_se')).toBe('iso_slope_se');
+    expect(getSlopeTexture('slope_sw')).toBe('iso_slope_sw');
+    expect(getSlopeTexture('slope_nw')).toBe('iso_slope_nw');
+  });
+
+  it('generates correct texture names for valley slopes', () => {
+    expect(getSlopeTexture('valley_n')).toBe('iso_valley_n');
+    expect(getSlopeTexture('valley_e')).toBe('iso_valley_e');
+    expect(getSlopeTexture('valley_s')).toBe('iso_valley_s');
+    expect(getSlopeTexture('valley_w')).toBe('iso_valley_w');
+  });
+
+  it('generates correct texture names for saddle slopes', () => {
+    expect(getSlopeTexture('saddle_ns')).toBe('iso_saddle_ns');
+    expect(getSlopeTexture('saddle_ew')).toBe('iso_saddle_ew');
+  });
+});
+
+describe('Base Elevation for Slope', () => {
+  it('returns 0 for all-zero corners', () => {
+    expect(getBaseElevationForSlope({ n: 0, e: 0, s: 0, w: 0 })).toBe(0);
+  });
+
+  it('returns 0 when any corner is 0', () => {
+    expect(getBaseElevationForSlope({ n: 1, e: 1, s: 1, w: 0 })).toBe(0);
+    expect(getBaseElevationForSlope({ n: 0, e: 1, s: 1, w: 1 })).toBe(0);
+  });
+
+  it('returns 1 when all corners are 1', () => {
+    expect(getBaseElevationForSlope({ n: 1, e: 1, s: 1, w: 1 })).toBe(1);
+  });
+
+  it('returns minimum of all corner heights', () => {
+    expect(getBaseElevationForSlope({ n: 0, e: 1, s: 0, w: 1 })).toBe(0);
+    expect(getBaseElevationForSlope({ n: 1, e: 0, s: 1, w: 0 })).toBe(0);
+  });
+});
+
+describe('Terrain Constants', () => {
+  it('TERRAIN_CODES match getTerrainType mappings', () => {
+    expect(getTerrainType(TERRAIN_CODES.FAIRWAY)).toBe('fairway');
+    expect(getTerrainType(TERRAIN_CODES.ROUGH)).toBe('rough');
+    expect(getTerrainType(TERRAIN_CODES.GREEN)).toBe('green');
+    expect(getTerrainType(TERRAIN_CODES.BUNKER)).toBe('bunker');
+    expect(getTerrainType(TERRAIN_CODES.WATER)).toBe('water');
+  });
+
+  it('OBSTACLE_CODES match getObstacleType mappings', () => {
+    expect(getObstacleType(OBSTACLE_CODES.NONE)).toBe('none');
+    expect(getObstacleType(OBSTACLE_CODES.TREE)).toBe('tree');
+    expect(getObstacleType(OBSTACLE_CODES.PINE_TREE)).toBe('pine_tree');
+    expect(getObstacleType(OBSTACLE_CODES.SHRUB)).toBe('shrub');
+    expect(getObstacleType(OBSTACLE_CODES.BUSH)).toBe('bush');
+  });
+});
+
+describe('Terrain Speed Modifier', () => {
+  it('fairway has full speed', () => {
+    expect(getTerrainSpeedModifier('fairway')).toBe(1.0);
+  });
+
+  it('green has full speed', () => {
+    expect(getTerrainSpeedModifier('green')).toBe(1.0);
+  });
+
+  it('rough slows movement', () => {
+    expect(getTerrainSpeedModifier('rough')).toBe(0.7);
+  });
+
+  it('bunker significantly slows movement', () => {
+    expect(getTerrainSpeedModifier('bunker')).toBe(0.5);
+  });
+
+  it('water blocks movement', () => {
+    expect(getTerrainSpeedModifier('water')).toBe(0.0);
+  });
+});
+
+describe('Terrain Capabilities', () => {
+  describe('getTerrainMowable', () => {
+    it('returns true for grass terrains', () => {
+      expect(getTerrainMowable('fairway')).toBe(true);
+      expect(getTerrainMowable('rough')).toBe(true);
+      expect(getTerrainMowable('green')).toBe(true);
+    });
+
+    it('returns false for non-grass terrains', () => {
+      expect(getTerrainMowable('bunker')).toBe(false);
+      expect(getTerrainMowable('water')).toBe(false);
+    });
+  });
+
+  describe('getTerrainWaterable', () => {
+    it('returns true for grass terrains', () => {
+      expect(getTerrainWaterable('fairway')).toBe(true);
+      expect(getTerrainWaterable('rough')).toBe(true);
+      expect(getTerrainWaterable('green')).toBe(true);
+    });
+
+    it('returns false for non-grass terrains', () => {
+      expect(getTerrainWaterable('bunker')).toBe(false);
+      expect(getTerrainWaterable('water')).toBe(false);
+    });
+  });
+
+  describe('getTerrainFertilizable', () => {
+    it('returns true for grass terrains', () => {
+      expect(getTerrainFertilizable('fairway')).toBe(true);
+      expect(getTerrainFertilizable('rough')).toBe(true);
+      expect(getTerrainFertilizable('green')).toBe(true);
+    });
+
+    it('returns false for non-grass terrains', () => {
+      expect(getTerrainFertilizable('bunker')).toBe(false);
+      expect(getTerrainFertilizable('water')).toBe(false);
+    });
+  });
+});
+
+describe('clampToGrid', () => {
+  it('clamps values within bounds', () => {
+    expect(clampToGrid(5, 0, 10)).toBe(5);
+    expect(clampToGrid(0, 0, 10)).toBe(0);
+    expect(clampToGrid(9.9, 0, 10)).toBe(9);
+  });
+
+  it('clamps values below minimum to minimum', () => {
+    expect(clampToGrid(-5, 0, 10)).toBe(0);
+    expect(clampToGrid(-1, 0, 10)).toBe(0);
+  });
+
+  it('clamps values at or above maximum to max-1', () => {
+    expect(clampToGrid(10, 0, 10)).toBe(9);
+    expect(clampToGrid(15, 0, 10)).toBe(9);
+  });
+
+  it('floors floating point values', () => {
+    expect(clampToGrid(5.9, 0, 10)).toBe(5);
+    expect(clampToGrid(5.1, 0, 10)).toBe(5);
+  });
+
+  it('works with non-zero minimum', () => {
+    expect(clampToGrid(0, 5, 15)).toBe(5);
+    expect(clampToGrid(10, 5, 15)).toBe(10);
+    expect(clampToGrid(20, 5, 15)).toBe(14);
   });
 });

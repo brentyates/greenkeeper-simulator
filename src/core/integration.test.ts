@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CellState,
-  TerrainType,
-  getTerrainType,
-  getInitialValues,
   calculateHealth,
-  isWalkable,
   canMoveFromTo,
   getCellsInRadius
 } from './terrain';
@@ -28,8 +24,6 @@ import {
 import {
   createInitialTimeState,
   updateTime,
-  getCurrentHour,
-  setTimeScale
 } from './time-logic';
 import {
   createInitialProgressState,
@@ -281,8 +275,11 @@ describe('Scoring System Integration', () => {
         }
       }
 
+      const avgStats = getAverageStats(cells);
       stats = {
-        ...getAverageStats(cells),
+        averageHealth: avgStats.health,
+        averageMoisture: avgStats.moisture,
+        averageNutrients: avgStats.nutrients,
         cellsNeedingMowing: 0,
         cellsNeedingWater: 0,
         cellsNeedingFertilizer: 0
@@ -511,7 +508,7 @@ describe('Full Game Loop Simulation', () => {
 
     let time = createInitialTimeState();
     let progress = createInitialProgressState();
-    let player = createInitialPlayerState(0, 0);
+    createInitialPlayerState(0, 0);
     let mower = createEquipmentState('mower');
     let sprinkler = createEquipmentState('sprinkler');
 
@@ -521,7 +518,9 @@ describe('Full Game Loop Simulation', () => {
     progress = {
       ...progress,
       currentObjective: generateObjective({
-        ...initialStats,
+        averageHealth: initialStats.health,
+        averageMoisture: initialStats.moisture,
+        averageNutrients: initialStats.nutrients,
         cellsNeedingMowing: countCellsNeedingMowing(cells),
         cellsNeedingWater: 50,
         cellsNeedingFertilizer: 30

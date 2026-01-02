@@ -1,4 +1,4 @@
-import { CellState, TerrainType, calculateHealth } from './terrain';
+import { CellState, calculateHealth, getTerrainMowable, getTerrainWaterable, getTerrainFertilizable } from './terrain';
 
 export interface GrowthResult {
   height: number;
@@ -11,7 +11,7 @@ export function simulateGrowth(
   cell: CellState,
   deltaMinutes: number
 ): GrowthResult {
-  if (cell.type === 'bunker' || cell.type === 'water') {
+  if (!getTerrainMowable(cell.type)) {
     return {
       height: cell.height,
       moisture: cell.moisture,
@@ -46,7 +46,7 @@ export function simulateGrowth(
 }
 
 export function applyMowing(cell: CellState): CellState | null {
-  if (cell.type === 'bunker' || cell.type === 'water') {
+  if (!getTerrainMowable(cell.type)) {
     return null;
   }
 
@@ -59,7 +59,7 @@ export function applyMowing(cell: CellState): CellState | null {
 }
 
 export function applyWatering(cell: CellState, amount: number): CellState | null {
-  if (cell.type === 'water') {
+  if (!getTerrainWaterable(cell.type) && cell.type !== 'bunker') {
     return null;
   }
 
@@ -77,7 +77,7 @@ export function applyWatering(cell: CellState, amount: number): CellState | null
 }
 
 export function applyFertilizing(cell: CellState, amount: number): CellState | null {
-  if (cell.type === 'bunker' || cell.type === 'water') {
+  if (!getTerrainFertilizable(cell.type)) {
     return null;
   }
 
@@ -103,7 +103,7 @@ export function getAverageStats(cells: CellState[][]): {
 
   for (const row of cells) {
     for (const cell of row) {
-      if (cell.type !== 'bunker' && cell.type !== 'water') {
+      if (getTerrainMowable(cell.type)) {
         totalHealth += cell.health;
         totalMoisture += cell.moisture;
         totalNutrients += cell.nutrients;
@@ -129,7 +129,7 @@ export function countCellsNeedingMowing(cells: CellState[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {
-      if (cell.type !== 'bunker' && cell.type !== 'water' && cell.height > 60) {
+      if (getTerrainMowable(cell.type) && cell.height > 60) {
         count++;
       }
     }
@@ -141,7 +141,7 @@ export function countCellsNeedingWater(cells: CellState[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {
-      if (cell.type !== 'bunker' && cell.type !== 'water' && cell.moisture < 30) {
+      if (getTerrainWaterable(cell.type) && cell.moisture < 30) {
         count++;
       }
     }
@@ -153,7 +153,7 @@ export function countCellsNeedingFertilizer(cells: CellState[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {
-      if (cell.type !== 'bunker' && cell.type !== 'water' && cell.nutrients < 30) {
+      if (getTerrainFertilizable(cell.type) && cell.nutrients < 30) {
         count++;
       }
     }

@@ -12,6 +12,9 @@ export interface InputCallbacks {
   onRefill?: () => void;
   onOverlayCycle?: () => void;
   onPause?: () => void;
+  onMute?: () => void;
+  onTimeSpeedUp?: () => void;
+  onTimeSlowDown?: () => void;
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   onDebugReload?: () => void;
@@ -60,7 +63,7 @@ export class InputManager {
     });
   }
 
-  private handleKeyDown(event: KeyboardEvent): void {
+  private handleKeyDown(event: { key: string; preventDefault?: () => void }): void {
     const key = event.key.toLowerCase();
 
     if (key === 'arrowup' || key === 'w') {
@@ -82,15 +85,21 @@ export class InputManager {
     }
 
     else if (key === ' ') {
-      event.preventDefault();
+      event.preventDefault?.();
       this.callbacks.onEquipmentToggle?.();
     } else if (key === 'e') {
       this.callbacks.onRefill?.();
     } else if (key === 'tab') {
-      event.preventDefault();
+      event.preventDefault?.();
       this.callbacks.onOverlayCycle?.();
     } else if (key === 'p' || key === 'escape') {
       this.callbacks.onPause?.();
+    } else if (key === 'm') {
+      this.callbacks.onMute?.();
+    } else if (key === '+' || key === '=') {
+      this.callbacks.onTimeSpeedUp?.();
+    } else if (key === '-' || key === '_') {
+      this.callbacks.onTimeSlowDown?.();
     }
 
     else if (key === '[') {
@@ -100,10 +109,10 @@ export class InputManager {
     }
 
     else if (key === 'f5') {
-      event.preventDefault();
+      event.preventDefault?.();
       this.callbacks.onDebugReload?.();
     } else if (key === 'f6') {
-      event.preventDefault();
+      event.preventDefault?.();
       this.callbacks.onDebugExport?.();
     } else if (key === 'f12') {
       this.callbacks.onDebugScreenshot?.();

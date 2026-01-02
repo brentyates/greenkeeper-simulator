@@ -28,6 +28,22 @@ export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
 export const ELEVATION_HEIGHT = 16;
 
+export const TERRAIN_CODES = {
+  FAIRWAY: 0,
+  ROUGH: 1,
+  GREEN: 2,
+  BUNKER: 3,
+  WATER: 4,
+} as const;
+
+export const OBSTACLE_CODES = {
+  NONE: 0,
+  TREE: 1,
+  PINE_TREE: 2,
+  SHRUB: 3,
+  BUSH: 4,
+} as const;
+
 export function getTerrainType(code: number): TerrainType {
   switch (code) {
     case 0: return 'fairway';
@@ -80,8 +96,12 @@ export function screenToGrid(screenX: number, screenY: number, mapWidth: number)
   return { x: Math.floor(isoX), y: Math.floor(isoY) };
 }
 
+export function isGrassTerrain(type: TerrainType): boolean {
+  return type === 'fairway' || type === 'rough' || type === 'green';
+}
+
 export function calculateHealth(cell: Pick<CellState, 'type' | 'moisture' | 'nutrients' | 'height'>): number {
-  if (cell.type === 'bunker' || cell.type === 'water') {
+  if (!isGrassTerrain(cell.type)) {
     return 100;
   }
   const moistureScore = cell.moisture * 0.3;
@@ -136,35 +156,23 @@ export function getRampDirection(
 }
 
 export function getTextureForCell(cell: CellState, rampDir: 'north' | 'south' | 'east' | 'west' | null): string {
-  if (rampDir && cell.type !== 'bunker' && cell.type !== 'water') {
+  if (rampDir && isGrassTerrain(cell.type)) {
     return `iso_ramp_${rampDir}`;
   }
 
   if (cell.type === 'bunker') return 'iso_bunker';
   if (cell.type === 'water') return 'iso_water';
-  if (cell.health < 20) return 'iso_grass_dead';
-  if (cell.health < 40) return 'iso_grass_dry';
 
-  if (cell.type === 'fairway') {
-    if (cell.height <= 20) return 'iso_fairway_mown';
-    if (cell.height <= 45) return 'iso_fairway_growing';
-    return 'iso_fairway_unmown';
+  if (isGrassTerrain(cell.type)) {
+    if (cell.health < 20) return 'iso_grass_dead';
+    if (cell.health < 40) return 'iso_grass_dry';
+
+    const thresholds = getTerrainThresholds(cell.type);
+    if (cell.height <= thresholds.mownHeight) return `iso_${cell.type}_mown`;
+    if (cell.height <= thresholds.growingHeight) return `iso_${cell.type}_growing`;
+    return `iso_${cell.type}_unmown`;
   }
 
-  if (cell.type === 'rough') {
-    if (cell.height <= 30) return 'iso_rough_mown';
-    if (cell.height <= 60) return 'iso_rough_growing';
-    return 'iso_rough_unmown';
-  }
-
-  if (cell.type === 'green') {
-    if (cell.height <= 10) return 'iso_green_mown';
-    if (cell.height <= 22) return 'iso_green_growing';
-    return 'iso_green_unmown';
-  }
-
-  if (cell.height <= 30) return 'iso_rough_mown';
-  if (cell.height <= 60) return 'iso_rough_growing';
   return 'iso_rough_unmown';
 }
 
@@ -178,4 +186,166 @@ export function getCellsInRadius(centerX: number, centerY: number, radius: numbe
     }
   }
   return cells;
+}
+
+export interface CornerHeights {
+  n: number;
+  e: number;
+  s: number;
+  w: number;
+}
+
+export type SlopeType =
+  | 'flat'
+  | 'slope_n'      // N vertex raised (slopes up to north)
+  | 'slope_e'      // E vertex raised
+  | 'slope_s'      // S vertex raised
+  | 'slope_w'      // W vertex raised
+  | 'slope_ne'     // NE edge raised (N and E vertices high)
+  | 'slope_se'     // SE edge raised
+  | 'slope_sw'     // SW edge raised
+  | 'slope_nw'     // NW edge raised
+  | 'valley_n'     // N vertex lowered (all others high)
+  | 'valley_e'     // E vertex lowered
+  | 'valley_s'     // S vertex lowered
+  | 'valley_w'     // W vertex lowered
+  | 'saddle_ns'    // N and S high, E and W low
+  | 'saddle_ew';   // E and W high, N and S low
+
+export function getCornerHeights(
+  elevation: number,
+  nElev: number | null,
+  eElev: number | null,
+  sElev: number | null,
+  wElev: number | null,
+  _neElev: number | null,
+  _seElev: number | null,
+  _swElev: number | null,
+  _nwElev: number | null
+): CornerHeights {
+  const n = nElev ?? elevation;
+  const e = eElev ?? elevation;
+  const s = sElev ?? elevation;
+  const w = wElev ?? elevation;
+
+  return {
+    n: n > elevation ? 1 : 0,
+    e: e > elevation ? 1 : 0,
+    s: s > elevation ? 1 : 0,
+    w: w > elevation ? 1 : 0
+  };
+}
+
+export function getSlopeType(corners: CornerHeights): SlopeType {
+  const { n, e, s, w } = corners;
+  const highCount = n + e + s + w;
+
+  if (highCount === 0) return 'flat';
+
+  if (highCount === 1) {
+    if (n === 1) return 'slope_n';
+    if (e === 1) return 'slope_e';
+    if (s === 1) return 'slope_s';
+    return 'slope_w';
+  }
+
+  if (highCount === 3) {
+    if (n === 0) return 'valley_n';
+    if (e === 0) return 'valley_e';
+    if (s === 0) return 'valley_s';
+    return 'valley_w';
+  }
+
+  if (highCount === 2) {
+    if (n === 1 && e === 1) return 'slope_ne';
+    if (e === 1 && s === 1) return 'slope_se';
+    if (s === 1 && w === 1) return 'slope_sw';
+    if (w === 1 && n === 1) return 'slope_nw';
+    if (n === 1 && s === 1) return 'saddle_ns';
+    return 'saddle_ew';
+  }
+
+  return 'flat';
+}
+
+export function getSlopeTexture(slopeType: SlopeType): string {
+  if (slopeType === 'flat') return '';
+  return `iso_${slopeType}`;
+}
+
+export function getBaseElevationForSlope(corners: CornerHeights): number {
+  return Math.min(corners.n, corners.e, corners.s, corners.w);
+}
+
+export function getTerrainSpeedModifier(type: TerrainType): number {
+  switch (type) {
+    case 'fairway': return 1.0;
+    case 'green': return 1.0;
+    case 'rough': return 0.7;
+    case 'bunker': return 0.5;
+    case 'water': return 0.0;
+    default: return 1.0;
+  }
+}
+
+export function getTerrainMowable(type: TerrainType): boolean {
+  return type === 'fairway' || type === 'rough' || type === 'green';
+}
+
+export function getTerrainWaterable(type: TerrainType): boolean {
+  return type === 'fairway' || type === 'rough' || type === 'green';
+}
+
+export function getTerrainFertilizable(type: TerrainType): boolean {
+  return type === 'fairway' || type === 'rough' || type === 'green';
+}
+
+export function clampToGrid(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max - 1, Math.floor(value)));
+}
+
+export function getTerrainDisplayName(type: TerrainType): string {
+  switch (type) {
+    case 'fairway': return 'Fairway';
+    case 'rough': return 'Rough';
+    case 'green': return 'Green';
+    case 'bunker': return 'Bunker';
+    case 'water': return 'Water';
+    default: return 'Unknown';
+  }
+}
+
+export function getObstacleDisplayName(type: ObstacleType): string {
+  switch (type) {
+    case 'none': return 'None';
+    case 'tree': return 'Tree';
+    case 'pine_tree': return 'Pine Tree';
+    case 'shrub': return 'Shrub';
+    case 'bush': return 'Bush';
+    default: return 'Unknown';
+  }
+}
+
+export interface TerrainThresholds {
+  mownHeight: number;
+  growingHeight: number;
+}
+
+export function getTerrainThresholds(type: TerrainType): TerrainThresholds {
+  switch (type) {
+    case 'fairway': return { mownHeight: 20, growingHeight: 45 };
+    case 'rough': return { mownHeight: 30, growingHeight: 60 };
+    case 'green': return { mownHeight: 10, growingHeight: 22 };
+    default: return { mownHeight: 30, growingHeight: 60 };
+  }
+}
+
+export function getGrassState(cell: CellState): 'mown' | 'growing' | 'unmown' {
+  if (!isGrassTerrain(cell.type)) {
+    return 'mown';
+  }
+  const thresholds = getTerrainThresholds(cell.type);
+  if (cell.height <= thresholds.mownHeight) return 'mown';
+  if (cell.height <= thresholds.growingHeight) return 'growing';
+  return 'unmown';
 }

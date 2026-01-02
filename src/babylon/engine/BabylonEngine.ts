@@ -14,14 +14,8 @@ export class BabylonEngine {
   private engine: Engine;
   private scene: Scene;
   private camera: FreeCamera;
-  private ambientLight: HemisphericLight;
 
-  private mapWidth: number;
-  private mapHeight: number;
-
-  constructor(canvasId: string, mapWidth: number = 50, mapHeight: number = 38) {
-    this.mapWidth = mapWidth;
-    this.mapHeight = mapHeight;
+  constructor(canvasId: string, _mapWidth: number = 50, _mapHeight: number = 38) {
 
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
     if (!canvas) {
@@ -36,43 +30,28 @@ export class BabylonEngine {
 
     this.scene = this.createScene();
     this.camera = this.setupCamera();
-    this.ambientLight = this.setupLighting();
+    this.setupLighting();
 
     this.setupResizeHandler();
   }
 
   private createScene(): Scene {
     const scene = new Scene(this.engine);
-    scene.clearColor = new Color4(0.4, 0.6, 0.3, 1);
+    scene.clearColor = new Color4(0.4, 0.6, 0.9, 1);
+    scene.skipFrustumClipping = true;
     return scene;
   }
 
   private setupCamera(): FreeCamera {
-    const centerX = (this.mapWidth / 2);
-    const centerY = (this.mapHeight / 2);
-    const targetPos = this.gridTo3D(centerX, centerY, 0);
-
-    const cameraDistance = 800;
-    const isoAngleX = Math.atan(0.5);
-    const isoAngleY = Math.PI / 4;
-
-    const offsetX = cameraDistance * Math.sin(isoAngleY) * Math.cos(isoAngleX);
-    const offsetY = cameraDistance * Math.sin(isoAngleX);
-    const offsetZ = cameraDistance * Math.cos(isoAngleY) * Math.cos(isoAngleX);
-
-    const cameraPos = new Vector3(
-      targetPos.x + offsetX,
-      targetPos.y + offsetY,
-      targetPos.z - offsetZ
-    );
-
-    const camera = new FreeCamera('camera', cameraPos, this.scene);
-    camera.setTarget(targetPos);
+    const centerX = 100;
+    const centerY = -700;
+    const camera = new FreeCamera('camera', new Vector3(centerX, centerY, -500), this.scene);
+    camera.setTarget(new Vector3(centerX, centerY, 50));
 
     camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
 
     const aspectRatio = this.canvas.width / this.canvas.height;
-    const orthoSize = 400;
+    const orthoSize = 800;
 
     camera.orthoTop = orthoSize;
     camera.orthoBottom = -orthoSize;
@@ -80,12 +59,12 @@ export class BabylonEngine {
     camera.orthoRight = orthoSize * aspectRatio;
 
     camera.minZ = 0.1;
-    camera.maxZ = 2000;
+    camera.maxZ = 1000;
 
     return camera;
   }
 
-  private setupLighting(): HemisphericLight {
+  private setupLighting(): void {
     const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), this.scene);
     ambient.intensity = 0.7;
     ambient.diffuse = new Color3(1, 1, 0.95);
@@ -94,8 +73,6 @@ export class BabylonEngine {
     const sun = new DirectionalLight('sun', new Vector3(-1, -2, -1), this.scene);
     sun.intensity = 0.8;
     sun.diffuse = new Color3(1, 0.98, 0.9);
-
-    return ambient;
   }
 
   private setupResizeHandler(): void {
