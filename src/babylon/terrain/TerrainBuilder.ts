@@ -1564,6 +1564,136 @@ export class TerrainBuilder {
       y: Math.max(0, Math.min(height - 1, gridY))
     };
   }
+
+  public findPath(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    options: PathfindingOptions = {}
+  ): PathNode[] | null {
+    const {
+      maxSlopeDelta = 2,
+      allowDiagonals = false,
+      avoidTypes = ['water'],
+      maxIterations = 10000
+    } = options;
+
+    if (!this.isValidGridPosition(startX, startY) || !this.isValidGridPosition(endX, endY)) {
+      return null;
+    }
+
+    const startType = this.getTerrainTypeAt(startX, startY);
+    const endType = this.getTerrainTypeAt(endX, endY);
+    if (avoidTypes.includes(startType) || avoidTypes.includes(endType)) {
+      return null;
+    }
+
+    const openSet: PathNode[] = [];
+    const closedSet = new Set<string>();
+    const cameFrom = new Map<string, PathNode>();
+
+    const heuristic = (x: number, y: number): number => {
+      return Math.abs(endX - x) + Math.abs(endY - y);
+    };
+
+    const getKey = (x: number, y: number): string => `${x}_${y}`;
+
+    const startNode: PathNode = {
+      x: startX,
+      y: startY,
+      g: 0,
+      h: heuristic(startX, startY),
+      f: heuristic(startX, startY)
+    };
+    openSet.push(startNode);
+
+    let iterations = 0;
+    while (openSet.length > 0 && iterations < maxIterations) {
+      iterations++;
+
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+      const currentKey = getKey(current.x, current.y);
+
+      if (current.x === endX && current.y === endY) {
+        const path: PathNode[] = [current];
+        let node = current;
+        while (cameFrom.has(getKey(node.x, node.y))) {
+          node = cameFrom.get(getKey(node.x, node.y))!;
+          path.unshift(node);
+        }
+        return path;
+      }
+
+      closedSet.add(currentKey);
+
+      const neighbors = this.getNeighborTiles(current.x, current.y, allowDiagonals);
+      for (const neighbor of neighbors) {
+        const neighborKey = getKey(neighbor.x, neighbor.y);
+        if (closedSet.has(neighborKey)) continue;
+
+        const neighborType = this.getTerrainTypeAt(neighbor.x, neighbor.y);
+        if (avoidTypes.includes(neighborType)) continue;
+
+        if (!this.canTraverse(current.x, current.y, neighbor.x, neighbor.y, maxSlopeDelta)) continue;
+
+        const isDiagonal = neighbor.x !== current.x && neighbor.y !== current.y;
+        const moveCost = isDiagonal ? 1.414 : 1;
+        const tentativeG = current.g + moveCost;
+
+        const existingIdx = openSet.findIndex(n => n.x === neighbor.x && n.y === neighbor.y);
+        if (existingIdx !== -1) {
+          if (tentativeG < openSet[existingIdx].g) {
+            openSet[existingIdx].g = tentativeG;
+            openSet[existingIdx].f = tentativeG + openSet[existingIdx].h;
+            cameFrom.set(neighborKey, current);
+          }
+        } else {
+          const h = heuristic(neighbor.x, neighbor.y);
+          const neighborNode: PathNode = {
+            x: neighbor.x,
+            y: neighbor.y,
+            g: tentativeG,
+            h,
+            f: tentativeG + h
+          };
+          openSet.push(neighborNode);
+          cameFrom.set(neighborKey, current);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  public getPathLength(path: PathNode[]): number {
+    if (path.length < 2) return 0;
+
+    let length = 0;
+    for (let i = 1; i < path.length; i++) {
+      const prev = path[i - 1];
+      const curr = path[i];
+      const dx = curr.x - prev.x;
+      const dy = curr.y - prev.y;
+      length += Math.sqrt(dx * dx + dy * dy);
+    }
+    return length;
+  }
+
+  public getPathWorldPositions(path: PathNode[]): Vector3[] {
+    return path.map(node => this.gridToWorld(node.x, node.y));
+  }
+
+  public isPathClear(path: PathNode[], avoidTypes: TerrainType[] = ['water']): boolean {
+    for (const node of path) {
+      const type = this.getTerrainTypeAt(node.x, node.y);
+      if (avoidTypes.includes(type)) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 export interface TerrainStatistics {
@@ -1578,4 +1708,19 @@ export interface TerrainStatistics {
   slopedTileCount: number;
   cliffFaceCount: number;
   waterLevel: number;
+}
+
+export interface PathNode {
+  x: number;
+  y: number;
+  g: number;
+  h: number;
+  f: number;
+}
+
+export interface PathfindingOptions {
+  maxSlopeDelta?: number;
+  allowDiagonals?: boolean;
+  avoidTypes?: TerrainType[];
+  maxIterations?: number;
 }
