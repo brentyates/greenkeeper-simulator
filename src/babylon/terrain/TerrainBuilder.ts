@@ -10201,6 +10201,221 @@ export class TerrainBuilder {
     };
   }
 
+  public validateTerrain(): TerrainValidationResult {
+    const { width, height } = this.courseData;
+    const issues: TerrainValidationIssue[] = [];
+    const maxSlopeDelta = 2;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const corners = this.getCornerHeights(x, y);
+        const { nw, ne, se, sw } = corners;
+        const heights = [nw, ne, se, sw];
+        const minH = Math.min(...heights);
+        const maxH = Math.max(...heights);
+        const delta = maxH - minH;
+
+        if (delta > maxSlopeDelta) {
+          issues.push({
+            type: 'excessive_slope',
+            severity: 'warning',
+            x, y,
+            message: `Tile exceeds max slope delta (${delta} > ${maxSlopeDelta})`,
+            details: { delta, corners }
+          });
+        }
+
+        if (heights.some(h => h < 0)) {
+          issues.push({
+            type: 'negative_elevation',
+            severity: 'error',
+            x, y,
+            message: 'Tile has negative elevation',
+            details: { corners }
+          });
+        }
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (!terrainType) {
+          issues.push({
+            type: 'invalid_terrain',
+            severity: 'error',
+            x, y,
+            message: 'Tile has invalid terrain type'
+          });
+        }
+      }
+    }
+
+    for (let y = 0; y < height - 1; y++) {
+      for (let x = 0; x < width - 1; x++) {
+        const current = this.getCornerHeights(x, y);
+        const right = this.getCornerHeights(x + 1, y);
+        const below = this.getCornerHeights(x, y + 1);
+
+        if (current.ne !== right.nw || current.se !== right.sw) {
+          issues.push({
+            type: 'edge_mismatch',
+            severity: 'error',
+            x, y,
+            message: `Edge mismatch between (${x},${y}) and (${x + 1},${y})`,
+            details: { current, right }
+          });
+        }
+
+        if (current.sw !== below.nw || current.se !== below.ne) {
+          issues.push({
+            type: 'edge_mismatch',
+            severity: 'error',
+            x, y,
+            message: `Edge mismatch between (${x},${y}) and (${x},${y + 1})`,
+            details: { current, below }
+          });
+        }
+      }
+    }
+
+    const errorCount = issues.filter(i => i.severity === 'error').length;
+    const warningCount = issues.filter(i => i.severity === 'warning').length;
+
+    return {
+      valid: errorCount === 0,
+      issues,
+      errorCount,
+      warningCount,
+      totalIssues: issues.length,
+      checkedTiles: width * height
+    };
+  }
+
+  public findExcessiveSlopes(maxDelta: number = 2): Array<{ x: number; y: number; delta: number }> {
+    const { width, height } = this.courseData;
+    const excessive: Array<{ x: number; y: number; delta: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const corners = this.getCornerHeights(x, y);
+        const { nw, ne, se, sw } = corners;
+        const heights = [nw, ne, se, sw];
+        const delta = Math.max(...heights) - Math.min(...heights);
+
+        if (delta > maxDelta) {
+          excessive.push({ x, y, delta });
+        }
+      }
+    }
+
+    return excessive.sort((a, b) => b.delta - a.delta);
+  }
+
+  public findTerrainAnomalies(): TerrainAnomalies {
+    const { width, height } = this.courseData;
+
+    const isolatedTiles: Array<{ x: number; y: number; terrainType: TerrainType }> = [];
+    const unreachableTiles: Array<{ x: number; y: number }> = [];
+    const extremeSlopes: Array<{ x: number; y: number; slope: number }> = [];
+    const suspiciousTransitions: Array<{ x: number; y: number; from: TerrainType; to: TerrainType }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+
+        let sameTypeNeighbors = 0;
+        const directions = [
+          { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+        ];
+
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+          if (this.isValidGridPosition(nx, ny) && this.getTerrainTypeAt(nx, ny) === terrainType) {
+            sameTypeNeighbors++;
+          }
+        }
+
+        if (sameTypeNeighbors === 0 && terrainType !== 'green' && terrainType !== 'bunker') {
+          isolatedTiles.push({ x, y, terrainType });
+        }
+
+        const slope = this.getSlopeAngle(x, y);
+        if (slope > 60) {
+          extremeSlopes.push({ x, y, slope });
+        }
+
+        if (terrainType === 'green') {
+          for (const dir of directions) {
+            const nx = x + dir.dx;
+            const ny = y + dir.dy;
+            if (this.isValidGridPosition(nx, ny)) {
+              const neighborType = this.getTerrainTypeAt(nx, ny);
+              if (neighborType === 'water' || neighborType === 'bunker') {
+                suspiciousTransitions.push({ x, y, from: terrainType, to: neighborType });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      isolatedTiles,
+      unreachableTiles,
+      extremeSlopes,
+      suspiciousTransitions,
+      totalAnomalies: isolatedTiles.length + unreachableTiles.length + extremeSlopes.length + suspiciousTransitions.length
+    };
+  }
+
+  public repairTerrainIssue(x: number, y: number, issueType: string): boolean {
+    if (!this.isValidGridPosition(x, y)) return false;
+
+    switch (issueType) {
+      case 'excessive_slope': {
+        const directions = [
+          { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+        ];
+
+        let neighborAvg = 0;
+        let neighborCount = 0;
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+          if (this.isValidGridPosition(nx, ny)) {
+            neighborAvg += this.getElevationAt(nx, ny);
+            neighborCount++;
+          }
+        }
+
+        if (neighborCount > 0) {
+          const targetElev = Math.round(neighborAvg / neighborCount);
+          this.setElevationWithHistory(x, y, targetElev);
+        }
+
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  public getTerrainHealth(): TerrainHealth {
+    const validation = this.validateTerrain();
+    const anomalies = this.findTerrainAnomalies();
+    const excessiveSlopes = this.findExcessiveSlopes();
+
+    const totalChecks = validation.checkedTiles;
+    const totalProblems = validation.totalIssues + anomalies.totalAnomalies;
+    const healthScore = totalChecks > 0 ? Math.max(0, 100 - (totalProblems / totalChecks) * 100) : 100;
+
+    return {
+      healthScore,
+      validation,
+      anomalies,
+      excessiveSlopeCount: excessiveSlopes.length,
+      status: healthScore >= 90 ? 'healthy' : healthScore >= 50 ? 'warning' : 'critical'
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -15865,4 +16080,38 @@ export interface SlopeValidation {
 export interface TerrainConstraints {
   maxSlopeDelta: number;
   enforceConstraints: boolean;
+}
+
+export interface TerrainValidationIssue {
+  type: 'excessive_slope' | 'negative_elevation' | 'invalid_terrain' | 'edge_mismatch' | 'isolated' | 'unreachable';
+  severity: 'error' | 'warning' | 'info';
+  x: number;
+  y: number;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface TerrainValidationResult {
+  valid: boolean;
+  issues: TerrainValidationIssue[];
+  errorCount: number;
+  warningCount: number;
+  totalIssues: number;
+  checkedTiles: number;
+}
+
+export interface TerrainAnomalies {
+  isolatedTiles: Array<{ x: number; y: number }>;
+  unreachableTiles: Array<{ x: number; y: number }>;
+  extremeSlopes: Array<{ x: number; y: number; slope: number }>;
+  suspiciousTransitions: Array<{ x: number; y: number; from: string; to: string }>;
+  totalAnomalies: number;
+}
+
+export interface TerrainHealth {
+  healthScore: number;
+  validation: TerrainValidationResult;
+  anomalies: TerrainAnomalies;
+  excessiveSlopeCount: number;
+  status: 'healthy' | 'warning' | 'critical';
 }
