@@ -112,6 +112,8 @@ export class TerrainBuilder {
   };
   private lastViewportBounds: ViewportBounds | null = null;
   private clipboard: TerrainClipboard | null = null;
+  private stamps: Map<string, TerrainStamp> = new Map();
+  private activeStampId: string | null = null;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -5058,6 +5060,291 @@ export class TerrainBuilder {
 
     return this.pasteFromClipboard(destX, destY);
   }
+
+  public createStamp(id: string, name: string, category?: string, description?: string): boolean {
+    const selectedTiles = this.getSelectedTiles();
+    if (selectedTiles.length === 0) return false;
+
+    const bounds = this.getSelectionBounds();
+    if (!bounds) return false;
+
+    const tiles: ClipboardTileData[] = [];
+    const { layout, elevation } = this.courseData;
+
+    for (const tile of selectedTiles) {
+      const tileData: ClipboardTileData = {
+        relativeX: tile.x - bounds.minX,
+        relativeY: tile.y - bounds.minY,
+        elevation: elevation?.[tile.y]?.[tile.x] ?? 0,
+        terrainCode: layout[tile.y]?.[tile.x] ?? 0,
+        mowed: this.isMowed(tile.x, tile.y),
+        cornerHeights: this.getCornerHeights(tile.x, tile.y)
+      };
+      tiles.push(tileData);
+    }
+
+    const stamp: TerrainStamp = {
+      id,
+      name,
+      tiles,
+      width: bounds.maxX - bounds.minX + 1,
+      height: bounds.maxY - bounds.minY + 1,
+      category,
+      description
+    };
+
+    this.stamps.set(id, stamp);
+    return true;
+  }
+
+  public createStampFromRegion(
+    id: string,
+    name: string,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    category?: string,
+    description?: string
+  ): boolean {
+    const { width, height, layout, elevation } = this.courseData;
+
+    const clampedMinX = Math.max(0, minX);
+    const clampedMinY = Math.max(0, minY);
+    const clampedMaxX = Math.min(width - 1, maxX);
+    const clampedMaxY = Math.min(height - 1, maxY);
+
+    if (clampedMinX > clampedMaxX || clampedMinY > clampedMaxY) return false;
+
+    const tiles: ClipboardTileData[] = [];
+
+    for (let y = clampedMinY; y <= clampedMaxY; y++) {
+      for (let x = clampedMinX; x <= clampedMaxX; x++) {
+        const tileData: ClipboardTileData = {
+          relativeX: x - clampedMinX,
+          relativeY: y - clampedMinY,
+          elevation: elevation?.[y]?.[x] ?? 0,
+          terrainCode: layout[y]?.[x] ?? 0,
+          mowed: this.isMowed(x, y),
+          cornerHeights: this.getCornerHeights(x, y)
+        };
+        tiles.push(tileData);
+      }
+    }
+
+    const stamp: TerrainStamp = {
+      id,
+      name,
+      tiles,
+      width: clampedMaxX - clampedMinX + 1,
+      height: clampedMaxY - clampedMinY + 1,
+      category,
+      description
+    };
+
+    this.stamps.set(id, stamp);
+    return true;
+  }
+
+  public deleteStamp(id: string): boolean {
+    if (this.activeStampId === id) {
+      this.activeStampId = null;
+    }
+    return this.stamps.delete(id);
+  }
+
+  public getStamp(id: string): TerrainStamp | undefined {
+    return this.stamps.get(id);
+  }
+
+  public getAllStamps(): TerrainStamp[] {
+    return Array.from(this.stamps.values());
+  }
+
+  public getStampsByCategory(category: string): TerrainStamp[] {
+    return Array.from(this.stamps.values()).filter(s => s.category === category);
+  }
+
+  public getStampCategories(): string[] {
+    const categories = new Set<string>();
+    for (const stamp of this.stamps.values()) {
+      if (stamp.category) {
+        categories.add(stamp.category);
+      }
+    }
+    return Array.from(categories);
+  }
+
+  public hasStamp(id: string): boolean {
+    return this.stamps.has(id);
+  }
+
+  public getStampCount(): number {
+    return this.stamps.size;
+  }
+
+  public setActiveStamp(id: string | null): void {
+    if (id === null || this.stamps.has(id)) {
+      this.activeStampId = id;
+    }
+  }
+
+  public getActiveStamp(): TerrainStamp | null {
+    if (!this.activeStampId) return null;
+    return this.stamps.get(this.activeStampId) ?? null;
+  }
+
+  public getActiveStampId(): string | null {
+    return this.activeStampId;
+  }
+
+  public applyStamp(stampId: string, destX: number, destY: number, options?: {
+    includeElevation?: boolean;
+    includeMowed?: boolean;
+    elevationOffset?: number;
+    rotation?: 0 | 90 | 180 | 270;
+  }): number {
+    const stamp = this.stamps.get(stampId);
+    if (!stamp) return 0;
+
+    const { width, height } = this.courseData;
+    const includeElevation = options?.includeElevation ?? true;
+    const includeMowed = options?.includeMowed ?? true;
+    const elevationOffset = options?.elevationOffset ?? 0;
+    const rotation = options?.rotation ?? 0;
+
+    if (this.historyEnabled) {
+      this.beginBatch(`Apply stamp "${stamp.name}" at (${destX}, ${destY})`);
+    }
+
+    let appliedCount = 0;
+
+    for (const tile of stamp.tiles) {
+      let relX = tile.relativeX;
+      let relY = tile.relativeY;
+
+      if (rotation === 90) {
+        const temp = relX;
+        relX = stamp.height - 1 - relY;
+        relY = temp;
+      } else if (rotation === 180) {
+        relX = stamp.width - 1 - relX;
+        relY = stamp.height - 1 - relY;
+      } else if (rotation === 270) {
+        const temp = relX;
+        relX = relY;
+        relY = stamp.width - 1 - temp;
+      }
+
+      const targetX = destX + relX;
+      const targetY = destY + relY;
+
+      if (targetX < 0 || targetX >= width || targetY < 0 || targetY >= height) continue;
+
+      if (includeElevation) {
+        const newElevation = tile.elevation + elevationOffset;
+        if (this.historyEnabled) {
+          this.setElevationWithHistory(targetX, targetY, newElevation);
+        } else {
+          this.setElevationAtInternal(targetX, targetY, newElevation);
+        }
+      }
+
+      if (includeMowed) {
+        if (this.historyEnabled) {
+          this.setMowedWithHistory(targetX, targetY, tile.mowed);
+        } else {
+          this.setMowed(targetX, targetY, tile.mowed);
+        }
+      }
+
+      appliedCount++;
+    }
+
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+
+    return appliedCount;
+  }
+
+  public applyActiveStamp(destX: number, destY: number, options?: {
+    includeElevation?: boolean;
+    includeMowed?: boolean;
+    elevationOffset?: number;
+    rotation?: 0 | 90 | 180 | 270;
+  }): number {
+    if (!this.activeStampId) return 0;
+    return this.applyStamp(this.activeStampId, destX, destY, options);
+  }
+
+  public getStampPreview(stampId: string, destX: number, destY: number, rotation?: 0 | 90 | 180 | 270): Array<{ x: number; y: number; valid: boolean }> {
+    const stamp = this.stamps.get(stampId);
+    if (!stamp) return [];
+
+    const { width, height } = this.courseData;
+    const rot = rotation ?? 0;
+    const preview: Array<{ x: number; y: number; valid: boolean }> = [];
+
+    for (const tile of stamp.tiles) {
+      let relX = tile.relativeX;
+      let relY = tile.relativeY;
+
+      if (rot === 90) {
+        const temp = relX;
+        relX = stamp.height - 1 - relY;
+        relY = temp;
+      } else if (rot === 180) {
+        relX = stamp.width - 1 - relX;
+        relY = stamp.height - 1 - relY;
+      } else if (rot === 270) {
+        const temp = relX;
+        relX = relY;
+        relY = stamp.width - 1 - temp;
+      }
+
+      const targetX = destX + relX;
+      const targetY = destY + relY;
+      const valid = targetX >= 0 && targetX < width && targetY >= 0 && targetY < height;
+      preview.push({ x: targetX, y: targetY, valid });
+    }
+
+    return preview;
+  }
+
+  public clearAllStamps(): void {
+    this.stamps.clear();
+    this.activeStampId = null;
+  }
+
+  public renameStamp(id: string, newName: string): boolean {
+    const stamp = this.stamps.get(id);
+    if (!stamp) return false;
+    stamp.name = newName;
+    return true;
+  }
+
+  public setStampCategory(id: string, category: string | undefined): boolean {
+    const stamp = this.stamps.get(id);
+    if (!stamp) return false;
+    stamp.category = category;
+    return true;
+  }
+
+  public exportStamps(): TerrainStamp[] {
+    return Array.from(this.stamps.values());
+  }
+
+  public importStamps(stamps: TerrainStamp[], overwrite: boolean = false): number {
+    let imported = 0;
+    for (const stamp of stamps) {
+      if (overwrite || !this.stamps.has(stamp.id)) {
+        this.stamps.set(stamp.id, { ...stamp, tiles: [...stamp.tiles] });
+        imported++;
+      }
+    }
+    return imported;
+  }
 }
 
 export interface TerrainStatistics {
@@ -5303,4 +5590,14 @@ export interface TerrainClipboard {
   sourceMinX: number;
   sourceMinY: number;
   timestamp: number;
+}
+
+export interface TerrainStamp {
+  id: string;
+  name: string;
+  tiles: ClipboardTileData[];
+  width: number;
+  height: number;
+  category?: string;
+  description?: string;
 }
