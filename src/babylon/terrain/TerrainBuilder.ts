@@ -3848,6 +3848,242 @@ export class TerrainBuilder {
     return { dx: dx / 2, dy: dy / 2 };
   }
 
+  public hasLineOfSight3D(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    observerHeight: number = 1.5,
+    targetHeight: number = 0
+  ): boolean {
+    const result = this.getLineOfSight3DDetails(fromX, fromY, toX, toY, observerHeight, targetHeight);
+    return result.visible;
+  }
+
+  public getLineOfSight3DDetails(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    observerHeight: number = 1.5,
+    targetHeight: number = 0
+  ): LineOfSightResult {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance === 0) {
+      return {
+        visible: true,
+        distance: 0,
+        obstructionPoint: null,
+        obstructionElevation: null,
+        clearanceAtTarget: observerHeight + targetHeight,
+        sampleCount: 0
+      };
+    }
+
+    const fromElev = this.interpolateElevation(fromX, fromY) + observerHeight;
+    const toElev = this.interpolateElevation(toX, toY) + targetHeight;
+
+    const numSamples = Math.max(10, Math.ceil(distance * 2));
+    const stepX = dx / numSamples;
+    const stepY = dy / numSamples;
+    const elevStep = (toElev - fromElev) / numSamples;
+
+    let minClearance = Infinity;
+    let obstructionPoint: { x: number; y: number } | null = null;
+    let obstructionElevation: number | null = null;
+
+    for (let i = 1; i < numSamples; i++) {
+      const x = fromX + stepX * i;
+      const y = fromY + stepY * i;
+      const losHeight = fromElev + elevStep * i;
+      const terrainHeight = this.interpolateElevation(x, y);
+      const clearance = losHeight - terrainHeight;
+
+      if (clearance < minClearance) {
+        minClearance = clearance;
+        if (clearance < 0) {
+          obstructionPoint = { x, y };
+          obstructionElevation = terrainHeight;
+        }
+      }
+    }
+
+    return {
+      visible: minClearance >= 0,
+      distance,
+      obstructionPoint,
+      obstructionElevation,
+      clearanceAtTarget: minClearance,
+      sampleCount: numSamples
+    };
+  }
+
+  public getVisibleAreaFrom(
+    gridX: number,
+    gridY: number,
+    maxDistance: number,
+    observerHeight: number = 1.5
+  ): Array<{ x: number; y: number; visible: boolean }> {
+    const result: Array<{ x: number; y: number; visible: boolean }> = [];
+    const { width, height } = this.courseData;
+
+    const minX = Math.max(0, Math.floor(gridX - maxDistance));
+    const maxX = Math.min(width - 1, Math.ceil(gridX + maxDistance));
+    const minY = Math.max(0, Math.floor(gridY - maxDistance));
+    const maxY = Math.min(height - 1, Math.ceil(gridY + maxDistance));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - gridX;
+        const dy = y - gridY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist <= maxDistance) {
+          const visible = this.hasLineOfSight3D(gridX, gridY, x, y, observerHeight, 0);
+          result.push({ x, y, visible });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  public getVisible3DTileCount(
+    gridX: number,
+    gridY: number,
+    maxDistance: number,
+    observerHeight: number = 1.5
+  ): number {
+    const visibleArea = this.getVisibleAreaFrom(gridX, gridY, maxDistance, observerHeight);
+    return visibleArea.filter(t => t.visible).length;
+  }
+
+  public getVisibility3DPercentage(
+    gridX: number,
+    gridY: number,
+    maxDistance: number,
+    observerHeight: number = 1.5
+  ): number {
+    const visibleArea = this.getVisibleAreaFrom(gridX, gridY, maxDistance, observerHeight);
+    if (visibleArea.length === 0) return 0;
+    return (visibleArea.filter(t => t.visible).length / visibleArea.length) * 100;
+  }
+
+  public findHighestVisibility3DPoint(
+    terrainType?: TerrainType,
+    maxDistance: number = 20,
+    observerHeight: number = 1.5
+  ): { x: number; y: number; visibilityScore: number } | null {
+    const { width, height } = this.courseData;
+    let bestPoint: { x: number; y: number; visibilityScore: number } | null = null;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (terrainType && this.getTerrainTypeAt(x, y) !== terrainType) {
+          continue;
+        }
+
+        const visibleCount = this.getVisible3DTileCount(x, y, maxDistance, observerHeight);
+        if (!bestPoint || visibleCount > bestPoint.visibilityScore) {
+          bestPoint = { x, y, visibilityScore: visibleCount };
+        }
+      }
+    }
+
+    return bestPoint;
+  }
+
+  public findBestViewing3DPosition(
+    targetX: number,
+    targetY: number,
+    searchRadius: number = 10,
+    minDistance: number = 2,
+    maxDistance: number = 20,
+    observerHeight: number = 1.5
+  ): { x: number; y: number; clearance: number } | null {
+    const { width, height } = this.courseData;
+    let bestPosition: { x: number; y: number; clearance: number } | null = null;
+
+    const minX = Math.max(0, Math.floor(targetX - searchRadius));
+    const maxX = Math.min(width - 1, Math.ceil(targetX + searchRadius));
+    const minY = Math.max(0, Math.floor(targetY - searchRadius));
+    const maxY = Math.min(height - 1, Math.ceil(targetY + searchRadius));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - targetX;
+        const dy = y - targetY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < minDistance || dist > maxDistance) continue;
+
+        const losResult = this.getLineOfSight3DDetails(x, y, targetX, targetY, observerHeight, 0);
+        if (losResult.visible) {
+          if (!bestPosition || losResult.clearanceAtTarget > bestPosition.clearance) {
+            bestPosition = { x, y, clearance: losResult.clearanceAtTarget };
+          }
+        }
+      }
+    }
+
+    return bestPosition;
+  }
+
+  public computeShadowMap(
+    lightDirectionX: number,
+    lightDirectionY: number,
+    lightAngle: number = 45
+  ): boolean[][] {
+    const { width, height } = this.courseData;
+    const shadowMap: boolean[][] = [];
+
+    const len = Math.sqrt(lightDirectionX * lightDirectionX + lightDirectionY * lightDirectionY);
+    const dx = len > 0 ? lightDirectionX / len : 0;
+    const dy = len > 0 ? lightDirectionY / len : 0;
+    const slopeRatio = Math.tan(lightAngle * Math.PI / 180);
+
+    for (let y = 0; y < height; y++) {
+      shadowMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        shadowMap[y][x] = this.isInShadow(x, y, dx, dy, slopeRatio);
+      }
+    }
+
+    return shadowMap;
+  }
+
+  private isInShadow(
+    gridX: number,
+    gridY: number,
+    lightDirX: number,
+    lightDirY: number,
+    slopeRatio: number
+  ): boolean {
+    const baseElev = this.getElevationAt(gridX, gridY) * ELEVATION_HEIGHT;
+    const maxDist = 50;
+
+    for (let dist = 1; dist <= maxDist; dist++) {
+      const checkX = gridX - lightDirX * dist;
+      const checkY = gridY - lightDirY * dist;
+      const ix = Math.floor(checkX);
+      const iy = Math.floor(checkY);
+
+      if (!this.isValidGridPosition(ix, iy)) break;
+
+      const checkElev = this.interpolateElevation(checkX, checkY);
+      const requiredHeight = baseElev + dist * slopeRatio * ELEVATION_HEIGHT;
+
+      if (checkElev > requiredHeight) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   public getBilinearElevation(gridX: number, gridY: number): number {
     const { width, height } = this.courseData;
 
@@ -8883,6 +9119,15 @@ export interface RaycastResult {
   elevation: number;
   distance: number;
   terrainType: TerrainType;
+}
+
+export interface LineOfSightResult {
+  visible: boolean;
+  distance: number;
+  obstructionPoint: { x: number; y: number } | null;
+  obstructionElevation: number | null;
+  clearanceAtTarget: number;
+  sampleCount: number;
 }
 
 export type TerrainEventType = 'mowed' | 'unmowed' | 'tileVisible' | 'tileHidden' | 'chunkVisible' | 'chunkHidden' | 'terrainTypeChanged';
