@@ -23534,6 +23534,366 @@ export class TerrainBuilder {
       remainingViolations: postEvaluation.violationCount
     };
   }
+
+  public compressElevationData(): CompressedElevationData {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const elevations: number[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        elevations.push(this.getElevationAt(x, y));
+      }
+    }
+
+    const minElev = Math.min(...elevations);
+    const maxElev = Math.max(...elevations);
+    const range = maxElev - minElev;
+    const quantizedElevations: number[] = [];
+    const quantizationLevels = 256;
+
+    for (const elev of elevations) {
+      const normalized = range > 0 ? (elev - minElev) / range : 0;
+      const quantized = Math.round(normalized * (quantizationLevels - 1));
+      quantizedElevations.push(quantized);
+    }
+
+    const rleEncoded: Array<{ value: number; count: number }> = [];
+    let currentValue = quantizedElevations[0];
+    let currentCount = 1;
+
+    for (let i = 1; i < quantizedElevations.length; i++) {
+      if (quantizedElevations[i] === currentValue && currentCount < 255) {
+        currentCount++;
+      } else {
+        rleEncoded.push({ value: currentValue, count: currentCount });
+        currentValue = quantizedElevations[i];
+        currentCount = 1;
+      }
+    }
+    rleEncoded.push({ value: currentValue, count: currentCount });
+
+    const originalSize = elevations.length * 4;
+    const compressedSize = rleEncoded.length * 2;
+    const compressionRatio = originalSize / compressedSize;
+
+    return {
+      width,
+      height,
+      minElevation: minElev,
+      maxElevation: maxElev,
+      quantizationLevels,
+      rleData: rleEncoded,
+      originalSize,
+      compressedSize,
+      compressionRatio
+    };
+  }
+
+  public decompressElevationData(compressed: CompressedElevationData): boolean {
+    const { width, height, minElevation, maxElevation, quantizationLevels, rleData } = compressed;
+
+    if (width !== this.courseData.width || height !== this.courseData.height) {
+      return false;
+    }
+
+    const elevations: number[] = [];
+    for (const { value, count } of rleData) {
+      for (let i = 0; i < count; i++) {
+        elevations.push(value);
+      }
+    }
+
+    if (elevations.length !== width * height) {
+      return false;
+    }
+
+    const range = maxElevation - minElevation;
+    let idx = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const quantized = elevations[idx++];
+        const normalized = quantized / (quantizationLevels - 1);
+        const elevation = minElevation + normalized * range;
+        this.setElevationAtInternal(x, y, elevation);
+      }
+    }
+
+    this.rebuildAllTiles();
+    return true;
+  }
+
+  public encodeTerrainTypesRLE(): TerrainTypeRLEData {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const typeMap: Record<TerrainType, number> = {
+      'fairway': 0,
+      'rough': 1,
+      'green': 2,
+      'bunker': 3,
+      'water': 4
+    };
+
+    const types: number[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const type = this.getTerrainTypeAt(x, y);
+        types.push(typeMap[type] ?? 1);
+      }
+    }
+
+    const rleEncoded: Array<{ type: number; count: number }> = [];
+    let currentType = types[0];
+    let currentCount = 1;
+
+    for (let i = 1; i < types.length; i++) {
+      if (types[i] === currentType && currentCount < 255) {
+        currentCount++;
+      } else {
+        rleEncoded.push({ type: currentType, count: currentCount });
+        currentType = types[i];
+        currentCount = 1;
+      }
+    }
+    rleEncoded.push({ type: currentType, count: currentCount });
+
+    const originalSize = types.length;
+    const compressedSize = rleEncoded.length * 2;
+
+    return {
+      width,
+      height,
+      rleData: rleEncoded,
+      originalSize,
+      compressedSize,
+      compressionRatio: originalSize / compressedSize
+    };
+  }
+
+  public decodeTerrainTypesRLE(data: TerrainTypeRLEData): boolean {
+    const { width, height, rleData } = data;
+    const reverseTypeMap: Record<number, TerrainType> = {
+      0: 'fairway',
+      1: 'rough',
+      2: 'green',
+      3: 'bunker',
+      4: 'water'
+    };
+
+    if (width !== this.courseData.width || height !== this.courseData.height) {
+      return false;
+    }
+
+    const types: number[] = [];
+    for (const { type, count } of rleData) {
+      for (let i = 0; i < count; i++) {
+        types.push(type);
+      }
+    }
+
+    if (types.length !== width * height) {
+      return false;
+    }
+
+    let idx = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const typeCode = types[idx++];
+        const terrainType = reverseTypeMap[typeCode] ?? 'rough';
+        this.setTerrainTypeAt(x, y, terrainType, false);
+      }
+    }
+
+    this.rebuildAllTiles();
+    return true;
+  }
+
+  public exportCompactTerrain(): CompactTerrainData {
+    const elevationData = this.compressElevationData();
+    const typeData = this.encodeTerrainTypesRLE();
+
+    const mowedPositions: number[] = [];
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        if (this.mowedState[y]?.[x]) {
+          mowedPositions.push(y * this.courseData.width + x);
+        }
+      }
+    }
+
+    return {
+      version: 2,
+      timestamp: Date.now(),
+      elevationData,
+      typeData,
+      mowedPositions,
+      waterLevel: this.waterLevel
+    };
+  }
+
+  public importCompactTerrain(data: CompactTerrainData): boolean {
+    if (data.version !== 2) {
+      return false;
+    }
+
+    if (!this.decompressElevationData(data.elevationData)) {
+      return false;
+    }
+
+    if (!this.decodeTerrainTypesRLE(data.typeData)) {
+      return false;
+    }
+
+    this.resetAllMowed();
+    for (const pos of data.mowedPositions) {
+      const x = pos % this.courseData.width;
+      const y = Math.floor(pos / this.courseData.width);
+      this.setMowed(x, y, true);
+    }
+
+    this.setWaterLevel(data.waterLevel);
+    return true;
+  }
+
+  public exportToBase64(): string {
+    const compactData = this.exportCompactTerrain();
+    const jsonStr = JSON.stringify(compactData);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  public importFromBase64(base64Str: string): boolean {
+    try {
+      const binary = atob(base64Str);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const jsonStr = new TextDecoder().decode(bytes);
+      const data = JSON.parse(jsonStr) as CompactTerrainData;
+      return this.importCompactTerrain(data);
+    } catch {
+      return false;
+    }
+  }
+
+  public computeDeltaCompression(previousElevations: number[][]): DeltaCompressionResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const deltas: Array<{ x: number; y: number; delta: number }> = [];
+    let changedCount = 0;
+    let unchangedCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        const previousElev = previousElevations[y]?.[x] ?? 0;
+        const delta = currentElev - previousElev;
+
+        if (Math.abs(delta) > 0.001) {
+          deltas.push({ x, y, delta });
+          changedCount++;
+        } else {
+          unchangedCount++;
+        }
+      }
+    }
+
+    return {
+      deltas,
+      changedCount,
+      unchangedCount,
+      changePercent: (changedCount / (changedCount + unchangedCount)) * 100,
+      width,
+      height
+    };
+  }
+
+  public applyDeltaCompression(deltaData: DeltaCompressionResult, previousElevations: number[][]): boolean {
+    const { width, height, deltas } = deltaData;
+
+    if (width !== this.courseData.width || height !== this.courseData.height) {
+      return false;
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const previousElev = previousElevations[y]?.[x] ?? 0;
+        this.setElevationAtInternal(x, y, previousElev);
+      }
+    }
+
+    for (const { x, y, delta } of deltas) {
+      const currentElev = this.getElevationAt(x, y);
+      this.setElevationAtInternal(x, y, currentElev + delta);
+    }
+
+    this.rebuildAllTiles();
+    return true;
+  }
+
+  public getTerrainChecksum(): number {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    let checksum = 0;
+    const prime = 31;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = Math.round(this.getElevationAt(x, y) * 100);
+        checksum = (checksum * prime + elev) >>> 0;
+      }
+    }
+
+    return checksum;
+  }
+
+  public verifyTerrainChecksum(expectedChecksum: number): boolean {
+    return this.getTerrainChecksum() === expectedChecksum;
+  }
+}
+
+export interface CompressedElevationData {
+  width: number;
+  height: number;
+  minElevation: number;
+  maxElevation: number;
+  quantizationLevels: number;
+  rleData: Array<{ value: number; count: number }>;
+  originalSize: number;
+  compressedSize: number;
+  compressionRatio: number;
+}
+
+export interface TerrainTypeRLEData {
+  width: number;
+  height: number;
+  rleData: Array<{ type: number; count: number }>;
+  originalSize: number;
+  compressedSize: number;
+  compressionRatio: number;
+}
+
+export interface CompactTerrainData {
+  version: number;
+  timestamp: number;
+  elevationData: CompressedElevationData;
+  typeData: TerrainTypeRLEData;
+  mowedPositions: number[];
+  waterLevel: number;
+}
+
+export interface DeltaCompressionResult {
+  deltas: Array<{ x: number; y: number; delta: number }>;
+  changedCount: number;
+  unchangedCount: number;
+  changePercent: number;
+  width: number;
+  height: number;
 }
 
 export interface TerrainDesignEvaluation {
