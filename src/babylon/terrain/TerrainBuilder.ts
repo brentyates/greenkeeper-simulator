@@ -9573,6 +9573,172 @@ export class TerrainBuilder {
     return boundaries;
   }
 
+  public getVertexElevation(vertexX: number, vertexY: number): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const clampedX = Math.max(0, Math.min(width - 1, Math.floor(vertexX)));
+    const clampedY = Math.max(0, Math.min(height - 1, Math.floor(vertexY)));
+
+    return elevation[clampedY][clampedX] * ELEVATION_HEIGHT;
+  }
+
+  public getVertexNeighborHeights(vertexX: number, vertexY: number): { n: number; e: number; s: number; w: number } {
+    return {
+      n: this.getVertexElevation(vertexX, vertexY - 1),
+      e: this.getVertexElevation(vertexX + 1, vertexY),
+      s: this.getVertexElevation(vertexX, vertexY + 1),
+      w: this.getVertexElevation(vertexX - 1, vertexY)
+    };
+  }
+
+  public classifyVertex(vertexX: number, vertexY: number): VertexClassification {
+    const centerElev = this.getVertexElevation(vertexX, vertexY);
+    const neighbors = this.getVertexNeighborHeights(vertexX, vertexY);
+    const neighborValues = [neighbors.n, neighbors.e, neighbors.s, neighbors.w];
+
+    const higherCount = neighborValues.filter(n => n > centerElev).length;
+    const lowerCount = neighborValues.filter(n => n < centerElev).length;
+    const equalCount = neighborValues.filter(n => n === centerElev).length;
+
+    if (lowerCount === 4) return 'peak';
+    if (higherCount === 4) return 'pit';
+    if (lowerCount >= 2 && higherCount === 0) return 'local_high';
+    if (higherCount >= 2 && lowerCount === 0) return 'local_low';
+
+    const oppositeHigher = (neighbors.n > centerElev && neighbors.s > centerElev) ||
+                           (neighbors.e > centerElev && neighbors.w > centerElev);
+    const oppositeLower = (neighbors.n < centerElev && neighbors.s < centerElev) ||
+                          (neighbors.e < centerElev && neighbors.w < centerElev);
+
+    if (oppositeHigher && oppositeLower) return 'saddle';
+    if (oppositeLower) return 'ridge';
+    if (oppositeHigher) return 'valley';
+
+    if (equalCount >= 3) return 'flat';
+    return 'slope';
+  }
+
+  public findVertexPeaks(): Array<{ x: number; y: number; elevation: number }> {
+    const { width, height } = this.courseData;
+    const peaks: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (this.classifyVertex(x, y) === 'peak') {
+          peaks.push({ x, y, elevation: this.getVertexElevation(x, y) });
+        }
+      }
+    }
+
+    return peaks.sort((a, b) => b.elevation - a.elevation);
+  }
+
+  public findVertexPits(): Array<{ x: number; y: number; elevation: number }> {
+    const { width, height } = this.courseData;
+    const pits: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (this.classifyVertex(x, y) === 'pit') {
+          pits.push({ x, y, elevation: this.getVertexElevation(x, y) });
+        }
+      }
+    }
+
+    return pits.sort((a, b) => a.elevation - b.elevation);
+  }
+
+  public findVertexSaddles(): Array<{ x: number; y: number; elevation: number }> {
+    const { width, height } = this.courseData;
+    const saddles: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        if (this.classifyVertex(x, y) === 'saddle') {
+          saddles.push({ x, y, elevation: this.getVertexElevation(x, y) });
+        }
+      }
+    }
+
+    return saddles;
+  }
+
+  public traceRidgeLine(startX: number, startY: number, maxSteps: number = 100): Array<{ x: number; y: number }> {
+    const ridge: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    const visited = new Set<string>();
+    visited.add(`${startX},${startY}`);
+
+    let currentX = startX;
+    let currentY = startY;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const currentElev = this.getVertexElevation(currentX, currentY);
+      const directions = [
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+      ];
+
+      let bestNext: { x: number; y: number } | null = null;
+      let bestElev = -Infinity;
+
+      for (const dir of directions) {
+        const nx = currentX + dir.dx;
+        const ny = currentY + dir.dy;
+        const key = `${nx},${ny}`;
+
+        if (!this.isValidGridPosition(nx, ny) || visited.has(key)) continue;
+
+        const nElev = this.getVertexElevation(nx, ny);
+        if (nElev >= currentElev - ELEVATION_HEIGHT && nElev > bestElev) {
+          bestElev = nElev;
+          bestNext = { x: nx, y: ny };
+        }
+      }
+
+      if (!bestNext || bestElev < currentElev - ELEVATION_HEIGHT) break;
+
+      visited.add(`${bestNext.x},${bestNext.y}`);
+      ridge.push(bestNext);
+      currentX = bestNext.x;
+      currentY = bestNext.y;
+    }
+
+    return ridge;
+  }
+
+  public getVertexStatistics(): VertexStatistics {
+    const { width, height } = this.courseData;
+    const counts: { [key in VertexClassification]: number } = {
+      peak: 0, pit: 0, ridge: 0, valley: 0, saddle: 0,
+      slope: 0, flat: 0, local_high: 0, local_low: 0
+    };
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const classification = this.classifyVertex(x, y);
+        counts[classification]++;
+      }
+    }
+
+    const totalVertices = (width - 2) * (height - 2);
+    const peaks = this.findVertexPeaks();
+    const pits = this.findVertexPits();
+
+    return {
+      totalVertices,
+      peakCount: counts.peak,
+      pitCount: counts.pit,
+      ridgeCount: counts.ridge,
+      valleyCount: counts.valley,
+      saddleCount: counts.saddle,
+      slopeCount: counts.slope,
+      flatCount: counts.flat,
+      highestPeak: peaks.length > 0 ? peaks[0] : null,
+      lowestPit: pits.length > 0 ? pits[0] : null,
+      ruggednessIndex: (counts.peak + counts.pit + counts.saddle) / totalVertices
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -14830,6 +14996,22 @@ export interface ConnectivityAnalysis {
   largestGreenRegion: RegionStatistics | null;
   fragmentationIndex: number;
   totalTiles: number;
+}
+
+export type VertexClassification = 'peak' | 'pit' | 'ridge' | 'valley' | 'saddle' | 'slope' | 'flat' | 'local_high' | 'local_low';
+
+export interface VertexStatistics {
+  totalVertices: number;
+  peakCount: number;
+  pitCount: number;
+  ridgeCount: number;
+  valleyCount: number;
+  saddleCount: number;
+  slopeCount: number;
+  flatCount: number;
+  highestPeak: { x: number; y: number; elevation: number } | null;
+  lowestPit: { x: number; y: number; elevation: number } | null;
+  ruggednessIndex: number;
 }
 
 export interface TileStatistics {
