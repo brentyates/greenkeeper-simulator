@@ -111,6 +111,7 @@ export class TerrainBuilder {
     hiddenTileCount: 0
   };
   private lastViewportBounds: ViewportBounds | null = null;
+  private clipboard: TerrainClipboard | null = null;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -4857,6 +4858,206 @@ export class TerrainBuilder {
       maxY: Math.ceil(cameraY + halfHeight)
     };
   }
+
+  public copySelectedToClipboard(): boolean {
+    const selectedTiles = this.getSelectedTiles();
+    if (selectedTiles.length === 0) return false;
+
+    const bounds = this.getSelectionBounds();
+    if (!bounds) return false;
+
+    const tiles: ClipboardTileData[] = [];
+    const { layout, elevation } = this.courseData;
+
+    for (const tile of selectedTiles) {
+      const tileData: ClipboardTileData = {
+        relativeX: tile.x - bounds.minX,
+        relativeY: tile.y - bounds.minY,
+        elevation: elevation?.[tile.y]?.[tile.x] ?? 0,
+        terrainCode: layout[tile.y]?.[tile.x] ?? 0,
+        mowed: this.isMowed(tile.x, tile.y),
+        cornerHeights: this.getCornerHeights(tile.x, tile.y)
+      };
+      tiles.push(tileData);
+    }
+
+    this.clipboard = {
+      tiles,
+      width: bounds.maxX - bounds.minX + 1,
+      height: bounds.maxY - bounds.minY + 1,
+      sourceMinX: bounds.minX,
+      sourceMinY: bounds.minY,
+      timestamp: Date.now()
+    };
+
+    return true;
+  }
+
+  public copyRegionToClipboard(minX: number, minY: number, maxX: number, maxY: number): boolean {
+    const { width, height, layout, elevation } = this.courseData;
+
+    const clampedMinX = Math.max(0, minX);
+    const clampedMinY = Math.max(0, minY);
+    const clampedMaxX = Math.min(width - 1, maxX);
+    const clampedMaxY = Math.min(height - 1, maxY);
+
+    if (clampedMinX > clampedMaxX || clampedMinY > clampedMaxY) return false;
+
+    const tiles: ClipboardTileData[] = [];
+
+    for (let y = clampedMinY; y <= clampedMaxY; y++) {
+      for (let x = clampedMinX; x <= clampedMaxX; x++) {
+        const tileData: ClipboardTileData = {
+          relativeX: x - clampedMinX,
+          relativeY: y - clampedMinY,
+          elevation: elevation?.[y]?.[x] ?? 0,
+          terrainCode: layout[y]?.[x] ?? 0,
+          mowed: this.isMowed(x, y),
+          cornerHeights: this.getCornerHeights(x, y)
+        };
+        tiles.push(tileData);
+      }
+    }
+
+    this.clipboard = {
+      tiles,
+      width: clampedMaxX - clampedMinX + 1,
+      height: clampedMaxY - clampedMinY + 1,
+      sourceMinX: clampedMinX,
+      sourceMinY: clampedMinY,
+      timestamp: Date.now()
+    };
+
+    return true;
+  }
+
+  public hasClipboard(): boolean {
+    return this.clipboard !== null && this.clipboard.tiles.length > 0;
+  }
+
+  public getClipboardSize(): { width: number; height: number; tileCount: number } | null {
+    if (!this.clipboard) return null;
+    return {
+      width: this.clipboard.width,
+      height: this.clipboard.height,
+      tileCount: this.clipboard.tiles.length
+    };
+  }
+
+  public clearClipboard(): void {
+    this.clipboard = null;
+  }
+
+  public pasteFromClipboard(destX: number, destY: number, options?: {
+    includeElevation?: boolean;
+    includeMowed?: boolean;
+    elevationOffset?: number;
+  }): number {
+    if (!this.clipboard) return 0;
+
+    const { width, height } = this.courseData;
+    const includeElevation = options?.includeElevation ?? true;
+    const includeMowed = options?.includeMowed ?? true;
+    const elevationOffset = options?.elevationOffset ?? 0;
+
+    if (this.historyEnabled) {
+      this.beginBatch(`Paste ${this.clipboard.tiles.length} tiles at (${destX}, ${destY})`);
+    }
+
+    let pastedCount = 0;
+
+    for (const tile of this.clipboard.tiles) {
+      const targetX = destX + tile.relativeX;
+      const targetY = destY + tile.relativeY;
+
+      if (targetX < 0 || targetX >= width || targetY < 0 || targetY >= height) continue;
+
+      if (includeElevation) {
+        const newElevation = tile.elevation + elevationOffset;
+        if (this.historyEnabled) {
+          this.setElevationWithHistory(targetX, targetY, newElevation);
+        } else {
+          this.setElevationAtInternal(targetX, targetY, newElevation);
+        }
+      }
+
+      if (includeMowed) {
+        if (this.historyEnabled) {
+          this.setMowedWithHistory(targetX, targetY, tile.mowed);
+        } else {
+          this.setMowed(targetX, targetY, tile.mowed);
+        }
+      }
+
+      pastedCount++;
+    }
+
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+
+    return pastedCount;
+  }
+
+  public getPastePreview(destX: number, destY: number): Array<{ x: number; y: number; valid: boolean }> {
+    if (!this.clipboard) return [];
+
+    const { width, height } = this.courseData;
+    const preview: Array<{ x: number; y: number; valid: boolean }> = [];
+
+    for (const tile of this.clipboard.tiles) {
+      const targetX = destX + tile.relativeX;
+      const targetY = destY + tile.relativeY;
+      const valid = targetX >= 0 && targetX < width && targetY >= 0 && targetY < height;
+      preview.push({ x: targetX, y: targetY, valid });
+    }
+
+    return preview;
+  }
+
+  public canPasteAt(destX: number, destY: number): { canPaste: boolean; validCount: number; invalidCount: number } {
+    if (!this.clipboard) return { canPaste: false, validCount: 0, invalidCount: 0 };
+
+    const { width, height } = this.courseData;
+    let validCount = 0;
+    let invalidCount = 0;
+
+    for (const tile of this.clipboard.tiles) {
+      const targetX = destX + tile.relativeX;
+      const targetY = destY + tile.relativeY;
+      if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+        validCount++;
+      } else {
+        invalidCount++;
+      }
+    }
+
+    return {
+      canPaste: validCount > 0,
+      validCount,
+      invalidCount
+    };
+  }
+
+  public getClipboardData(): TerrainClipboard | null {
+    return this.clipboard ? { ...this.clipboard, tiles: [...this.clipboard.tiles] } : null;
+  }
+
+  public setClipboardData(data: TerrainClipboard): void {
+    this.clipboard = { ...data, tiles: [...data.tiles] };
+  }
+
+  public duplicateSelection(offsetX: number, offsetY: number): number {
+    if (!this.copySelectedToClipboard()) return 0;
+
+    const bounds = this.getSelectionBounds();
+    if (!bounds) return 0;
+
+    const destX = bounds.minX + offsetX;
+    const destY = bounds.minY + offsetY;
+
+    return this.pasteFromClipboard(destX, destY);
+  }
 }
 
 export interface TerrainStatistics {
@@ -5084,4 +5285,22 @@ export interface CullingConfig {
   lastUpdate: number;
   visibleTileCount: number;
   hiddenTileCount: number;
+}
+
+export interface ClipboardTileData {
+  relativeX: number;
+  relativeY: number;
+  elevation: number;
+  terrainCode: number;
+  mowed: boolean;
+  cornerHeights?: CornerHeights;
+}
+
+export interface TerrainClipboard {
+  tiles: ClipboardTileData[];
+  width: number;
+  height: number;
+  sourceMinX: number;
+  sourceMinY: number;
+  timestamp: number;
 }
