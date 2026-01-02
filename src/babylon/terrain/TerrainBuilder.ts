@@ -1921,6 +1921,111 @@ export class TerrainBuilder {
     if (perimeter === 0) return 1;
     return (4 * Math.PI * area) / (perimeter * perimeter);
   }
+
+  public serializeTerrainState(): TerrainSerializedState {
+    const { width, height } = this.courseData;
+
+    const mowedTiles: Array<{ x: number; y: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.mowedState[y]?.[x]) {
+          mowedTiles.push({ x, y });
+        }
+      }
+    }
+
+    return {
+      version: 1,
+      width,
+      height,
+      waterLevel: this.waterLevel,
+      mowedTiles,
+      timestamp: Date.now()
+    };
+  }
+
+  public deserializeTerrainState(state: TerrainSerializedState): boolean {
+    if (state.version !== 1) {
+      console.warn('Unknown terrain state version:', state.version);
+      return false;
+    }
+
+    if (state.width !== this.courseData.width || state.height !== this.courseData.height) {
+      console.warn('Terrain dimensions mismatch');
+      return false;
+    }
+
+    this.resetAllMowed();
+
+    for (const tile of state.mowedTiles) {
+      this.setMowed(tile.x, tile.y, true);
+    }
+
+    if (state.waterLevel !== undefined) {
+      this.setWaterLevel(state.waterLevel);
+    }
+
+    return true;
+  }
+
+  public exportToRCTFormat(): RCTTerrainData {
+    const { width, height, layout } = this.courseData;
+    const tiles: RCTTileData[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const corners = this.getCornerHeights(x, y);
+        const code = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
+        const type = getTerrainType(code);
+
+        tiles.push({
+          pos: [x, y],
+          heights: [corners.nw, corners.ne, corners.se, corners.sw],
+          type,
+          flags: {
+            water: type === 'water',
+            mowed: this.mowedState[y]?.[x] ?? false
+          }
+        });
+      }
+    }
+
+    return {
+      gridSize: [width, height],
+      heightStep: ELEVATION_HEIGHT,
+      waterLevel: this.waterLevel,
+      tiles
+    };
+  }
+
+  public getMowedStateSnapshot(): boolean[][] {
+    const { width, height } = this.courseData;
+    const snapshot: boolean[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      snapshot[y] = [];
+      for (let x = 0; x < width; x++) {
+        snapshot[y][x] = this.mowedState[y]?.[x] ?? false;
+      }
+    }
+
+    return snapshot;
+  }
+
+  public restoreMowedStateSnapshot(snapshot: boolean[][]): void {
+    const { width, height } = this.courseData;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const wasMowed = this.mowedState[y]?.[x] ?? false;
+        const shouldBeMowed = snapshot[y]?.[x] ?? false;
+
+        if (wasMowed !== shouldBeMowed) {
+          this.setMowed(x, y, shouldBeMowed);
+        }
+      }
+    }
+  }
 }
 
 export interface TerrainStatistics {
@@ -1950,4 +2055,30 @@ export interface PathfindingOptions {
   allowDiagonals?: boolean;
   avoidTypes?: TerrainType[];
   maxIterations?: number;
+}
+
+export interface TerrainSerializedState {
+  version: number;
+  width: number;
+  height: number;
+  waterLevel: number;
+  mowedTiles: Array<{ x: number; y: number }>;
+  timestamp: number;
+}
+
+export interface RCTTileData {
+  pos: [number, number];
+  heights: [number, number, number, number];
+  type: TerrainType;
+  flags: {
+    water: boolean;
+    mowed: boolean;
+  };
+}
+
+export interface RCTTerrainData {
+  gridSize: [number, number];
+  heightStep: number;
+  waterLevel: number;
+  tiles: RCTTileData[];
 }
