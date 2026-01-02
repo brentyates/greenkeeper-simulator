@@ -11429,6 +11429,250 @@ export class TerrainBuilder {
     return modifiedCount;
   }
 
+  public generateContourLineSet(interval: number = 1, minElev?: number, maxElev?: number): ContourLineSet {
+    const actualMinElev = minElev ?? 0;
+    const actualMaxElev = maxElev ?? this.getMaxElevation();
+    const contours: ContourLine[] = [];
+
+    for (let elev = actualMinElev; elev <= actualMaxElev; elev += interval) {
+      const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+
+      for (let y = 0; y < this.courseData.height - 1; y++) {
+        for (let x = 0; x < this.courseData.width - 1; x++) {
+          const e00 = this.getElevationAt(x, y);
+          const e10 = this.getElevationAt(x + 1, y);
+          const e01 = this.getElevationAt(x, y + 1);
+          const e11 = this.getElevationAt(x + 1, y + 1);
+
+          const cellSegments = this.computeMarchingSquaresCell(x, y, e00, e10, e01, e11, elev);
+          segments.push(...cellSegments);
+        }
+      }
+
+      if (segments.length > 0) {
+        contours.push({
+          elevation: elev,
+          segments,
+          isMajor: elev % (interval * 5) === 0
+        });
+      }
+    }
+
+    return {
+      interval,
+      minElevation: actualMinElev,
+      maxElevation: actualMaxElev,
+      contourCount: contours.length,
+      contours
+    };
+  }
+
+  private computeMarchingSquaresCell(x: number, y: number, e00: number, e10: number, e01: number, e11: number, threshold: number): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+
+    const b00 = e00 >= threshold ? 1 : 0;
+    const b10 = e10 >= threshold ? 1 : 0;
+    const b01 = e01 >= threshold ? 1 : 0;
+    const b11 = e11 >= threshold ? 1 : 0;
+    const index = b00 | (b10 << 1) | (b01 << 2) | (b11 << 3);
+
+    if (index === 0 || index === 15) return segments;
+
+    const lerp = (v1: number, v2: number, t: number) => v1 + (v2 - v1) * t;
+    const getT = (v1: number, v2: number) => (v1 === v2) ? 0.5 : (threshold - v1) / (v2 - v1);
+
+    const left = { x: x, y: lerp(y, y + 1, getT(e00, e01)) };
+    const right = { x: x + 1, y: lerp(y, y + 1, getT(e10, e11)) };
+    const top = { x: lerp(x, x + 1, getT(e00, e10)), y: y };
+    const bottom = { x: lerp(x, x + 1, getT(e01, e11)), y: y + 1 };
+
+    const addSegment = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      segments.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+    };
+
+    switch (index) {
+      case 1: case 14: addSegment(left, top); break;
+      case 2: case 13: addSegment(top, right); break;
+      case 3: case 12: addSegment(left, right); break;
+      case 4: case 11: addSegment(bottom, left); break;
+      case 5: case 10: addSegment(top, left); addSegment(bottom, right); break;
+      case 6: case 9: addSegment(top, bottom); break;
+      case 7: case 8: addSegment(bottom, right); break;
+    }
+
+    return segments;
+  }
+
+  public getElevationBands(bandSize: number = 1): ElevationBandSet {
+    const maxElev = this.getMaxElevation();
+    const bands: ElevationBand[] = [];
+
+    for (let minElev = 0; minElev <= maxElev; minElev += bandSize) {
+      const maxBandElev = minElev + bandSize;
+      const tiles: Array<{ x: number; y: number }> = [];
+
+      for (let y = 0; y < this.courseData.height; y++) {
+        for (let x = 0; x < this.courseData.width; x++) {
+          const elev = this.getElevationAt(x, y);
+          if (elev >= minElev && elev < maxBandElev) {
+            tiles.push({ x, y });
+          }
+        }
+      }
+
+      if (tiles.length > 0) {
+        bands.push({
+          minElevation: minElev,
+          maxElevation: maxBandElev,
+          tileCount: tiles.length,
+          tiles,
+          percentage: tiles.length / (this.courseData.width * this.courseData.height) * 100
+        });
+      }
+    }
+
+    return {
+      bandSize,
+      bandCount: bands.length,
+      totalTiles: this.courseData.width * this.courseData.height,
+      bands
+    };
+  }
+
+  public findElevationBoundaries(): ElevationBoundarySet {
+    const boundaries: Array<{ x: number; y: number; elevDiff: number; direction: 'horizontal' | 'vertical' }> = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width - 1; x++) {
+        const e1 = this.getElevationAt(x, y);
+        const e2 = this.getElevationAt(x + 1, y);
+        if (e1 !== e2) {
+          boundaries.push({ x, y, elevDiff: Math.abs(e2 - e1), direction: 'horizontal' });
+        }
+      }
+    }
+
+    for (let y = 0; y < this.courseData.height - 1; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const e1 = this.getElevationAt(x, y);
+        const e2 = this.getElevationAt(x, y + 1);
+        if (e1 !== e2) {
+          boundaries.push({ x, y, elevDiff: Math.abs(e2 - e1), direction: 'vertical' });
+        }
+      }
+    }
+
+    const maxDiff = boundaries.length > 0 ? Math.max(...boundaries.map(b => b.elevDiff)) : 0;
+    const avgDiff = boundaries.length > 0 ? boundaries.reduce((sum, b) => sum + b.elevDiff, 0) / boundaries.length : 0;
+
+    return {
+      boundaryCount: boundaries.length,
+      maxElevationDiff: maxDiff,
+      avgElevationDiff: avgDiff,
+      boundaries
+    };
+  }
+
+  public traceContourAtPoint(x: number, y: number, elevation?: number): ContourTrace {
+    const startElev = elevation ?? this.getElevationAt(x, y);
+    const points: Array<{ x: number; y: number }> = [];
+    const visited = new Set<string>();
+
+    let currentX = x;
+    let currentY = y;
+    let iterations = 0;
+    const maxIterations = this.courseData.width * this.courseData.height;
+
+    while (iterations < maxIterations) {
+      const key = `${currentX},${currentY}`;
+      if (visited.has(key)) break;
+
+      visited.add(key);
+      points.push({ x: currentX, y: currentY });
+
+      const directions = [
+        { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }
+      ];
+
+      let found = false;
+      for (const dir of directions) {
+        const nx = currentX + dir.dx;
+        const ny = currentY + dir.dy;
+        const nkey = `${nx},${ny}`;
+
+        if (!this.isValidGridPosition(nx, ny) || visited.has(nkey)) continue;
+
+        const nElev = this.getElevationAt(nx, ny);
+        if (nElev === startElev) {
+          currentX = nx;
+          currentY = ny;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) break;
+      iterations++;
+    }
+
+    const isClosed = points.length > 2 &&
+      Math.abs(points[0].x - points[points.length - 1].x) <= 1 &&
+      Math.abs(points[0].y - points[points.length - 1].y) <= 1;
+
+    let perimeter = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      perimeter += Math.sqrt(dx * dx + dy * dy);
+    }
+
+    return {
+      elevation: startElev,
+      points,
+      pointCount: points.length,
+      isClosed,
+      perimeter
+    };
+  }
+
+  public getTerrainGradientMap(): TerrainGradientMap {
+    const gradients: Array<{ x: number; y: number; magnitude: number; direction: number }> = [];
+    let maxMagnitude = 0;
+    let sumMagnitude = 0;
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const slope = this.getSlopeVectorAt(x, y);
+        gradients.push({
+          x, y,
+          magnitude: slope.magnitude,
+          direction: slope.direction
+        });
+        maxMagnitude = Math.max(maxMagnitude, slope.magnitude);
+        sumMagnitude += slope.magnitude;
+      }
+    }
+
+    return {
+      width: this.courseData.width,
+      height: this.courseData.height,
+      maxMagnitude,
+      avgMagnitude: sumMagnitude / gradients.length,
+      gradients
+    };
+  }
+
+  private getMaxElevation(): number {
+    let max = 0;
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        max = Math.max(max, this.getElevationAt(x, y));
+      }
+    }
+    return max;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -17185,4 +17429,56 @@ export interface TerrainSymmetryResult {
   verticalTotal: number;
   asymmetricTiles: Array<{ x: number; y: number; mirrorX: number; mirrorY: number; diff: number }>;
   isPerfectlySymmetric: boolean;
+}
+
+export interface ContourLine {
+  elevation: number;
+  segments: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+  isMajor: boolean;
+}
+
+export interface ContourLineSet {
+  interval: number;
+  minElevation: number;
+  maxElevation: number;
+  contourCount: number;
+  contours: ContourLine[];
+}
+
+export interface ElevationBand {
+  minElevation: number;
+  maxElevation: number;
+  tileCount: number;
+  tiles: Array<{ x: number; y: number }>;
+  percentage: number;
+}
+
+export interface ElevationBandSet {
+  bandSize: number;
+  bandCount: number;
+  totalTiles: number;
+  bands: ElevationBand[];
+}
+
+export interface ElevationBoundarySet {
+  boundaryCount: number;
+  maxElevationDiff: number;
+  avgElevationDiff: number;
+  boundaries: Array<{ x: number; y: number; elevDiff: number; direction: 'horizontal' | 'vertical' }>;
+}
+
+export interface ContourTrace {
+  elevation: number;
+  points: Array<{ x: number; y: number }>;
+  pointCount: number;
+  isClosed: boolean;
+  perimeter: number;
+}
+
+export interface TerrainGradientMap {
+  width: number;
+  height: number;
+  maxMagnitude: number;
+  avgMagnitude: number;
+  gradients: Array<{ x: number; y: number; magnitude: number; direction: number }>;
 }
