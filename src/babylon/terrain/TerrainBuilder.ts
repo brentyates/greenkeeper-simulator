@@ -114,6 +114,10 @@ export class TerrainBuilder {
   private clipboard: TerrainClipboard | null = null;
   private stamps: Map<string, TerrainStamp> = new Map();
   private activeStampId: string | null = null;
+  private constraints: TerrainConstraints = {
+    maxSlopeDelta: 2,
+    enforceConstraints: true
+  };
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -5345,6 +5349,264 @@ export class TerrainBuilder {
     }
     return imported;
   }
+
+  public setMaxSlopeDelta(maxDelta: number): void {
+    this.constraints.maxSlopeDelta = Math.max(1, Math.min(10, maxDelta));
+  }
+
+  public getMaxSlopeDelta(): number {
+    return this.constraints.maxSlopeDelta;
+  }
+
+  public setEnforceConstraints(enforce: boolean): void {
+    this.constraints.enforceConstraints = enforce;
+  }
+
+  public isEnforceConstraints(): boolean {
+    return this.constraints.enforceConstraints;
+  }
+
+  public getConstraints(): TerrainConstraints {
+    return { ...this.constraints };
+  }
+
+  public validateTileSlope(gridX: number, gridY: number): SlopeValidation {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const cornerValues = [
+      { name: 'nw', value: corners.nw },
+      { name: 'ne', value: corners.ne },
+      { name: 'se', value: corners.se },
+      { name: 'sw', value: corners.sw }
+    ];
+
+    const violations: Array<{ corner1: string; corner2: string; delta: number }> = [];
+    let maxDelta = 0;
+
+    for (let i = 0; i < cornerValues.length; i++) {
+      for (let j = i + 1; j < cornerValues.length; j++) {
+        const delta = Math.abs(cornerValues[i].value - cornerValues[j].value);
+        maxDelta = Math.max(maxDelta, delta);
+        if (delta > this.constraints.maxSlopeDelta) {
+          violations.push({
+            corner1: cornerValues[i].name,
+            corner2: cornerValues[j].name,
+            delta
+          });
+        }
+      }
+    }
+
+    return {
+      isValid: violations.length === 0,
+      maxDelta,
+      violatingCorners: violations
+    };
+  }
+
+  public validateAllTileSlopes(): Array<{ gridX: number; gridY: number; validation: SlopeValidation }> {
+    const { width, height } = this.courseData;
+    const invalidTiles: Array<{ gridX: number; gridY: number; validation: SlopeValidation }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const validation = this.validateTileSlope(x, y);
+        if (!validation.isValid) {
+          invalidTiles.push({ gridX: x, gridY: y, validation });
+        }
+      }
+    }
+
+    return invalidTiles;
+  }
+
+  public getInvalidSlopeTileCount(): number {
+    return this.validateAllTileSlopes().length;
+  }
+
+  public isTerrainValid(): boolean {
+    return this.getInvalidSlopeTileCount() === 0;
+  }
+
+  public clampCornerHeightsToConstraints(gridX: number, gridY: number): boolean {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const maxDelta = this.constraints.maxSlopeDelta;
+
+    const values = [corners.nw, corners.ne, corners.se, corners.sw];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    if (max - min <= maxDelta) {
+      return false;
+    }
+
+    const avg = (min + max) / 2;
+    const halfDelta = maxDelta / 2;
+
+    const clamp = (v: number) => Math.max(avg - halfDelta, Math.min(avg + halfDelta, v));
+
+    const newCorners: CornerHeights = {
+      nw: clamp(corners.nw),
+      ne: clamp(corners.ne),
+      se: clamp(corners.se),
+      sw: clamp(corners.sw)
+    };
+
+    if (this.courseData.elevation) {
+      const nwX = gridX;
+      const nwY = gridY;
+      const neX = gridX + 1;
+      const neY = gridY;
+      const seX = gridX + 1;
+      const seY = gridY + 1;
+      const swX = gridX;
+      const swY = gridY + 1;
+
+      const { width, height, elevation } = this.courseData;
+      if (nwX < width && nwY < height) elevation[nwY][nwX] = newCorners.nw;
+      if (neX < width && neY < height) elevation[neY][neX] = newCorners.ne;
+      if (seX < width && seY < height) elevation[seY][seX] = newCorners.se;
+      if (swX < width && swY < height) elevation[swY][swX] = newCorners.sw;
+    }
+
+    this.invalidateCacheAt(gridX, gridY);
+    return true;
+  }
+
+  public fixAllInvalidSlopes(): number {
+    const invalidTiles = this.validateAllTileSlopes();
+    let fixedCount = 0;
+
+    for (const tile of invalidTiles) {
+      if (this.clampCornerHeightsToConstraints(tile.gridX, tile.gridY)) {
+        fixedCount++;
+      }
+    }
+
+    return fixedCount;
+  }
+
+  public wouldViolateConstraints(gridX: number, gridY: number, proposedElevation: number): boolean {
+    if (!this.constraints.enforceConstraints) return false;
+
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return false;
+
+    const neighbors = [
+      { dx: -1, dy: 0 },
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: -1 },
+      { dx: 0, dy: 1 },
+      { dx: -1, dy: -1 },
+      { dx: 1, dy: -1 },
+      { dx: -1, dy: 1 },
+      { dx: 1, dy: 1 }
+    ];
+
+    for (const neighbor of neighbors) {
+      const nx = gridX + neighbor.dx;
+      const ny = gridY + neighbor.dy;
+
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+      const neighborElev = elevation[ny]?.[nx] ?? 0;
+      const delta = Math.abs(proposedElevation - neighborElev);
+
+      if (delta > this.constraints.maxSlopeDelta) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public getValidElevationRange(gridX: number, gridY: number): { min: number; max: number } {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return { min: -Infinity, max: Infinity };
+
+    const maxDelta = this.constraints.maxSlopeDelta;
+    let minValid = -Infinity;
+    let maxValid = Infinity;
+
+    const neighbors = [
+      { dx: -1, dy: 0 },
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: -1 },
+      { dx: 0, dy: 1 },
+      { dx: -1, dy: -1 },
+      { dx: 1, dy: -1 },
+      { dx: -1, dy: 1 },
+      { dx: 1, dy: 1 }
+    ];
+
+    for (const neighbor of neighbors) {
+      const nx = gridX + neighbor.dx;
+      const ny = gridY + neighbor.dy;
+
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+      const neighborElev = elevation[ny]?.[nx] ?? 0;
+      minValid = Math.max(minValid, neighborElev - maxDelta);
+      maxValid = Math.min(maxValid, neighborElev + maxDelta);
+    }
+
+    return { min: minValid, max: maxValid };
+  }
+
+  public setElevationConstrained(gridX: number, gridY: number, elevation: number): boolean {
+    if (this.constraints.enforceConstraints) {
+      const range = this.getValidElevationRange(gridX, gridY);
+      const constrainedElev = Math.max(range.min, Math.min(range.max, elevation));
+
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(gridX, gridY, constrainedElev);
+      } else {
+        this.setElevationAtInternal(gridX, gridY, constrainedElev);
+      }
+      this.invalidateCacheAt(gridX, gridY);
+      return constrainedElev !== elevation;
+    } else {
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(gridX, gridY, elevation);
+      } else {
+        this.setElevationAtInternal(gridX, gridY, elevation);
+      }
+      this.invalidateCacheAt(gridX, gridY);
+      return false;
+    }
+  }
+
+  public getSlopeStatistics(): {
+    totalTiles: number;
+    validTiles: number;
+    invalidTiles: number;
+    maxSlopeDeltaFound: number;
+    avgSlopeDelta: number;
+  } {
+    const { width, height } = this.courseData;
+    let totalDelta = 0;
+    let maxDelta = 0;
+    let invalidCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const validation = this.validateTileSlope(x, y);
+        totalDelta += validation.maxDelta;
+        maxDelta = Math.max(maxDelta, validation.maxDelta);
+        if (!validation.isValid) {
+          invalidCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      totalTiles,
+      validTiles: totalTiles - invalidCount,
+      invalidTiles: invalidCount,
+      maxSlopeDeltaFound: maxDelta,
+      avgSlopeDelta: totalTiles > 0 ? totalDelta / totalTiles : 0
+    };
+  }
 }
 
 export interface TerrainStatistics {
@@ -5600,4 +5862,15 @@ export interface TerrainStamp {
   height: number;
   category?: string;
   description?: string;
+}
+
+export interface SlopeValidation {
+  isValid: boolean;
+  maxDelta: number;
+  violatingCorners: Array<{ corner1: string; corner2: string; delta: number }>;
+}
+
+export interface TerrainConstraints {
+  maxSlopeDelta: number;
+  enforceConstraints: boolean;
 }
