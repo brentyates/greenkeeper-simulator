@@ -12648,6 +12648,210 @@ export class TerrainBuilder {
     return this.getOrientedBoundingBox(points);
   }
 
+  public computeVoronoiRegions(seedPoints: Array<{ x: number; y: number; id: string }>): VoronoiResult {
+    const { width, height } = this.courseData;
+    const regions: Map<string, Array<{ x: number; y: number }>> = new Map();
+    const assignments: string[][] = [];
+
+    for (const seed of seedPoints) {
+      regions.set(seed.id, []);
+    }
+
+    for (let y = 0; y < height; y++) {
+      assignments[y] = [];
+      for (let x = 0; x < width; x++) {
+        let nearestId = '';
+        let nearestDist = Infinity;
+
+        for (const seed of seedPoints) {
+          const dx = x - seed.x;
+          const dy = y - seed.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestId = seed.id;
+          }
+        }
+
+        assignments[y][x] = nearestId;
+        if (nearestId) {
+          regions.get(nearestId)!.push({ x, y });
+        }
+      }
+    }
+
+    const regionStats: Array<{ id: string; area: number; perimeter: number; centroid: { x: number; y: number } }> = [];
+    for (const [id, tiles] of regions) {
+      if (tiles.length === 0) continue;
+
+      let sumX = 0, sumY = 0;
+      for (const t of tiles) {
+        sumX += t.x;
+        sumY += t.y;
+      }
+
+      let perimeter = 0;
+      for (const t of tiles) {
+        const neighbors = [
+          { nx: t.x - 1, ny: t.y }, { nx: t.x + 1, ny: t.y },
+          { nx: t.x, ny: t.y - 1 }, { nx: t.x, ny: t.y + 1 }
+        ];
+        for (const { nx, ny } of neighbors) {
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height || assignments[ny][nx] !== id) {
+            perimeter++;
+          }
+        }
+      }
+
+      regionStats.push({
+        id,
+        area: tiles.length,
+        perimeter,
+        centroid: { x: sumX / tiles.length, y: sumY / tiles.length }
+      });
+    }
+
+    return {
+      seedPoints,
+      assignments,
+      regions: Object.fromEntries(regions),
+      regionStats,
+      width,
+      height
+    };
+  }
+
+  public computeTerrainTypeVoronoi(targetTypes: TerrainType[]): VoronoiResult {
+    const { width, height, layout } = this.courseData;
+    const seedPoints: Array<{ x: number; y: number; id: string }> = [];
+
+    for (const targetType of targetTypes) {
+      let sumX = 0, sumY = 0, count = 0;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (getTerrainType(layout[y][x]) === targetType) {
+            sumX += x;
+            sumY += y;
+            count++;
+          }
+        }
+      }
+      if (count > 0) {
+        seedPoints.push({
+          x: Math.round(sumX / count),
+          y: Math.round(sumY / count),
+          id: targetType
+        });
+      }
+    }
+
+    return this.computeVoronoiRegions(seedPoints);
+  }
+
+  public findNearestSeedPoint(
+    voronoi: VoronoiResult,
+    gridX: number,
+    gridY: number
+  ): { id: string; distance: number; seedX: number; seedY: number } | null {
+    if (voronoi.seedPoints.length === 0) return null;
+
+    let nearestId = '';
+    let nearestDist = Infinity;
+    let seedX = 0, seedY = 0;
+
+    for (const seed of voronoi.seedPoints) {
+      const dx = gridX - seed.x;
+      const dy = gridY - seed.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestId = seed.id;
+        seedX = seed.x;
+        seedY = seed.y;
+      }
+    }
+
+    return { id: nearestId, distance: nearestDist, seedX, seedY };
+  }
+
+  public getVoronoiEdges(voronoi: VoronoiResult): Array<{ x: number; y: number; neighbor: string }> {
+    const edges: Array<{ x: number; y: number; neighbor: string }> = [];
+    const { width, height, assignments } = voronoi;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentId = assignments[y][x];
+        const neighbors = [
+          { nx: x + 1, ny: y }, { nx: x, ny: y + 1 }
+        ];
+
+        for (const { nx, ny } of neighbors) {
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const neighborId = assignments[ny][nx];
+            if (neighborId !== currentId) {
+              edges.push({ x, y, neighbor: neighborId });
+            }
+          }
+        }
+      }
+    }
+
+    return edges;
+  }
+
+  public computeVoronoiFromPeaks(): VoronoiResult {
+    const peaks = this.findPeaks(0.5);
+    const seedPoints = peaks.slice(0, 20).map((p, i) => ({
+      x: p.x,
+      y: p.y,
+      id: `peak_${i}`
+    }));
+
+    if (seedPoints.length === 0) {
+      return {
+        seedPoints: [],
+        assignments: [],
+        regions: {},
+        regionStats: [],
+        width: this.courseData.width,
+        height: this.courseData.height
+      };
+    }
+
+    return this.computeVoronoiRegions(seedPoints);
+  }
+
+  public getVoronoiNeighborGraph(voronoi: VoronoiResult): Map<string, Set<string>> {
+    const graph = new Map<string, Set<string>>();
+
+    for (const seed of voronoi.seedPoints) {
+      graph.set(seed.id, new Set());
+    }
+
+    const { width, height, assignments } = voronoi;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentId = assignments[y][x];
+        const neighbors = [
+          { nx: x + 1, ny: y }, { nx: x, ny: y + 1 },
+          { nx: x - 1, ny: y }, { nx: x, ny: y - 1 }
+        ];
+
+        for (const { nx, ny } of neighbors) {
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const neighborId = assignments[ny][nx];
+            if (neighborId !== currentId && neighborId && currentId) {
+              graph.get(currentId)?.add(neighborId);
+              graph.get(neighborId)?.add(currentId);
+            }
+          }
+        }
+      }
+    }
+
+    return graph;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -18604,4 +18808,13 @@ export interface OrientedBoundingBox {
   height: number;
   angle: number;
   area: number;
+}
+
+export interface VoronoiResult {
+  seedPoints: Array<{ x: number; y: number; id: string }>;
+  assignments: string[][];
+  regions: Record<string, Array<{ x: number; y: number }>>;
+  regionStats: Array<{ id: string; area: number; perimeter: number; centroid: { x: number; y: number } }>;
+  width: number;
+  height: number;
 }
