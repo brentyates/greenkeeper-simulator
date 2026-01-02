@@ -9739,6 +9739,240 @@ export class TerrainBuilder {
     };
   }
 
+  public batchQueryTiles(
+    positions: Array<{ x: number; y: number }>,
+    options: BatchQueryOptions = {}
+  ): TileBatchResult[] {
+    const {
+      includeElevation = true,
+      includeSlope = true,
+      includeTerrainType = true,
+      includeCornerHeights = false,
+      includePhysics = false,
+      includeGeometry = false
+    } = options;
+
+    return positions.map(pos => {
+      const result: TileBatchResult = {
+        x: pos.x,
+        y: pos.y,
+        valid: this.isValidGridPosition(pos.x, pos.y)
+      };
+
+      if (!result.valid) return result;
+
+      if (includeElevation) {
+        result.elevation = this.getElevationAt(pos.x, pos.y);
+      }
+      if (includeSlope) {
+        result.slopeAngle = this.getSlopeAngle(pos.x, pos.y);
+        const slopeVec = this.getSlopeVectorAt(pos.x, pos.y);
+        result.slopeDirection = slopeVec.direction;
+      }
+      if (includeTerrainType) {
+        result.terrainType = this.getTerrainTypeAt(pos.x, pos.y);
+      }
+      if (includeCornerHeights) {
+        result.cornerHeights = this.getCornerHeights(pos.x, pos.y);
+      }
+      if (includePhysics) {
+        result.physics = this.getSurfacePhysicsAt(pos.x, pos.y);
+      }
+      if (includeGeometry) {
+        result.geometryType = this.classifyTileGeometry(pos.x, pos.y);
+      }
+
+      return result;
+    });
+  }
+
+  public queryTileArea(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    options: BatchQueryOptions = {}
+  ): TileAreaResult {
+    const positions: Array<{ x: number; y: number }> = [];
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = centerX + dx;
+        const y = centerY + dy;
+        if (this.isValidGridPosition(x, y)) {
+          positions.push({ x, y });
+        }
+      }
+    }
+
+    const tiles = this.batchQueryTiles(positions, options);
+    const validTiles = tiles.filter(t => t.valid);
+
+    let sumElev = 0, sumSlope = 0;
+    let minElev = Infinity, maxElev = -Infinity;
+    let maxSlope = 0;
+    const terrainCounts: { [key: string]: number } = {};
+
+    for (const tile of validTiles) {
+      if (tile.elevation !== undefined) {
+        sumElev += tile.elevation;
+        minElev = Math.min(minElev, tile.elevation);
+        maxElev = Math.max(maxElev, tile.elevation);
+      }
+      if (tile.slopeAngle !== undefined) {
+        sumSlope += tile.slopeAngle;
+        maxSlope = Math.max(maxSlope, tile.slopeAngle);
+      }
+      if (tile.terrainType) {
+        terrainCounts[tile.terrainType] = (terrainCounts[tile.terrainType] || 0) + 1;
+      }
+    }
+
+    let dominantTerrainType: TerrainType = 'fairway';
+    let maxCount = 0;
+    for (const [type, count] of Object.entries(terrainCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        dominantTerrainType = type as TerrainType;
+      }
+    }
+
+    return {
+      center: { x: centerX, y: centerY },
+      radius,
+      tiles,
+      tileCount: validTiles.length,
+      avgElevation: validTiles.length > 0 ? sumElev / validTiles.length : 0,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      avgSlope: validTiles.length > 0 ? sumSlope / validTiles.length : 0,
+      maxSlope,
+      dominantTerrainType,
+      terrainCounts
+    };
+  }
+
+  public queryTileLine(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    options: BatchQueryOptions = {}
+  ): TileLineResult {
+    const positions: Array<{ x: number; y: number }> = [];
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+    const steps = Math.max(dx, dy);
+
+    for (let i = 0; i <= steps; i++) {
+      const t = steps > 0 ? i / steps : 0;
+      const x = Math.round(x1 + (x2 - x1) * t);
+      const y = Math.round(y1 + (y2 - y1) * t);
+      if (positions.length === 0 || positions[positions.length - 1].x !== x || positions[positions.length - 1].y !== y) {
+        positions.push({ x, y });
+      }
+    }
+
+    const tiles = this.batchQueryTiles(positions, options);
+    const validTiles = tiles.filter(t => t.valid);
+
+    let totalElevationChange = 0;
+    let maxSlope = 0;
+    let terrainTransitions = 0;
+    let prevTerrainType: string | undefined;
+
+    for (let i = 0; i < validTiles.length; i++) {
+      const tile = validTiles[i];
+      if (tile.slopeAngle !== undefined && tile.slopeAngle > maxSlope) {
+        maxSlope = tile.slopeAngle;
+      }
+      const prevTile = validTiles[i - 1];
+      if (i > 0 && prevTile && prevTile.elevation !== undefined && tile.elevation !== undefined) {
+        totalElevationChange += Math.abs(tile.elevation - prevTile.elevation);
+      }
+      if (tile.terrainType && prevTerrainType && tile.terrainType !== prevTerrainType) {
+        terrainTransitions++;
+      }
+      prevTerrainType = tile.terrainType;
+    }
+
+    const lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+
+    return {
+      start: { x: x1, y: y1 },
+      end: { x: x2, y: y2 },
+      tiles,
+      tileCount: validTiles.length,
+      lineLength,
+      totalElevationChange,
+      avgElevationChange: validTiles.length > 1 ? totalElevationChange / (validTiles.length - 1) : 0,
+      maxSlope,
+      terrainTransitions
+    };
+  }
+
+  public computeAreaStatistics(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number
+  ): AreaStatistics {
+    const positions: Array<{ x: number; y: number }> = [];
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (this.isValidGridPosition(x, y)) {
+          positions.push({ x, y });
+        }
+      }
+    }
+
+    const tiles = this.batchQueryTiles(positions, {
+      includeElevation: true,
+      includeSlope: true,
+      includeTerrainType: true,
+      includeGeometry: true
+    });
+
+    const validTiles = tiles.filter(t => t.valid);
+
+    let sumElev = 0, sumSlope = 0;
+    let minElev = Infinity, maxElev = -Infinity;
+    let maxSlope = 0;
+    const terrainCounts: { [key: string]: number } = {};
+    const geometryCounts: { [key: string]: number } = {};
+
+    for (const tile of validTiles) {
+      if (tile.elevation !== undefined) {
+        sumElev += tile.elevation;
+        minElev = Math.min(minElev, tile.elevation);
+        maxElev = Math.max(maxElev, tile.elevation);
+      }
+      if (tile.slopeAngle !== undefined) {
+        sumSlope += tile.slopeAngle;
+        maxSlope = Math.max(maxSlope, tile.slopeAngle);
+      }
+      if (tile.terrainType) {
+        terrainCounts[tile.terrainType] = (terrainCounts[tile.terrainType] || 0) + 1;
+      }
+      if (tile.geometryType) {
+        geometryCounts[tile.geometryType] = (geometryCounts[tile.geometryType] || 0) + 1;
+      }
+    }
+
+    return {
+      bounds: { minX, minY, maxX, maxY },
+      tileCount: validTiles.length,
+      avgElevation: validTiles.length > 0 ? sumElev / validTiles.length : 0,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      elevationRange: maxElev - minElev,
+      avgSlope: validTiles.length > 0 ? sumSlope / validTiles.length : 0,
+      maxSlope,
+      terrainCounts,
+      geometryCounts
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -15012,6 +15246,67 @@ export interface VertexStatistics {
   highestPeak: { x: number; y: number; elevation: number } | null;
   lowestPit: { x: number; y: number; elevation: number } | null;
   ruggednessIndex: number;
+}
+
+export interface BatchQueryOptions {
+  includeElevation?: boolean;
+  includeSlope?: boolean;
+  includeTerrainType?: boolean;
+  includeCornerHeights?: boolean;
+  includePhysics?: boolean;
+  includeGeometry?: boolean;
+}
+
+export interface TileBatchResult {
+  x: number;
+  y: number;
+  valid: boolean;
+  elevation?: number;
+  slopeAngle?: number;
+  slopeDirection?: number;
+  terrainType?: TerrainType;
+  cornerHeights?: CornerHeights;
+  physics?: SurfacePhysics;
+  geometryType?: TileGeometryType;
+}
+
+export interface TileAreaResult {
+  center: { x: number; y: number };
+  radius: number;
+  tiles: TileBatchResult[];
+  tileCount: number;
+  avgElevation: number;
+  minElevation: number;
+  maxElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  dominantTerrainType: TerrainType;
+  terrainCounts: { [key: string]: number };
+}
+
+export interface TileLineResult {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  tiles: TileBatchResult[];
+  tileCount: number;
+  lineLength: number;
+  totalElevationChange: number;
+  avgElevationChange: number;
+  maxSlope: number;
+  terrainTransitions: number;
+}
+
+export interface AreaStatistics {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  tileCount: number;
+  avgElevation: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationRange: number;
+  avgSlope: number;
+  maxSlope: number;
+  terrainCounts: { [key: string]: number };
+  geometryCounts: { [key: string]: number };
 }
 
 export interface TileStatistics {
