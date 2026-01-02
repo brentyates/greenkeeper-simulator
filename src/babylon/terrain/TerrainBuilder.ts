@@ -11186,6 +11186,249 @@ export class TerrainBuilder {
     };
   }
 
+  public mirrorTerrainAreaHorizontal(sourceMinX: number, sourceMinY: number, sourceMaxX: number, sourceMaxY: number, targetX: number, targetY: number): number {
+    let modifiedCount = 0;
+    const width = sourceMaxX - sourceMinX + 1;
+    const height = sourceMaxY - sourceMinY + 1;
+
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        const sx = sourceMinX + dx;
+        const sy = sourceMinY + dy;
+        const tx = targetX + (width - 1 - dx);
+        const ty = targetY + dy;
+
+        if (!this.isValidGridPosition(sx, sy) || !this.isValidGridPosition(tx, ty)) continue;
+
+        const elevation = this.getElevationAt(sx, sy);
+        const currentElev = this.getElevationAt(tx, ty);
+        if (elevation !== currentElev) {
+          this.setElevationWithHistory(tx, ty, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public mirrorTerrainAreaVertical(sourceMinX: number, sourceMinY: number, sourceMaxX: number, sourceMaxY: number, targetX: number, targetY: number): number {
+    let modifiedCount = 0;
+    const width = sourceMaxX - sourceMinX + 1;
+    const height = sourceMaxY - sourceMinY + 1;
+
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        const sx = sourceMinX + dx;
+        const sy = sourceMinY + dy;
+        const tx = targetX + dx;
+        const ty = targetY + (height - 1 - dy);
+
+        if (!this.isValidGridPosition(sx, sy) || !this.isValidGridPosition(tx, ty)) continue;
+
+        const elevation = this.getElevationAt(sx, sy);
+        const currentElev = this.getElevationAt(tx, ty);
+        if (elevation !== currentElev) {
+          this.setElevationWithHistory(tx, ty, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public rotateTerrain90(sourceMinX: number, sourceMinY: number, sourceMaxX: number, sourceMaxY: number, targetX: number, targetY: number, clockwise: boolean = true): number {
+    let modifiedCount = 0;
+    const width = sourceMaxX - sourceMinX + 1;
+    const height = sourceMaxY - sourceMinY + 1;
+
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        const sx = sourceMinX + dx;
+        const sy = sourceMinY + dy;
+
+        let tx: number, ty: number;
+        if (clockwise) {
+          tx = targetX + (height - 1 - dy);
+          ty = targetY + dx;
+        } else {
+          tx = targetX + dy;
+          ty = targetY + (width - 1 - dx);
+        }
+
+        if (!this.isValidGridPosition(sx, sy) || !this.isValidGridPosition(tx, ty)) continue;
+
+        const elevation = this.getElevationAt(sx, sy);
+        const currentElev = this.getElevationAt(tx, ty);
+        if (elevation !== currentElev) {
+          this.setElevationWithHistory(tx, ty, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public checkTerrainSymmetry(minX: number, minY: number, maxX: number, maxY: number, axis: 'horizontal' | 'vertical' | 'both'): TerrainSymmetryResult {
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+    let horizontalMatches = 0;
+    let horizontalTotal = 0;
+    let verticalMatches = 0;
+    let verticalTotal = 0;
+    const asymmetricTiles: Array<{ x: number; y: number; mirrorX: number; mirrorY: number; diff: number }> = [];
+
+    if (axis === 'horizontal' || axis === 'both') {
+      for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < Math.floor(width / 2); dx++) {
+          const x1 = minX + dx;
+          const x2 = maxX - dx;
+          const y = minY + dy;
+
+          if (!this.isValidGridPosition(x1, y) || !this.isValidGridPosition(x2, y)) continue;
+
+          const elev1 = this.getElevationAt(x1, y);
+          const elev2 = this.getElevationAt(x2, y);
+          horizontalTotal++;
+
+          if (elev1 === elev2) {
+            horizontalMatches++;
+          } else {
+            asymmetricTiles.push({ x: x1, y, mirrorX: x2, mirrorY: y, diff: Math.abs(elev2 - elev1) });
+          }
+        }
+      }
+    }
+
+    if (axis === 'vertical' || axis === 'both') {
+      for (let dy = 0; dy < Math.floor(height / 2); dy++) {
+        for (let dx = 0; dx < width; dx++) {
+          const x = minX + dx;
+          const y1 = minY + dy;
+          const y2 = maxY - dy;
+
+          if (!this.isValidGridPosition(x, y1) || !this.isValidGridPosition(x, y2)) continue;
+
+          const elev1 = this.getElevationAt(x, y1);
+          const elev2 = this.getElevationAt(x, y2);
+          verticalTotal++;
+
+          if (elev1 === elev2) {
+            verticalMatches++;
+          } else if (axis === 'vertical') {
+            asymmetricTiles.push({ x, y: y1, mirrorX: x, mirrorY: y2, diff: Math.abs(elev2 - elev1) });
+          }
+        }
+      }
+    }
+
+    const horizontalSymmetry = horizontalTotal > 0 ? horizontalMatches / horizontalTotal : 1;
+    const verticalSymmetry = verticalTotal > 0 ? verticalMatches / verticalTotal : 1;
+
+    return {
+      horizontalSymmetry,
+      verticalSymmetry,
+      overallSymmetry: (horizontalSymmetry + verticalSymmetry) / 2,
+      horizontalMatches,
+      horizontalTotal,
+      verticalMatches,
+      verticalTotal,
+      asymmetricTiles,
+      isPerfectlySymmetric: horizontalSymmetry === 1 && verticalSymmetry === 1
+    };
+  }
+
+  public enforceSymmetry(minX: number, minY: number, maxX: number, maxY: number, axis: 'horizontal' | 'vertical', preferHigher: boolean = true): number {
+    let modifiedCount = 0;
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+
+    if (axis === 'horizontal') {
+      for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < Math.floor(width / 2); dx++) {
+          const x1 = minX + dx;
+          const x2 = maxX - dx;
+          const y = minY + dy;
+
+          if (!this.isValidGridPosition(x1, y) || !this.isValidGridPosition(x2, y)) continue;
+
+          const elev1 = this.getElevationAt(x1, y);
+          const elev2 = this.getElevationAt(x2, y);
+
+          if (elev1 !== elev2) {
+            const targetElev = preferHigher ? Math.max(elev1, elev2) : Math.min(elev1, elev2);
+            if (elev1 !== targetElev) {
+              this.setElevationWithHistory(x1, y, targetElev);
+              modifiedCount++;
+            }
+            if (elev2 !== targetElev) {
+              this.setElevationWithHistory(x2, y, targetElev);
+              modifiedCount++;
+            }
+          }
+        }
+      }
+    } else {
+      for (let dy = 0; dy < Math.floor(height / 2); dy++) {
+        for (let dx = 0; dx < width; dx++) {
+          const x = minX + dx;
+          const y1 = minY + dy;
+          const y2 = maxY - dy;
+
+          if (!this.isValidGridPosition(x, y1) || !this.isValidGridPosition(x, y2)) continue;
+
+          const elev1 = this.getElevationAt(x, y1);
+          const elev2 = this.getElevationAt(x, y2);
+
+          if (elev1 !== elev2) {
+            const targetElev = preferHigher ? Math.max(elev1, elev2) : Math.min(elev1, elev2);
+            if (elev1 !== targetElev) {
+              this.setElevationWithHistory(x, y1, targetElev);
+              modifiedCount++;
+            }
+            if (elev2 !== targetElev) {
+              this.setElevationWithHistory(x, y2, targetElev);
+              modifiedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public tileTerrainPattern(sourceMinX: number, sourceMinY: number, sourceMaxX: number, sourceMaxY: number, targetMinX: number, targetMinY: number, targetMaxX: number, targetMaxY: number): number {
+    let modifiedCount = 0;
+    const patternWidth = sourceMaxX - sourceMinX + 1;
+    const patternHeight = sourceMaxY - sourceMinY + 1;
+
+    for (let ty = targetMinY; ty <= targetMaxY; ty++) {
+      for (let tx = targetMinX; tx <= targetMaxX; tx++) {
+        if (!this.isValidGridPosition(tx, ty)) continue;
+
+        const px = ((tx - targetMinX) % patternWidth + patternWidth) % patternWidth;
+        const py = ((ty - targetMinY) % patternHeight + patternHeight) % patternHeight;
+        const sx = sourceMinX + px;
+        const sy = sourceMinY + py;
+
+        if (!this.isValidGridPosition(sx, sy)) continue;
+
+        const sourceElev = this.getElevationAt(sx, sy);
+        const currentElev = this.getElevationAt(tx, ty);
+
+        if (sourceElev !== currentElev) {
+          this.setElevationWithHistory(tx, ty, sourceElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -16930,4 +17173,16 @@ export interface DetailedShadowMapResult {
   shadowCoverage: number;
   shadowedTiles: Array<{ x: number; y: number; shadowDepth: number }>;
   litTiles: Array<{ x: number; y: number; illumination: number }>;
+}
+
+export interface TerrainSymmetryResult {
+  horizontalSymmetry: number;
+  verticalSymmetry: number;
+  overallSymmetry: number;
+  horizontalMatches: number;
+  horizontalTotal: number;
+  verticalMatches: number;
+  verticalTotal: number;
+  asymmetricTiles: Array<{ x: number; y: number; mirrorX: number; mirrorY: number; diff: number }>;
+  isPerfectlySymmetric: boolean;
 }
