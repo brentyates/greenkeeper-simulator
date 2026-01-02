@@ -4603,6 +4603,244 @@ export class TerrainBuilder {
     return result;
   }
 
+  public mirrorTerrainHorizontal(): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < Math.floor(width / 2); x++) {
+        const mirrorX = width - 1 - x;
+        [elevation[y][x], elevation[y][mirrorX]] = [elevation[y][mirrorX], elevation[y][x]];
+        [layout[y][x], layout[y][mirrorX]] = [layout[y][mirrorX], layout[y][x]];
+        [this.mowedState[y][x], this.mowedState[y][mirrorX]] = [this.mowedState[y][mirrorX], this.mowedState[y][x]];
+      }
+    }
+
+    this.rebuildAllTiles();
+  }
+
+  public mirrorTerrainVertical(): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    for (let y = 0; y < Math.floor(height / 2); y++) {
+      const mirrorY = height - 1 - y;
+      for (let x = 0; x < width; x++) {
+        [elevation[y][x], elevation[mirrorY][x]] = [elevation[mirrorY][x], elevation[y][x]];
+        [layout[y][x], layout[mirrorY][x]] = [layout[mirrorY][x], layout[y][x]];
+        [this.mowedState[y][x], this.mowedState[mirrorY][x]] = [this.mowedState[mirrorY][x], this.mowedState[y][x]];
+      }
+    }
+
+    this.rebuildAllTiles();
+  }
+
+  public mirrorAreaHorizontal(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    const areaWidth = maxX - minX + 1;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = 0; x < Math.floor(areaWidth / 2); x++) {
+        const x1 = minX + x;
+        const x2 = maxX - x;
+        [elevation[y][x1], elevation[y][x2]] = [elevation[y][x2], elevation[y][x1]];
+        [layout[y][x1], layout[y][x2]] = [layout[y][x2], layout[y][x1]];
+        [this.mowedState[y][x1], this.mowedState[y][x2]] = [this.mowedState[y][x2], this.mowedState[y][x1]];
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+  }
+
+  public mirrorAreaVertical(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    const areaHeight = maxY - minY + 1;
+    for (let y = 0; y < Math.floor(areaHeight / 2); y++) {
+      const y1 = minY + y;
+      const y2 = maxY - y;
+      for (let x = minX; x <= maxX; x++) {
+        [elevation[y1][x], elevation[y2][x]] = [elevation[y2][x], elevation[y1][x]];
+        [layout[y1][x], layout[y2][x]] = [layout[y2][x], layout[y1][x]];
+        [this.mowedState[y1][x], this.mowedState[y2][x]] = [this.mowedState[y2][x], this.mowedState[y1][x]];
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+  }
+
+  public rotateArea90CW(
+    startX: number,
+    startY: number,
+    size: number
+  ): boolean {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return false;
+
+    const minX = Math.max(0, startX);
+    const minY = Math.max(0, startY);
+    const maxX = Math.min(width - 1, startX + size - 1);
+    const maxY = Math.min(height - 1, startY + size - 1);
+
+    if (maxX - minX !== maxY - minY) return false;
+
+    const actualSize = maxX - minX + 1;
+    const tempElev: number[][] = [];
+    const tempLayout: number[][] = [];
+    const tempMowed: boolean[][] = [];
+
+    for (let y = 0; y < actualSize; y++) {
+      tempElev[y] = [];
+      tempLayout[y] = [];
+      tempMowed[y] = [];
+      for (let x = 0; x < actualSize; x++) {
+        tempElev[y][x] = elevation[minY + y][minX + x];
+        tempLayout[y][x] = layout[minY + y][minX + x];
+        tempMowed[y][x] = this.mowedState[minY + y]?.[minX + x] ?? false;
+      }
+    }
+
+    for (let y = 0; y < actualSize; y++) {
+      for (let x = 0; x < actualSize; x++) {
+        elevation[minY + x][minX + (actualSize - 1 - y)] = tempElev[y][x];
+        layout[minY + x][minX + (actualSize - 1 - y)] = tempLayout[y][x];
+        if (this.mowedState[minY + x]) {
+          this.mowedState[minY + x][minX + (actualSize - 1 - y)] = tempMowed[y][x];
+        }
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+    return true;
+  }
+
+  public rotateArea90CCW(
+    startX: number,
+    startY: number,
+    size: number
+  ): boolean {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return false;
+
+    const minX = Math.max(0, startX);
+    const minY = Math.max(0, startY);
+    const maxX = Math.min(width - 1, startX + size - 1);
+    const maxY = Math.min(height - 1, startY + size - 1);
+
+    if (maxX - minX !== maxY - minY) return false;
+
+    const actualSize = maxX - minX + 1;
+    const tempElev: number[][] = [];
+    const tempLayout: number[][] = [];
+    const tempMowed: boolean[][] = [];
+
+    for (let y = 0; y < actualSize; y++) {
+      tempElev[y] = [];
+      tempLayout[y] = [];
+      tempMowed[y] = [];
+      for (let x = 0; x < actualSize; x++) {
+        tempElev[y][x] = elevation[minY + y][minX + x];
+        tempLayout[y][x] = layout[minY + y][minX + x];
+        tempMowed[y][x] = this.mowedState[minY + y]?.[minX + x] ?? false;
+      }
+    }
+
+    for (let y = 0; y < actualSize; y++) {
+      for (let x = 0; x < actualSize; x++) {
+        elevation[minY + (actualSize - 1 - x)][minX + y] = tempElev[y][x];
+        layout[minY + (actualSize - 1 - x)][minX + y] = tempLayout[y][x];
+        if (this.mowedState[minY + (actualSize - 1 - x)]) {
+          this.mowedState[minY + (actualSize - 1 - x)][minX + y] = tempMowed[y][x];
+        }
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+    return true;
+  }
+
+  public rotateArea180(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    const areaWidth = maxX - minX + 1;
+    const areaHeight = maxY - minY + 1;
+    const totalTiles = areaWidth * areaHeight;
+
+    for (let i = 0; i < Math.floor(totalTiles / 2); i++) {
+      const y1 = minY + Math.floor(i / areaWidth);
+      const x1 = minX + (i % areaWidth);
+      const y2 = maxY - Math.floor(i / areaWidth);
+      const x2 = maxX - (i % areaWidth);
+
+      [elevation[y1][x1], elevation[y2][x2]] = [elevation[y2][x2], elevation[y1][x1]];
+      [layout[y1][x1], layout[y2][x2]] = [layout[y2][x2], layout[y1][x1]];
+      if (this.mowedState[y1] && this.mowedState[y2]) {
+        [this.mowedState[y1][x1], this.mowedState[y2][x2]] = [this.mowedState[y2][x2], this.mowedState[y1][x1]];
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+  }
+
+  private rebuildAllTiles(): void {
+    for (const mesh of this.tileMeshes) {
+      mesh.dispose();
+    }
+    this.tileMeshes = [];
+    this.tileMap.clear();
+    this.faceIdToMetadata.clear();
+    this.gridToFaceIds.clear();
+    this.buildTiles();
+    this.buildCliffFacesForAll();
+    this.buildGridLines();
+  }
+
+  private buildCliffFacesForAll(): void {
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = elevation[y][x];
+        const terrainType = layout[y][x];
+        this.createCliffFaces(x, y, elev, terrainType);
+      }
+    }
+  }
+
   public getBilinearElevation(gridX: number, gridY: number): number {
     const { width, height } = this.courseData;
 
