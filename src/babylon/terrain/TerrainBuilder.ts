@@ -8,7 +8,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 
 import { CourseData } from '../../data/courseData';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics, getSlopeVector, getTileNormal, DEFAULT_WATER_LEVEL } from '../../core/terrain';
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getTerrainCode, getSurfacePhysics, SurfacePhysics, getSlopeVector, getTileNormal, DEFAULT_WATER_LEVEL } from '../../core/terrain';
 
 export interface CornerHeights {
   nw: number;
@@ -979,6 +979,197 @@ export class TerrainBuilder {
   public getSurfacePhysicsAt(gridX: number, gridY: number): SurfacePhysics {
     const type = this.getTerrainTypeAt(gridX, gridY);
     return getSurfacePhysics(type);
+  }
+
+  public setTerrainTypeAt(gridX: number, gridY: number, terrainType: TerrainType, rebuildTile: boolean = true): boolean {
+    const { width, height, layout } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) return false;
+
+    const code = getTerrainCode(terrainType);
+    const oldCode = layout[gridY]?.[gridX] ?? TERRAIN_CODES.ROUGH;
+    if (code === oldCode) return false;
+
+    layout[gridY][gridX] = code;
+    this.invalidateCacheAt(gridX, gridY);
+
+    if (rebuildTile) {
+      const elev = this.getElevationAt(gridX, gridY);
+      const isMowed = this.mowedState[gridY]?.[gridX] ?? false;
+
+      const key = `${gridX}_${gridY}`;
+      const oldMesh = this.tileMap.get(key);
+      if (oldMesh) {
+        const idx = this.tileMeshes.indexOf(oldMesh);
+        if (idx !== -1) this.tileMeshes.splice(idx, 1);
+        oldMesh.dispose();
+      }
+
+      const newTile = this.createIsometricTile(gridX, gridY, elev, code, isMowed);
+      this.tileMeshes.push(newTile);
+      this.tileMap.set(key, newTile);
+    }
+
+    this.emitEvent({ type: 'terrainTypeChanged', gridX, gridY, timestamp: Date.now() });
+    return true;
+  }
+
+  public setTerrainTypeInArea(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    terrainType: TerrainType
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    let modifiedCount = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (this.setTerrainTypeAt(x, y, terrainType, true)) {
+          modifiedCount++;
+        }
+      }
+    }
+    return modifiedCount;
+  }
+
+  public paintTerrainCircle(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    terrainType: TerrainType
+  ): number {
+    let modifiedCount = 0;
+    const radiusSquared = radius * radius;
+
+    const minX = Math.max(0, Math.floor(centerX - radius));
+    const maxX = Math.min(this.courseData.width - 1, Math.ceil(centerX + radius));
+    const minY = Math.max(0, Math.floor(centerY - radius));
+    const maxY = Math.min(this.courseData.height - 1, Math.ceil(centerY + radius));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        if (dx * dx + dy * dy <= radiusSquared) {
+          if (this.setTerrainTypeAt(x, y, terrainType, true)) {
+            modifiedCount++;
+          }
+        }
+      }
+    }
+    return modifiedCount;
+  }
+
+  public replaceTerrainType(
+    oldType: TerrainType,
+    newType: TerrainType,
+    area?: { startX: number; startY: number; endX: number; endY: number }
+  ): number {
+    let modifiedCount = 0;
+    const { width, height } = this.courseData;
+
+    const minX = area ? Math.max(0, Math.min(area.startX, area.endX)) : 0;
+    const maxX = area ? Math.min(width - 1, Math.max(area.startX, area.endX)) : width - 1;
+    const minY = area ? Math.max(0, Math.min(area.startY, area.endY)) : 0;
+    const maxY = area ? Math.min(height - 1, Math.max(area.startY, area.endY)) : height - 1;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (this.getTerrainTypeAt(x, y) === oldType) {
+          if (this.setTerrainTypeAt(x, y, newType, true)) {
+            modifiedCount++;
+          }
+        }
+      }
+    }
+    return modifiedCount;
+  }
+
+  public fillTerrainFlood(
+    startX: number,
+    startY: number,
+    newType: TerrainType,
+    maxTiles: number = 1000
+  ): number {
+    if (!this.isValidTile(startX, startY)) return 0;
+
+    const originalType = this.getTerrainTypeAt(startX, startY);
+    if (originalType === newType) return 0;
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    let modifiedCount = 0;
+
+    while (queue.length > 0 && modifiedCount < maxTiles) {
+      const { x, y } = queue.shift()!;
+      const key = `${x},${y}`;
+
+      if (visited.has(key)) continue;
+      if (!this.isValidTile(x, y)) continue;
+      if (this.getTerrainTypeAt(x, y) !== originalType) continue;
+
+      visited.add(key);
+
+      if (this.setTerrainTypeAt(x, y, newType, true)) {
+        modifiedCount++;
+      }
+
+      queue.push({ x: x - 1, y });
+      queue.push({ x: x + 1, y });
+      queue.push({ x, y: y - 1 });
+      queue.push({ x, y: y + 1 });
+    }
+
+    return modifiedCount;
+  }
+
+  public getTerrainTypeTiles(terrainType: TerrainType): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.getTerrainTypeAt(x, y) === terrainType) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+
+    return tiles;
+  }
+
+  public getTerrainTypeAtPoints(points: Array<{ x: number; y: number }>): Map<string, TerrainType> {
+    const result = new Map<string, TerrainType>();
+    for (const { x, y } of points) {
+      if (this.isValidTile(x, y)) {
+        result.set(`${x},${y}`, this.getTerrainTypeAt(x, y));
+      }
+    }
+    return result;
+  }
+
+  public getTerrainTypeCounts(): Record<TerrainType, number> {
+    const counts: Record<TerrainType, number> = {
+      fairway: 0,
+      rough: 0,
+      green: 0,
+      bunker: 0,
+      water: 0
+    };
+
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const type = this.getTerrainTypeAt(x, y);
+        counts[type]++;
+      }
+    }
+
+    return counts;
   }
 
   public getSlopeVectorAt(gridX: number, gridY: number): { angle: number; direction: number; magnitude: number } {
@@ -8399,7 +8590,7 @@ export interface RaycastResult {
   terrainType: TerrainType;
 }
 
-export type TerrainEventType = 'mowed' | 'unmowed' | 'tileVisible' | 'tileHidden' | 'chunkVisible' | 'chunkHidden';
+export type TerrainEventType = 'mowed' | 'unmowed' | 'tileVisible' | 'tileHidden' | 'chunkVisible' | 'chunkHidden' | 'terrainTypeChanged';
 
 export interface TerrainEvent {
   type: TerrainEventType;
