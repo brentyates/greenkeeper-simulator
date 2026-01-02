@@ -25,8 +25,11 @@ import {
   getObstacleDisplayName,
   getTerrainThresholds,
   getGrassState,
+  getOptimalDiagonal,
+  validateSlopeConstraint,
   CellState,
   CornerHeights,
+  RCTCornerHeights,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
@@ -1015,5 +1018,95 @@ describe('getGrassState', () => {
     it('returns mown for water', () => {
       expect(getGrassState(createCell('water', 50))).toBe('mown');
     });
+  });
+});
+
+describe('RCT Optimal Diagonal', () => {
+  it('chooses nwse diagonal when nw-se difference is smaller', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 0, sw: 1 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('chooses nesw diagonal when ne-sw difference is smaller', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 2, sw: 1 };
+    expect(getOptimalDiagonal(corners)).toBe('nesw');
+  });
+
+  it('chooses nwse when diagonals are equal', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('handles north edge raised', () => {
+    const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('handles east edge raised - equal diagonals defaults to nwse', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 1, sw: 0 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('handles south edge raised - equal diagonals defaults to nwse', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 1, sw: 1 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('handles west edge raised - equal diagonals defaults to nwse', () => {
+    const corners: RCTCornerHeights = { nw: 1, ne: 0, se: 0, sw: 1 };
+    expect(getOptimalDiagonal(corners)).toBe('nwse');
+  });
+
+  it('handles corner raised - nw only prefers nesw', () => {
+    const corners: RCTCornerHeights = { nw: 2, ne: 0, se: 0, sw: 0 };
+    expect(getOptimalDiagonal(corners)).toBe('nesw');
+  });
+
+  it('handles corner raised - se only prefers nesw', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 2, sw: 0 };
+    expect(getOptimalDiagonal(corners)).toBe('nesw');
+  });
+});
+
+describe('RCT Slope Constraint Validation', () => {
+  it('validates flat terrain', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+    expect(validateSlopeConstraint(corners)).toBe(true);
+  });
+
+  it('validates single step slopes', () => {
+    const corners: RCTCornerHeights = { nw: 1, ne: 0, se: 0, sw: 0 };
+    expect(validateSlopeConstraint(corners)).toBe(true);
+  });
+
+  it('validates two step slopes within default limit', () => {
+    const corners: RCTCornerHeights = { nw: 2, ne: 0, se: 0, sw: 0 };
+    expect(validateSlopeConstraint(corners)).toBe(true);
+  });
+
+  it('rejects slopes exceeding default limit of 2', () => {
+    const corners: RCTCornerHeights = { nw: 3, ne: 0, se: 0, sw: 0 };
+    expect(validateSlopeConstraint(corners)).toBe(false);
+  });
+
+  it('accepts custom max delta', () => {
+    const corners: RCTCornerHeights = { nw: 5, ne: 0, se: 0, sw: 0 };
+    expect(validateSlopeConstraint(corners, 5)).toBe(true);
+    expect(validateSlopeConstraint(corners, 4)).toBe(false);
+  });
+
+  it('validates all corner combinations', () => {
+    const corners: RCTCornerHeights = { nw: 1, ne: 2, se: 0, sw: 1 };
+    expect(validateSlopeConstraint(corners)).toBe(true);
+  });
+
+  it('rejects when any two corners exceed limit', () => {
+    const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 3, sw: 0 };
+    expect(validateSlopeConstraint(corners)).toBe(false);
+  });
+
+  it('validates uniform elevated terrain', () => {
+    const corners: RCTCornerHeights = { nw: 5, ne: 5, se: 5, sw: 5 };
+    expect(validateSlopeConstraint(corners)).toBe(true);
   });
 });

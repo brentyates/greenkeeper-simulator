@@ -277,6 +277,31 @@ export function getBaseElevationForSlope(corners: CornerHeights): number {
   return Math.min(corners.n, corners.e, corners.s, corners.w);
 }
 
+export interface RCTCornerHeights {
+  nw: number;
+  ne: number;
+  se: number;
+  sw: number;
+}
+
+export function getOptimalDiagonal(corners: RCTCornerHeights): 'nwse' | 'nesw' {
+  const diagNWSE = Math.abs(corners.nw - corners.se);
+  const diagNESW = Math.abs(corners.ne - corners.sw);
+  return diagNWSE <= diagNESW ? 'nwse' : 'nesw';
+}
+
+export function validateSlopeConstraint(corners: RCTCornerHeights, maxDelta: number = 2): boolean {
+  const heights = [corners.nw, corners.ne, corners.se, corners.sw];
+  for (let i = 0; i < heights.length; i++) {
+    for (let j = i + 1; j < heights.length; j++) {
+      if (Math.abs(heights[i] - heights[j]) > maxDelta) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 export function getTerrainSpeedModifier(type: TerrainType): number {
   switch (type) {
     case 'fairway': return 1.0;
