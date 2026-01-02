@@ -10656,6 +10656,255 @@ export class TerrainBuilder {
     return totalModified;
   }
 
+  public createSmoothHill(centerX: number, centerY: number, radius: number, height: number, falloff: 'linear' | 'smooth' | 'steep' = 'smooth'): number {
+    let modifiedCount = 0;
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(this.courseData.width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(this.courseData.height - 1, centerY + radius);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (dist > radius) continue;
+
+        const t = dist / radius;
+        let factor: number;
+        switch (falloff) {
+          case 'linear':
+            factor = 1 - t;
+            break;
+          case 'steep':
+            factor = Math.pow(1 - t, 0.5);
+            break;
+          case 'smooth':
+          default:
+            factor = Math.cos(t * Math.PI / 2);
+            break;
+        }
+
+        const elevChange = Math.round(height * factor);
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createSmoothValley(centerX: number, centerY: number, radius: number, depth: number, falloff: 'linear' | 'smooth' | 'steep' = 'smooth'): number {
+    return this.createSmoothHill(centerX, centerY, radius, -depth, falloff);
+  }
+
+  public createSmoothPlateau(minX: number, minY: number, maxX: number, maxY: number, height: number, edgeWidth: number = 2): number {
+    let modifiedCount = 0;
+    const clampedMinX = Math.max(0, minX);
+    const clampedMaxX = Math.min(this.courseData.width - 1, maxX);
+    const clampedMinY = Math.max(0, minY);
+    const clampedMaxY = Math.min(this.courseData.height - 1, maxY);
+
+    for (let y = clampedMinY; y <= clampedMaxY; y++) {
+      for (let x = clampedMinX; x <= clampedMaxX; x++) {
+        const distToEdge = Math.min(
+          x - clampedMinX,
+          clampedMaxX - x,
+          y - clampedMinY,
+          clampedMaxY - y
+        );
+
+        let factor: number;
+        if (edgeWidth <= 0 || distToEdge >= edgeWidth) {
+          factor = 1;
+        } else {
+          factor = distToEdge / edgeWidth;
+        }
+
+        const elevChange = Math.round(height * factor);
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createTerrainRidge(x1: number, y1: number, x2: number, y2: number, width: number, height: number): number {
+    let modifiedCount = 0;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) return 0;
+
+    const nx = dx / length;
+    const ny = dy / length;
+    const perpX = -ny;
+    const perpY = nx;
+
+    const halfWidth = width / 2;
+    const steps = Math.ceil(length);
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const lineX = x1 + dx * t;
+      const lineY = y1 + dy * t;
+
+      for (let w = -halfWidth; w <= halfWidth; w += 0.5) {
+        const px = Math.round(lineX + perpX * w);
+        const py = Math.round(lineY + perpY * w);
+
+        if (!this.isValidGridPosition(px, py)) continue;
+
+        const distFromCenter = Math.abs(w);
+        const factor = Math.cos((distFromCenter / halfWidth) * Math.PI / 2);
+        const elevChange = Math.round(height * factor);
+
+        const currentElev = this.getElevationAt(px, py);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(px, py, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createCrater(centerX: number, centerY: number, outerRadius: number, innerRadius: number, rimHeight: number, floorDepth: number): number {
+    let modifiedCount = 0;
+    const radius = outerRadius;
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(this.courseData.width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(this.courseData.height - 1, centerY + radius);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (dist > outerRadius) continue;
+
+        let elevChange: number;
+        if (dist <= innerRadius) {
+          const t = dist / innerRadius;
+          elevChange = Math.round(-floorDepth * (1 - t * 0.3));
+        } else {
+          const t = (dist - innerRadius) / (outerRadius - innerRadius);
+          const rimFactor = Math.sin(t * Math.PI);
+          elevChange = Math.round(rimHeight * rimFactor - floorDepth * (1 - t));
+        }
+
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createTerrainWave(startX: number, startY: number, endX: number, endY: number, amplitude: number, wavelength: number, width: number): number {
+    let modifiedCount = 0;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) return 0;
+
+    const nx = dx / length;
+    const ny = dy / length;
+    const perpX = -ny;
+    const perpY = nx;
+
+    const halfWidth = width / 2;
+    const steps = Math.ceil(length);
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const lineX = startX + dx * t;
+      const lineY = startY + dy * t;
+      const distAlongLine = length * t;
+
+      const waveValue = Math.sin((distAlongLine / wavelength) * 2 * Math.PI);
+
+      for (let w = -halfWidth; w <= halfWidth; w += 0.5) {
+        const px = Math.round(lineX + perpX * w);
+        const py = Math.round(lineY + perpY * w);
+
+        if (!this.isValidGridPosition(px, py)) continue;
+
+        const distFromCenter = Math.abs(w);
+        const widthFactor = Math.cos((distFromCenter / halfWidth) * Math.PI / 2);
+        const elevChange = Math.round(amplitude * waveValue * widthFactor);
+
+        const currentElev = this.getElevationAt(px, py);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(px, py, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public createTerrainNoise(minX: number, minY: number, maxX: number, maxY: number, scale: number, octaves: number = 3, amplitude: number = 2): number {
+    let modifiedCount = 0;
+    const clampedMinX = Math.max(0, minX);
+    const clampedMaxX = Math.min(this.courseData.width - 1, maxX);
+    const clampedMinY = Math.max(0, minY);
+    const clampedMaxY = Math.min(this.courseData.height - 1, maxY);
+
+    const seed = Math.random() * 1000;
+
+    for (let y = clampedMinY; y <= clampedMaxY; y++) {
+      for (let x = clampedMinX; x <= clampedMaxX; x++) {
+        let noiseValue = 0;
+        let freq = 1;
+        let amp = 1;
+        let maxAmp = 0;
+
+        for (let o = 0; o < octaves; o++) {
+          const nx = (x / scale) * freq + seed;
+          const ny = (y / scale) * freq + seed;
+          const n = Math.sin(nx * 12.9898 + ny * 78.233) * 43758.5453;
+          noiseValue += (n - Math.floor(n) - 0.5) * 2 * amp;
+          maxAmp += amp;
+          freq *= 2;
+          amp *= 0.5;
+        }
+
+        noiseValue /= maxAmp;
+        const elevChange = Math.round(noiseValue * amplitude);
+
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.max(0, currentElev + elevChange);
+
+        if (newElev !== currentElev) {
+          this.setElevationWithHistory(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
