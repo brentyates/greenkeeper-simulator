@@ -8,7 +8,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 
 import { CourseData } from '../../data/courseData';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics, getSlopeVector, getTileNormal } from '../../core/terrain';
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics, getSlopeVector, getTileNormal, DEFAULT_WATER_LEVEL } from '../../core/terrain';
 
 export interface CornerHeights {
   nw: number;
@@ -36,6 +36,8 @@ export class TerrainBuilder {
   private faceIdToMetadata: Map<number, FaceMetadata> = new Map();
   private meshToFaceOffset: Map<Mesh, number> = new Map();
   private nextFaceId: number = 0;
+  private waterLevel: number = DEFAULT_WATER_LEVEL;
+  private waterMesh: Mesh | null = null;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -49,6 +51,7 @@ export class TerrainBuilder {
     this.initMowedState();
     this.buildTiles();
     this.buildGridLines();
+    this.buildWaterPlane();
     this.buildObstacles();
     this.buildRefillStation();
   }
@@ -361,6 +364,71 @@ export class TerrainBuilder {
     this.gridLines = MeshBuilder.CreateLineSystem('gridLines', { lines }, this.scene);
     this.gridLines.color = new Color3(0.1, 0.15, 0.05);
     this.gridLines.alpha = 0.2;
+  }
+
+  private buildWaterPlane(): void {
+    const { width, height, layout } = this.courseData;
+
+    let hasWater = false;
+    for (let y = 0; y < height && !hasWater; y++) {
+      for (let x = 0; x < width && !hasWater; x++) {
+        if (layout[y]?.[x] === TERRAIN_CODES.WATER) {
+          hasWater = true;
+        }
+      }
+    }
+
+    if (!hasWater) return;
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const colors: number[] = [];
+    let vertexIndex = 0;
+
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
+    const waterColor = new Color3(0.2, 0.5, 0.8);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (layout[y]?.[x] !== TERRAIN_CODES.WATER) continue;
+
+        const center = this.gridToScreen(x, y, this.waterLevel);
+
+        positions.push(center.x, center.y + hh, center.z - 0.08);
+        positions.push(center.x + hw, center.y, center.z - 0.08);
+        positions.push(center.x, center.y - hh, center.z - 0.08);
+        positions.push(center.x - hw, center.y, center.z - 0.08);
+
+        indices.push(vertexIndex, vertexIndex + 2, vertexIndex + 1);
+        indices.push(vertexIndex, vertexIndex + 3, vertexIndex + 2);
+
+        for (let i = 0; i < 4; i++) {
+          colors.push(waterColor.r, waterColor.g, waterColor.b, 0.6);
+        }
+
+        vertexIndex += 4;
+      }
+    }
+
+    if (positions.length === 0) return;
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.colors = colors;
+
+    this.waterMesh = new Mesh('waterPlane', this.scene);
+    vertexData.applyToMesh(this.waterMesh);
+
+    const waterMaterial = new StandardMaterial('waterMat', this.scene);
+    waterMaterial.diffuseColor = waterColor;
+    waterMaterial.specularColor = new Color3(0.3, 0.3, 0.4);
+    waterMaterial.emissiveColor = new Color3(0.1, 0.25, 0.4);
+    waterMaterial.alpha = 0.6;
+    waterMaterial.backFaceCulling = false;
+    this.waterMesh.material = waterMaterial;
+    this.waterMesh.useVertexColors = true;
   }
 
   private getTileMaterial(): StandardMaterial {
@@ -783,5 +851,17 @@ export class TerrainBuilder {
       this.gridLines.dispose();
       this.gridLines = null;
     }
+    if (this.waterMesh) {
+      this.waterMesh.dispose();
+      this.waterMesh = null;
+    }
+  }
+
+  public setWaterLevel(level: number): void {
+    this.waterLevel = level;
+  }
+
+  public getWaterLevel(): number {
+    return this.waterLevel;
   }
 }
