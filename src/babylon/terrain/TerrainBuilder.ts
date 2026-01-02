@@ -9197,6 +9197,182 @@ export class TerrainBuilder {
     return cubicInterp(rows[0], rows[1], rows[2], rows[3], ty);
   }
 
+  public classifyTileGeometry(gridX: number, gridY: number): TileGeometryType {
+    const corners = this.getCornerHeights(gridX, gridY);
+    const { nw, ne, se, sw } = corners;
+    const heights = [nw, ne, se, sw];
+    const minH = Math.min(...heights);
+    const maxH = Math.max(...heights);
+    const delta = maxH - minH;
+
+    if (delta === 0) return 'flat';
+    if (delta > 1) return 'cliff';
+
+    const uniqueHeights = new Set(heights).size;
+
+    if (uniqueHeights === 2) {
+      if ((nw === ne && sw === se) || (nw === sw && ne === se)) {
+        return 'ramp';
+      }
+      if ((nw === ne && ne === sw) || (nw === ne && ne === se) ||
+          (ne === se && se === sw) || (nw === sw && sw === se)) {
+        return 'corner';
+      }
+    }
+
+    if (uniqueHeights === 3) {
+      return 'valley';
+    }
+
+    return 'complex';
+  }
+
+  public getTileGeometryMap(): TileGeometryType[][] {
+    const { width, height } = this.courseData;
+    const map: TileGeometryType[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      map[y] = [];
+      for (let x = 0; x < width; x++) {
+        map[y][x] = this.classifyTileGeometry(x, y);
+      }
+    }
+
+    return map;
+  }
+
+  public getTileStatistics(): TileStatistics {
+    const { width, height } = this.courseData;
+    const counts: { [key in TileGeometryType]: number } = {
+      flat: 0,
+      ramp: 0,
+      corner: 0,
+      valley: 0,
+      cliff: 0,
+      complex: 0
+    };
+
+    const terrainTypeCounts: { [key: string]: number } = {};
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        counts[this.classifyTileGeometry(x, y)]++;
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        terrainTypeCounts[terrainType] = (terrainTypeCounts[terrainType] || 0) + 1;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      totalTiles,
+      flatCount: counts.flat,
+      rampCount: counts.ramp,
+      cornerCount: counts.corner,
+      valleyCount: counts.valley,
+      cliffCount: counts.cliff,
+      complexCount: counts.complex,
+      flatPercentage: (counts.flat / totalTiles) * 100,
+      slopedPercentage: ((counts.ramp + counts.corner + counts.valley) / totalTiles) * 100,
+      cliffPercentage: (counts.cliff / totalTiles) * 100,
+      terrainTypeCounts,
+      dominantTerrainType: Object.entries(terrainTypeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown'
+    };
+  }
+
+  public findTilesByGeometry(geometryType: TileGeometryType): Array<{ x: number; y: number }> {
+    const { width, height } = this.courseData;
+    const tiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.classifyTileGeometry(x, y) === geometryType) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+
+    return tiles;
+  }
+
+  public getTileComplexityScore(gridX: number, gridY: number): number {
+    const geometry = this.classifyTileGeometry(gridX, gridY);
+    const baseScores: { [key in TileGeometryType]: number } = {
+      flat: 0,
+      ramp: 1,
+      corner: 2,
+      valley: 3,
+      cliff: 4,
+      complex: 5
+    };
+
+    let score = baseScores[geometry];
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    for (const n of neighbors) {
+      const nx = gridX + n.dx;
+      const ny = gridY + n.dy;
+      if (this.isValidGridPosition(nx, ny)) {
+        const neighborGeometry = this.classifyTileGeometry(nx, ny);
+        if (neighborGeometry !== geometry) {
+          score += 0.5;
+        }
+      }
+    }
+
+    return score;
+  }
+
+  public getComplexityHotspots(threshold: number = 3): Array<{ x: number; y: number; score: number }> {
+    const { width, height } = this.courseData;
+    const hotspots: Array<{ x: number; y: number; score: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const score = this.getTileComplexityScore(x, y);
+        if (score >= threshold) {
+          hotspots.push({ x, y, score });
+        }
+      }
+    }
+
+    hotspots.sort((a, b) => b.score - a.score);
+    return hotspots;
+  }
+
+  public getGeometryTransitions(): Array<{ x: number; y: number; from: TileGeometryType; to: TileGeometryType }> {
+    const { width, height } = this.courseData;
+    const transitions: Array<{ x: number; y: number; from: TileGeometryType; to: TileGeometryType }> = [];
+
+    const directions = [
+      { dx: 1, dy: 0 }, { dx: 0, dy: 1 }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentGeometry = this.classifyTileGeometry(x, y);
+
+        for (const dir of directions) {
+          const nx = x + dir.dx;
+          const ny = y + dir.dy;
+          if (!this.isValidGridPosition(nx, ny)) continue;
+
+          const neighborGeometry = this.classifyTileGeometry(nx, ny);
+          if (currentGeometry !== neighborGeometry) {
+            transitions.push({ x, y, from: currentGeometry, to: neighborGeometry });
+          }
+        }
+      }
+    }
+
+    return transitions;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -14425,6 +14601,23 @@ export interface SmoothingAnalysis {
   roughAreasCount: number;
   smoothnessPercentage: number;
   recommendedSigma: number;
+}
+
+export type TileGeometryType = 'flat' | 'ramp' | 'corner' | 'valley' | 'cliff' | 'complex';
+
+export interface TileStatistics {
+  totalTiles: number;
+  flatCount: number;
+  rampCount: number;
+  cornerCount: number;
+  valleyCount: number;
+  cliffCount: number;
+  complexCount: number;
+  flatPercentage: number;
+  slopedPercentage: number;
+  cliffPercentage: number;
+  terrainTypeCounts: { [key: string]: number };
+  dominantTerrainType: string;
 }
 
 export interface LineSampleOptions {
