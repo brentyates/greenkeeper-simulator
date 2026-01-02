@@ -4978,6 +4978,267 @@ export class TerrainBuilder {
     return result;
   }
 
+  public findPeaks(minProminence: number = 1): Array<{ x: number; y: number; elevation: number; prominence: number }> {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const peaks: Array<{ x: number; y: number; elevation: number; prominence: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const centerElev = elevation[y][x];
+        let isPeak = true;
+        let minNeighbor = centerElev;
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const neighborElev = elevation[y + dy][x + dx];
+            if (neighborElev >= centerElev) {
+              isPeak = false;
+              break;
+            }
+            minNeighbor = Math.min(minNeighbor, neighborElev);
+          }
+          if (!isPeak) break;
+        }
+
+        if (isPeak) {
+          const prominence = centerElev - minNeighbor;
+          if (prominence >= minProminence) {
+            peaks.push({ x, y, elevation: centerElev, prominence });
+          }
+        }
+      }
+    }
+
+    return peaks.sort((a, b) => b.elevation - a.elevation);
+  }
+
+  public findValleys(minDepth: number = 1): Array<{ x: number; y: number; elevation: number; depth: number }> {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const valleys: Array<{ x: number; y: number; elevation: number; depth: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const centerElev = elevation[y][x];
+        let isValley = true;
+        let maxNeighbor = centerElev;
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const neighborElev = elevation[y + dy][x + dx];
+            if (neighborElev <= centerElev) {
+              isValley = false;
+              break;
+            }
+            maxNeighbor = Math.max(maxNeighbor, neighborElev);
+          }
+          if (!isValley) break;
+        }
+
+        if (isValley) {
+          const depth = maxNeighbor - centerElev;
+          if (depth >= minDepth) {
+            valleys.push({ x, y, elevation: centerElev, depth });
+          }
+        }
+      }
+    }
+
+    return valleys.sort((a, b) => a.elevation - b.elevation);
+  }
+
+  public findSaddlePoints(): Array<{ x: number; y: number; elevation: number; passes: Array<{ dir: string; lowerElev: number }> }> {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const saddles: Array<{ x: number; y: number; elevation: number; passes: Array<{ dir: string; lowerElev: number }> }> = [];
+    const directions = [
+      { dx: 0, dy: -1, name: 'N' },
+      { dx: 1, dy: 0, name: 'E' },
+      { dx: 0, dy: 1, name: 'S' },
+      { dx: -1, dy: 0, name: 'W' }
+    ];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const centerElev = elevation[y][x];
+        const neighborElevs = directions.map(d => ({
+          dir: d.name,
+          elev: elevation[y + d.dy][x + d.dx]
+        }));
+
+        let higherCount = 0;
+        let lowerCount = 0;
+        const transitions: boolean[] = [];
+        const lowerPasses: Array<{ dir: string; lowerElev: number }> = [];
+
+        for (let i = 0; i < 4; i++) {
+          if (neighborElevs[i].elev > centerElev) higherCount++;
+          else if (neighborElevs[i].elev < centerElev) {
+            lowerCount++;
+            lowerPasses.push({ dir: neighborElevs[i].dir, lowerElev: neighborElevs[i].elev });
+          }
+          const nextI = (i + 1) % 4;
+          const isHigher = neighborElevs[i].elev > centerElev;
+          const nextIsHigher = neighborElevs[nextI].elev > centerElev;
+          transitions.push(isHigher !== nextIsHigher);
+        }
+
+        const transitionCount = transitions.filter(t => t).length;
+
+        if (transitionCount >= 4 && higherCount >= 2 && lowerCount >= 2) {
+          saddles.push({ x, y, elevation: centerElev, passes: lowerPasses });
+        }
+      }
+    }
+
+    return saddles;
+  }
+
+  public findRidgeLines(): Array<Array<{ x: number; y: number; elevation: number }>> {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const ridgePoints = new Set<string>();
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const centerElev = elevation[y][x];
+        const nsMin = Math.min(elevation[y - 1][x], elevation[y + 1][x]);
+        const ewMin = Math.min(elevation[y][x - 1], elevation[y][x + 1]);
+
+        if ((centerElev > nsMin && centerElev >= ewMin) || (centerElev >= nsMin && centerElev > ewMin)) {
+          const avgNeighbor = (elevation[y - 1][x] + elevation[y + 1][x] + elevation[y][x - 1] + elevation[y][x + 1]) / 4;
+          if (centerElev >= avgNeighbor) {
+            ridgePoints.add(`${x},${y}`);
+          }
+        }
+      }
+    }
+
+    const ridgeLines: Array<Array<{ x: number; y: number; elevation: number }>> = [];
+    const visited = new Set<string>();
+
+    for (const point of ridgePoints) {
+      if (visited.has(point)) continue;
+
+      const [startX, startY] = point.split(',').map(Number);
+      const line: Array<{ x: number; y: number; elevation: number }> = [];
+      const queue = [{ x: startX, y: startY }];
+      visited.add(point);
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        line.push({ x: current.x, y: current.y, elevation: elevation[current.y][current.x] });
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = current.x + dx;
+            const ny = current.y + dy;
+            const key = `${nx},${ny}`;
+            if (ridgePoints.has(key) && !visited.has(key)) {
+              visited.add(key);
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+      }
+
+      if (line.length >= 3) {
+        ridgeLines.push(line);
+      }
+    }
+
+    return ridgeLines.sort((a, b) => b.length - a.length);
+  }
+
+  public findValleyLines(): Array<Array<{ x: number; y: number; elevation: number }>> {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const valleyPoints = new Set<string>();
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const centerElev = elevation[y][x];
+        const nsMax = Math.max(elevation[y - 1][x], elevation[y + 1][x]);
+        const ewMax = Math.max(elevation[y][x - 1], elevation[y][x + 1]);
+
+        if ((centerElev < nsMax && centerElev <= ewMax) || (centerElev <= nsMax && centerElev < ewMax)) {
+          const avgNeighbor = (elevation[y - 1][x] + elevation[y + 1][x] + elevation[y][x - 1] + elevation[y][x + 1]) / 4;
+          if (centerElev <= avgNeighbor) {
+            valleyPoints.add(`${x},${y}`);
+          }
+        }
+      }
+    }
+
+    const valleyLines: Array<Array<{ x: number; y: number; elevation: number }>> = [];
+    const visited = new Set<string>();
+
+    for (const point of valleyPoints) {
+      if (visited.has(point)) continue;
+
+      const [startX, startY] = point.split(',').map(Number);
+      const line: Array<{ x: number; y: number; elevation: number }> = [];
+      const queue = [{ x: startX, y: startY }];
+      visited.add(point);
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        line.push({ x: current.x, y: current.y, elevation: elevation[current.y][current.x] });
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = current.x + dx;
+            const ny = current.y + dy;
+            const key = `${nx},${ny}`;
+            if (valleyPoints.has(key) && !visited.has(key)) {
+              visited.add(key);
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+      }
+
+      if (line.length >= 3) {
+        valleyLines.push(line);
+      }
+    }
+
+    return valleyLines.sort((a, b) => b.length - a.length);
+  }
+
+  public classifyTerrainFeatures(): TerrainFeatureClassification {
+    const peaks = this.findPeaks(1);
+    const valleys = this.findValleys(1);
+    const saddles = this.findSaddlePoints();
+    const ridges = this.findRidgeLines();
+    const valleyLines = this.findValleyLines();
+
+    return {
+      peaks,
+      valleys,
+      saddles,
+      ridgeLines: ridges,
+      valleyLines,
+      peakCount: peaks.length,
+      valleyCount: valleys.length,
+      saddleCount: saddles.length,
+      ridgeLineCount: ridges.length,
+      valleyLineCount: valleyLines.length,
+      totalRidgeLength: ridges.reduce((sum, r) => sum + r.length, 0),
+      totalValleyLength: valleyLines.reduce((sum, v) => sum + v.length, 0)
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -9922,6 +10183,21 @@ export interface TerrainComparison {
   terrainDifferences: number;
   maxElevationDiff: number;
   avgElevationDiff: number;
+}
+
+export interface TerrainFeatureClassification {
+  peaks: Array<{ x: number; y: number; elevation: number; prominence: number }>;
+  valleys: Array<{ x: number; y: number; elevation: number; depth: number }>;
+  saddles: Array<{ x: number; y: number; elevation: number; passes: Array<{ dir: string; lowerElev: number }> }>;
+  ridgeLines: Array<Array<{ x: number; y: number; elevation: number }>>;
+  valleyLines: Array<Array<{ x: number; y: number; elevation: number }>>;
+  peakCount: number;
+  valleyCount: number;
+  saddleCount: number;
+  ridgeLineCount: number;
+  valleyLineCount: number;
+  totalRidgeLength: number;
+  totalValleyLength: number;
 }
 
 export interface LineSampleOptions {
