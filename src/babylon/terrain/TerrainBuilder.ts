@@ -6714,6 +6714,291 @@ export class TerrainBuilder {
 
     return preview;
   }
+
+  public findConnectedRegions(maxElevationDelta: number = 2): TerrainRegion[] {
+    const { width, height } = this.courseData;
+    const visited: boolean[][] = [];
+    const regions: TerrainRegion[] = [];
+
+    for (let y = 0; y < height; y++) {
+      visited[y] = new Array(width).fill(false);
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (visited[y][x]) continue;
+
+        const region = this.floodFillConnectedRegion(x, y, visited, maxElevationDelta);
+        if (region.tiles.length > 0) {
+          regions.push(region);
+        }
+      }
+    }
+
+    return regions.sort((a, b) => b.tiles.length - a.tiles.length);
+  }
+
+  private floodFillConnectedRegion(
+    startX: number,
+    startY: number,
+    visited: boolean[][],
+    maxElevationDelta: number
+  ): TerrainRegion {
+    const { width, height } = this.courseData;
+    const tiles: Array<{ x: number; y: number }> = [];
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (visited[y][x]) continue;
+
+      visited[y][x] = true;
+      tiles.push({ x, y });
+
+      const elev = this.getElevationAt(x, y);
+      minElev = Math.min(minElev, elev);
+      maxElev = Math.max(maxElev, elev);
+
+      const neighbors = [
+        { x: x - 1, y },
+        { x: x + 1, y },
+        { x, y: y - 1 },
+        { x, y: y + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+        if (visited[neighbor.y][neighbor.x]) continue;
+
+        const neighborElev = this.getElevationAt(neighbor.x, neighbor.y);
+        if (Math.abs(neighborElev - elev) <= maxElevationDelta) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    return {
+      tiles,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      area: tiles.length
+    };
+  }
+
+  public findIsolatedRegions(minRegionSize: number = 5, maxElevationDelta: number = 2): TerrainRegion[] {
+    const regions = this.findConnectedRegions(maxElevationDelta);
+    if (regions.length <= 1) return [];
+
+    return regions.slice(1).filter(r => r.tiles.length >= minRegionSize);
+  }
+
+  public isReachable(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    maxElevationDelta: number = 2
+  ): boolean {
+    const { width, height } = this.courseData;
+    const visited: boolean[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      visited[y] = new Array(width).fill(false);
+    }
+
+    const queue: Array<{ x: number; y: number }> = [{ x: fromX, y: fromY }];
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+
+      if (x === toX && y === toY) return true;
+
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (visited[y][x]) continue;
+
+      visited[y][x] = true;
+
+      const currentElev = this.getElevationAt(x, y);
+      const neighbors = [
+        { x: x - 1, y },
+        { x: x + 1, y },
+        { x, y: y - 1 },
+        { x, y: y + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+        if (visited[neighbor.y][neighbor.x]) continue;
+
+        const neighborElev = this.getElevationAt(neighbor.x, neighbor.y);
+        if (Math.abs(neighborElev - currentElev) <= maxElevationDelta) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    return false;
+  }
+
+  public getReachableTiles(
+    fromX: number,
+    fromY: number,
+    maxElevationDelta: number = 2
+  ): Array<{ x: number; y: number }> {
+    const { width, height } = this.courseData;
+    const visited: boolean[][] = [];
+    const reachable: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      visited[y] = new Array(width).fill(false);
+    }
+
+    const queue: Array<{ x: number; y: number }> = [{ x: fromX, y: fromY }];
+
+    while (queue.length > 0) {
+      const { x, y } = queue.shift()!;
+
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (visited[y][x]) continue;
+
+      visited[y][x] = true;
+      reachable.push({ x, y });
+
+      const currentElev = this.getElevationAt(x, y);
+      const neighbors = [
+        { x: x - 1, y },
+        { x: x + 1, y },
+        { x, y: y - 1 },
+        { x, y: y + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+        if (visited[neighbor.y][neighbor.x]) continue;
+
+        const neighborElev = this.getElevationAt(neighbor.x, neighbor.y);
+        if (Math.abs(neighborElev - currentElev) <= maxElevationDelta) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    return reachable;
+  }
+
+  public getBridgePoints(
+    region1: TerrainRegion,
+    region2: TerrainRegion
+  ): Array<{ from: { x: number; y: number }; to: { x: number; y: number }; distance: number }> {
+    const bridges: Array<{ from: { x: number; y: number }; to: { x: number; y: number }; distance: number }> = [];
+
+    for (const tile1 of region1.tiles) {
+      for (const tile2 of region2.tiles) {
+        const distance = Math.abs(tile1.x - tile2.x) + Math.abs(tile1.y - tile2.y);
+        if (distance <= 3) {
+          bridges.push({
+            from: tile1,
+            to: tile2,
+            distance
+          });
+        }
+      }
+    }
+
+    return bridges.sort((a, b) => a.distance - b.distance);
+  }
+
+  public connectRegions(
+    region1: TerrainRegion,
+    region2: TerrainRegion,
+    rampWidth: number = 1
+  ): number {
+    const bridges = this.getBridgePoints(region1, region2);
+    if (bridges.length === 0) return 0;
+
+    const bridge = bridges[0];
+    const result = this.createRamp(
+      bridge.from.x,
+      bridge.from.y,
+      bridge.to.x,
+      bridge.to.y,
+      rampWidth
+    );
+
+    return result.tilesModified;
+  }
+
+  public getConnectivityStatistics(): {
+    totalRegions: number;
+    mainRegionSize: number;
+    isolatedRegions: number;
+    isolatedTiles: number;
+    connectivityPercentage: number;
+  } {
+    const regions = this.findConnectedRegions(this.constraints.maxSlopeDelta);
+    const { width, height } = this.courseData;
+    const totalTiles = width * height;
+
+    if (regions.length === 0) {
+      return {
+        totalRegions: 0,
+        mainRegionSize: 0,
+        isolatedRegions: 0,
+        isolatedTiles: 0,
+        connectivityPercentage: 0
+      };
+    }
+
+    const mainRegionSize = regions[0].tiles.length;
+    const isolatedTiles = totalTiles - mainRegionSize;
+
+    return {
+      totalRegions: regions.length,
+      mainRegionSize,
+      isolatedRegions: regions.length - 1,
+      isolatedTiles,
+      connectivityPercentage: (mainRegionSize / totalTiles) * 100
+    };
+  }
+
+  public findChokepointsInRegion(region: TerrainRegion): Array<{ x: number; y: number; score: number }> {
+    const tileSet = new Set(region.tiles.map(t => `${t.x}_${t.y}`));
+    const chokepoints: Array<{ x: number; y: number; score: number }> = [];
+
+    for (const tile of region.tiles) {
+      let neighborCount = 0;
+      const neighbors = [
+        { x: tile.x - 1, y: tile.y },
+        { x: tile.x + 1, y: tile.y },
+        { x: tile.x, y: tile.y - 1 },
+        { x: tile.x, y: tile.y + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        if (tileSet.has(`${neighbor.x}_${neighbor.y}`)) {
+          neighborCount++;
+        }
+      }
+
+      if (neighborCount <= 2 && neighborCount > 0) {
+        const score = 3 - neighborCount;
+        chokepoints.push({ x: tile.x, y: tile.y, score });
+      }
+    }
+
+    return chokepoints.sort((a, b) => b.score - a.score);
+  }
+}
+
+export interface TerrainRegion {
+  tiles: Array<{ x: number; y: number }>;
+  minElevation: number;
+  maxElevation: number;
+  area: number;
 }
 
 export interface ErosionConfig {
