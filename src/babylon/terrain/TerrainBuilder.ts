@@ -2706,6 +2706,333 @@ export class TerrainBuilder {
 
     return result;
   }
+
+  public sampleTerrainAt(gridX: number, gridY: number): TerrainSample | null {
+    if (!this.isValidGridPosition(Math.floor(gridX), Math.floor(gridY))) {
+      return null;
+    }
+
+    const baseX = Math.floor(gridX);
+    const baseY = Math.floor(gridY);
+
+    const elevation = this.interpolateElevation(gridX, gridY);
+    const slope = this.getSlopeVectorAt(baseX, baseY);
+    const terrainType = this.getTerrainTypeAt(baseX, baseY);
+    const normal = this.getTileNormalAt(baseX, baseY);
+
+    return {
+      gridX,
+      gridY,
+      elevation,
+      slopeAngle: slope.angle,
+      slopeDirection: slope.direction,
+      terrainType,
+      normal
+    };
+  }
+
+  public sampleTerrainAlongLine(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    sampleCount: number = 10
+  ): TerrainSample[] {
+    const samples: TerrainSample[] = [];
+
+    for (let i = 0; i <= sampleCount; i++) {
+      const t = i / sampleCount;
+      const x = startX + (endX - startX) * t;
+      const y = startY + (endY - startY) * t;
+
+      const sample = this.sampleTerrainAt(x, y);
+      if (sample) {
+        samples.push(sample);
+      }
+    }
+
+    return samples;
+  }
+
+  public getAverageElevationInRadius(
+    centerX: number,
+    centerY: number,
+    radius: number
+  ): number {
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    if (tiles.length === 0) return 0;
+
+    let sum = 0;
+    for (const tile of tiles) {
+      sum += this.getElevationAt(tile.x, tile.y);
+    }
+
+    return sum / tiles.length;
+  }
+
+  public getMaxElevationInRadius(
+    centerX: number,
+    centerY: number,
+    radius: number
+  ): number {
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    if (tiles.length === 0) return 0;
+
+    let max = -Infinity;
+    for (const tile of tiles) {
+      const elev = this.getElevationAt(tile.x, tile.y);
+      if (elev > max) max = elev;
+    }
+
+    return max;
+  }
+
+  public getMinElevationInRadius(
+    centerX: number,
+    centerY: number,
+    radius: number
+  ): number {
+    const tiles = this.getTilesInRadius(centerX, centerY, radius);
+    if (tiles.length === 0) return 0;
+
+    let min = Infinity;
+    for (const tile of tiles) {
+      const elev = this.getElevationAt(tile.x, tile.y);
+      if (elev < min) min = elev;
+    }
+
+    return min;
+  }
+
+  public raycastTerrain(
+    startGridX: number,
+    startGridY: number,
+    directionX: number,
+    directionY: number,
+    maxDistance: number = 100
+  ): RaycastResult {
+    const step = 0.5;
+    const len = Math.sqrt(directionX * directionX + directionY * directionY);
+    if (len === 0) {
+      return {
+        hit: false,
+        gridX: startGridX,
+        gridY: startGridY,
+        elevation: 0,
+        distance: 0,
+        terrainType: 'rough'
+      };
+    }
+
+    const dx = directionX / len;
+    const dy = directionY / len;
+
+    for (let dist = 0; dist <= maxDistance; dist += step) {
+      const x = startGridX + dx * dist;
+      const y = startGridY + dy * dist;
+      const ix = Math.floor(x);
+      const iy = Math.floor(y);
+
+      if (!this.isValidGridPosition(ix, iy)) {
+        return {
+          hit: false,
+          gridX: x,
+          gridY: y,
+          elevation: 0,
+          distance: dist,
+          terrainType: 'rough'
+        };
+      }
+
+      const terrainType = this.getTerrainTypeAt(ix, iy);
+      if (terrainType === 'water' || terrainType === 'bunker') {
+        return {
+          hit: true,
+          gridX: x,
+          gridY: y,
+          elevation: this.interpolateElevation(x, y),
+          distance: dist,
+          terrainType
+        };
+      }
+    }
+
+    const endX = startGridX + dx * maxDistance;
+    const endY = startGridY + dy * maxDistance;
+    return {
+      hit: false,
+      gridX: endX,
+      gridY: endY,
+      elevation: this.interpolateElevation(endX, endY),
+      distance: maxDistance,
+      terrainType: this.getTerrainTypeAt(Math.floor(endX), Math.floor(endY))
+    };
+  }
+
+  public getElevationGradient(gridX: number, gridY: number): { dx: number; dy: number } {
+    const { width, height } = this.courseData;
+    const x = Math.floor(gridX);
+    const y = Math.floor(gridY);
+
+    const centerElev = this.getElevationAt(x, y);
+    let dx = 0;
+    let dy = 0;
+
+    if (x > 0) {
+      dx -= this.getElevationAt(x - 1, y) - centerElev;
+    }
+    if (x < width - 1) {
+      dx += this.getElevationAt(x + 1, y) - centerElev;
+    }
+    if (y > 0) {
+      dy -= this.getElevationAt(x, y - 1) - centerElev;
+    }
+    if (y < height - 1) {
+      dy += this.getElevationAt(x, y + 1) - centerElev;
+    }
+
+    return { dx: dx / 2, dy: dy / 2 };
+  }
+
+  public getBilinearElevation(gridX: number, gridY: number): number {
+    const { width, height } = this.courseData;
+
+    const x0 = Math.floor(gridX);
+    const y0 = Math.floor(gridY);
+    const x1 = Math.min(x0 + 1, width - 1);
+    const y1 = Math.min(y0 + 1, height - 1);
+
+    const fx = gridX - x0;
+    const fy = gridY - y0;
+
+    const e00 = this.getElevationAt(x0, y0);
+    const e10 = this.getElevationAt(x1, y0);
+    const e01 = this.getElevationAt(x0, y1);
+    const e11 = this.getElevationAt(x1, y1);
+
+    const e0 = e00 * (1 - fx) + e10 * fx;
+    const e1 = e01 * (1 - fx) + e11 * fx;
+
+    return e0 * (1 - fy) + e1 * fy;
+  }
+
+  public getCubicElevation(gridX: number, gridY: number): number {
+    const x = Math.floor(gridX);
+    const y = Math.floor(gridY);
+    const fx = gridX - x;
+    const fy = gridY - y;
+
+    const p = [];
+    for (let j = -1; j <= 2; j++) {
+      const row = [];
+      for (let i = -1; i <= 2; i++) {
+        row.push(this.getElevationAt(x + i, y + j));
+      }
+      p.push(row);
+    }
+
+    const cx = this.cubicInterpolate(p[0][0], p[0][1], p[0][2], p[0][3], fx);
+    const cy = this.cubicInterpolate(p[1][0], p[1][1], p[1][2], p[1][3], fx);
+    const cz = this.cubicInterpolate(p[2][0], p[2][1], p[2][2], p[2][3], fx);
+    const cw = this.cubicInterpolate(p[3][0], p[3][1], p[3][2], p[3][3], fx);
+
+    return this.cubicInterpolate(cx, cy, cz, cw, fy);
+  }
+
+  private cubicInterpolate(p0: number, p1: number, p2: number, p3: number, t: number): number {
+    const a = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
+    const b = p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3;
+    const c = -0.5 * p0 + 0.5 * p2;
+    const d = p1;
+    return a * t * t * t + b * t * t + c * t + d;
+  }
+
+  public getSmoothNormal(gridX: number, gridY: number): { x: number; y: number; z: number } {
+    const delta = 0.1;
+    const e0 = this.getBilinearElevation(gridX - delta, gridY);
+    const e1 = this.getBilinearElevation(gridX + delta, gridY);
+    const e2 = this.getBilinearElevation(gridX, gridY - delta);
+    const e3 = this.getBilinearElevation(gridX, gridY + delta);
+
+    const dzdx = (e1 - e0) / (2 * delta) * ELEVATION_HEIGHT;
+    const dzdy = (e3 - e2) / (2 * delta) * ELEVATION_HEIGHT;
+
+    const len = Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1);
+    return {
+      x: -dzdx / len,
+      y: -dzdy / len,
+      z: 1 / len
+    };
+  }
+
+  public getTerrainContour(
+    elevation: number,
+    sampleSpacing: number = 1
+  ): Array<{ x: number; y: number }> {
+    const contour: Array<{ x: number; y: number }> = [];
+    const { width, height } = this.courseData;
+
+    for (let y = 0; y < height - 1; y += sampleSpacing) {
+      for (let x = 0; x < width - 1; x += sampleSpacing) {
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(x + 1, y);
+        const e01 = this.getElevationAt(x, y + 1);
+        const e11 = this.getElevationAt(x + 1, y + 1);
+
+        const crossesX1 = (e00 < elevation) !== (e10 < elevation);
+        const crossesX2 = (e01 < elevation) !== (e11 < elevation);
+        const crossesY1 = (e00 < elevation) !== (e01 < elevation);
+        const crossesY2 = (e10 < elevation) !== (e11 < elevation);
+
+        if (crossesX1) {
+          const t = (elevation - e00) / (e10 - e00);
+          contour.push({ x: x + t, y });
+        }
+        if (crossesX2) {
+          const t = (elevation - e01) / (e11 - e01);
+          contour.push({ x: x + t, y: y + 1 });
+        }
+        if (crossesY1) {
+          const t = (elevation - e00) / (e01 - e00);
+          contour.push({ x, y: y + t });
+        }
+        if (crossesY2) {
+          const t = (elevation - e10) / (e11 - e10);
+          contour.push({ x: x + 1, y: y + t });
+        }
+      }
+    }
+
+    return contour;
+  }
+
+  public getTerrainProfile(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    sampleCount: number = 20
+  ): Array<{ distance: number; elevation: number; terrainType: TerrainType }> {
+    const profile: Array<{ distance: number; elevation: number; terrainType: TerrainType }> = [];
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const totalDist = Math.sqrt(dx * dx + dy * dy);
+
+    for (let i = 0; i <= sampleCount; i++) {
+      const t = i / sampleCount;
+      const x = startX + dx * t;
+      const y = startY + dy * t;
+
+      profile.push({
+        distance: totalDist * t,
+        elevation: this.getBilinearElevation(x, y),
+        terrainType: this.getTerrainTypeAt(Math.floor(x), Math.floor(y))
+      });
+    }
+
+    return profile;
+  }
 }
 
 export interface TerrainStatistics {
@@ -2817,4 +3144,23 @@ export interface TerrainChunk {
 export interface ChunkConfig {
   chunkSize: number;
   enabled: boolean;
+}
+
+export interface TerrainSample {
+  gridX: number;
+  gridY: number;
+  elevation: number;
+  slopeAngle: number;
+  slopeDirection: number;
+  terrainType: TerrainType;
+  normal: { x: number; y: number; z: number };
+}
+
+export interface RaycastResult {
+  hit: boolean;
+  gridX: number;
+  gridY: number;
+  elevation: number;
+  distance: number;
+  terrainType: TerrainType;
 }
