@@ -29,6 +29,11 @@ import {
   validateSlopeConstraint,
   getSurfacePhysics,
   getSlopeFrictionModifier,
+  isSubmerged,
+  isPartiallySubmerged,
+  getWaterDepth,
+  getEffectiveTerrainType,
+  DEFAULT_WATER_LEVEL,
   CellState,
   CornerHeights,
   RCTCornerHeights,
@@ -1180,5 +1185,102 @@ describe('Surface Physics', () => {
     it('returns ~1.3 at 45 degrees', () => {
       expect(getSlopeFrictionModifier(45)).toBeCloseTo(1.3, 2);
     });
+  });
+});
+
+describe('Water Level Handling', () => {
+  describe('isSubmerged', () => {
+    it('returns true when all corners below water level', () => {
+      const corners: RCTCornerHeights = { nw: -1, ne: -1, se: -1, sw: -1 };
+      expect(isSubmerged(corners, 0)).toBe(true);
+    });
+
+    it('returns false when any corner at or above water level', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: -1, se: -1, sw: -1 };
+      expect(isSubmerged(corners, 0)).toBe(false);
+    });
+
+    it('returns false for elevated terrain', () => {
+      const corners: RCTCornerHeights = { nw: 2, ne: 2, se: 2, sw: 2 };
+      expect(isSubmerged(corners, 0)).toBe(false);
+    });
+
+    it('uses default water level of 0', () => {
+      const corners: RCTCornerHeights = { nw: -1, ne: -1, se: -1, sw: -1 };
+      expect(isSubmerged(corners)).toBe(true);
+    });
+
+    it('respects custom water level', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 1, sw: 1 };
+      expect(isSubmerged(corners, 2)).toBe(true);
+      expect(isSubmerged(corners, 1)).toBe(false);
+    });
+  });
+
+  describe('isPartiallySubmerged', () => {
+    it('returns true when some but not all corners below water', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: -1, se: -1, sw: 0 };
+      expect(isPartiallySubmerged(corners, 0)).toBe(true);
+    });
+
+    it('returns false when all corners above water', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 1, sw: 1 };
+      expect(isPartiallySubmerged(corners, 0)).toBe(false);
+    });
+
+    it('returns false when all corners below water', () => {
+      const corners: RCTCornerHeights = { nw: -1, ne: -1, se: -1, sw: -1 };
+      expect(isPartiallySubmerged(corners, 0)).toBe(false);
+    });
+
+    it('handles single corner below water', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 1, sw: -1 };
+      expect(isPartiallySubmerged(corners, 0)).toBe(true);
+    });
+  });
+
+  describe('getWaterDepth', () => {
+    it('returns 0 for terrain above water', () => {
+      const corners: RCTCornerHeights = { nw: 2, ne: 2, se: 2, sw: 2 };
+      expect(getWaterDepth(corners, 0)).toBe(0);
+    });
+
+    it('returns depth for submerged terrain', () => {
+      const corners: RCTCornerHeights = { nw: -2, ne: -2, se: -2, sw: -2 };
+      expect(getWaterDepth(corners, 0)).toBe(2);
+    });
+
+    it('uses minimum corner height', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: -1, se: -3, sw: -2 };
+      expect(getWaterDepth(corners, 0)).toBe(3);
+    });
+
+    it('respects custom water level', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      expect(getWaterDepth(corners, 2)).toBe(2);
+    });
+  });
+
+  describe('getEffectiveTerrainType', () => {
+    it('returns water when fully submerged', () => {
+      const corners: RCTCornerHeights = { nw: -1, ne: -1, se: -1, sw: -1 };
+      expect(getEffectiveTerrainType('fairway', corners, 0)).toBe('water');
+    });
+
+    it('returns original type when not submerged', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 1, sw: 1 };
+      expect(getEffectiveTerrainType('fairway', corners, 0)).toBe('fairway');
+      expect(getEffectiveTerrainType('green', corners, 0)).toBe('green');
+      expect(getEffectiveTerrainType('bunker', corners, 0)).toBe('bunker');
+    });
+
+    it('returns original type when partially submerged', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: -1, se: -1, sw: 1 };
+      expect(getEffectiveTerrainType('rough', corners, 0)).toBe('rough');
+    });
+  });
+
+  it('DEFAULT_WATER_LEVEL is 0', () => {
+    expect(DEFAULT_WATER_LEVEL).toBe(0);
   });
 });

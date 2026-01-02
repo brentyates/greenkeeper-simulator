@@ -330,6 +330,34 @@ export function getSlopeFrictionModifier(slopeAngle: number): number {
   return 1.0 + normalizedAngle * 0.3;
 }
 
+export const DEFAULT_WATER_LEVEL = 0;
+
+export function isSubmerged(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): boolean {
+  return corners.nw < waterLevel && corners.ne < waterLevel &&
+         corners.se < waterLevel && corners.sw < waterLevel;
+}
+
+export function isPartiallySubmerged(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): boolean {
+  const below = [corners.nw, corners.ne, corners.se, corners.sw].filter(h => h < waterLevel).length;
+  return below > 0 && below < 4;
+}
+
+export function getWaterDepth(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): number {
+  const minHeight = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+  return Math.max(0, waterLevel - minHeight);
+}
+
+export function getEffectiveTerrainType(
+  type: TerrainType,
+  corners: RCTCornerHeights,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): TerrainType {
+  if (isSubmerged(corners, waterLevel)) {
+    return 'water';
+  }
+  return type;
+}
+
 export function getTerrainSpeedModifier(type: TerrainType): number {
   switch (type) {
     case 'fairway': return 1.0;
