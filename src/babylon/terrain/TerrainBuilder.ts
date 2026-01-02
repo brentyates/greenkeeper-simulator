@@ -93,6 +93,15 @@ export class TerrainBuilder {
     brushRadius: 3
   };
   private selectionEnabled: boolean = false;
+  private brush: TerrainBrush = {
+    shape: 'circle',
+    operation: 'raise',
+    radius: 3,
+    strength: 1,
+    falloff: 0.5,
+    isActive: false
+  };
+  private brushEnabled: boolean = false;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -4020,11 +4029,11 @@ export class TerrainBuilder {
     return { ...this.selection.color };
   }
 
-  public setBrushRadius(radius: number): void {
+  public setSelectionBrushRadius(radius: number): void {
     this.selection.brushRadius = Math.max(1, radius);
   }
 
-  public getBrushRadius(): number {
+  public getSelectionBrushRadius(): number {
     return this.selection.brushRadius;
   }
 
@@ -4365,6 +4374,299 @@ export class TerrainBuilder {
       this.endBatch();
     }
   }
+
+  public setBrushEnabled(enabled: boolean): void {
+    this.brushEnabled = enabled;
+    if (!enabled) {
+      this.brush.isActive = false;
+    }
+  }
+
+  public isBrushEnabled(): boolean {
+    return this.brushEnabled;
+  }
+
+  public setBrushShape(shape: BrushShape): void {
+    this.brush.shape = shape;
+  }
+
+  public getBrushShape(): BrushShape {
+    return this.brush.shape;
+  }
+
+  public setBrushOperation(operation: BrushOperation): void {
+    this.brush.operation = operation;
+  }
+
+  public getBrushOperation(): BrushOperation {
+    return this.brush.operation;
+  }
+
+  public setBrushRadius(radius: number): void {
+    this.brush.radius = Math.max(1, Math.min(50, radius));
+  }
+
+  public getBrushRadius(): number {
+    return this.brush.radius;
+  }
+
+  public setBrushStrength(strength: number): void {
+    this.brush.strength = Math.max(0.1, Math.min(10, strength));
+  }
+
+  public getBrushStrength(): number {
+    return this.brush.strength;
+  }
+
+  public setBrushFalloff(falloff: number): void {
+    this.brush.falloff = Math.max(0, Math.min(1, falloff));
+  }
+
+  public getBrushFalloff(): number {
+    return this.brush.falloff;
+  }
+
+  public getBrushConfig(): TerrainBrush {
+    return { ...this.brush };
+  }
+
+  public getTilesInBrushShape(centerX: number, centerY: number): Array<{ x: number; y: number; weight: number }> {
+    const tiles: Array<{ x: number; y: number; weight: number }> = [];
+    const { width, height } = this.courseData;
+    const radius = this.brush.radius;
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = centerX + dx;
+        const y = centerY + dy;
+
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+        let inShape = false;
+        let distance = 0;
+
+        switch (this.brush.shape) {
+          case 'circle':
+            distance = Math.sqrt(dx * dx + dy * dy);
+            inShape = distance <= radius;
+            break;
+          case 'square':
+            distance = Math.max(Math.abs(dx), Math.abs(dy));
+            inShape = distance <= radius;
+            break;
+          case 'diamond':
+            distance = Math.abs(dx) + Math.abs(dy);
+            inShape = distance <= radius;
+            break;
+        }
+
+        if (inShape) {
+          const normalizedDistance = distance / radius;
+          const weight = 1 - normalizedDistance * this.brush.falloff;
+          tiles.push({ x, y, weight: Math.max(0, weight) });
+        }
+      }
+    }
+
+    return tiles;
+  }
+
+  public applyBrush(centerX: number, centerY: number): void {
+    if (!this.brushEnabled) return;
+
+    const tiles = this.getTilesInBrushShape(centerX, centerY);
+    if (tiles.length === 0) return;
+
+    if (this.historyEnabled) {
+      this.beginBatch(`Brush ${this.brush.operation} at (${centerX}, ${centerY})`);
+    }
+
+    switch (this.brush.operation) {
+      case 'raise':
+        this.applyRaiseBrush(tiles);
+        break;
+      case 'lower':
+        this.applyLowerBrush(tiles);
+        break;
+      case 'smooth':
+        this.applySmoothBrush(tiles);
+        break;
+      case 'flatten':
+        this.applyFlattenBrush(tiles, centerX, centerY);
+        break;
+      case 'noise':
+        this.applyNoiseBrush(tiles);
+        break;
+      case 'mow':
+        this.applyMowBrush(tiles);
+        break;
+      case 'unmow':
+        this.applyUnmowBrush(tiles);
+        break;
+    }
+
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+  }
+
+  private applyRaiseBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    for (const tile of tiles) {
+      const currentElev = this.getElevationAt(tile.x, tile.y);
+      const delta = this.brush.strength * tile.weight;
+      const newElev = currentElev + delta;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, newElev);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, newElev);
+      }
+    }
+  }
+
+  private applyLowerBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    for (const tile of tiles) {
+      const currentElev = this.getElevationAt(tile.x, tile.y);
+      const delta = this.brush.strength * tile.weight;
+      const newElev = currentElev - delta;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, newElev);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, newElev);
+      }
+    }
+  }
+
+  private applySmoothBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    const elevations: Map<string, number> = new Map();
+
+    for (const tile of tiles) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const elev = this.getElevationAt(tile.x + dx, tile.y + dy);
+          sum += elev;
+          count++;
+        }
+      }
+      const avg = sum / count;
+      elevations.set(`${tile.x}_${tile.y}`, avg);
+    }
+
+    for (const tile of tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      const targetElev = elevations.get(key)!;
+      const currentElev = this.getElevationAt(tile.x, tile.y);
+      const blendedElev = currentElev + (targetElev - currentElev) * this.brush.strength * tile.weight;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, blendedElev);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, blendedElev);
+      }
+    }
+  }
+
+  private applyFlattenBrush(tiles: Array<{ x: number; y: number; weight: number }>, centerX: number, centerY: number): void {
+    const targetElev = this.getElevationAt(centerX, centerY);
+
+    for (const tile of tiles) {
+      const currentElev = this.getElevationAt(tile.x, tile.y);
+      const blendedElev = currentElev + (targetElev - currentElev) * this.brush.strength * tile.weight;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, blendedElev);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, blendedElev);
+      }
+    }
+  }
+
+  private applyNoiseBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    for (const tile of tiles) {
+      const currentElev = this.getElevationAt(tile.x, tile.y);
+      const noise = (Math.random() - 0.5) * 2 * this.brush.strength * tile.weight;
+      const newElev = currentElev + noise;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, newElev);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, newElev);
+      }
+    }
+  }
+
+  private applyMowBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    for (const tile of tiles) {
+      if (this.historyEnabled) {
+        this.setMowedWithHistory(tile.x, tile.y, true);
+      } else {
+        this.setMowed(tile.x, tile.y, true);
+      }
+    }
+  }
+
+  private applyUnmowBrush(tiles: Array<{ x: number; y: number; weight: number }>): void {
+    for (const tile of tiles) {
+      if (this.historyEnabled) {
+        this.setMowedWithHistory(tile.x, tile.y, false);
+      } else {
+        this.setMowed(tile.x, tile.y, false);
+      }
+    }
+  }
+
+  public startBrushStroke(): void {
+    if (!this.brushEnabled) return;
+    this.brush.isActive = true;
+    if (this.historyEnabled) {
+      this.beginBatch(`Brush stroke: ${this.brush.operation}`);
+    }
+  }
+
+  public continueBrushStroke(centerX: number, centerY: number): void {
+    if (!this.brush.isActive) return;
+
+    const tiles = this.getTilesInBrushShape(centerX, centerY);
+    if (tiles.length === 0) return;
+
+    switch (this.brush.operation) {
+      case 'raise':
+        this.applyRaiseBrush(tiles);
+        break;
+      case 'lower':
+        this.applyLowerBrush(tiles);
+        break;
+      case 'smooth':
+        this.applySmoothBrush(tiles);
+        break;
+      case 'flatten':
+        this.applyFlattenBrush(tiles, centerX, centerY);
+        break;
+      case 'noise':
+        this.applyNoiseBrush(tiles);
+        break;
+      case 'mow':
+        this.applyMowBrush(tiles);
+        break;
+      case 'unmow':
+        this.applyUnmowBrush(tiles);
+        break;
+    }
+  }
+
+  public endBrushStroke(): void {
+    if (!this.brush.isActive) return;
+    this.brush.isActive = false;
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+  }
+
+  public isBrushStrokeActive(): boolean {
+    return this.brush.isActive;
+  }
+
+  public getBrushPreview(centerX: number, centerY: number): Array<{ x: number; y: number; weight: number }> {
+    return this.getTilesInBrushShape(centerX, centerY);
+  }
 }
 
 export interface TerrainStatistics {
@@ -4564,4 +4866,16 @@ export interface TerrainSelection {
   isActive: boolean;
   color: { r: number; g: number; b: number };
   brushRadius: number;
+}
+
+export type BrushShape = 'circle' | 'square' | 'diamond';
+export type BrushOperation = 'raise' | 'lower' | 'smooth' | 'flatten' | 'noise' | 'mow' | 'unmow';
+
+export interface TerrainBrush {
+  shape: BrushShape;
+  operation: BrushOperation;
+  radius: number;
+  strength: number;
+  falloff: number;
+  isActive: boolean;
 }
