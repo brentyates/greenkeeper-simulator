@@ -20625,6 +20625,402 @@ export class TerrainBuilder {
       )
     };
   }
+
+  public captureTerrainSnapshot(): TerrainSnapshot {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const elevations: number[][] = [];
+    const terrainTypes: number[][] = [];
+    const mowedState: boolean[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      elevations[y] = [];
+      terrainTypes[y] = [];
+      mowedState[y] = [];
+
+      for (let x = 0; x < width; x++) {
+        elevations[y][x] = this.getElevationAt(x, y);
+        terrainTypes[y][x] = this.courseData.layout[y]?.[x] ?? 0;
+        mowedState[y][x] = this.mowedState[y]?.[x] ?? false;
+      }
+    }
+
+    return {
+      timestamp: Date.now(),
+      width,
+      height,
+      elevations,
+      terrainTypes,
+      mowedState,
+      checksum: this.computeSnapshotChecksum(elevations, terrainTypes)
+    };
+  }
+
+  private computeSnapshotChecksum(elevations: number[][], terrainTypes: number[][]): number {
+    let hash = 0;
+    for (let y = 0; y < elevations.length; y++) {
+      for (let x = 0; x < elevations[y].length; x++) {
+        hash = ((hash << 5) - hash + elevations[y][x] * 1000 + terrainTypes[y][x]) | 0;
+      }
+    }
+    return hash;
+  }
+
+  public compareSnapshots(snapshot1: TerrainSnapshot, snapshot2: TerrainSnapshot): TerrainSnapshotComparison {
+    if (snapshot1.width !== snapshot2.width || snapshot1.height !== snapshot2.height) {
+      return {
+        dimensionsMatch: false,
+        totalChanges: -1,
+        elevationChanges: [],
+        terrainTypeChanges: [],
+        mowingChanges: [],
+        elevationDiffMap: [],
+        netElevationChange: 0,
+        maxElevationIncrease: 0,
+        maxElevationDecrease: 0,
+        timeBetween: snapshot2.timestamp - snapshot1.timestamp
+      };
+    }
+
+    const elevationChanges: Array<{ x: number; y: number; oldValue: number; newValue: number; diff: number }> = [];
+    const terrainTypeChanges: Array<{ x: number; y: number; oldType: number; newType: number }> = [];
+    const mowingChanges: Array<{ x: number; y: number; wasMowed: boolean; isMowed: boolean }> = [];
+    const elevationDiffMap: number[][] = [];
+
+    let netElevationChange = 0;
+    let maxIncrease = 0;
+    let maxDecrease = 0;
+
+    for (let y = 0; y < snapshot1.height; y++) {
+      elevationDiffMap[y] = [];
+
+      for (let x = 0; x < snapshot1.width; x++) {
+        const elev1 = snapshot1.elevations[y][x];
+        const elev2 = snapshot2.elevations[y][x];
+        const diff = elev2 - elev1;
+        elevationDiffMap[y][x] = diff;
+
+        if (diff !== 0) {
+          elevationChanges.push({ x, y, oldValue: elev1, newValue: elev2, diff });
+          netElevationChange += diff;
+          maxIncrease = Math.max(maxIncrease, diff);
+          maxDecrease = Math.min(maxDecrease, diff);
+        }
+
+        const type1 = snapshot1.terrainTypes[y][x];
+        const type2 = snapshot2.terrainTypes[y][x];
+        if (type1 !== type2) {
+          terrainTypeChanges.push({ x, y, oldType: type1, newType: type2 });
+        }
+
+        const mowed1 = snapshot1.mowedState[y][x];
+        const mowed2 = snapshot2.mowedState[y][x];
+        if (mowed1 !== mowed2) {
+          mowingChanges.push({ x, y, wasMowed: mowed1, isMowed: mowed2 });
+        }
+      }
+    }
+
+    return {
+      dimensionsMatch: true,
+      totalChanges: elevationChanges.length + terrainTypeChanges.length + mowingChanges.length,
+      elevationChanges,
+      terrainTypeChanges,
+      mowingChanges,
+      elevationDiffMap,
+      netElevationChange,
+      maxElevationIncrease: maxIncrease,
+      maxElevationDecrease: Math.abs(maxDecrease),
+      timeBetween: snapshot2.timestamp - snapshot1.timestamp
+    };
+  }
+
+  public computeTerrainDiffStats(comparison: TerrainSnapshotComparison): TerrainDiffStats {
+    const elevDiffs = comparison.elevationChanges.map(c => c.diff);
+    const absElevDiffs = elevDiffs.map(d => Math.abs(d));
+
+    const meanChange = elevDiffs.length > 0
+      ? elevDiffs.reduce((s, d) => s + d, 0) / elevDiffs.length
+      : 0;
+
+    const meanAbsChange = absElevDiffs.length > 0
+      ? absElevDiffs.reduce((s, d) => s + d, 0) / absElevDiffs.length
+      : 0;
+
+    const variance = elevDiffs.length > 0
+      ? elevDiffs.reduce((s, d) => s + (d - meanChange) ** 2, 0) / elevDiffs.length
+      : 0;
+
+    const raisedTiles = comparison.elevationChanges.filter(c => c.diff > 0).length;
+    const loweredTiles = comparison.elevationChanges.filter(c => c.diff < 0).length;
+
+    const changeDistribution: Record<string, number> = {};
+    for (const change of comparison.elevationChanges) {
+      const bucket = Math.round(change.diff);
+      changeDistribution[bucket] = (changeDistribution[bucket] || 0) + 1;
+    }
+
+    return {
+      elevationChangeCount: comparison.elevationChanges.length,
+      terrainTypeChangeCount: comparison.terrainTypeChanges.length,
+      mowingChangeCount: comparison.mowingChanges.length,
+      meanElevationChange: meanChange,
+      meanAbsoluteChange: meanAbsChange,
+      standardDeviation: Math.sqrt(variance),
+      raisedTiles,
+      loweredTiles,
+      changeDistribution,
+      changeIntensity: absElevDiffs.length > 0 ? absElevDiffs.reduce((s, d) => s + d, 0) : 0
+    };
+  }
+
+  public getChangedRegions(comparison: TerrainSnapshotComparison, minClusterSize: number = 3): ChangedRegion[] {
+    if (!comparison.dimensionsMatch || comparison.elevationChanges.length === 0) {
+      return [];
+    }
+
+    const changedTiles = new Set<string>();
+    for (const change of comparison.elevationChanges) {
+      changedTiles.add(`${change.x},${change.y}`);
+    }
+    for (const change of comparison.terrainTypeChanges) {
+      changedTiles.add(`${change.x},${change.y}`);
+    }
+
+    const visited = new Set<string>();
+    const regions: ChangedRegion[] = [];
+
+    for (const key of changedTiles) {
+      if (visited.has(key)) continue;
+
+      const [startX, startY] = key.split(',').map(Number);
+      const tiles: Array<{ x: number; y: number }> = [];
+      const queue = [{ x: startX, y: startY }];
+      let minX = startX, maxX = startX, minY = startY, maxY = startY;
+      let totalElevChange = 0;
+
+      while (queue.length > 0) {
+        const { x, y } = queue.shift()!;
+        const tileKey = `${x},${y}`;
+
+        if (visited.has(tileKey) || !changedTiles.has(tileKey)) continue;
+        visited.add(tileKey);
+        tiles.push({ x, y });
+
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+
+        const elevChange = comparison.elevationChanges.find(c => c.x === x && c.y === y);
+        if (elevChange) {
+          totalElevChange += elevChange.diff;
+        }
+
+        queue.push(
+          { x: x - 1, y }, { x: x + 1, y },
+          { x, y: y - 1 }, { x, y: y + 1 }
+        );
+      }
+
+      if (tiles.length >= minClusterSize) {
+        const avgElevChange = totalElevChange / tiles.length;
+        let changeType: 'raised' | 'lowered' | 'mixed' | 'terrain_only';
+
+        if (Math.abs(avgElevChange) < 0.1) {
+          changeType = 'terrain_only';
+        } else if (avgElevChange > 0.5) {
+          changeType = 'raised';
+        } else if (avgElevChange < -0.5) {
+          changeType = 'lowered';
+        } else {
+          changeType = 'mixed';
+        }
+
+        regions.push({
+          tiles,
+          bounds: { minX, maxX, minY, maxY },
+          area: tiles.length,
+          averageElevationChange: avgElevChange,
+          changeType
+        });
+      }
+    }
+
+    return regions.sort((a, b) => b.area - a.area);
+  }
+
+  public generateDiffVisualizationData(comparison: TerrainSnapshotComparison): DiffVisualizationData {
+    const width = comparison.elevationDiffMap[0]?.length || 0;
+    const height = comparison.elevationDiffMap.length;
+
+    const normalizedDiffMap: number[][] = [];
+    let maxAbsDiff = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        maxAbsDiff = Math.max(maxAbsDiff, Math.abs(comparison.elevationDiffMap[y][x]));
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      normalizedDiffMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        normalizedDiffMap[y][x] = maxAbsDiff > 0
+          ? comparison.elevationDiffMap[y][x] / maxAbsDiff
+          : 0;
+      }
+    }
+
+    const colorMap: Array<{ x: number; y: number; r: number; g: number; b: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const diff = normalizedDiffMap[y][x];
+        let r: number, g: number, b: number;
+
+        if (diff > 0) {
+          r = Math.round(255 * diff);
+          g = Math.round(100 * (1 - diff));
+          b = 0;
+        } else if (diff < 0) {
+          r = 0;
+          g = Math.round(100 * (1 + diff));
+          b = Math.round(255 * Math.abs(diff));
+        } else {
+          r = g = b = 128;
+        }
+
+        if (diff !== 0) {
+          colorMap.push({ x, y, r, g, b });
+        }
+      }
+    }
+
+    return {
+      normalizedDiffMap,
+      colorMap,
+      maxDiff: maxAbsDiff,
+      changedTileCount: colorMap.length
+    };
+  }
+
+  public applyDiffToSnapshot(baseSnapshot: TerrainSnapshot, comparison: TerrainSnapshotComparison): TerrainSnapshot {
+    const newElevations: number[][] = [];
+    const newTerrainTypes: number[][] = [];
+    const newMowedState: boolean[][] = [];
+
+    for (let y = 0; y < baseSnapshot.height; y++) {
+      newElevations[y] = [...baseSnapshot.elevations[y]];
+      newTerrainTypes[y] = [...baseSnapshot.terrainTypes[y]];
+      newMowedState[y] = [...baseSnapshot.mowedState[y]];
+    }
+
+    for (const change of comparison.elevationChanges) {
+      newElevations[change.y][change.x] = change.newValue;
+    }
+
+    for (const change of comparison.terrainTypeChanges) {
+      newTerrainTypes[change.y][change.x] = change.newType;
+    }
+
+    for (const change of comparison.mowingChanges) {
+      newMowedState[change.y][change.x] = change.isMowed;
+    }
+
+    return {
+      timestamp: Date.now(),
+      width: baseSnapshot.width,
+      height: baseSnapshot.height,
+      elevations: newElevations,
+      terrainTypes: newTerrainTypes,
+      mowedState: newMowedState,
+      checksum: this.computeSnapshotChecksum(newElevations, newTerrainTypes)
+    };
+  }
+
+  public invertComparison(comparison: TerrainSnapshotComparison): TerrainSnapshotComparison {
+    return {
+      dimensionsMatch: comparison.dimensionsMatch,
+      totalChanges: comparison.totalChanges,
+      elevationChanges: comparison.elevationChanges.map(c => ({
+        x: c.x,
+        y: c.y,
+        oldValue: c.newValue,
+        newValue: c.oldValue,
+        diff: -c.diff
+      })),
+      terrainTypeChanges: comparison.terrainTypeChanges.map(c => ({
+        x: c.x,
+        y: c.y,
+        oldType: c.newType,
+        newType: c.oldType
+      })),
+      mowingChanges: comparison.mowingChanges.map(c => ({
+        x: c.x,
+        y: c.y,
+        wasMowed: c.isMowed,
+        isMowed: c.wasMowed
+      })),
+      elevationDiffMap: comparison.elevationDiffMap.map(row => row.map(d => -d)),
+      netElevationChange: -comparison.netElevationChange,
+      maxElevationIncrease: comparison.maxElevationDecrease,
+      maxElevationDecrease: comparison.maxElevationIncrease,
+      timeBetween: comparison.timeBetween
+    };
+  }
+}
+
+export interface TerrainSnapshot {
+  timestamp: number;
+  width: number;
+  height: number;
+  elevations: number[][];
+  terrainTypes: number[][];
+  mowedState: boolean[][];
+  checksum: number;
+}
+
+export interface TerrainSnapshotComparison {
+  dimensionsMatch: boolean;
+  totalChanges: number;
+  elevationChanges: Array<{ x: number; y: number; oldValue: number; newValue: number; diff: number }>;
+  terrainTypeChanges: Array<{ x: number; y: number; oldType: number; newType: number }>;
+  mowingChanges: Array<{ x: number; y: number; wasMowed: boolean; isMowed: boolean }>;
+  elevationDiffMap: number[][];
+  netElevationChange: number;
+  maxElevationIncrease: number;
+  maxElevationDecrease: number;
+  timeBetween: number;
+}
+
+export interface TerrainDiffStats {
+  elevationChangeCount: number;
+  terrainTypeChangeCount: number;
+  mowingChangeCount: number;
+  meanElevationChange: number;
+  meanAbsoluteChange: number;
+  standardDeviation: number;
+  raisedTiles: number;
+  loweredTiles: number;
+  changeDistribution: Record<string, number>;
+  changeIntensity: number;
+}
+
+export interface ChangedRegion {
+  tiles: Array<{ x: number; y: number }>;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  area: number;
+  averageElevationChange: number;
+  changeType: 'raised' | 'lowered' | 'mixed' | 'terrain_only';
+}
+
+export interface DiffVisualizationData {
+  normalizedDiffMap: number[][];
+  colorMap: Array<{ x: number; y: number; r: number; g: number; b: number }>;
+  maxDiff: number;
+  changedTileCount: number;
 }
 
 export type TerrainFeatureType = 'peak' | 'bowl' | 'ridge' | 'channel' | 'saddle' | 'flat' | 'slope' | 'transitional';
