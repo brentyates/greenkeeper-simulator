@@ -6160,6 +6160,311 @@ export class TerrainBuilder {
       flatPercentage: tileCount > 0 ? (flatCount / tileCount) * 100 : 0
     };
   }
+
+  private noise2D(x: number, y: number, seed: number = 0): number {
+    const n = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453123;
+    return n - Math.floor(n);
+  }
+
+  private smoothNoise(x: number, y: number, seed: number = 0): number {
+    const corners = (
+      this.noise2D(x - 1, y - 1, seed) +
+      this.noise2D(x + 1, y - 1, seed) +
+      this.noise2D(x - 1, y + 1, seed) +
+      this.noise2D(x + 1, y + 1, seed)
+    ) / 16;
+
+    const sides = (
+      this.noise2D(x - 1, y, seed) +
+      this.noise2D(x + 1, y, seed) +
+      this.noise2D(x, y - 1, seed) +
+      this.noise2D(x, y + 1, seed)
+    ) / 8;
+
+    const center = this.noise2D(x, y, seed) / 4;
+
+    return corners + sides + center;
+  }
+
+  private interpolatedNoise(x: number, y: number, seed: number = 0): number {
+    const intX = Math.floor(x);
+    const fracX = x - intX;
+    const intY = Math.floor(y);
+    const fracY = y - intY;
+
+    const v1 = this.smoothNoise(intX, intY, seed);
+    const v2 = this.smoothNoise(intX + 1, intY, seed);
+    const v3 = this.smoothNoise(intX, intY + 1, seed);
+    const v4 = this.smoothNoise(intX + 1, intY + 1, seed);
+
+    const i1 = v1 * (1 - fracX) + v2 * fracX;
+    const i2 = v3 * (1 - fracX) + v4 * fracX;
+
+    return i1 * (1 - fracY) + i2 * fracY;
+  }
+
+  private perlinNoise(x: number, y: number, octaves: number, persistence: number, seed: number = 0): number {
+    let total = 0;
+    let frequency = 1;
+    let amplitude = 1;
+    let maxValue = 0;
+
+    for (let i = 0; i < octaves; i++) {
+      total += this.interpolatedNoise(x * frequency, y * frequency, seed + i * 1000) * amplitude;
+      maxValue += amplitude;
+      amplitude *= persistence;
+      frequency *= 2;
+    }
+
+    return total / maxValue;
+  }
+
+  public generateNoiseElevation(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    config: NoiseConfig
+  ): number {
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    const {
+      scale = 0.1,
+      octaves = 4,
+      persistence = 0.5,
+      minElevation = 0,
+      maxElevation = 10,
+      seed = Date.now(),
+      additive = false
+    } = config;
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const noiseValue = this.perlinNoise(x * scale, y * scale, octaves, persistence, seed);
+        let elevation = Math.round(minElevation + noiseValue * (maxElevation - minElevation));
+
+        if (additive) {
+          elevation += this.getElevationAt(x, y);
+        }
+
+        elevation = Math.max(0, Math.min(elevation, 50));
+
+        if (this.getElevationAt(x, y) !== elevation) {
+          this.setElevationAtInternal(x, y, elevation);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public generateHillTerrain(
+    centerX: number,
+    centerY: number,
+    radius: number,
+    height: number,
+    falloff: number = 1
+  ): number {
+    const minX = Math.max(0, centerX - radius);
+    const maxX = Math.min(this.courseData.width - 1, centerX + radius);
+    const minY = Math.max(0, centerY - radius);
+    const maxY = Math.min(this.courseData.height - 1, centerY + radius);
+
+    let modifiedCount = 0;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (distance > radius) continue;
+
+        const normalizedDist = distance / radius;
+        const heightMultiplier = Math.pow(1 - normalizedDist, falloff);
+        const elevation = Math.round(this.getElevationAt(x, y) + height * heightMultiplier);
+
+        const clampedElev = Math.max(0, Math.min(elevation, 50));
+        if (this.getElevationAt(x, y) !== clampedElev) {
+          this.setElevationAtInternal(x, y, clampedElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public generateValleyTerrain(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    width: number,
+    depth: number
+  ): number {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length === 0) return 0;
+
+    const dirX = dx / length;
+    const dirY = dy / length;
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    let modifiedCount = 0;
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const relX = x - startX;
+        const relY = y - startY;
+
+        const projLength = relX * dirX + relY * dirY;
+        if (projLength < 0 || projLength > length) continue;
+
+        const perpDist = Math.abs(relX * perpX + relY * perpY);
+        if (perpDist > width) continue;
+
+        const valleyFactor = 1 - (perpDist / width);
+        const depthAtPoint = Math.round(depth * valleyFactor);
+
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.max(0, currentElev - depthAtPoint);
+
+        if (currentElev !== newElev) {
+          this.setElevationAtInternal(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public generateRidgeTerrain(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    width: number,
+    height: number,
+    roughness: number = 0
+  ): number {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length === 0) return 0;
+
+    const dirX = dx / length;
+    const dirY = dy / length;
+    const perpX = -dirY;
+    const perpY = dirX;
+    const seed = Date.now();
+
+    let modifiedCount = 0;
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const relX = x - startX;
+        const relY = y - startY;
+
+        const projLength = relX * dirX + relY * dirY;
+        if (projLength < 0 || projLength > length) continue;
+
+        const perpDist = Math.abs(relX * perpX + relY * perpY);
+        if (perpDist > width) continue;
+
+        const ridgeFactor = 1 - (perpDist / width);
+        let heightAtPoint = height * ridgeFactor;
+
+        if (roughness > 0) {
+          const noiseValue = this.perlinNoise(x * 0.2, y * 0.2, 3, 0.5, seed);
+          heightAtPoint *= (1 + (noiseValue - 0.5) * roughness);
+        }
+
+        const currentElev = this.getElevationAt(x, y);
+        const newElev = Math.min(50, currentElev + Math.round(heightAtPoint));
+
+        if (currentElev !== newElev) {
+          this.setElevationAtInternal(x, y, newElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public generateTerrainFromHeightmap(
+    heights: number[][],
+    offsetX: number = 0,
+    offsetY: number = 0,
+    scale: number = 1
+  ): number {
+    let modifiedCount = 0;
+
+    for (let y = 0; y < heights.length; y++) {
+      for (let x = 0; x < heights[y].length; x++) {
+        const gridX = offsetX + x;
+        const gridY = offsetY + y;
+
+        if (!this.isValidTile(gridX, gridY)) continue;
+
+        const elevation = Math.round(heights[y][x] * scale);
+        const clampedElev = Math.max(0, Math.min(elevation, 50));
+
+        if (this.getElevationAt(gridX, gridY) !== clampedElev) {
+          this.setElevationAtInternal(gridX, gridY, clampedElev);
+          modifiedCount++;
+        }
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  public getNoisePreview(
+    width: number,
+    height: number,
+    config: NoiseConfig
+  ): number[][] {
+    const {
+      scale = 0.1,
+      octaves = 4,
+      persistence = 0.5,
+      minElevation = 0,
+      maxElevation = 10,
+      seed = Date.now()
+    } = config;
+
+    const preview: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      preview[y] = [];
+      for (let x = 0; x < width; x++) {
+        const noiseValue = this.perlinNoise(x * scale, y * scale, octaves, persistence, seed);
+        preview[y][x] = Math.round(minElevation + noiseValue * (maxElevation - minElevation));
+      }
+    }
+
+    return preview;
+  }
+}
+
+export interface NoiseConfig {
+  scale?: number;
+  octaves?: number;
+  persistence?: number;
+  minElevation?: number;
+  maxElevation?: number;
+  seed?: number;
+  additive?: boolean;
 }
 
 export interface TerrainStatistics {
