@@ -23855,6 +23855,320 @@ export class TerrainBuilder {
   public verifyTerrainChecksum(expectedChecksum: number): boolean {
     return this.getTerrainChecksum() === expectedChecksum;
   }
+
+  public generateTerrainLOD(targetLevel: number): TerrainLODResult {
+    const lodFactor = Math.pow(2, targetLevel);
+    const newWidth = Math.ceil(this.courseData.width / lodFactor);
+    const newHeight = Math.ceil(this.courseData.height / lodFactor);
+
+    const elevations: number[][] = [];
+    const terrainTypes: number[][] = [];
+
+    for (let y = 0; y < newHeight; y++) {
+      elevations[y] = [];
+      terrainTypes[y] = [];
+      for (let x = 0; x < newWidth; x++) {
+        const srcX = Math.floor(x * lodFactor);
+        const srcY = Math.floor(y * lodFactor);
+
+        let elevSum = 0;
+        let elevCount = 0;
+        const typeCounts: Record<number, number> = {};
+
+        for (let dy = 0; dy < lodFactor && srcY + dy < this.courseData.height; dy++) {
+          for (let dx = 0; dx < lodFactor && srcX + dx < this.courseData.width; dx++) {
+            const elev = this.getElevationAt(srcX + dx, srcY + dy);
+            elevSum += elev;
+            elevCount++;
+
+            const typeNum = this.getTerrainTypeNumber(srcX + dx, srcY + dy);
+            typeCounts[typeNum] = (typeCounts[typeNum] || 0) + 1;
+          }
+        }
+
+        elevations[y][x] = elevCount > 0 ? elevSum / elevCount : 0;
+
+        let maxCount = 0;
+        let dominantType = 0;
+        for (const [typeStr, count] of Object.entries(typeCounts)) {
+          if (count > maxCount) {
+            maxCount = count;
+            dominantType = parseInt(typeStr);
+          }
+        }
+        terrainTypes[y][x] = dominantType;
+      }
+    }
+
+    return {
+      level: targetLevel,
+      width: newWidth,
+      height: newHeight,
+      originalWidth: this.courseData.width,
+      originalHeight: this.courseData.height,
+      reductionFactor: lodFactor,
+      elevations,
+      terrainTypes,
+      vertexCount: newWidth * newHeight,
+      triangleCount: (newWidth - 1) * (newHeight - 1) * 2,
+      reductionPercent: ((1 - (newWidth * newHeight) / (this.courseData.width * this.courseData.height)) * 100)
+    };
+  }
+
+  public generateLODChain(maxLevel: number = 4): TerrainLODChain {
+    const levels: TerrainLODResult[] = [];
+
+    levels.push({
+      level: 0,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      originalWidth: this.courseData.width,
+      originalHeight: this.courseData.height,
+      reductionFactor: 1,
+      elevations: [],
+      terrainTypes: [],
+      vertexCount: this.courseData.width * this.courseData.height,
+      triangleCount: (this.courseData.width - 1) * (this.courseData.height - 1) * 2,
+      reductionPercent: 0
+    });
+
+    for (let level = 1; level <= maxLevel; level++) {
+      const lodResult = this.generateTerrainLOD(level);
+      if (lodResult.width < 2 || lodResult.height < 2) break;
+      levels.push(lodResult);
+    }
+
+    const totalVertices = levels.reduce((sum, l) => sum + l.vertexCount, 0);
+    const totalTriangles = levels.reduce((sum, l) => sum + l.triangleCount, 0);
+
+    return {
+      levels,
+      levelCount: levels.length,
+      totalVertexCount: totalVertices,
+      totalTriangleCount: totalTriangles,
+      memoryEstimateBytes: totalVertices * 12 + totalTriangles * 6
+    };
+  }
+
+  public selectLODForDistance(distance: number, lodDistances: number[] = [50, 100, 200, 400]): number {
+    for (let i = 0; i < lodDistances.length; i++) {
+      if (distance < lodDistances[i]) {
+        return i;
+      }
+    }
+    return lodDistances.length;
+  }
+
+  public computeLODTransitionFactor(distance: number, lodDistances: number[], blendRange: number = 10): LODTransitionInfo {
+    const currentLOD = this.selectLODForDistance(distance, lodDistances);
+    const nextLOD = Math.min(currentLOD + 1, lodDistances.length);
+
+    if (currentLOD >= lodDistances.length) {
+      return { currentLOD, nextLOD: currentLOD, blendFactor: 0, isTransitioning: false };
+    }
+
+    const lodThreshold = lodDistances[currentLOD];
+    const distanceFromThreshold = lodThreshold - distance;
+
+    if (distanceFromThreshold > blendRange) {
+      return { currentLOD, nextLOD: currentLOD, blendFactor: 0, isTransitioning: false };
+    }
+
+    const blendFactor = 1 - (distanceFromThreshold / blendRange);
+    return { currentLOD, nextLOD, blendFactor: Math.max(0, Math.min(1, blendFactor)), isTransitioning: true };
+  }
+
+  public generateGeomorphLOD(level: number): GeomorphLODResult {
+    const lod = this.generateTerrainLOD(level);
+    const lodFactor = Math.pow(2, level);
+
+    const morphTargets: number[][] = [];
+    for (let y = 0; y < lod.height; y++) {
+      morphTargets[y] = [];
+      for (let x = 0; x < lod.width; x++) {
+        const srcX = x * lodFactor;
+        const srcY = y * lodFactor;
+        morphTargets[y][x] = this.getElevationAt(srcX, srcY);
+      }
+    }
+
+    const morphDelta: number[][] = [];
+    for (let y = 0; y < lod.height; y++) {
+      morphDelta[y] = [];
+      for (let x = 0; x < lod.width; x++) {
+        morphDelta[y][x] = morphTargets[y][x] - lod.elevations[y][x];
+      }
+    }
+
+    return {
+      ...lod,
+      morphTargets,
+      morphDelta,
+      maxMorphDelta: Math.max(...morphDelta.flat().map(Math.abs))
+    };
+  }
+
+  public computeScreenSpaceError(lodLevel: number, cameraDistance: number, screenHeight: number, fov: number = 60): number {
+    const lodFactor = Math.pow(2, lodLevel);
+    const worldSpaceError = lodFactor * 0.25;
+    const projectedError = (worldSpaceError / cameraDistance) * (screenHeight / (2 * Math.tan((fov * Math.PI) / 360)));
+    return projectedError;
+  }
+
+  public selectLODByScreenError(cameraDistance: number, screenHeight: number, maxScreenError: number = 2, fov: number = 60): number {
+    for (let level = 0; level <= 6; level++) {
+      const screenError = this.computeScreenSpaceError(level, cameraDistance, screenHeight, fov);
+      if (screenError > maxScreenError) {
+        return Math.max(0, level - 1);
+      }
+    }
+    return 6;
+  }
+
+  public computeChunkLODs(chunkSize: number, cameraX: number, cameraY: number, cameraZ: number, lodDistances: number[]): ChunkLODMap {
+    const numChunksX = Math.ceil(this.courseData.width / chunkSize);
+    const numChunksY = Math.ceil(this.courseData.height / chunkSize);
+    const chunks: Array<{ chunkX: number; chunkY: number; lodLevel: number; distance: number }> = [];
+
+    for (let cy = 0; cy < numChunksY; cy++) {
+      for (let cx = 0; cx < numChunksX; cx++) {
+        const centerX = (cx + 0.5) * chunkSize;
+        const centerY = (cy + 0.5) * chunkSize;
+
+        const avgElev = this.sampleElevationAt(centerX, centerY);
+
+        const dx = centerX - cameraX;
+        const dy = centerY - cameraY;
+        const dz = avgElev - cameraZ;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        const lodLevel = this.selectLODForDistance(distance, lodDistances);
+        chunks.push({ chunkX: cx, chunkY: cy, lodLevel, distance });
+      }
+    }
+
+    const lodCounts: Record<number, number> = {};
+    for (const chunk of chunks) {
+      lodCounts[chunk.lodLevel] = (lodCounts[chunk.lodLevel] || 0) + 1;
+    }
+
+    return {
+      chunkSize,
+      numChunksX,
+      numChunksY,
+      totalChunks: numChunksX * numChunksY,
+      chunks,
+      lodDistribution: lodCounts
+    };
+  }
+
+  public generateStitchingIndices(
+    lodLevel: number,
+    neighborLODs: { north?: number; south?: number; east?: number; west?: number }
+  ): TerrainStitchingResult {
+    const lodFactor = Math.pow(2, lodLevel);
+    const lodWidth = Math.ceil(this.courseData.width / lodFactor);
+    const lodHeight = Math.ceil(this.courseData.height / lodFactor);
+
+    const stitchVertices: Array<{ x: number; y: number; edge: 'north' | 'south' | 'east' | 'west' }> = [];
+    const stitchIndices: number[] = [];
+
+    const processEdge = (edge: 'north' | 'south' | 'east' | 'west', neighborLOD: number | undefined) => {
+      if (neighborLOD === undefined || neighborLOD <= lodLevel) return;
+
+      const lodDiff = neighborLOD - lodLevel;
+      const skipFactor = Math.pow(2, lodDiff);
+
+      if (edge === 'north' || edge === 'south') {
+        const y = edge === 'north' ? 0 : lodHeight - 1;
+        for (let x = 0; x < lodWidth - 1; x++) {
+          if (x % skipFactor !== 0) {
+            stitchVertices.push({ x, y, edge });
+          }
+        }
+      } else {
+        const x = edge === 'west' ? 0 : lodWidth - 1;
+        for (let y = 0; y < lodHeight - 1; y++) {
+          if (y % skipFactor !== 0) {
+            stitchVertices.push({ x, y, edge });
+          }
+        }
+      }
+    };
+
+    processEdge('north', neighborLODs.north);
+    processEdge('south', neighborLODs.south);
+    processEdge('east', neighborLODs.east);
+    processEdge('west', neighborLODs.west);
+
+    return {
+      lodLevel,
+      lodWidth,
+      lodHeight,
+      neighborLODs,
+      stitchVertices,
+      stitchIndices,
+      needsStitching: stitchVertices.length > 0
+    };
+  }
+
+  public computeLODStatistics(): TerrainLODStatistics {
+    const chain = this.generateLODChain(5);
+    const levels: Array<{ level: number; width: number; height: number; vertices: number; triangles: number; reduction: number }> = [];
+
+    for (const lod of chain.levels) {
+      levels.push({
+        level: lod.level,
+        width: lod.width,
+        height: lod.height,
+        vertices: lod.vertexCount,
+        triangles: lod.triangleCount,
+        reduction: lod.reductionPercent
+      });
+    }
+
+    const baseVertices = levels[0].vertices;
+    const baseTriangles = levels[0].triangles;
+    const minVertices = levels[levels.length - 1].vertices;
+    const minTriangles = levels[levels.length - 1].triangles;
+
+    return {
+      levels,
+      totalLevels: levels.length,
+      baseVertexCount: baseVertices,
+      baseTriangleCount: baseTriangles,
+      minVertexCount: minVertices,
+      minTriangleCount: minTriangles,
+      maxReductionPercent: ((1 - minVertices / baseVertices) * 100),
+      estimatedMemoryBytes: chain.memoryEstimateBytes
+    };
+  }
+
+  public sampleLODElevation(lodResult: TerrainLODResult, worldX: number, worldY: number): number {
+    const lodX = worldX / lodResult.reductionFactor;
+    const lodY = worldY / lodResult.reductionFactor;
+
+    const x0 = Math.floor(lodX);
+    const y0 = Math.floor(lodY);
+    const x1 = Math.min(x0 + 1, lodResult.width - 1);
+    const y1 = Math.min(y0 + 1, lodResult.height - 1);
+
+    const fx = lodX - x0;
+    const fy = lodY - y0;
+
+    const e00 = lodResult.elevations[y0]?.[x0] ?? 0;
+    const e10 = lodResult.elevations[y0]?.[x1] ?? 0;
+    const e01 = lodResult.elevations[y1]?.[x0] ?? 0;
+    const e11 = lodResult.elevations[y1]?.[x1] ?? 0;
+
+    return e00 * (1 - fx) * (1 - fy) + e10 * fx * (1 - fy) + e01 * (1 - fx) * fy + e11 * fx * fy;
+  }
+
+  private getTerrainTypeNumber(x: number, y: number): number {
+    const type = this.getTerrainTypeAt(x, y);
+    const typeMap: Record<string, number> = { fairway: 0, rough: 1, green: 2, bunker: 3, water: 4 };
+    return typeMap[type] ?? 0;
+  }
 }
 
 export interface CompressedElevationData {
@@ -26082,4 +26396,69 @@ export interface MultiscaleTextureResult {
   roughnessScaleDependence: number;
   dominantTextureScale: number;
   isFractal: boolean;
+}
+
+export interface TerrainLODResult {
+  level: number;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+  reductionFactor: number;
+  elevations: number[][];
+  terrainTypes: number[][];
+  vertexCount: number;
+  triangleCount: number;
+  reductionPercent: number;
+}
+
+export interface TerrainLODChain {
+  levels: TerrainLODResult[];
+  levelCount: number;
+  totalVertexCount: number;
+  totalTriangleCount: number;
+  memoryEstimateBytes: number;
+}
+
+export interface LODTransitionInfo {
+  currentLOD: number;
+  nextLOD: number;
+  blendFactor: number;
+  isTransitioning: boolean;
+}
+
+export interface GeomorphLODResult extends TerrainLODResult {
+  morphTargets: number[][];
+  morphDelta: number[][];
+  maxMorphDelta: number;
+}
+
+export interface ChunkLODMap {
+  chunkSize: number;
+  numChunksX: number;
+  numChunksY: number;
+  totalChunks: number;
+  chunks: Array<{ chunkX: number; chunkY: number; lodLevel: number; distance: number }>;
+  lodDistribution: Record<number, number>;
+}
+
+export interface TerrainStitchingResult {
+  lodLevel: number;
+  lodWidth: number;
+  lodHeight: number;
+  neighborLODs: { north?: number; south?: number; east?: number; west?: number };
+  stitchVertices: Array<{ x: number; y: number; edge: 'north' | 'south' | 'east' | 'west' }>;
+  stitchIndices: number[];
+  needsStitching: boolean;
+}
+
+export interface TerrainLODStatistics {
+  levels: Array<{ level: number; width: number; height: number; vertices: number; triangles: number; reduction: number }>;
+  totalLevels: number;
+  baseVertexCount: number;
+  baseTriangleCount: number;
+  minVertexCount: number;
+  minTriangleCount: number;
+  maxReductionPercent: number;
+  estimatedMemoryBytes: number;
 }
