@@ -26818,6 +26818,274 @@ export class TerrainBuilder {
       vulnerableAreaPercentage: vulnerableData.percentageVulnerable
     };
   }
+
+  public computeSunPosition(timeOfDay: number): SunPositionData {
+    const normalizedTime = timeOfDay % 24;
+
+    const sunriseHour = 6;
+    const sunsetHour = 20;
+    const dayLength = sunsetHour - sunriseHour;
+
+    let elevation = 0;
+    let azimuth = 0;
+    let isDaytime = false;
+
+    if (normalizedTime >= sunriseHour && normalizedTime <= sunsetHour) {
+      isDaytime = true;
+      const dayProgress = (normalizedTime - sunriseHour) / dayLength;
+      elevation = Math.sin(dayProgress * Math.PI) * 75;
+      azimuth = 90 + dayProgress * 180;
+    } else {
+      isDaytime = false;
+      const nightProgress = normalizedTime < sunriseHour
+        ? (normalizedTime + 24 - sunsetHour) / (24 - dayLength)
+        : (normalizedTime - sunsetHour) / (24 - dayLength);
+      elevation = -10 - Math.sin(nightProgress * Math.PI) * 20;
+      azimuth = 270 + nightProgress * 180;
+    }
+
+    const elevationRad = (elevation * Math.PI) / 180;
+    const azimuthRad = (azimuth * Math.PI) / 180;
+
+    const dirX = Math.cos(elevationRad) * Math.sin(azimuthRad);
+    const dirY = Math.sin(elevationRad);
+    const dirZ = Math.cos(elevationRad) * Math.cos(azimuthRad);
+
+    return {
+      elevation,
+      azimuth,
+      direction: { x: dirX, y: dirY, z: dirZ },
+      timeOfDay: normalizedTime,
+      isDaytime,
+      sunriseHour,
+      sunsetHour
+    };
+  }
+
+  public computeDaylightIntensity(sunPosition: SunPositionData): DaylightIntensityData {
+    const { elevation, isDaytime } = sunPosition;
+
+    let intensity = 0;
+    let ambientMultiplier = 0;
+    let diffuseMultiplier = 0;
+
+    if (isDaytime) {
+      const normalizedElevation = Math.max(0, elevation / 75);
+      intensity = Math.pow(normalizedElevation, 0.5);
+      ambientMultiplier = 0.3 + 0.4 * intensity;
+      diffuseMultiplier = 0.2 + 0.8 * intensity;
+    } else {
+      intensity = 0.05;
+      ambientMultiplier = 0.15;
+      diffuseMultiplier = 0.05;
+    }
+
+    const twilightFactor = Math.abs(elevation) < 10 ? (10 - Math.abs(elevation)) / 10 : 0;
+
+    return {
+      intensity,
+      ambientMultiplier,
+      diffuseMultiplier,
+      twilightFactor,
+      isDaytime
+    };
+  }
+
+  public computeSunlightColor(sunPosition: SunPositionData): SunlightColorData {
+    const { elevation, isDaytime } = sunPosition;
+
+    let r = 1, g = 1, b = 1;
+
+    if (isDaytime) {
+      if (elevation < 15) {
+        const warmFactor = (15 - elevation) / 15;
+        r = 1;
+        g = 1 - warmFactor * 0.3;
+        b = 1 - warmFactor * 0.5;
+      } else if (elevation > 60) {
+        const coolFactor = (elevation - 60) / 15;
+        r = 1 - coolFactor * 0.05;
+        g = 1 - coolFactor * 0.02;
+        b = 1;
+      }
+    } else {
+      r = 0.2;
+      g = 0.25;
+      b = 0.4;
+    }
+
+    return {
+      color: { r, g, b },
+      colorHex: `#${Math.round(r * 255).toString(16).padStart(2, '0')}${Math.round(g * 255).toString(16).padStart(2, '0')}${Math.round(b * 255).toString(16).padStart(2, '0')}`,
+      isDaytime,
+      elevation
+    };
+  }
+
+  public computeTerrainLightingAt(x: number, z: number, sunPosition: SunPositionData): TerrainLightingData {
+    const normalResult = this.sampleNormalBilinear(x, z);
+    const normal = normalResult.normal;
+
+    const sunDir = sunPosition.direction;
+    const dotProduct = normal.x * sunDir.x + normal.y * sunDir.y + normal.z * sunDir.z;
+    const diffuseFactor = Math.max(0, dotProduct);
+
+    const intensity = this.computeDaylightIntensity(sunPosition);
+    const color = this.computeSunlightColor(sunPosition);
+
+    const litR = color.color.r * (intensity.ambientMultiplier + diffuseFactor * intensity.diffuseMultiplier);
+    const litG = color.color.g * (intensity.ambientMultiplier + diffuseFactor * intensity.diffuseMultiplier);
+    const litB = color.color.b * (intensity.ambientMultiplier + diffuseFactor * intensity.diffuseMultiplier);
+
+    return {
+      position: { x, z },
+      normal: { x: normal.x, y: normal.y, z: normal.z },
+      diffuseFactor,
+      litColor: { r: Math.min(1, litR), g: Math.min(1, litG), b: Math.min(1, litB) },
+      inShadow: false
+    };
+  }
+
+  public computeTerrainLightingMap(sunPosition: SunPositionData, resolution: number = 1): TerrainLightingMapData {
+    const lightingMap: Array<Array<{ diffuse: number; r: number; g: number; b: number }>> = [];
+    let totalDiffuse = 0;
+
+    for (let z = 0; z < this.courseData.height; z += resolution) {
+      const row: Array<{ diffuse: number; r: number; g: number; b: number }> = [];
+      for (let x = 0; x < this.courseData.width; x += resolution) {
+        const lighting = this.computeTerrainLightingAt(x, z, sunPosition);
+        row.push({
+          diffuse: lighting.diffuseFactor,
+          r: lighting.litColor.r,
+          g: lighting.litColor.g,
+          b: lighting.litColor.b
+        });
+        totalDiffuse += lighting.diffuseFactor;
+      }
+      lightingMap.push(row);
+    }
+
+    const tileCount = Math.ceil(this.courseData.width / resolution) * Math.ceil(this.courseData.height / resolution);
+
+    return {
+      lightingMap,
+      width: Math.ceil(this.courseData.width / resolution),
+      height: Math.ceil(this.courseData.height / resolution),
+      resolution,
+      averageDiffuse: totalDiffuse / tileCount,
+      sunPosition
+    };
+  }
+
+  public computeAtmosphericScattering(sunPosition: SunPositionData, viewerHeight: number = 10): AtmosphericScatteringData {
+    const { elevation, isDaytime } = sunPosition;
+
+    let fogDensity = 0.01;
+    let fogColor = { r: 0.7, g: 0.8, b: 0.9 };
+    let skyColorZenith = { r: 0.4, g: 0.6, b: 1.0 };
+    let skyColorHorizon = { r: 0.7, g: 0.8, b: 0.9 };
+
+    if (!isDaytime) {
+      fogDensity = 0.02;
+      fogColor = { r: 0.1, g: 0.12, b: 0.2 };
+      skyColorZenith = { r: 0.02, g: 0.05, b: 0.15 };
+      skyColorHorizon = { r: 0.1, g: 0.12, b: 0.2 };
+    } else if (elevation < 15) {
+      const factor = elevation / 15;
+      fogColor = {
+        r: 0.9 - factor * 0.2,
+        g: 0.6 + factor * 0.2,
+        b: 0.5 + factor * 0.4
+      };
+      skyColorZenith = {
+        r: 0.9 - factor * 0.5,
+        g: 0.5 + factor * 0.1,
+        b: 0.4 + factor * 0.6
+      };
+      skyColorHorizon = {
+        r: 1.0 - factor * 0.3,
+        g: 0.5 + factor * 0.3,
+        b: 0.3 + factor * 0.6
+      };
+    }
+
+    const rayleighFactor = Math.exp(-viewerHeight * 0.001);
+
+    return {
+      fogDensity,
+      fogColor,
+      skyColorZenith,
+      skyColorHorizon,
+      rayleighFactor,
+      isDaytime,
+      sunElevation: elevation
+    };
+  }
+
+  public computeDayNightTransition(currentTime: number, transitionDuration: number = 1): DayNightTransitionData {
+    const sunPos = this.computeSunPosition(currentTime);
+    const intensity = this.computeDaylightIntensity(sunPos);
+
+    const { sunriseHour, sunsetHour } = sunPos;
+    let transitionPhase: 'day' | 'night' | 'dawn' | 'dusk' = 'day';
+    let transitionProgress = 0;
+
+    if (currentTime >= sunriseHour - transitionDuration && currentTime < sunriseHour + transitionDuration) {
+      transitionPhase = 'dawn';
+      transitionProgress = (currentTime - (sunriseHour - transitionDuration)) / (transitionDuration * 2);
+    } else if (currentTime >= sunsetHour - transitionDuration && currentTime < sunsetHour + transitionDuration) {
+      transitionPhase = 'dusk';
+      transitionProgress = (currentTime - (sunsetHour - transitionDuration)) / (transitionDuration * 2);
+    } else if (sunPos.isDaytime) {
+      transitionPhase = 'day';
+      transitionProgress = 1;
+    } else {
+      transitionPhase = 'night';
+      transitionProgress = 0;
+    }
+
+    return {
+      currentTime,
+      transitionPhase,
+      transitionProgress,
+      sunPosition: sunPos,
+      lightIntensity: intensity.intensity,
+      ambientLevel: intensity.ambientMultiplier
+    };
+  }
+
+  public computeLightingStatistics(sunPosition: SunPositionData): LightingStatistics {
+    const lightingMap = this.computeTerrainLightingMap(sunPosition, 2);
+
+    let minDiffuse = Infinity, maxDiffuse = -Infinity;
+    let totalR = 0, totalG = 0, totalB = 0;
+    let sampleCount = 0;
+
+    for (const row of lightingMap.lightingMap) {
+      for (const cell of row) {
+        minDiffuse = Math.min(minDiffuse, cell.diffuse);
+        maxDiffuse = Math.max(maxDiffuse, cell.diffuse);
+        totalR += cell.r;
+        totalG += cell.g;
+        totalB += cell.b;
+        sampleCount++;
+      }
+    }
+
+    return {
+      minDiffuse,
+      maxDiffuse,
+      averageDiffuse: lightingMap.averageDiffuse,
+      averageColor: {
+        r: totalR / sampleCount,
+        g: totalG / sampleCount,
+        b: totalB / sampleCount
+      },
+      sunElevation: sunPosition.elevation,
+      sunAzimuth: sunPosition.azimuth,
+      isDaytime: sunPosition.isDaytime
+    };
+  }
 }
 
 export interface WaterTileData {
@@ -29650,4 +29918,75 @@ export interface ErosionStatistics {
   totalWeathering: number;
   vulnerableAreaCount: number;
   vulnerableAreaPercentage: number;
+}
+
+export interface SunPositionData {
+  elevation: number;
+  azimuth: number;
+  direction: { x: number; y: number; z: number };
+  timeOfDay: number;
+  isDaytime: boolean;
+  sunriseHour: number;
+  sunsetHour: number;
+}
+
+export interface DaylightIntensityData {
+  intensity: number;
+  ambientMultiplier: number;
+  diffuseMultiplier: number;
+  twilightFactor: number;
+  isDaytime: boolean;
+}
+
+export interface SunlightColorData {
+  color: { r: number; g: number; b: number };
+  colorHex: string;
+  isDaytime: boolean;
+  elevation: number;
+}
+
+export interface TerrainLightingData {
+  position: { x: number; z: number };
+  normal: { x: number; y: number; z: number };
+  diffuseFactor: number;
+  litColor: { r: number; g: number; b: number };
+  inShadow: boolean;
+}
+
+export interface TerrainLightingMapData {
+  lightingMap: Array<Array<{ diffuse: number; r: number; g: number; b: number }>>;
+  width: number;
+  height: number;
+  resolution: number;
+  averageDiffuse: number;
+  sunPosition: SunPositionData;
+}
+
+export interface AtmosphericScatteringData {
+  fogDensity: number;
+  fogColor: { r: number; g: number; b: number };
+  skyColorZenith: { r: number; g: number; b: number };
+  skyColorHorizon: { r: number; g: number; b: number };
+  rayleighFactor: number;
+  isDaytime: boolean;
+  sunElevation: number;
+}
+
+export interface DayNightTransitionData {
+  currentTime: number;
+  transitionPhase: 'day' | 'night' | 'dawn' | 'dusk';
+  transitionProgress: number;
+  sunPosition: SunPositionData;
+  lightIntensity: number;
+  ambientLevel: number;
+}
+
+export interface LightingStatistics {
+  minDiffuse: number;
+  maxDiffuse: number;
+  averageDiffuse: number;
+  averageColor: { r: number; g: number; b: number };
+  sunElevation: number;
+  sunAzimuth: number;
+  isDaytime: boolean;
 }
