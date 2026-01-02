@@ -8243,6 +8243,162 @@ export class TerrainBuilder {
     return blindSpots;
   }
 
+  public computeTerrainFrequencyComponents(windowSize: number = 8): FrequencyAnalysis {
+    const { width, height } = this.courseData;
+
+    let lowFreqEnergy = 0;
+    let midFreqEnergy = 0;
+    let highFreqEnergy = 0;
+
+    for (let y = 0; y < height - windowSize; y += windowSize / 2) {
+      for (let x = 0; x < width - windowSize; x += windowSize / 2) {
+        const window = this.extractElevationWindow(x, y, windowSize);
+        const { low, mid, high } = this.analyzeWindowFrequencies(window);
+        lowFreqEnergy += low;
+        midFreqEnergy += mid;
+        highFreqEnergy += high;
+      }
+    }
+
+    const totalEnergy = lowFreqEnergy + midFreqEnergy + highFreqEnergy || 1;
+
+    return {
+      lowFrequencyRatio: lowFreqEnergy / totalEnergy,
+      midFrequencyRatio: midFreqEnergy / totalEnergy,
+      highFrequencyRatio: highFreqEnergy / totalEnergy,
+      dominantScale: lowFreqEnergy > midFreqEnergy && lowFreqEnergy > highFreqEnergy ? 'coarse' :
+                     midFreqEnergy > highFreqEnergy ? 'medium' : 'fine',
+      roughnessIndex: highFreqEnergy / (lowFreqEnergy + 0.001)
+    };
+  }
+
+  private extractElevationWindow(startX: number, startY: number, size: number): number[][] {
+    const window: number[][] = [];
+    for (let dy = 0; dy < size; dy++) {
+      window[dy] = [];
+      for (let dx = 0; dx < size; dx++) {
+        const x = Math.min(startX + dx, this.courseData.width - 1);
+        const y = Math.min(startY + dy, this.courseData.height - 1);
+        window[dy][dx] = this.getElevationAt(x, y);
+      }
+    }
+    return window;
+  }
+
+  private analyzeWindowFrequencies(window: number[][]): { low: number; mid: number; high: number } {
+    const size = window.length;
+    let meanElev = 0;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        meanElev += window[y][x];
+      }
+    }
+    meanElev /= (size * size);
+
+    let variance = 0;
+    let localVariance = 0;
+    let microVariance = 0;
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const diff = window[y][x] - meanElev;
+        variance += diff * diff;
+
+        if (x > 0 && y > 0) {
+          const localDiff = window[y][x] - window[y - 1][x - 1];
+          localVariance += localDiff * localDiff;
+        }
+
+        if (x > 0) {
+          const microDiff = window[y][x] - window[y][x - 1];
+          microVariance += microDiff * microDiff;
+        }
+      }
+    }
+
+    return {
+      low: variance / (size * size),
+      mid: localVariance / ((size - 1) * (size - 1) || 1),
+      high: microVariance / (size * (size - 1) || 1)
+    };
+  }
+
+  public classifyRoughness(gridX: number, gridY: number, radius: number = 3): 'smooth' | 'slight' | 'moderate' | 'rough' | 'very_rough' {
+    const roughness = this.getLocalRoughness(gridX, gridY, radius);
+
+    if (roughness < 0.05) return 'smooth';
+    if (roughness < 0.15) return 'slight';
+    if (roughness < 0.3) return 'moderate';
+    if (roughness < 0.5) return 'rough';
+    return 'very_rough';
+  }
+
+  public getRoughnessAnalysis(radius: number = 3): RoughnessAnalysis {
+    const roughnessMap = this.computeRoughnessMap(radius);
+    const { width, height } = this.courseData;
+
+    const counts = {
+      smooth: 0,
+      slight: 0,
+      moderate: 0,
+      rough: 0,
+      very_rough: 0
+    };
+
+    let totalRoughness = 0;
+    let maxRoughness = 0;
+    let maxRoughnessLocation = { x: 0, y: 0 };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const roughness = roughnessMap[y][x];
+        totalRoughness += roughness;
+
+        if (roughness > maxRoughness) {
+          maxRoughness = roughness;
+          maxRoughnessLocation = { x, y };
+        }
+
+        if (roughness < 0.05) counts.smooth++;
+        else if (roughness < 0.15) counts.slight++;
+        else if (roughness < 0.3) counts.moderate++;
+        else if (roughness < 0.5) counts.rough++;
+        else counts.very_rough++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      averageRoughness: totalRoughness / totalTiles,
+      maxRoughness,
+      maxRoughnessLocation,
+      smoothCount: counts.smooth,
+      slightCount: counts.slight,
+      moderateCount: counts.moderate,
+      roughCount: counts.rough,
+      veryRoughCount: counts.very_rough,
+      smoothPercentage: (counts.smooth / totalTiles) * 100
+    };
+  }
+
+  public findRoughPatches(threshold: number = 0.3, radius: number = 3): Array<{ x: number; y: number; roughness: number }> {
+    const roughnessMap = this.computeRoughnessMap(radius);
+    const { width, height } = this.courseData;
+    const patches: Array<{ x: number; y: number; roughness: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (roughnessMap[y][x] >= threshold) {
+          patches.push({ x, y, roughness: roughnessMap[y][x] });
+        }
+      }
+    }
+
+    patches.sort((a, b) => b.roughness - a.roughness);
+    return patches;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -13387,6 +13543,26 @@ export interface VisibilityAnalysis {
   farthestVisiblePoint: { x: number; y: number; distance: number };
   viewerLocation: { x: number; y: number };
   viewerHeight: number;
+}
+
+export interface FrequencyAnalysis {
+  lowFrequencyRatio: number;
+  midFrequencyRatio: number;
+  highFrequencyRatio: number;
+  dominantScale: 'coarse' | 'medium' | 'fine';
+  roughnessIndex: number;
+}
+
+export interface RoughnessAnalysis {
+  averageRoughness: number;
+  maxRoughness: number;
+  maxRoughnessLocation: { x: number; y: number };
+  smoothCount: number;
+  slightCount: number;
+  moderateCount: number;
+  roughCount: number;
+  veryRoughCount: number;
+  smoothPercentage: number;
 }
 
 export interface LineSampleOptions {
