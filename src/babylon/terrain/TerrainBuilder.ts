@@ -6838,6 +6838,222 @@ export class TerrainBuilder {
     return modifiedCount;
   }
 
+  public exportToHeightmap(options: HeightmapExportOptions = {}): HeightmapData {
+    const {
+      startX = 0,
+      startY = 0,
+      endX = this.courseData.width - 1,
+      endY = this.courseData.height - 1,
+      normalize = true,
+      targetMin = 0,
+      targetMax = 255,
+      includeCornerHeights = false
+    } = options;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(this.courseData.width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(this.courseData.height - 1, Math.max(startY, endY));
+
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+      }
+    }
+
+    const elevRange = maxElev - minElev;
+    const targetRange = targetMax - targetMin;
+    const heights: number[][] = [];
+    const cornerHeights: CornerHeights[][] | undefined = includeCornerHeights ? [] : undefined;
+
+    for (let y = minY; y <= maxY; y++) {
+      const row: number[] = [];
+      const cornerRow: CornerHeights[] | undefined = includeCornerHeights ? [] : undefined;
+
+      for (let x = minX; x <= maxX; x++) {
+        const elev = this.getElevationAt(x, y);
+
+        if (normalize && elevRange > 0) {
+          const normalized = ((elev - minElev) / elevRange) * targetRange + targetMin;
+          row.push(Math.round(normalized));
+        } else {
+          row.push(elev);
+        }
+
+        if (includeCornerHeights && cornerRow) {
+          cornerRow.push(this.getCornerHeights(x, y));
+        }
+      }
+
+      heights.push(row);
+      if (includeCornerHeights && cornerHeights && cornerRow) {
+        cornerHeights.push(cornerRow);
+      }
+    }
+
+    return {
+      width,
+      height,
+      heights,
+      cornerHeights,
+      metadata: {
+        originalMinElevation: minElev,
+        originalMaxElevation: maxElev,
+        normalized: normalize,
+        targetMin: normalize ? targetMin : undefined,
+        targetMax: normalize ? targetMax : undefined,
+        region: { startX: minX, startY: minY, endX: maxX, endY: maxY }
+      }
+    };
+  }
+
+  public exportToHeightmapFlat(options: HeightmapExportOptions = {}): number[] {
+    const data = this.exportToHeightmap(options);
+    const flat: number[] = [];
+
+    for (let y = 0; y < data.height; y++) {
+      for (let x = 0; x < data.width; x++) {
+        flat.push(data.heights[y][x]);
+      }
+    }
+
+    return flat;
+  }
+
+  public exportToHeightmapRGBA(options: HeightmapExportOptions = {}): Uint8Array {
+    const normalizedOptions = { ...options, normalize: true, targetMin: 0, targetMax: 255 };
+    const data = this.exportToHeightmap(normalizedOptions);
+    const rgba = new Uint8Array(data.width * data.height * 4);
+
+    let idx = 0;
+    for (let y = 0; y < data.height; y++) {
+      for (let x = 0; x < data.width; x++) {
+        const value = Math.max(0, Math.min(255, data.heights[y][x]));
+        rgba[idx++] = value;
+        rgba[idx++] = value;
+        rgba[idx++] = value;
+        rgba[idx++] = 255;
+      }
+    }
+
+    return rgba;
+  }
+
+  public getHeightmapStatistics(options: HeightmapExportOptions = {}): HeightmapStatistics {
+    const data = this.exportToHeightmap({ ...options, normalize: false });
+    const values: number[] = [];
+    let sum = 0;
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (let y = 0; y < data.height; y++) {
+      for (let x = 0; x < data.width; x++) {
+        const v = data.heights[y][x];
+        values.push(v);
+        sum += v;
+        min = Math.min(min, v);
+        max = Math.max(max, v);
+      }
+    }
+
+    const count = values.length;
+    const mean = count > 0 ? sum / count : 0;
+
+    let varianceSum = 0;
+    for (const v of values) {
+      varianceSum += (v - mean) * (v - mean);
+    }
+    const variance = count > 0 ? varianceSum / count : 0;
+    const stdDev = Math.sqrt(variance);
+
+    values.sort((a, b) => a - b);
+    const median = count > 0 ? values[Math.floor(count / 2)] : 0;
+
+    const histogram = new Array(11).fill(0);
+    const range = max - min || 1;
+    for (const v of values) {
+      const bucket = Math.min(10, Math.floor(((v - min) / range) * 10));
+      histogram[bucket]++;
+    }
+
+    return {
+      width: data.width,
+      height: data.height,
+      totalPixels: count,
+      min,
+      max,
+      range: max - min,
+      mean,
+      median,
+      stdDev,
+      variance,
+      histogram
+    };
+  }
+
+  public compareHeightmaps(
+    other: number[][] | HeightmapData,
+    options: HeightmapCompareOptions = {}
+  ): HeightmapComparison {
+    const { tolerance = 0 } = options;
+    const current = this.exportToHeightmap({ normalize: false });
+
+    const otherHeights = Array.isArray(other) ? other : other.heights;
+    const otherWidth = Array.isArray(other) ? (other[0]?.length ?? 0) : other.width;
+    const otherHeight = Array.isArray(other) ? other.length : other.height;
+
+    const comparison: HeightmapComparison = {
+      identical: true,
+      withinTolerance: true,
+      dimensionsMatch: current.width === otherWidth && current.height === otherHeight,
+      totalDifferences: 0,
+      maxDifference: 0,
+      avgDifference: 0,
+      differences: []
+    };
+
+    if (!comparison.dimensionsMatch) {
+      comparison.identical = false;
+      comparison.withinTolerance = false;
+      return comparison;
+    }
+
+    let sumDiff = 0;
+    let diffCount = 0;
+
+    for (let y = 0; y < current.height; y++) {
+      for (let x = 0; x < current.width; x++) {
+        const currentVal = current.heights[y]?.[x] ?? 0;
+        const otherVal = otherHeights[y]?.[x] ?? 0;
+        const diff = Math.abs(currentVal - otherVal);
+
+        if (diff > 0) {
+          comparison.identical = false;
+          comparison.totalDifferences++;
+          comparison.maxDifference = Math.max(comparison.maxDifference, diff);
+          sumDiff += diff;
+          diffCount++;
+
+          if (diff > tolerance) {
+            comparison.withinTolerance = false;
+            comparison.differences.push({ x, y, currentValue: currentVal, otherValue: otherVal, difference: diff });
+          }
+        }
+      }
+    }
+
+    comparison.avgDifference = diffCount > 0 ? sumDiff / diffCount : 0;
+    return comparison;
+  }
+
   public getNoisePreview(
     width: number,
     height: number,
@@ -7812,6 +8028,66 @@ export interface RCTMergeOptions {
   conflictResolution?: 'newer' | 'older' | 'blend';
   blendOverlapping?: boolean;
   blendFactor?: number;
+}
+
+export interface HeightmapExportOptions {
+  startX?: number;
+  startY?: number;
+  endX?: number;
+  endY?: number;
+  normalize?: boolean;
+  targetMin?: number;
+  targetMax?: number;
+  includeCornerHeights?: boolean;
+}
+
+export interface HeightmapData {
+  width: number;
+  height: number;
+  heights: number[][];
+  cornerHeights?: CornerHeights[][];
+  metadata: {
+    originalMinElevation: number;
+    originalMaxElevation: number;
+    normalized: boolean;
+    targetMin?: number;
+    targetMax?: number;
+    region: { startX: number; startY: number; endX: number; endY: number };
+  };
+}
+
+export interface HeightmapStatistics {
+  width: number;
+  height: number;
+  totalPixels: number;
+  min: number;
+  max: number;
+  range: number;
+  mean: number;
+  median: number;
+  stdDev: number;
+  variance: number;
+  histogram: number[];
+}
+
+export interface HeightmapCompareOptions {
+  tolerance?: number;
+}
+
+export interface HeightmapComparison {
+  identical: boolean;
+  withinTolerance: boolean;
+  dimensionsMatch: boolean;
+  totalDifferences: number;
+  maxDifference: number;
+  avgDifference: number;
+  differences: Array<{
+    x: number;
+    y: number;
+    currentValue: number;
+    otherValue: number;
+    difference: number;
+  }>;
 }
 
 export interface TerrainDebugInfo {
