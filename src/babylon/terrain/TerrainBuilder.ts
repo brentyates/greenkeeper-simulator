@@ -18983,6 +18983,575 @@ export class TerrainBuilder {
 
     return modifiedCount;
   }
+
+  public detectTerrainBoundaries(): TerrainBoundaryResult {
+    const boundaries: TerrainBoundarySegment[] = [];
+    const boundaryTiles = new Set<string>();
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentType = getTerrainType(this.courseData.layout[y]?.[x] ?? 0);
+
+        if (x < width - 1) {
+          const rightType = getTerrainType(this.courseData.layout[y]?.[x + 1] ?? 0);
+          if (currentType !== rightType) {
+            boundaries.push({
+              x1: x,
+              y1: y,
+              x2: x + 1,
+              y2: y,
+              fromType: currentType,
+              toType: rightType,
+              direction: 'horizontal',
+              elevationDiff: Math.abs(this.getElevationAt(x, y) - this.getElevationAt(x + 1, y))
+            });
+            boundaryTiles.add(`${x},${y}`);
+            boundaryTiles.add(`${x + 1},${y}`);
+          }
+        }
+
+        if (y < height - 1) {
+          const belowType = getTerrainType(this.courseData.layout[y + 1]?.[x] ?? 0);
+          if (currentType !== belowType) {
+            boundaries.push({
+              x1: x,
+              y1: y,
+              x2: x,
+              y2: y + 1,
+              fromType: currentType,
+              toType: belowType,
+              direction: 'vertical',
+              elevationDiff: Math.abs(this.getElevationAt(x, y) - this.getElevationAt(x, y + 1))
+            });
+            boundaryTiles.add(`${x},${y}`);
+            boundaryTiles.add(`${x},${y + 1}`);
+          }
+        }
+      }
+    }
+
+    const transitionCounts: Record<string, number> = {};
+    for (const seg of boundaries) {
+      const key = `${seg.fromType}->${seg.toType}`;
+      transitionCounts[key] = (transitionCounts[key] || 0) + 1;
+    }
+
+    return {
+      segments: boundaries,
+      boundaryTileCount: boundaryTiles.size,
+      totalSegments: boundaries.length,
+      transitionCounts,
+      boundaryDensity: boundaries.length / (width * height),
+      horizontalSegments: boundaries.filter(s => s.direction === 'horizontal').length,
+      verticalSegments: boundaries.filter(s => s.direction === 'vertical').length
+    };
+  }
+
+  public findBoundaryBetweenTypes(type1: TerrainType, type2: TerrainType): TerrainBoundarySegment[] {
+    const result = this.detectTerrainBoundaries();
+    return result.segments.filter(seg =>
+      (seg.fromType === type1 && seg.toType === type2) ||
+      (seg.fromType === type2 && seg.toType === type1)
+    );
+  }
+
+  public computeBoundaryComplexity(): BoundaryComplexityResult {
+    const boundaries = this.detectTerrainBoundaries();
+    const segments = boundaries.segments;
+
+    if (segments.length === 0) {
+      return {
+        totalLength: 0,
+        tortuosity: 0,
+        branchingFactor: 0,
+        isolatedSegments: 0,
+        connectedComponents: 0,
+        averageSegmentLength: 0,
+        maxChainLength: 0,
+        complexityScore: 0
+      };
+    }
+
+    const adjacencyMap = new Map<string, string[]>();
+
+    for (const seg of segments) {
+      const key1 = `${seg.x1},${seg.y1}`;
+      const key2 = `${seg.x2},${seg.y2}`;
+
+      if (!adjacencyMap.has(key1)) adjacencyMap.set(key1, []);
+      if (!adjacencyMap.has(key2)) adjacencyMap.set(key2, []);
+
+      adjacencyMap.get(key1)!.push(key2);
+      adjacencyMap.get(key2)!.push(key1);
+    }
+
+    const visited = new Set<string>();
+    let connectedComponents = 0;
+    let maxChainLength = 0;
+
+    for (const startKey of adjacencyMap.keys()) {
+      if (visited.has(startKey)) continue;
+
+      connectedComponents++;
+      const queue = [startKey];
+      let componentSize = 0;
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (visited.has(current)) continue;
+        visited.add(current);
+        componentSize++;
+
+        for (const neighbor of adjacencyMap.get(current) || []) {
+          if (!visited.has(neighbor)) {
+            queue.push(neighbor);
+          }
+        }
+      }
+
+      maxChainLength = Math.max(maxChainLength, componentSize);
+    }
+
+    let branchPoints = 0;
+    for (const neighbors of adjacencyMap.values()) {
+      if (neighbors.length > 2) branchPoints++;
+    }
+
+    const isolatedSegments = segments.filter(seg => {
+      const key1 = `${seg.x1},${seg.y1}`;
+      const key2 = `${seg.x2},${seg.y2}`;
+      return (adjacencyMap.get(key1)?.length || 0) <= 1 &&
+             (adjacencyMap.get(key2)?.length || 0) <= 1;
+    }).length;
+
+    const tortuosity = connectedComponents > 0 ? segments.length / connectedComponents : 0;
+    const branchingFactor = adjacencyMap.size > 0 ? branchPoints / adjacencyMap.size : 0;
+
+    const complexityScore = Math.min(100,
+      (tortuosity * 10) +
+      (branchingFactor * 50) +
+      (connectedComponents * 5) +
+      (maxChainLength * 2)
+    );
+
+    return {
+      totalLength: segments.length,
+      tortuosity,
+      branchingFactor,
+      isolatedSegments,
+      connectedComponents,
+      averageSegmentLength: segments.length / Math.max(1, connectedComponents),
+      maxChainLength,
+      complexityScore
+    };
+  }
+
+  public findBoundaryLoops(): BoundaryLoopResult {
+    const boundaries = this.detectTerrainBoundaries();
+    const segments = boundaries.segments;
+
+    const adjacencyMap = new Map<string, Array<{ neighbor: string; segment: TerrainBoundarySegment }>>();
+
+    for (const seg of segments) {
+      const key1 = `${seg.x1},${seg.y1}`;
+      const key2 = `${seg.x2},${seg.y2}`;
+
+      if (!adjacencyMap.has(key1)) adjacencyMap.set(key1, []);
+      if (!adjacencyMap.has(key2)) adjacencyMap.set(key2, []);
+
+      adjacencyMap.get(key1)!.push({ neighbor: key2, segment: seg });
+      adjacencyMap.get(key2)!.push({ neighbor: key1, segment: seg });
+    }
+
+    const loops: TerrainBoundaryLoop[] = [];
+    const visitedEdges = new Set<string>();
+
+    const findLoop = (startKey: string, maxDepth: number = 50): TerrainBoundarySegment[] | null => {
+      const stack: Array<{ key: string; path: TerrainBoundarySegment[]; visitedKeys: Set<string> }> = [
+        { key: startKey, path: [], visitedKeys: new Set([startKey]) }
+      ];
+
+      while (stack.length > 0) {
+        const { key, path, visitedKeys } = stack.pop()!;
+
+        if (path.length > maxDepth) continue;
+
+        for (const { neighbor, segment } of adjacencyMap.get(key) || []) {
+          const edgeKey = `${Math.min(segment.x1, segment.x2)},${Math.min(segment.y1, segment.y2)}-${Math.max(segment.x1, segment.x2)},${Math.max(segment.y1, segment.y2)}`;
+
+          if (path.some(s =>
+            s.x1 === segment.x1 && s.y1 === segment.y1 &&
+            s.x2 === segment.x2 && s.y2 === segment.y2
+          )) continue;
+
+          if (neighbor === startKey && path.length >= 3) {
+            if (!visitedEdges.has(edgeKey)) {
+              const loopPath = [...path, segment];
+              for (const s of loopPath) {
+                const k = `${Math.min(s.x1, s.x2)},${Math.min(s.y1, s.y2)}-${Math.max(s.x1, s.x2)},${Math.max(s.y1, s.y2)}`;
+                visitedEdges.add(k);
+              }
+              return loopPath;
+            }
+          }
+
+          if (!visitedKeys.has(neighbor)) {
+            const newVisited = new Set(visitedKeys);
+            newVisited.add(neighbor);
+            stack.push({ key: neighbor, path: [...path, segment], visitedKeys: newVisited });
+          }
+        }
+      }
+
+      return null;
+    };
+
+    for (const startKey of adjacencyMap.keys()) {
+      const loop = findLoop(startKey);
+      if (loop && loop.length > 0) {
+        const terrainTypes = new Set<TerrainType>();
+        for (const seg of loop) {
+          terrainTypes.add(seg.fromType);
+          terrainTypes.add(seg.toType);
+        }
+
+        loops.push({
+          segments: loop,
+          length: loop.length,
+          enclosedTerrainTypes: Array.from(terrainTypes),
+          isClosed: true
+        });
+      }
+    }
+
+    return {
+      loops,
+      totalLoops: loops.length,
+      averageLoopLength: loops.length > 0 ? loops.reduce((s, l) => s + l.length, 0) / loops.length : 0,
+      maxLoopLength: loops.length > 0 ? Math.max(...loops.map(l => l.length)) : 0,
+      minLoopLength: loops.length > 0 ? Math.min(...loops.map(l => l.length)) : 0
+    };
+  }
+
+  public computeBoundaryElevationProfile(type1: TerrainType, type2: TerrainType): BoundaryElevationProfile {
+    const boundarySegments = this.findBoundaryBetweenTypes(type1, type2);
+
+    if (boundarySegments.length === 0) {
+      return {
+        type1,
+        type2,
+        segmentCount: 0,
+        elevationDiffs: [],
+        meanElevationDiff: 0,
+        maxElevationDiff: 0,
+        minElevationDiff: 0,
+        stdDevElevationDiff: 0,
+        hasCliffs: false,
+        cliffCount: 0
+      };
+    }
+
+    const elevationDiffs = boundarySegments.map(seg => seg.elevationDiff);
+    const mean = elevationDiffs.reduce((s, d) => s + d, 0) / elevationDiffs.length;
+    const variance = elevationDiffs.reduce((s, d) => s + (d - mean) ** 2, 0) / elevationDiffs.length;
+    const stdDev = Math.sqrt(variance);
+
+    const cliffThreshold = 2;
+    const cliffCount = elevationDiffs.filter(d => d >= cliffThreshold).length;
+
+    return {
+      type1,
+      type2,
+      segmentCount: boundarySegments.length,
+      elevationDiffs,
+      meanElevationDiff: mean,
+      maxElevationDiff: Math.max(...elevationDiffs),
+      minElevationDiff: Math.min(...elevationDiffs),
+      stdDevElevationDiff: stdDev,
+      hasCliffs: cliffCount > 0,
+      cliffCount
+    };
+  }
+
+  public analyzeBoundaryDirectionality(): BoundaryDirectionalityResult {
+    const boundaries = this.detectTerrainBoundaries();
+    const segments = boundaries.segments;
+
+    let horizontalCount = 0;
+    let verticalCount = 0;
+    let diagonalCount = 0;
+
+    const directionHistogram: Record<string, number> = {
+      'N': 0, 'NE': 0, 'E': 0, 'SE': 0,
+      'S': 0, 'SW': 0, 'W': 0, 'NW': 0
+    };
+
+    for (const seg of segments) {
+      const dx = seg.x2 - seg.x1;
+      const dy = seg.y2 - seg.y1;
+
+      if (dx === 0 && dy !== 0) {
+        verticalCount++;
+        directionHistogram[dy > 0 ? 'S' : 'N']++;
+      } else if (dy === 0 && dx !== 0) {
+        horizontalCount++;
+        directionHistogram[dx > 0 ? 'E' : 'W']++;
+      } else if (dx !== 0 && dy !== 0) {
+        diagonalCount++;
+        if (dx > 0 && dy > 0) directionHistogram['SE']++;
+        else if (dx > 0 && dy < 0) directionHistogram['NE']++;
+        else if (dx < 0 && dy > 0) directionHistogram['SW']++;
+        else directionHistogram['NW']++;
+      }
+    }
+
+    const total = segments.length || 1;
+    const dominantDirection = Object.entries(directionHistogram)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'none';
+
+    const isotropyScore = 1 - (Math.max(...Object.values(directionHistogram)) / total);
+
+    return {
+      horizontalRatio: horizontalCount / total,
+      verticalRatio: verticalCount / total,
+      diagonalRatio: diagonalCount / total,
+      directionHistogram,
+      dominantDirection,
+      isotropyScore,
+      isIsotropic: isotropyScore > 0.7
+    };
+  }
+
+  public findTerrainEdgeTiles(): TerrainEdgeTilesResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const edgeTiles: Array<{ x: number; y: number; terrainType: TerrainType; edgeDirections: string[] }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const currentType = getTerrainType(this.courseData.layout[y]?.[x] ?? 0);
+        const edgeDirections: string[] = [];
+
+        if (x === 0 || getTerrainType(this.courseData.layout[y]?.[x - 1] ?? 0) !== currentType) {
+          edgeDirections.push('W');
+        }
+        if (x === width - 1 || getTerrainType(this.courseData.layout[y]?.[x + 1] ?? 0) !== currentType) {
+          edgeDirections.push('E');
+        }
+        if (y === 0 || getTerrainType(this.courseData.layout[y - 1]?.[x] ?? 0) !== currentType) {
+          edgeDirections.push('N');
+        }
+        if (y === height - 1 || getTerrainType(this.courseData.layout[y + 1]?.[x] ?? 0) !== currentType) {
+          edgeDirections.push('S');
+        }
+
+        if (edgeDirections.length > 0) {
+          edgeTiles.push({ x, y, terrainType: currentType, edgeDirections });
+        }
+      }
+    }
+
+    const cornerTiles = edgeTiles.filter(t => t.edgeDirections.length >= 2);
+    const straightEdges = edgeTiles.filter(t => t.edgeDirections.length === 1);
+
+    return {
+      edgeTiles,
+      totalEdgeTiles: edgeTiles.length,
+      cornerTiles,
+      straightEdgeTiles: straightEdges,
+      edgeDensity: edgeTiles.length / (width * height)
+    };
+  }
+
+  public computeTerrainFragmentation(): TerrainFragmentationResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const visited = new Set<string>();
+    const regions: Array<{ terrainType: TerrainType; tiles: Array<{ x: number; y: number }>; perimeter: number }> = [];
+
+    const floodFill = (startX: number, startY: number, targetType: TerrainType): Array<{ x: number; y: number }> => {
+      const tiles: Array<{ x: number; y: number }> = [];
+      const queue = [{ x: startX, y: startY }];
+
+      while (queue.length > 0) {
+        const { x, y } = queue.shift()!;
+        const key = `${x},${y}`;
+
+        if (visited.has(key)) continue;
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+        if (getTerrainType(this.courseData.layout[y]?.[x] ?? 0) !== targetType) continue;
+
+        visited.add(key);
+        tiles.push({ x, y });
+
+        queue.push({ x: x - 1, y }, { x: x + 1, y }, { x, y: y - 1 }, { x, y: y + 1 });
+      }
+
+      return tiles;
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x},${y}`;
+        if (visited.has(key)) continue;
+
+        const terrainType = getTerrainType(this.courseData.layout[y]?.[x] ?? 0);
+        const tiles = floodFill(x, y, terrainType);
+
+        if (tiles.length > 0) {
+          let perimeter = 0;
+          for (const tile of tiles) {
+            const neighbors = [
+              { x: tile.x - 1, y: tile.y },
+              { x: tile.x + 1, y: tile.y },
+              { x: tile.x, y: tile.y - 1 },
+              { x: tile.x, y: tile.y + 1 }
+            ];
+
+            for (const n of neighbors) {
+              if (n.x < 0 || n.x >= width || n.y < 0 || n.y >= height ||
+                  getTerrainType(this.courseData.layout[n.y]?.[n.x] ?? 0) !== terrainType) {
+                perimeter++;
+              }
+            }
+          }
+
+          regions.push({ terrainType, tiles, perimeter });
+        }
+      }
+    }
+
+    const regionsByType: Record<string, number> = {};
+    for (const region of regions) {
+      regionsByType[region.terrainType] = (regionsByType[region.terrainType] || 0) + 1;
+    }
+
+    const avgRegionSize = regions.length > 0
+      ? regions.reduce((s, r) => s + r.tiles.length, 0) / regions.length
+      : 0;
+
+    const shapeIndices = regions.map(r => {
+      const area = r.tiles.length;
+      const expectedPerimeter = 4 * Math.sqrt(area);
+      return expectedPerimeter > 0 ? r.perimeter / expectedPerimeter : 0;
+    });
+
+    const avgShapeIndex = shapeIndices.length > 0
+      ? shapeIndices.reduce((s, i) => s + i, 0) / shapeIndices.length
+      : 0;
+
+    return {
+      totalRegions: regions.length,
+      regionsByType,
+      averageRegionSize: avgRegionSize,
+      largestRegion: regions.length > 0 ? Math.max(...regions.map(r => r.tiles.length)) : 0,
+      smallestRegion: regions.length > 0 ? Math.min(...regions.map(r => r.tiles.length)) : 0,
+      fragmentationIndex: regions.length / (width * height),
+      averageShapeIndex: avgShapeIndex,
+      regions: regions.map(r => ({
+        terrainType: r.terrainType,
+        area: r.tiles.length,
+        perimeter: r.perimeter,
+        compactness: (4 * Math.PI * r.tiles.length) / (r.perimeter * r.perimeter)
+      }))
+    };
+  }
+}
+
+export interface TerrainBoundarySegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  fromType: TerrainType;
+  toType: TerrainType;
+  direction: 'horizontal' | 'vertical';
+  elevationDiff: number;
+}
+
+export interface TerrainBoundaryResult {
+  segments: TerrainBoundarySegment[];
+  boundaryTileCount: number;
+  totalSegments: number;
+  transitionCounts: Record<string, number>;
+  boundaryDensity: number;
+  horizontalSegments: number;
+  verticalSegments: number;
+}
+
+export interface BoundaryComplexityResult {
+  totalLength: number;
+  tortuosity: number;
+  branchingFactor: number;
+  isolatedSegments: number;
+  connectedComponents: number;
+  averageSegmentLength: number;
+  maxChainLength: number;
+  complexityScore: number;
+}
+
+export interface TerrainBoundaryLoop {
+  segments: TerrainBoundarySegment[];
+  length: number;
+  enclosedTerrainTypes: TerrainType[];
+  isClosed: boolean;
+}
+
+export interface BoundaryLoopResult {
+  loops: TerrainBoundaryLoop[];
+  totalLoops: number;
+  averageLoopLength: number;
+  maxLoopLength: number;
+  minLoopLength: number;
+}
+
+export interface BoundaryElevationProfile {
+  type1: TerrainType;
+  type2: TerrainType;
+  segmentCount: number;
+  elevationDiffs: number[];
+  meanElevationDiff: number;
+  maxElevationDiff: number;
+  minElevationDiff: number;
+  stdDevElevationDiff: number;
+  hasCliffs: boolean;
+  cliffCount: number;
+}
+
+export interface BoundaryDirectionalityResult {
+  horizontalRatio: number;
+  verticalRatio: number;
+  diagonalRatio: number;
+  directionHistogram: Record<string, number>;
+  dominantDirection: string;
+  isotropyScore: number;
+  isIsotropic: boolean;
+}
+
+export interface TerrainEdgeTilesResult {
+  edgeTiles: Array<{ x: number; y: number; terrainType: TerrainType; edgeDirections: string[] }>;
+  totalEdgeTiles: number;
+  cornerTiles: Array<{ x: number; y: number; terrainType: TerrainType; edgeDirections: string[] }>;
+  straightEdgeTiles: Array<{ x: number; y: number; terrainType: TerrainType; edgeDirections: string[] }>;
+  edgeDensity: number;
+}
+
+export interface TerrainFragmentationResult {
+  totalRegions: number;
+  regionsByType: Record<string, number>;
+  averageRegionSize: number;
+  largestRegion: number;
+  smallestRegion: number;
+  fragmentationIndex: number;
+  averageShapeIndex: number;
+  regions: Array<{
+    terrainType: TerrainType;
+    area: number;
+    perimeter: number;
+    compactness: number;
+  }>;
 }
 
 export interface TerrainRegion {
