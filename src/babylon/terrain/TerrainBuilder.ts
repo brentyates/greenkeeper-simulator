@@ -40,6 +40,19 @@ export class TerrainBuilder {
   private waterMesh: Mesh | null = null;
   private batchedTerrainMesh: Mesh | null = null;
   private isBatched: boolean = false;
+  private lodConfig: LODConfig = {
+    enabled: false,
+    levels: [
+      { distance: 10, simplificationFactor: 1 },
+      { distance: 25, simplificationFactor: 2 },
+      { distance: 50, simplificationFactor: 4 }
+    ],
+    updateInterval: 100
+  };
+  private tileLODStates: Map<string, number> = new Map();
+  private lastLODUpdate: number = 0;
+  private lodCenterX: number = 0;
+  private lodCenterY: number = 0;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -2255,6 +2268,188 @@ export class TerrainBuilder {
     const idx = Math.floor(Math.random() * walkableTiles.length);
     return walkableTiles[idx];
   }
+
+  public setLODEnabled(enabled: boolean): void {
+    this.lodConfig.enabled = enabled;
+    if (!enabled) {
+      this.resetLODStates();
+    }
+  }
+
+  public isLODEnabled(): boolean {
+    return this.lodConfig.enabled;
+  }
+
+  public setLODLevels(levels: LODLevel[]): void {
+    this.lodConfig.levels = levels.sort((a, b) => a.distance - b.distance);
+  }
+
+  public getLODLevels(): LODLevel[] {
+    return [...this.lodConfig.levels];
+  }
+
+  public setLODUpdateInterval(interval: number): void {
+    this.lodConfig.updateInterval = Math.max(0, interval);
+  }
+
+  public getLODUpdateInterval(): number {
+    return this.lodConfig.updateInterval;
+  }
+
+  public updateLOD(centerGridX: number, centerGridY: number, forceUpdate: boolean = false): number {
+    if (!this.lodConfig.enabled) return 0;
+
+    const now = Date.now();
+    if (!forceUpdate && now - this.lastLODUpdate < this.lodConfig.updateInterval) {
+      return 0;
+    }
+
+    this.lastLODUpdate = now;
+    this.lodCenterX = centerGridX;
+    this.lodCenterY = centerGridY;
+
+    let updatedCount = 0;
+    const { width, height } = this.courseData;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        const dx = x - centerGridX;
+        const dy = y - centerGridY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        const newLOD = this.calculateLODLevel(distance);
+        const currentLOD = this.tileLODStates.get(key) ?? 0;
+
+        if (newLOD !== currentLOD) {
+          this.tileLODStates.set(key, newLOD);
+          this.applyTileLOD(x, y, newLOD);
+          updatedCount++;
+        }
+      }
+    }
+
+    return updatedCount;
+  }
+
+  private calculateLODLevel(distance: number): number {
+    const levels = this.lodConfig.levels;
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (distance >= levels[i].distance) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  private applyTileLOD(gridX: number, gridY: number, lodLevel: number): void {
+    const key = `${gridX}_${gridY}`;
+    const mesh = this.tileMap.get(key);
+    if (!mesh) return;
+
+    const level = this.lodConfig.levels[lodLevel];
+    if (!level) return;
+
+    if (level.simplificationFactor >= 4) {
+      mesh.visibility = 0.6;
+    } else if (level.simplificationFactor >= 2) {
+      mesh.visibility = 0.8;
+    } else {
+      mesh.visibility = 1.0;
+    }
+  }
+
+  private resetLODStates(): void {
+    for (const [key] of this.tileLODStates) {
+      const mesh = this.tileMap.get(key);
+      if (mesh) {
+        mesh.visibility = 1.0;
+      }
+    }
+    this.tileLODStates.clear();
+  }
+
+  public getTileLODLevel(gridX: number, gridY: number): number {
+    const key = `${gridX}_${gridY}`;
+    return this.tileLODStates.get(key) ?? 0;
+  }
+
+  public getLODCenter(): { x: number; y: number } {
+    return { x: this.lodCenterX, y: this.lodCenterY };
+  }
+
+  public getTilesAtLODLevel(level: number): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    for (const [key, lodLevel] of this.tileLODStates) {
+      if (lodLevel === level) {
+        const parts = key.split('_');
+        tiles.push({
+          x: parseInt(parts[0], 10),
+          y: parseInt(parts[1], 10)
+        });
+      }
+    }
+    return tiles;
+  }
+
+  public getLODStatistics(): {
+    enabled: boolean;
+    centerX: number;
+    centerY: number;
+    tilesPerLevel: number[];
+    totalTilesWithLOD: number;
+  } {
+    const tilesPerLevel: number[] = [];
+    for (let i = 0; i < this.lodConfig.levels.length; i++) {
+      tilesPerLevel[i] = 0;
+    }
+
+    for (const [, lodLevel] of this.tileLODStates) {
+      if (lodLevel < tilesPerLevel.length) {
+        tilesPerLevel[lodLevel]++;
+      }
+    }
+
+    return {
+      enabled: this.lodConfig.enabled,
+      centerX: this.lodCenterX,
+      centerY: this.lodCenterY,
+      tilesPerLevel,
+      totalTilesWithLOD: this.tileLODStates.size
+    };
+  }
+
+  public forceFullLODUpdate(): number {
+    return this.updateLOD(this.lodCenterX, this.lodCenterY, true);
+  }
+
+  public getDistanceToLODCenter(gridX: number, gridY: number): number {
+    const dx = gridX - this.lodCenterX;
+    const dy = gridY - this.lodCenterY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  public getTileLODInfo(gridX: number, gridY: number): TileLODInfo {
+    return {
+      gridX,
+      gridY,
+      currentLOD: this.getTileLODLevel(gridX, gridY),
+      distance: this.getDistanceToLODCenter(gridX, gridY)
+    };
+  }
+
+  public getAllTileLODInfo(): TileLODInfo[] {
+    const { width, height } = this.courseData;
+    const info: TileLODInfo[] = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        info.push(this.getTileLODInfo(x, y));
+      }
+    }
+
+    return info;
+  }
 }
 
 export interface TerrainStatistics {
@@ -2332,4 +2527,22 @@ export interface TerrainDebugInfo {
   waterLevel: number;
   gridLinesVisible: boolean;
   waterVisible: boolean;
+}
+
+export interface LODLevel {
+  distance: number;
+  simplificationFactor: number;
+}
+
+export interface LODConfig {
+  enabled: boolean;
+  levels: LODLevel[];
+  updateInterval: number;
+}
+
+export interface TileLODInfo {
+  gridX: number;
+  gridY: number;
+  currentLOD: number;
+  distance: number;
 }
