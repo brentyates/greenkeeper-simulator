@@ -8,7 +8,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 
 import { CourseData } from '../../data/courseData';
-import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics } from '../../core/terrain';
+import { TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT, TERRAIN_CODES, TerrainType, getTerrainType, getSurfacePhysics, SurfacePhysics, getSlopeVector, getTileNormal } from '../../core/terrain';
 
 export interface CornerHeights {
   nw: number;
@@ -658,6 +658,52 @@ export class TerrainBuilder {
     const elev = elevation ?? this.getElevationAt(gridX, gridY);
     const pos = this.gridToScreen(gridX, gridY, elev);
     return new Vector3(pos.x, pos.y, pos.z);
+  }
+
+  public worldToGrid(worldX: number, worldY: number): { x: number; y: number } {
+    const hw = TILE_WIDTH / 2;
+    const hh = TILE_HEIGHT / 2;
+
+    const isoX = (worldX / hw + (-worldY) / hh) / 2;
+    const isoY = ((-worldY) / hh - worldX / hw) / 2;
+
+    return {
+      x: Math.floor(isoX),
+      y: Math.floor(isoY)
+    };
+  }
+
+  public getTerrainTypeAt(gridX: number, gridY: number): TerrainType {
+    const { width, height, layout } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) {
+      return 'rough';
+    }
+    const code = layout[gridY]?.[gridX] ?? TERRAIN_CODES.ROUGH;
+    return getTerrainType(code);
+  }
+
+  public getSurfacePhysicsAt(gridX: number, gridY: number): SurfacePhysics {
+    const type = this.getTerrainTypeAt(gridX, gridY);
+    return getSurfacePhysics(type);
+  }
+
+  public getSlopeVectorAt(gridX: number, gridY: number): { angle: number; direction: number; magnitude: number } {
+    const corners = this.getCornerHeights(gridX, gridY);
+    return getSlopeVector(corners, ELEVATION_HEIGHT);
+  }
+
+  public getTileNormalAt(gridX: number, gridY: number): { x: number; y: number; z: number } {
+    const corners = this.getCornerHeights(gridX, gridY);
+    return getTileNormal(corners, ELEVATION_HEIGHT);
+  }
+
+  public isValidGridPosition(gridX: number, gridY: number): boolean {
+    const { width, height } = this.courseData;
+    return gridX >= 0 && gridX < width && gridY >= 0 && gridY < height;
+  }
+
+  public getGridDimensions(): { width: number; height: number } {
+    return { width: this.courseData.width, height: this.courseData.height };
   }
 
   private registerFaceMetadata(
