@@ -27,9 +27,12 @@ import {
   getGrassState,
   getOptimalDiagonal,
   validateSlopeConstraint,
+  getSurfacePhysics,
+  getSlopeFrictionModifier,
   CellState,
   CornerHeights,
   RCTCornerHeights,
+  SurfacePhysics,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
@@ -1108,5 +1111,74 @@ describe('RCT Slope Constraint Validation', () => {
   it('validates uniform elevated terrain', () => {
     const corners: RCTCornerHeights = { nw: 5, ne: 5, se: 5, sw: 5 };
     expect(validateSlopeConstraint(corners)).toBe(true);
+  });
+});
+
+describe('Surface Physics', () => {
+  describe('getSurfacePhysics', () => {
+    it('returns low friction for green', () => {
+      const physics = getSurfacePhysics('green');
+      expect(physics.friction).toBe(0.3);
+      expect(physics.rollResistance).toBe(0.01);
+    });
+
+    it('returns medium friction for fairway', () => {
+      const physics = getSurfacePhysics('fairway');
+      expect(physics.friction).toBe(0.4);
+      expect(physics.rollResistance).toBe(0.02);
+    });
+
+    it('returns high friction for rough', () => {
+      const physics = getSurfacePhysics('rough');
+      expect(physics.friction).toBe(0.7);
+      expect(physics.rollResistance).toBe(0.08);
+    });
+
+    it('returns very high friction for bunker', () => {
+      const physics = getSurfacePhysics('bunker');
+      expect(physics.friction).toBe(0.9);
+      expect(physics.rollResistance).toBe(0.15);
+    });
+
+    it('returns maximum roll resistance for water', () => {
+      const physics = getSurfacePhysics('water');
+      expect(physics.rollResistance).toBe(1.0);
+      expect(physics.bounciness).toBe(0.0);
+    });
+
+    it('green has lowest roll resistance', () => {
+      const green = getSurfacePhysics('green');
+      const fairway = getSurfacePhysics('fairway');
+      const rough = getSurfacePhysics('rough');
+      expect(green.rollResistance).toBeLessThan(fairway.rollResistance);
+      expect(fairway.rollResistance).toBeLessThan(rough.rollResistance);
+    });
+
+    it('bunker has lowest bounciness of playable surfaces', () => {
+      const bunker = getSurfacePhysics('bunker');
+      const rough = getSurfacePhysics('rough');
+      const fairway = getSurfacePhysics('fairway');
+      expect(bunker.bounciness).toBeLessThan(rough.bounciness);
+      expect(rough.bounciness).toBeLessThan(fairway.bounciness);
+    });
+  });
+
+  describe('getSlopeFrictionModifier', () => {
+    it('returns 1.0 for flat surface', () => {
+      expect(getSlopeFrictionModifier(0)).toBe(1.0);
+    });
+
+    it('increases friction on slopes', () => {
+      expect(getSlopeFrictionModifier(15)).toBeGreaterThan(1.0);
+      expect(getSlopeFrictionModifier(30)).toBeGreaterThan(getSlopeFrictionModifier(15));
+    });
+
+    it('handles negative angles', () => {
+      expect(getSlopeFrictionModifier(-15)).toBe(getSlopeFrictionModifier(15));
+    });
+
+    it('returns ~1.3 at 45 degrees', () => {
+      expect(getSlopeFrictionModifier(45)).toBeCloseTo(1.3, 2);
+    });
   });
 });

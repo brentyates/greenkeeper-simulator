@@ -302,6 +302,34 @@ export function validateSlopeConstraint(corners: RCTCornerHeights, maxDelta: num
   return true;
 }
 
+export interface SurfacePhysics {
+  friction: number;
+  bounciness: number;
+  rollResistance: number;
+}
+
+export function getSurfacePhysics(type: TerrainType): SurfacePhysics {
+  switch (type) {
+    case 'fairway':
+      return { friction: 0.4, bounciness: 0.3, rollResistance: 0.02 };
+    case 'green':
+      return { friction: 0.3, bounciness: 0.25, rollResistance: 0.01 };
+    case 'rough':
+      return { friction: 0.7, bounciness: 0.2, rollResistance: 0.08 };
+    case 'bunker':
+      return { friction: 0.9, bounciness: 0.1, rollResistance: 0.15 };
+    case 'water':
+      return { friction: 0.1, bounciness: 0.0, rollResistance: 1.0 };
+    default:
+      return { friction: 0.5, bounciness: 0.2, rollResistance: 0.05 };
+  }
+}
+
+export function getSlopeFrictionModifier(slopeAngle: number): number {
+  const normalizedAngle = Math.abs(slopeAngle) / 45;
+  return 1.0 + normalizedAngle * 0.3;
+}
+
 export function getTerrainSpeedModifier(type: TerrainType): number {
   switch (type) {
     case 'fairway': return 1.0;
