@@ -20,6 +20,11 @@ import {
   getTerrainWaterable,
   getTerrainFertilizable,
   clampToGrid,
+  isGrassTerrain,
+  getTerrainDisplayName,
+  getObstacleDisplayName,
+  getTerrainThresholds,
+  getGrassState,
   CellState,
   CornerHeights,
   TILE_WIDTH,
@@ -821,5 +826,194 @@ describe('clampToGrid', () => {
     expect(clampToGrid(0, 5, 15)).toBe(5);
     expect(clampToGrid(10, 5, 15)).toBe(10);
     expect(clampToGrid(20, 5, 15)).toBe(14);
+  });
+});
+
+describe('isGrassTerrain', () => {
+  it('returns true for fairway', () => {
+    expect(isGrassTerrain('fairway')).toBe(true);
+  });
+
+  it('returns true for rough', () => {
+    expect(isGrassTerrain('rough')).toBe(true);
+  });
+
+  it('returns true for green', () => {
+    expect(isGrassTerrain('green')).toBe(true);
+  });
+
+  it('returns false for bunker', () => {
+    expect(isGrassTerrain('bunker')).toBe(false);
+  });
+
+  it('returns false for water', () => {
+    expect(isGrassTerrain('water')).toBe(false);
+  });
+});
+
+describe('getTerrainDisplayName', () => {
+  it('returns Fairway for fairway', () => {
+    expect(getTerrainDisplayName('fairway')).toBe('Fairway');
+  });
+
+  it('returns Rough for rough', () => {
+    expect(getTerrainDisplayName('rough')).toBe('Rough');
+  });
+
+  it('returns Green for green', () => {
+    expect(getTerrainDisplayName('green')).toBe('Green');
+  });
+
+  it('returns Bunker for bunker', () => {
+    expect(getTerrainDisplayName('bunker')).toBe('Bunker');
+  });
+
+  it('returns Water for water', () => {
+    expect(getTerrainDisplayName('water')).toBe('Water');
+  });
+});
+
+describe('getObstacleDisplayName', () => {
+  it('returns None for none', () => {
+    expect(getObstacleDisplayName('none')).toBe('None');
+  });
+
+  it('returns Tree for tree', () => {
+    expect(getObstacleDisplayName('tree')).toBe('Tree');
+  });
+
+  it('returns Pine Tree for pine_tree', () => {
+    expect(getObstacleDisplayName('pine_tree')).toBe('Pine Tree');
+  });
+
+  it('returns Shrub for shrub', () => {
+    expect(getObstacleDisplayName('shrub')).toBe('Shrub');
+  });
+
+  it('returns Bush for bush', () => {
+    expect(getObstacleDisplayName('bush')).toBe('Bush');
+  });
+});
+
+describe('getTerrainThresholds', () => {
+  it('returns correct thresholds for fairway', () => {
+    const thresholds = getTerrainThresholds('fairway');
+    expect(thresholds.mownHeight).toBe(20);
+    expect(thresholds.growingHeight).toBe(45);
+  });
+
+  it('returns correct thresholds for rough', () => {
+    const thresholds = getTerrainThresholds('rough');
+    expect(thresholds.mownHeight).toBe(30);
+    expect(thresholds.growingHeight).toBe(60);
+  });
+
+  it('returns correct thresholds for green', () => {
+    const thresholds = getTerrainThresholds('green');
+    expect(thresholds.mownHeight).toBe(10);
+    expect(thresholds.growingHeight).toBe(22);
+  });
+
+  it('returns default thresholds for non-grass terrain', () => {
+    const bunkerThresholds = getTerrainThresholds('bunker');
+    expect(bunkerThresholds.mownHeight).toBe(30);
+    expect(bunkerThresholds.growingHeight).toBe(60);
+
+    const waterThresholds = getTerrainThresholds('water');
+    expect(waterThresholds.mownHeight).toBe(30);
+    expect(waterThresholds.growingHeight).toBe(60);
+  });
+
+  it('green has the strictest thresholds', () => {
+    const green = getTerrainThresholds('green');
+    const fairway = getTerrainThresholds('fairway');
+    const rough = getTerrainThresholds('rough');
+
+    expect(green.mownHeight).toBeLessThan(fairway.mownHeight);
+    expect(fairway.mownHeight).toBeLessThan(rough.mownHeight);
+  });
+});
+
+describe('getGrassState', () => {
+  const createCell = (type: 'fairway' | 'rough' | 'green' | 'bunker' | 'water', height: number): CellState => ({
+    x: 0,
+    y: 0,
+    type,
+    height,
+    moisture: 50,
+    nutrients: 50,
+    health: 80,
+    elevation: 0,
+    obstacle: 'none',
+    lastMowed: 0,
+    lastWatered: 0,
+    lastFertilized: 0,
+  });
+
+  describe('fairway', () => {
+    it('returns mown when height <= 20', () => {
+      expect(getGrassState(createCell('fairway', 0))).toBe('mown');
+      expect(getGrassState(createCell('fairway', 10))).toBe('mown');
+      expect(getGrassState(createCell('fairway', 20))).toBe('mown');
+    });
+
+    it('returns growing when height > 20 and <= 45', () => {
+      expect(getGrassState(createCell('fairway', 21))).toBe('growing');
+      expect(getGrassState(createCell('fairway', 30))).toBe('growing');
+      expect(getGrassState(createCell('fairway', 45))).toBe('growing');
+    });
+
+    it('returns unmown when height > 45', () => {
+      expect(getGrassState(createCell('fairway', 46))).toBe('unmown');
+      expect(getGrassState(createCell('fairway', 100))).toBe('unmown');
+    });
+  });
+
+  describe('green', () => {
+    it('returns mown when height <= 10', () => {
+      expect(getGrassState(createCell('green', 0))).toBe('mown');
+      expect(getGrassState(createCell('green', 5))).toBe('mown');
+      expect(getGrassState(createCell('green', 10))).toBe('mown');
+    });
+
+    it('returns growing when height > 10 and <= 22', () => {
+      expect(getGrassState(createCell('green', 11))).toBe('growing');
+      expect(getGrassState(createCell('green', 15))).toBe('growing');
+      expect(getGrassState(createCell('green', 22))).toBe('growing');
+    });
+
+    it('returns unmown when height > 22', () => {
+      expect(getGrassState(createCell('green', 23))).toBe('unmown');
+      expect(getGrassState(createCell('green', 50))).toBe('unmown');
+    });
+  });
+
+  describe('rough', () => {
+    it('returns mown when height <= 30', () => {
+      expect(getGrassState(createCell('rough', 0))).toBe('mown');
+      expect(getGrassState(createCell('rough', 15))).toBe('mown');
+      expect(getGrassState(createCell('rough', 30))).toBe('mown');
+    });
+
+    it('returns growing when height > 30 and <= 60', () => {
+      expect(getGrassState(createCell('rough', 31))).toBe('growing');
+      expect(getGrassState(createCell('rough', 45))).toBe('growing');
+      expect(getGrassState(createCell('rough', 60))).toBe('growing');
+    });
+
+    it('returns unmown when height > 60', () => {
+      expect(getGrassState(createCell('rough', 61))).toBe('unmown');
+      expect(getGrassState(createCell('rough', 100))).toBe('unmown');
+    });
+  });
+
+  describe('non-grass terrain', () => {
+    it('returns mown for bunker', () => {
+      expect(getGrassState(createCell('bunker', 50))).toBe('mown');
+    });
+
+    it('returns mown for water', () => {
+      expect(getGrassState(createCell('water', 50))).toBe('mown');
+    });
   });
 });
