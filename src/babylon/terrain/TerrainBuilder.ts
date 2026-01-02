@@ -5676,6 +5676,188 @@ export class TerrainBuilder {
     return boundary;
   }
 
+  public computeSolarExposure(
+    sunAzimuth: number,
+    sunAltitude: number
+  ): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const exposure: number[][] = [];
+    const sunAzRad = (sunAzimuth * Math.PI) / 180;
+    const sunAltRad = (sunAltitude * Math.PI) / 180;
+
+    const sunDirX = Math.cos(sunAltRad) * Math.sin(sunAzRad);
+    const sunDirY = Math.cos(sunAltRad) * Math.cos(sunAzRad);
+    const sunDirZ = Math.sin(sunAltRad);
+
+    for (let y = 0; y < height; y++) {
+      exposure[y] = [];
+      for (let x = 0; x < width; x++) {
+        const normal = this.getInterpolatedNormal(x, y);
+        const dotProduct = normal.x * sunDirX + normal.y * sunDirY + normal.z * sunDirZ;
+        exposure[y][x] = Math.max(0, dotProduct);
+      }
+    }
+
+    return exposure;
+  }
+
+  public computeSolarExposureWithShadows(
+    sunAzimuth: number,
+    sunAltitude: number
+  ): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const exposure = this.computeSolarExposure(sunAzimuth, sunAltitude);
+    const shadowMap = this.computeShadowMap(
+      Math.sin((sunAzimuth * Math.PI) / 180),
+      Math.cos((sunAzimuth * Math.PI) / 180),
+      sunAltitude
+    );
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (shadowMap[y]?.[x]) {
+          exposure[y][x] = 0;
+        }
+      }
+    }
+
+    return exposure;
+  }
+
+  public computeDailyInsolation(
+    latitude: number = 45,
+    dayOfYear: number = 172,
+    sampleInterval: number = 30
+  ): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const insolation: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      insolation[y] = [];
+      for (let x = 0; x < width; x++) {
+        insolation[y][x] = 0;
+      }
+    }
+
+    const declination = 23.45 * Math.sin(((360 / 365) * (284 + dayOfYear) * Math.PI) / 180);
+    const decRad = (declination * Math.PI) / 180;
+    const latRad = (latitude * Math.PI) / 180;
+
+    const hourAngleSunrise = Math.acos(-Math.tan(latRad) * Math.tan(decRad)) * (180 / Math.PI);
+
+    for (let hourAngle = -hourAngleSunrise; hourAngle <= hourAngleSunrise; hourAngle += sampleInterval / 4) {
+      const hourAngleRad = (hourAngle * Math.PI) / 180;
+
+      const sinAlt = Math.sin(latRad) * Math.sin(decRad) +
+        Math.cos(latRad) * Math.cos(decRad) * Math.cos(hourAngleRad);
+      const altitude = Math.asin(sinAlt) * (180 / Math.PI);
+
+      if (altitude <= 0) continue;
+
+      const cosAz = (Math.sin(decRad) - Math.sin(latRad) * sinAlt) /
+        (Math.cos(latRad) * Math.cos(altitude * Math.PI / 180));
+      let azimuth = Math.acos(Math.max(-1, Math.min(1, cosAz))) * (180 / Math.PI);
+      if (hourAngle > 0) azimuth = 360 - azimuth;
+
+      const exposure = this.computeSolarExposureWithShadows(azimuth, altitude);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          insolation[y][x] += exposure[y][x];
+        }
+      }
+    }
+
+    return insolation;
+  }
+
+  public getSolarAnalysis(latitude: number = 45, dayOfYear: number = 172): SolarAnalysis {
+    const insolation = this.computeDailyInsolation(latitude, dayOfYear, 60);
+    const { width, height } = this.courseData;
+
+    let minInsolation = Infinity;
+    let maxInsolation = -Infinity;
+    let totalInsolation = 0;
+    let count = 0;
+    let shadedCount = 0;
+    let fullSunCount = 0;
+
+    const maxPossible = insolation.flat().reduce((max, val) => Math.max(max, val), 0);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const val = insolation[y]?.[x] ?? 0;
+        minInsolation = Math.min(minInsolation, val);
+        maxInsolation = Math.max(maxInsolation, val);
+        totalInsolation += val;
+        count++;
+
+        if (val < maxPossible * 0.2) shadedCount++;
+        else if (val > maxPossible * 0.8) fullSunCount++;
+      }
+    }
+
+    return {
+      minInsolation: count > 0 ? minInsolation : 0,
+      maxInsolation: count > 0 ? maxInsolation : 0,
+      avgInsolation: count > 0 ? totalInsolation / count : 0,
+      shadedTileCount: shadedCount,
+      fullSunTileCount: fullSunCount,
+      partialSunTileCount: count - shadedCount - fullSunCount,
+      shadedPercentage: count > 0 ? (shadedCount / count) * 100 : 0,
+      fullSunPercentage: count > 0 ? (fullSunCount / count) * 100 : 0
+    };
+  }
+
+  public findSunniestAreas(minSize: number = 5, latitude: number = 45, dayOfYear: number = 172): Array<{ x: number; y: number; avgInsolation: number }> {
+    const insolation = this.computeDailyInsolation(latitude, dayOfYear, 60);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgInsolation: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += insolation[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+        areas.push({ x, y, avgInsolation: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgInsolation - a.avgInsolation).slice(0, 10);
+  }
+
+  public findShadiestAreas(minSize: number = 5, latitude: number = 45, dayOfYear: number = 172): Array<{ x: number; y: number; avgInsolation: number }> {
+    const insolation = this.computeDailyInsolation(latitude, dayOfYear, 60);
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgInsolation: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += insolation[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+        areas.push({ x, y, avgInsolation: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => a.avgInsolation - b.avgInsolation).slice(0, 10);
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -10654,6 +10836,17 @@ export interface ViewshedStatistics {
   hiddenCount: number;
   totalTiles: number;
   visibilityPercentage: number;
+}
+
+export interface SolarAnalysis {
+  minInsolation: number;
+  maxInsolation: number;
+  avgInsolation: number;
+  shadedTileCount: number;
+  fullSunTileCount: number;
+  partialSunTileCount: number;
+  shadedPercentage: number;
+  fullSunPercentage: number;
 }
 
 export interface LineSampleOptions {
