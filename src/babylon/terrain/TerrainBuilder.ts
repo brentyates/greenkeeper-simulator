@@ -28116,6 +28116,369 @@ export class TerrainBuilder {
       terrainHeight: height
     };
   }
+
+  public computeMeshLODConfiguration(
+    cameraX: number,
+    cameraZ: number,
+    cameraDistance: number
+  ): MeshLODConfiguration {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const lodZones: LODZone[] = [];
+    const numZones = 4;
+    const baseRadius = cameraDistance * 0.25;
+
+    for (let zone = 0; zone < numZones; zone++) {
+      const innerRadius = zone === 0 ? 0 : baseRadius * zone;
+      const outerRadius = baseRadius * (zone + 1);
+      const detailLevel = numZones - zone;
+      const triangleReduction = 1 / Math.pow(2, zone);
+
+      let tileCount = 0;
+      for (let z = 0; z < height; z++) {
+        for (let x = 0; x < width; x++) {
+          const dx = x - cameraX;
+          const dz = z - cameraZ;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist >= innerRadius && dist < outerRadius) {
+            tileCount++;
+          }
+        }
+      }
+
+      lodZones.push({
+        level: zone,
+        innerRadius,
+        outerRadius,
+        detailLevel,
+        triangleReduction,
+        tileCount,
+        estimatedTriangles: Math.floor(tileCount * 2 * triangleReduction)
+      });
+    }
+
+    const totalTriangles = lodZones.reduce((sum, z) => sum + z.estimatedTriangles, 0);
+    const fullDetailTriangles = width * height * 2;
+
+    return {
+      cameraPosition: { x: cameraX, z: cameraZ },
+      cameraDistance,
+      lodZones,
+      totalTriangles,
+      fullDetailTriangles,
+      triangleReductionPercent: ((fullDetailTriangles - totalTriangles) / fullDetailTriangles) * 100
+    };
+  }
+
+  public computeTerrainChunks(chunkSize: number = 16): TerrainChunkData[] {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const chunks: TerrainChunkData[] = [];
+
+    const chunksX = Math.ceil(width / chunkSize);
+    const chunksZ = Math.ceil(height / chunkSize);
+
+    for (let cz = 0; cz < chunksZ; cz++) {
+      for (let cx = 0; cx < chunksX; cx++) {
+        const startX = cx * chunkSize;
+        const startZ = cz * chunkSize;
+        const endX = Math.min(startX + chunkSize, width);
+        const endZ = Math.min(startZ + chunkSize, height);
+
+        let minElevation = Infinity;
+        let maxElevation = -Infinity;
+        const terrainTypes = new Set<string>();
+
+        for (let z = startZ; z < endZ; z++) {
+          for (let x = startX; x < endX; x++) {
+            const elevation = this.getElevationAt(x, z);
+            if (elevation < minElevation) minElevation = elevation;
+            if (elevation > maxElevation) maxElevation = elevation;
+            terrainTypes.add(this.getTerrainTypeAt(x, z));
+          }
+        }
+
+        const tileCount = (endX - startX) * (endZ - startZ);
+        const centerX = (startX + endX) / 2;
+        const centerZ = (startZ + endZ) / 2;
+
+        chunks.push({
+          chunkId: `chunk_${cx}_${cz}`,
+          chunkX: cx,
+          chunkZ: cz,
+          bounds: { startX, startZ, endX, endZ },
+          center: { x: centerX, z: centerZ },
+          tileCount,
+          triangleCount: tileCount * 2,
+          minElevation: minElevation === Infinity ? 0 : minElevation,
+          maxElevation: maxElevation === -Infinity ? 0 : maxElevation,
+          elevationRange: (maxElevation === -Infinity ? 0 : maxElevation) - (minElevation === Infinity ? 0 : minElevation),
+          terrainTypes: Array.from(terrainTypes)
+        });
+      }
+    }
+
+    return chunks;
+  }
+
+  public computeVertexSharing(x: number, z: number): VertexSharingData {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const vertexX = Math.floor(x);
+    const vertexZ = Math.floor(z);
+
+    const sharedTiles: Array<{ x: number; z: number; corner: string }> = [];
+
+    const tiles = [
+      { dx: -1, dz: -1, corner: 'SE' },
+      { dx: 0, dz: -1, corner: 'SW' },
+      { dx: -1, dz: 0, corner: 'NE' },
+      { dx: 0, dz: 0, corner: 'NW' }
+    ];
+
+    for (const tile of tiles) {
+      const tileX = vertexX + tile.dx;
+      const tileZ = vertexZ + tile.dz;
+      if (tileX >= 0 && tileX < width && tileZ >= 0 && tileZ < height) {
+        sharedTiles.push({ x: tileX, z: tileZ, corner: tile.corner });
+      }
+    }
+
+    const elevation = this.getElevationAt(vertexX, vertexZ);
+    const isEdgeVertex = vertexX === 0 || vertexX === width || vertexZ === 0 || vertexZ === height;
+
+    return {
+      vertexPosition: { x: vertexX, z: vertexZ },
+      elevation,
+      sharedTiles,
+      shareCount: sharedTiles.length,
+      isEdgeVertex,
+      maxPossibleShares: 4
+    };
+  }
+
+  public computeMeshBatching(maxBatchSize: number = 1000): MeshBatchingResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const totalTiles = width * height;
+
+    const batches: MeshBatch[] = [];
+    const terrainGroups = new Map<string, Array<{ x: number; z: number }>>();
+
+    for (let z = 0; z < height; z++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, z);
+        if (!terrainGroups.has(terrainType)) {
+          terrainGroups.set(terrainType, []);
+        }
+        terrainGroups.get(terrainType)!.push({ x, z });
+      }
+    }
+
+    let batchId = 0;
+    for (const [terrainType, tiles] of terrainGroups) {
+      for (let i = 0; i < tiles.length; i += maxBatchSize) {
+        const batchTiles = tiles.slice(i, Math.min(i + maxBatchSize, tiles.length));
+        batches.push({
+          batchId: `batch_${batchId++}`,
+          terrainType,
+          tileCount: batchTiles.length,
+          triangleCount: batchTiles.length * 2,
+          vertexCount: batchTiles.length * 4,
+          indexCount: batchTiles.length * 6,
+          tiles: batchTiles
+        });
+      }
+    }
+
+    const totalBatches = batches.length;
+    const drawCallsWithoutBatching = totalTiles;
+    const drawCallsWithBatching = totalBatches;
+
+    return {
+      batches,
+      totalBatches,
+      drawCallsWithoutBatching,
+      drawCallsWithBatching,
+      drawCallReduction: ((drawCallsWithoutBatching - drawCallsWithBatching) / drawCallsWithoutBatching) * 100,
+      averageBatchSize: totalTiles / totalBatches
+    };
+  }
+
+  public computeTriangleStrips(): TriangleStripData {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const strips: Array<{ startX: number; z: number; length: number; vertices: number }> = [];
+
+    for (let z = 0; z < height; z++) {
+      let stripStart = 0;
+      let currentStrip = true;
+      let lastElevation = this.getElevationAt(0, z);
+
+      for (let x = 1; x <= width; x++) {
+        const canContinue = x < width &&
+          Math.abs(this.getElevationAt(x, z) - lastElevation) <= 1;
+
+        if (!canContinue && currentStrip) {
+          const length = x - stripStart;
+          if (length > 1) {
+            strips.push({
+              startX: stripStart,
+              z,
+              length,
+              vertices: (length + 1) * 2
+            });
+          }
+          stripStart = x;
+        }
+
+        if (x < width) {
+          lastElevation = this.getElevationAt(x, z);
+        }
+      }
+    }
+
+    const totalVerticesWithStrips = strips.reduce((sum, s) => sum + s.vertices, 0);
+    const totalVerticesWithoutStrips = width * height * 4;
+    const totalIndicesWithStrips = strips.reduce((sum, s) => sum + s.length * 2, 0);
+    const totalIndicesWithoutStrips = width * height * 6;
+
+    return {
+      strips,
+      totalStrips: strips.length,
+      totalVerticesWithStrips,
+      totalVerticesWithoutStrips,
+      vertexReduction: ((totalVerticesWithoutStrips - totalVerticesWithStrips) / totalVerticesWithoutStrips) * 100,
+      totalIndicesWithStrips,
+      totalIndicesWithoutStrips,
+      indexReduction: ((totalIndicesWithoutStrips - totalIndicesWithStrips) / totalIndicesWithoutStrips) * 100
+    };
+  }
+
+  public computeMeshOptimizationStatistics(): MeshOptimizationStatistics {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const chunks = this.computeTerrainChunks(16);
+    const batching = this.computeMeshBatching(500);
+    const strips = this.computeTriangleStrips();
+
+    const totalTiles = width * height;
+    const totalTriangles = totalTiles * 2;
+    const totalVerticesUnoptimized = totalTiles * 4;
+
+    const uniqueVertices = (width + 1) * (height + 1);
+    const vertexSharingReduction = ((totalVerticesUnoptimized - uniqueVertices) / totalVerticesUnoptimized) * 100;
+
+    return {
+      terrainWidth: width,
+      terrainHeight: height,
+      totalTiles,
+      totalTriangles,
+      totalVerticesUnoptimized,
+      uniqueVertices,
+      vertexSharingReduction,
+      chunkCount: chunks.length,
+      batchCount: batching.totalBatches,
+      drawCallReduction: batching.drawCallReduction,
+      stripCount: strips.totalStrips,
+      stripVertexReduction: strips.vertexReduction,
+      stripIndexReduction: strips.indexReduction,
+      estimatedMemorySavingsPercent: (vertexSharingReduction + strips.vertexReduction) / 2
+    };
+  }
+}
+
+export interface MeshLODConfiguration {
+  cameraPosition: { x: number; z: number };
+  cameraDistance: number;
+  lodZones: LODZone[];
+  totalTriangles: number;
+  fullDetailTriangles: number;
+  triangleReductionPercent: number;
+}
+
+export interface LODZone {
+  level: number;
+  innerRadius: number;
+  outerRadius: number;
+  detailLevel: number;
+  triangleReduction: number;
+  tileCount: number;
+  estimatedTriangles: number;
+}
+
+export interface TerrainChunkData {
+  chunkId: string;
+  chunkX: number;
+  chunkZ: number;
+  bounds: { startX: number; startZ: number; endX: number; endZ: number };
+  center: { x: number; z: number };
+  tileCount: number;
+  triangleCount: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationRange: number;
+  terrainTypes: string[];
+}
+
+export interface VertexSharingData {
+  vertexPosition: { x: number; z: number };
+  elevation: number;
+  sharedTiles: Array<{ x: number; z: number; corner: string }>;
+  shareCount: number;
+  isEdgeVertex: boolean;
+  maxPossibleShares: number;
+}
+
+export interface MeshBatchingResult {
+  batches: MeshBatch[];
+  totalBatches: number;
+  drawCallsWithoutBatching: number;
+  drawCallsWithBatching: number;
+  drawCallReduction: number;
+  averageBatchSize: number;
+}
+
+export interface MeshBatch {
+  batchId: string;
+  terrainType: string;
+  tileCount: number;
+  triangleCount: number;
+  vertexCount: number;
+  indexCount: number;
+  tiles: Array<{ x: number; z: number }>;
+}
+
+export interface TriangleStripData {
+  strips: Array<{ startX: number; z: number; length: number; vertices: number }>;
+  totalStrips: number;
+  totalVerticesWithStrips: number;
+  totalVerticesWithoutStrips: number;
+  vertexReduction: number;
+  totalIndicesWithStrips: number;
+  totalIndicesWithoutStrips: number;
+  indexReduction: number;
+}
+
+export interface MeshOptimizationStatistics {
+  terrainWidth: number;
+  terrainHeight: number;
+  totalTiles: number;
+  totalTriangles: number;
+  totalVerticesUnoptimized: number;
+  uniqueVertices: number;
+  vertexSharingReduction: number;
+  chunkCount: number;
+  batchCount: number;
+  drawCallReduction: number;
+  stripCount: number;
+  stripVertexReduction: number;
+  stripIndexReduction: number;
+  estimatedMemorySavingsPercent: number;
 }
 
 export interface EnhancedViewshedData {
