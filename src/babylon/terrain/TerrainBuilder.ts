@@ -1694,6 +1694,129 @@ export class TerrainBuilder {
     }
     return true;
   }
+
+  public floodFillTerrainType(
+    startX: number,
+    startY: number,
+    includeDiagonals: boolean = false
+  ): Array<{ x: number; y: number }> {
+    if (!this.isValidGridPosition(startX, startY)) {
+      return [];
+    }
+
+    const targetType = this.getTerrainTypeAt(startX, startY);
+    const result: Array<{ x: number; y: number }> = [];
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number }> = [{ x: startX, y: startY }];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = `${current.x}_${current.y}`;
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      const currentType = this.getTerrainTypeAt(current.x, current.y);
+      if (currentType !== targetType) continue;
+
+      result.push(current);
+
+      const neighbors = this.getNeighborTiles(current.x, current.y, includeDiagonals);
+      for (const neighbor of neighbors) {
+        const neighborKey = `${neighbor.x}_${neighbor.y}`;
+        if (!visited.has(neighborKey)) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  public getConnectedRegions(terrainType: TerrainType): Array<Array<{ x: number; y: number }>> {
+    const { width, height } = this.courseData;
+    const visited = new Set<string>();
+    const regions: Array<Array<{ x: number; y: number }>> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        if (visited.has(key)) continue;
+
+        const type = this.getTerrainTypeAt(x, y);
+        if (type !== terrainType) {
+          visited.add(key);
+          continue;
+        }
+
+        const region = this.floodFillTerrainType(x, y, false);
+        for (const tile of region) {
+          visited.add(`${tile.x}_${tile.y}`);
+        }
+        regions.push(region);
+      }
+    }
+
+    return regions;
+  }
+
+  public getRegionBounds(tiles: Array<{ x: number; y: number }>): {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    width: number;
+    height: number;
+  } | null {
+    if (tiles.length === 0) return null;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (const tile of tiles) {
+      minX = Math.min(minX, tile.x);
+      maxX = Math.max(maxX, tile.x);
+      minY = Math.min(minY, tile.y);
+      maxY = Math.max(maxY, tile.y);
+    }
+
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1
+    };
+  }
+
+  public getRegionCenter(tiles: Array<{ x: number; y: number }>): { x: number; y: number } | null {
+    if (tiles.length === 0) return null;
+
+    let sumX = 0, sumY = 0;
+    for (const tile of tiles) {
+      sumX += tile.x;
+      sumY += tile.y;
+    }
+
+    return {
+      x: Math.round(sumX / tiles.length),
+      y: Math.round(sumY / tiles.length)
+    };
+  }
+
+  public getLargestRegion(terrainType: TerrainType): Array<{ x: number; y: number }> {
+    const regions = this.getConnectedRegions(terrainType);
+    if (regions.length === 0) return [];
+
+    let largest = regions[0];
+    for (const region of regions) {
+      if (region.length > largest.length) {
+        largest = region;
+      }
+    }
+    return largest;
+  }
 }
 
 export interface TerrainStatistics {
