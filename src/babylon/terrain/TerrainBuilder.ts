@@ -8827,6 +8827,204 @@ export class TerrainBuilder {
     return crossings;
   }
 
+  public generateElevationProfile(path: Array<{ x: number; y: number }>, sampleInterval: number = 0.5): ElevationProfile {
+    if (path.length < 2) {
+      return {
+        samples: [],
+        totalDistance: 0,
+        elevationGain: 0,
+        elevationLoss: 0,
+        maxElevation: 0,
+        minElevation: 0,
+        averageGrade: 0,
+        maxGrade: 0,
+        gradeChanges: []
+      };
+    }
+
+    const samples: Array<{ distance: number; elevation: number; x: number; y: number; grade: number }> = [];
+    let totalDistance = 0;
+    let elevationGain = 0;
+    let elevationLoss = 0;
+    let maxElevation = -Infinity;
+    let minElevation = Infinity;
+    let maxGrade = 0;
+    const gradeChanges: Array<{ distance: number; grade: number; type: 'uphill' | 'downhill' | 'flat' }> = [];
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const start = path[i];
+      const end = path[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+
+      const segmentSamples = Math.max(1, Math.ceil(segmentLength / sampleInterval));
+
+      for (let s = 0; s <= segmentSamples; s++) {
+        if (i > 0 && s === 0) continue;
+
+        const t = s / segmentSamples;
+        const x = start.x + dx * t;
+        const y = start.y + dy * t;
+        const elev = this.getBilinearElevation(x, y);
+        const sampleDistance = totalDistance + t * segmentLength;
+
+        let grade = 0;
+        if (samples.length > 0) {
+          const prevSample = samples[samples.length - 1];
+          const distDiff = sampleDistance - prevSample.distance;
+          if (distDiff > 0.001) {
+            grade = ((elev - prevSample.elevation) / distDiff) * 100;
+            maxGrade = Math.max(maxGrade, Math.abs(grade));
+
+            const elevDiff = elev - prevSample.elevation;
+            if (elevDiff > 0) elevationGain += elevDiff;
+            else elevationLoss += Math.abs(elevDiff);
+          }
+        }
+
+        samples.push({ distance: sampleDistance, elevation: elev, x, y, grade });
+        maxElevation = Math.max(maxElevation, elev);
+        minElevation = Math.min(minElevation, elev);
+      }
+
+      totalDistance += segmentLength;
+    }
+
+    let prevType: 'uphill' | 'downhill' | 'flat' | null = null;
+    for (const sample of samples) {
+      const type = sample.grade > 2 ? 'uphill' : sample.grade < -2 ? 'downhill' : 'flat';
+      if (type !== prevType) {
+        gradeChanges.push({ distance: sample.distance, grade: sample.grade, type });
+        prevType = type;
+      }
+    }
+
+    const averageGrade = samples.length > 1 ?
+      ((samples[samples.length - 1].elevation - samples[0].elevation) / totalDistance) * 100 : 0;
+
+    return {
+      samples,
+      totalDistance,
+      elevationGain,
+      elevationLoss,
+      maxElevation,
+      minElevation,
+      averageGrade,
+      maxGrade,
+      gradeChanges
+    };
+  }
+
+  public generateProfileFromPoints(x1: number, y1: number, x2: number, y2: number, sampleInterval: number = 0.5): ElevationProfile {
+    return this.generateElevationProfile([{ x: x1, y: y1 }, { x: x2, y: y2 }], sampleInterval);
+  }
+
+  public findSteepestSection(profile: ElevationProfile, minLength: number = 3): { startDistance: number; endDistance: number; averageGrade: number } | null {
+    const samples = profile.samples;
+    if (samples.length < 2) return null;
+
+    let maxAbsGrade = 0;
+    let steepestStart = 0;
+    let steepestEnd = 0;
+
+    for (let i = 0; i < samples.length; i++) {
+      for (let j = i + 1; j < samples.length; j++) {
+        const distance = samples[j].distance - samples[i].distance;
+        if (distance < minLength) continue;
+
+        const elevChange = samples[j].elevation - samples[i].elevation;
+        const grade = Math.abs((elevChange / distance) * 100);
+
+        if (grade > maxAbsGrade) {
+          maxAbsGrade = grade;
+          steepestStart = samples[i].distance;
+          steepestEnd = samples[j].distance;
+        }
+      }
+    }
+
+    if (maxAbsGrade === 0) return null;
+
+    const startIdx = samples.findIndex(s => s.distance === steepestStart);
+    const endIdx = samples.findIndex(s => s.distance === steepestEnd);
+    const actualGrade = ((samples[endIdx].elevation - samples[startIdx].elevation) / (steepestEnd - steepestStart)) * 100;
+
+    return {
+      startDistance: steepestStart,
+      endDistance: steepestEnd,
+      averageGrade: actualGrade
+    };
+  }
+
+  public findFlatSections(profile: ElevationProfile, maxGrade: number = 2, minLength: number = 5): Array<{ startDistance: number; endDistance: number; length: number }> {
+    const samples = profile.samples;
+    const flatSections: Array<{ startDistance: number; endDistance: number; length: number }> = [];
+
+    let sectionStart: number | null = null;
+
+    for (let i = 0; i < samples.length; i++) {
+      const isFlat = Math.abs(samples[i].grade) <= maxGrade;
+
+      if (isFlat && sectionStart === null) {
+        sectionStart = samples[i].distance;
+      } else if (!isFlat && sectionStart !== null) {
+        const sectionEnd = samples[i - 1].distance;
+        const length = sectionEnd - sectionStart;
+        if (length >= minLength) {
+          flatSections.push({ startDistance: sectionStart, endDistance: sectionEnd, length });
+        }
+        sectionStart = null;
+      }
+    }
+
+    if (sectionStart !== null) {
+      const sectionEnd = samples[samples.length - 1].distance;
+      const length = sectionEnd - sectionStart;
+      if (length >= minLength) {
+        flatSections.push({ startDistance: sectionStart, endDistance: sectionEnd, length });
+      }
+    }
+
+    return flatSections;
+  }
+
+  public getProfileAnalysis(profile: ElevationProfile): ProfileAnalysis {
+    const steepestSection = this.findSteepestSection(profile);
+    const flatSections = this.findFlatSections(profile);
+
+    let totalFlatLength = 0;
+    for (const section of flatSections) {
+      totalFlatLength += section.length;
+    }
+
+    return {
+      totalDistance: profile.totalDistance,
+      netElevationChange: profile.samples.length > 1 ?
+        profile.samples[profile.samples.length - 1].elevation - profile.samples[0].elevation : 0,
+      elevationGain: profile.elevationGain,
+      elevationLoss: profile.elevationLoss,
+      averageGrade: profile.averageGrade,
+      maxGrade: profile.maxGrade,
+      gradeChangeCount: profile.gradeChanges.length,
+      flatSectionCount: flatSections.length,
+      flatPercentage: (totalFlatLength / profile.totalDistance) * 100,
+      steepestSection: steepestSection ? steepestSection.averageGrade : 0,
+      difficulty: this.classifyProfileDifficulty(profile)
+    };
+  }
+
+  private classifyProfileDifficulty(profile: ElevationProfile): 'flat' | 'easy' | 'moderate' | 'challenging' | 'difficult' {
+    const totalClimb = profile.elevationGain + profile.elevationLoss;
+    const maxGrade = profile.maxGrade;
+
+    if (totalClimb < 1 && maxGrade < 3) return 'flat';
+    if (totalClimb < 3 && maxGrade < 8) return 'easy';
+    if (totalClimb < 6 && maxGrade < 15) return 'moderate';
+    if (totalClimb < 10 || maxGrade < 25) return 'challenging';
+    return 'difficult';
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -14019,6 +14217,32 @@ export interface ContourAnalysis {
   interval: number;
   densestContourLevel: number;
   averageContourSpacing: number;
+}
+
+export interface ElevationProfile {
+  samples: Array<{ distance: number; elevation: number; x: number; y: number; grade: number }>;
+  totalDistance: number;
+  elevationGain: number;
+  elevationLoss: number;
+  maxElevation: number;
+  minElevation: number;
+  averageGrade: number;
+  maxGrade: number;
+  gradeChanges: Array<{ distance: number; grade: number; type: 'uphill' | 'downhill' | 'flat' }>;
+}
+
+export interface ProfileAnalysis {
+  totalDistance: number;
+  netElevationChange: number;
+  elevationGain: number;
+  elevationLoss: number;
+  averageGrade: number;
+  maxGrade: number;
+  gradeChangeCount: number;
+  flatSectionCount: number;
+  flatPercentage: number;
+  steepestSection: number;
+  difficulty: 'flat' | 'easy' | 'moderate' | 'challenging' | 'difficult';
 }
 
 export interface LineSampleOptions {
