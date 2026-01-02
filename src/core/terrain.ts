@@ -412,6 +412,111 @@ export function getEffectiveTerrainType(
   return type;
 }
 
+export const MAX_SLOPE_DELTA = 2;
+
+export function getMaxCornerDelta(corners: RCTCornerHeights): number {
+  const heights = [corners.nw, corners.ne, corners.se, corners.sw];
+  let maxDelta = 0;
+  for (let i = 0; i < heights.length; i++) {
+    for (let j = i + 1; j < heights.length; j++) {
+      const delta = Math.abs(heights[i] - heights[j]);
+      if (delta > maxDelta) {
+        maxDelta = delta;
+      }
+    }
+  }
+  return maxDelta;
+}
+
+export function isValidSlopeConstraint(corners: RCTCornerHeights, maxDelta: number = MAX_SLOPE_DELTA): boolean {
+  return getMaxCornerDelta(corners) <= maxDelta;
+}
+
+export interface TerrainValidationResult {
+  valid: boolean;
+  errors: TerrainValidationError[];
+}
+
+export interface TerrainValidationError {
+  x: number;
+  y: number;
+  type: 'slope_too_steep' | 'invalid_terrain_code' | 'invalid_elevation';
+  message: string;
+}
+
+export function validateTerrainData(
+  layout: number[][],
+  elevation?: number[][],
+  maxSlopeDelta: number = MAX_SLOPE_DELTA
+): TerrainValidationResult {
+  const errors: TerrainValidationError[] = [];
+  const height = layout.length;
+  const width = layout[0]?.length ?? 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const code = layout[y]?.[x];
+      if (code === undefined || code < 0 || code > 4) {
+        errors.push({
+          x,
+          y,
+          type: 'invalid_terrain_code',
+          message: `Invalid terrain code ${code} at (${x}, ${y})`
+        });
+      }
+
+      if (elevation) {
+        const corners = getCornerHeightsFromElevation(x, y, elevation, width, height);
+        if (!isValidSlopeConstraint(corners, maxSlopeDelta)) {
+          const delta = getMaxCornerDelta(corners);
+          errors.push({
+            x,
+            y,
+            type: 'slope_too_steep',
+            message: `Slope too steep at (${x}, ${y}): max delta ${delta} exceeds limit ${maxSlopeDelta}`
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+function getCornerHeightsFromElevation(
+  x: number,
+  y: number,
+  elevation: number[][],
+  width: number,
+  height: number
+): RCTCornerHeights {
+  const getElev = (gx: number, gy: number): number => {
+    const cx = Math.min(Math.max(0, gx), width - 1);
+    const cy = Math.min(Math.max(0, gy), height - 1);
+    return elevation[cy]?.[cx] ?? 0;
+  };
+
+  const baseElev = getElev(x, y);
+  const nElev = getElev(x, y - 1);
+  const sElev = getElev(x, y + 1);
+  const eElev = getElev(x + 1, y);
+  const wElev = getElev(x - 1, y);
+  const neElev = getElev(x + 1, y - 1);
+  const nwElev = getElev(x - 1, y - 1);
+  const seElev = getElev(x + 1, y + 1);
+  const swElev = getElev(x - 1, y + 1);
+
+  return {
+    nw: Math.max(baseElev, nElev, wElev, nwElev),
+    ne: Math.max(baseElev, nElev, eElev, neElev),
+    se: Math.max(baseElev, sElev, eElev, seElev),
+    sw: Math.max(baseElev, sElev, wElev, swElev)
+  };
+}
+
 export function getTerrainSpeedModifier(type: TerrainType): number {
   switch (type) {
     case 'fairway': return 1.0;

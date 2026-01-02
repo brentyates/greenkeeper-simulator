@@ -37,6 +37,10 @@ import {
   getWaterDepth,
   getEffectiveTerrainType,
   DEFAULT_WATER_LEVEL,
+  MAX_SLOPE_DELTA,
+  getMaxCornerDelta,
+  isValidSlopeConstraint,
+  validateTerrainData,
   createRCTTileData,
   parseRCTTileHeights,
   exportToRCTFormat,
@@ -1290,6 +1294,120 @@ describe('Water Level Handling', () => {
 
   it('DEFAULT_WATER_LEVEL is 0', () => {
     expect(DEFAULT_WATER_LEVEL).toBe(0);
+  });
+});
+
+describe('Slope Constraints (RCT Spec 6.1)', () => {
+  it('MAX_SLOPE_DELTA is 2', () => {
+    expect(MAX_SLOPE_DELTA).toBe(2);
+  });
+
+  describe('getMaxCornerDelta', () => {
+    it('returns 0 for flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      expect(getMaxCornerDelta(corners)).toBe(0);
+    });
+
+    it('returns correct delta for gentle slope', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      expect(getMaxCornerDelta(corners)).toBe(1);
+    });
+
+    it('returns correct delta for valid max slope', () => {
+      const corners: RCTCornerHeights = { nw: 2, ne: 2, se: 0, sw: 0 };
+      expect(getMaxCornerDelta(corners)).toBe(2);
+    });
+
+    it('returns correct delta for steep invalid slope', () => {
+      const corners: RCTCornerHeights = { nw: 3, ne: 0, se: 0, sw: 0 };
+      expect(getMaxCornerDelta(corners)).toBe(3);
+    });
+
+    it('finds max across all corner pairs', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 4, sw: 2 };
+      expect(getMaxCornerDelta(corners)).toBe(4);
+    });
+
+    it('handles negative elevations', () => {
+      const corners: RCTCornerHeights = { nw: -2, ne: 1, se: 0, sw: -1 };
+      expect(getMaxCornerDelta(corners)).toBe(3);
+    });
+  });
+
+  describe('isValidSlopeConstraint', () => {
+    it('returns true for flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 5, ne: 5, se: 5, sw: 5 };
+      expect(isValidSlopeConstraint(corners)).toBe(true);
+    });
+
+    it('returns true for delta of 1', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      expect(isValidSlopeConstraint(corners)).toBe(true);
+    });
+
+    it('returns true for delta of exactly 2', () => {
+      const corners: RCTCornerHeights = { nw: 2, ne: 2, se: 0, sw: 0 };
+      expect(isValidSlopeConstraint(corners)).toBe(true);
+    });
+
+    it('returns false for delta of 3', () => {
+      const corners: RCTCornerHeights = { nw: 3, ne: 3, se: 0, sw: 0 };
+      expect(isValidSlopeConstraint(corners)).toBe(false);
+    });
+
+    it('allows custom max delta', () => {
+      const corners: RCTCornerHeights = { nw: 4, ne: 0, se: 0, sw: 0 };
+      expect(isValidSlopeConstraint(corners, 4)).toBe(true);
+      expect(isValidSlopeConstraint(corners, 3)).toBe(false);
+    });
+  });
+
+  describe('validateTerrainData', () => {
+    it('validates terrain with no errors', () => {
+      const layout = [[0, 1, 2], [1, 0, 3], [2, 3, 0]];
+      const result = validateTerrainData(layout);
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('detects invalid terrain codes', () => {
+      const layout = [[0, 99, 2], [1, -5, 3]];
+      const result = validateTerrainData(layout);
+      expect(result.valid).toBe(false);
+      expect(result.errors.filter(e => e.type === 'invalid_terrain_code')).toHaveLength(2);
+    });
+
+    it('validates elevation with valid slopes', () => {
+      const layout = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      const elevation = [[0, 0, 0], [0, 1, 0], [0, 0, 0]];
+      const result = validateTerrainData(layout, elevation);
+      expect(result.valid).toBe(true);
+    });
+
+    it('detects slopes that are too steep', () => {
+      const layout = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      const elevation = [[0, 0, 0], [0, 5, 0], [0, 0, 0]];
+      const result = validateTerrainData(layout, elevation);
+      expect(result.valid).toBe(false);
+      expect(result.errors.filter(e => e.type === 'slope_too_steep').length).toBeGreaterThan(0);
+    });
+
+    it('allows custom max slope delta', () => {
+      const layout = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      const elevation = [[0, 0, 0], [0, 5, 0], [0, 0, 0]];
+      const resultStrict = validateTerrainData(layout, elevation, 2);
+      const resultPermissive = validateTerrainData(layout, elevation, 10);
+      expect(resultStrict.valid).toBe(false);
+      expect(resultPermissive.valid).toBe(true);
+    });
+
+    it('returns error details with position', () => {
+      const layout = [[0, 99], [0, 0]];
+      const result = validateTerrainData(layout);
+      expect(result.errors[0].x).toBe(1);
+      expect(result.errors[0].y).toBe(0);
+      expect(result.errors[0].message).toContain('Invalid terrain code');
+    });
   });
 });
 
