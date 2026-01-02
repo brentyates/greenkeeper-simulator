@@ -2222,6 +2222,270 @@ export class TerrainBuilder {
     };
   }
 
+  public importFromRCTFormat(data: RCTTerrainData, options: RCTImportOptions = {}): RCTImportResult {
+    const {
+      validateConstraints = true,
+      applyMowedState = true,
+      updateWaterLevel = true,
+      scaleElevation = false,
+      rebuildMesh = true
+    } = options;
+
+    const result: RCTImportResult = {
+      success: false,
+      tilesImported: 0,
+      tilesSkipped: 0,
+      constraintViolations: 0,
+      warnings: [],
+      errors: []
+    };
+
+    if (!data || !data.gridSize || !data.tiles) {
+      result.errors.push('Invalid RCT data: missing required fields');
+      return result;
+    }
+
+    const [dataWidth, dataHeight] = data.gridSize;
+
+    if (dataWidth !== this.courseData.width || dataHeight !== this.courseData.height) {
+      result.warnings.push(
+        `Grid size mismatch: data is ${dataWidth}x${dataHeight}, ` +
+        `current terrain is ${this.courseData.width}x${this.courseData.height}`
+      );
+    }
+
+    const elevationScale = scaleElevation && data.heightStep !== ELEVATION_HEIGHT
+      ? ELEVATION_HEIGHT / data.heightStep
+      : 1;
+
+    if (scaleElevation && elevationScale !== 1) {
+      result.warnings.push(
+        `Scaling elevation by ${elevationScale.toFixed(2)} ` +
+        `(source heightStep: ${data.heightStep}, target: ${ELEVATION_HEIGHT})`
+      );
+    }
+
+    for (const tile of data.tiles) {
+      const [x, y] = tile.pos;
+
+      if (x < 0 || x >= this.courseData.width || y < 0 || y >= this.courseData.height) {
+        result.tilesSkipped++;
+        continue;
+      }
+
+      let [nw, ne, se, sw] = tile.heights;
+
+      if (elevationScale !== 1) {
+        nw = Math.round(nw * elevationScale);
+        ne = Math.round(ne * elevationScale);
+        se = Math.round(se * elevationScale);
+        sw = Math.round(sw * elevationScale);
+      }
+
+      if (validateConstraints) {
+        const maxDelta = this.constraints.maxSlopeDelta;
+        const deltas = [
+          Math.abs(nw - ne),
+          Math.abs(ne - se),
+          Math.abs(se - sw),
+          Math.abs(sw - nw),
+          Math.abs(nw - se),
+          Math.abs(ne - sw)
+        ];
+        const maxFound = Math.max(...deltas);
+
+        if (maxFound > maxDelta) {
+          result.constraintViolations++;
+          if (this.constraints.enforceConstraints) {
+            const avg = Math.round((nw + ne + se + sw) / 4);
+            nw = Math.max(avg - maxDelta, Math.min(avg + maxDelta, nw));
+            ne = Math.max(avg - maxDelta, Math.min(avg + maxDelta, ne));
+            se = Math.max(avg - maxDelta, Math.min(avg + maxDelta, se));
+            sw = Math.max(avg - maxDelta, Math.min(avg + maxDelta, sw));
+          }
+        }
+      }
+
+      const avgElevation = Math.round((nw + ne + se + sw) / 4);
+      this.setElevationAtInternal(x, y, avgElevation);
+
+      if (applyMowedState && tile.flags?.mowed !== undefined) {
+        this.mowedState[y][x] = tile.flags.mowed;
+      }
+
+      result.tilesImported++;
+    }
+
+    if (updateWaterLevel && data.waterLevel !== undefined) {
+      this.waterLevel = data.waterLevel;
+    }
+
+    if (rebuildMesh) {
+      this.buildWaterPlane();
+      this.buildGridLines();
+    }
+
+    result.success = result.errors.length === 0;
+    return result;
+  }
+
+  public validateRCTData(data: RCTTerrainData): RCTValidationResult {
+    const result: RCTValidationResult = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      statistics: {
+        totalTiles: 0,
+        validTiles: 0,
+        invalidTiles: 0,
+        slopeViolations: 0,
+        outOfBoundsTiles: 0,
+        terrainTypeCounts: {} as Record<TerrainType, number>
+      }
+    };
+
+    if (!data) {
+      result.isValid = false;
+      result.errors.push('Data is null or undefined');
+      return result;
+    }
+
+    if (!data.gridSize || !Array.isArray(data.gridSize) || data.gridSize.length !== 2) {
+      result.isValid = false;
+      result.errors.push('Invalid or missing gridSize');
+      return result;
+    }
+
+    if (!data.tiles || !Array.isArray(data.tiles)) {
+      result.isValid = false;
+      result.errors.push('Invalid or missing tiles array');
+      return result;
+    }
+
+    const [width, height] = data.gridSize;
+    const expectedTiles = width * height;
+    result.statistics.totalTiles = data.tiles.length;
+
+    if (data.tiles.length !== expectedTiles) {
+      result.warnings.push(
+        `Tile count mismatch: expected ${expectedTiles}, got ${data.tiles.length}`
+      );
+    }
+
+    const seenPositions = new Set<string>();
+
+    for (let i = 0; i < data.tiles.length; i++) {
+      const tile = data.tiles[i];
+
+      if (!tile.pos || !Array.isArray(tile.pos) || tile.pos.length !== 2) {
+        result.statistics.invalidTiles++;
+        result.errors.push(`Tile ${i}: invalid position`);
+        continue;
+      }
+
+      if (!tile.heights || !Array.isArray(tile.heights) || tile.heights.length !== 4) {
+        result.statistics.invalidTiles++;
+        result.errors.push(`Tile ${i}: invalid heights array`);
+        continue;
+      }
+
+      const [x, y] = tile.pos;
+      const posKey = `${x},${y}`;
+
+      if (seenPositions.has(posKey)) {
+        result.warnings.push(`Tile ${i}: duplicate position (${x}, ${y})`);
+      }
+      seenPositions.add(posKey);
+
+      if (x < 0 || x >= width || y < 0 || y >= height) {
+        result.statistics.outOfBoundsTiles++;
+        result.warnings.push(`Tile ${i}: position (${x}, ${y}) out of bounds`);
+      }
+
+      const [nw, ne, se, sw] = tile.heights;
+      const deltas = [
+        Math.abs(nw - ne),
+        Math.abs(ne - se),
+        Math.abs(se - sw),
+        Math.abs(sw - nw)
+      ];
+      const maxDelta = Math.max(...deltas);
+
+      if (maxDelta > 2) {
+        result.statistics.slopeViolations++;
+      }
+
+      if (tile.type) {
+        result.statistics.terrainTypeCounts[tile.type] =
+          (result.statistics.terrainTypeCounts[tile.type] || 0) + 1;
+      }
+
+      result.statistics.validTiles++;
+    }
+
+    if (result.errors.length > 0) {
+      result.isValid = false;
+    }
+
+    return result;
+  }
+
+  public mergeRCTData(
+    existingData: RCTTerrainData,
+    newData: RCTTerrainData,
+    options: RCTMergeOptions = {}
+  ): RCTTerrainData {
+    const {
+      conflictResolution = 'newer',
+      blendOverlapping = false,
+      blendFactor = 0.5
+    } = options;
+
+    const mergedTiles = new Map<string, RCTTileData>();
+
+    for (const tile of existingData.tiles) {
+      const key = `${tile.pos[0]},${tile.pos[1]}`;
+      mergedTiles.set(key, { ...tile, heights: [...tile.heights] as [number, number, number, number] });
+    }
+
+    for (const tile of newData.tiles) {
+      const key = `${tile.pos[0]},${tile.pos[1]}`;
+      const existing = mergedTiles.get(key);
+
+      if (!existing) {
+        mergedTiles.set(key, { ...tile, heights: [...tile.heights] as [number, number, number, number] });
+      } else if (blendOverlapping) {
+        const blended: RCTTileData = {
+          pos: tile.pos,
+          heights: [
+            Math.round(existing.heights[0] * (1 - blendFactor) + tile.heights[0] * blendFactor),
+            Math.round(existing.heights[1] * (1 - blendFactor) + tile.heights[1] * blendFactor),
+            Math.round(existing.heights[2] * (1 - blendFactor) + tile.heights[2] * blendFactor),
+            Math.round(existing.heights[3] * (1 - blendFactor) + tile.heights[3] * blendFactor)
+          ],
+          type: conflictResolution === 'newer' ? tile.type : existing.type,
+          flags: {
+            water: tile.type === 'water' || existing.type === 'water',
+            mowed: conflictResolution === 'newer' ? tile.flags.mowed : existing.flags.mowed
+          }
+        };
+        mergedTiles.set(key, blended);
+      } else if (conflictResolution === 'newer') {
+        mergedTiles.set(key, { ...tile, heights: [...tile.heights] as [number, number, number, number] });
+      }
+    }
+
+    const [existingWidth, existingHeight] = existingData.gridSize;
+    const [newWidth, newHeight] = newData.gridSize;
+
+    return {
+      gridSize: [Math.max(existingWidth, newWidth), Math.max(existingHeight, newHeight)],
+      heightStep: existingData.heightStep,
+      waterLevel: conflictResolution === 'newer' ? newData.waterLevel : existingData.waterLevel,
+      tiles: Array.from(mergedTiles.values())
+    };
+  }
+
   public getMowedStateSnapshot(): boolean[][] {
     const { width, height } = this.courseData;
     const snapshot: boolean[][] = [];
@@ -7511,6 +7775,43 @@ export interface RCTTerrainData {
   heightStep: number;
   waterLevel: number;
   tiles: RCTTileData[];
+}
+
+export interface RCTImportOptions {
+  validateConstraints?: boolean;
+  applyMowedState?: boolean;
+  updateWaterLevel?: boolean;
+  scaleElevation?: boolean;
+  rebuildMesh?: boolean;
+}
+
+export interface RCTImportResult {
+  success: boolean;
+  tilesImported: number;
+  tilesSkipped: number;
+  constraintViolations: number;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface RCTValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  statistics: {
+    totalTiles: number;
+    validTiles: number;
+    invalidTiles: number;
+    slopeViolations: number;
+    outOfBoundsTiles: number;
+    terrainTypeCounts: Record<TerrainType, number>;
+  };
+}
+
+export interface RCTMergeOptions {
+  conflictResolution?: 'newer' | 'older' | 'blend';
+  blendOverlapping?: boolean;
+  blendFactor?: number;
 }
 
 export interface TerrainDebugInfo {
