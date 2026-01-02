@@ -22674,6 +22674,521 @@ export class TerrainBuilder {
       avgPathDifficulty: avgDifficulty
     };
   }
+
+  public generatePerlinNoise(seed: number = 12345, scale: number = 0.1, octaves: number = 4, persistence: number = 0.5, lacunarity: number = 2.0): PerlinNoiseResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const noiseMap: number[][] = [];
+
+    const permutation: number[] = [];
+    const seededRandom = (s: number): number => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+    for (let i = 0; i < 256; i++) permutation[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(seededRandom(seed + i) * (i + 1));
+      [permutation[i], permutation[j]] = [permutation[j], permutation[i]];
+    }
+    const p = [...permutation, ...permutation];
+
+    const fade = (t: number): number => t * t * t * (t * (t * 6 - 15) + 10);
+    const lerp = (a: number, b: number, t: number): number => a + t * (b - a);
+    const grad = (hash: number, x: number, y: number): number => {
+      const h = hash & 3;
+      const u = h < 2 ? x : y;
+      const v = h < 2 ? y : x;
+      return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    };
+
+    const perlin2D = (x: number, y: number): number => {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      const xf = x - Math.floor(x);
+      const yf = y - Math.floor(y);
+      const u = fade(xf);
+      const v = fade(yf);
+      const aa = p[p[X] + Y];
+      const ab = p[p[X] + Y + 1];
+      const ba = p[p[X + 1] + Y];
+      const bb = p[p[X + 1] + Y + 1];
+      return lerp(
+        lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u),
+        lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u),
+        v
+      );
+    };
+
+    let minNoise = Infinity;
+    let maxNoise = -Infinity;
+
+    for (let y = 0; y < height; y++) {
+      noiseMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        let amplitude = 1;
+        let frequency = scale;
+        let noiseValue = 0;
+        let maxAmplitude = 0;
+
+        for (let o = 0; o < octaves; o++) {
+          noiseValue += perlin2D(x * frequency, y * frequency) * amplitude;
+          maxAmplitude += amplitude;
+          amplitude *= persistence;
+          frequency *= lacunarity;
+        }
+
+        noiseValue /= maxAmplitude;
+        noiseMap[y][x] = noiseValue;
+        if (noiseValue < minNoise) minNoise = noiseValue;
+        if (noiseValue > maxNoise) maxNoise = noiseValue;
+      }
+    }
+
+    return { noiseMap, seed, scale, octaves, persistence, lacunarity, minValue: minNoise, maxValue: maxNoise, width, height };
+  }
+
+  public applyPerlinNoiseToElevation(noiseResult: PerlinNoiseResult, amplitude: number = 5, offset: number = 0): ProceduralTerrainResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const modifiedTiles: Array<{ x: number; y: number; oldElevation: number; newElevation: number }> = [];
+    const noiseRange = noiseResult.maxValue - noiseResult.minValue;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const oldElevation = this.getElevationAt(x, y);
+        const normalizedNoise = noiseRange !== 0 ? (noiseResult.noiseMap[y][x] - noiseResult.minValue) / noiseRange : 0.5;
+        const elevationChange = (normalizedNoise - 0.5) * amplitude + offset;
+        const newElevation = oldElevation + elevationChange;
+        this.setElevationAtInternal(x, y, newElevation);
+        modifiedTiles.push({ x, y, oldElevation, newElevation });
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { modifiedTiles, tilesModified: modifiedTiles.length, method: 'perlin_noise' };
+  }
+
+  public generateDiamondSquareTerrain(roughness: number = 0.5, seed: number = 12345, minElev: number = 0, maxElev: number = 10): DiamondSquareResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const size = Math.max(width, height);
+    let power = 1;
+    while (power + 1 < size) power *= 2;
+    const gridSize = power + 1;
+    const heightMap: number[][] = [];
+
+    for (let y = 0; y < gridSize; y++) {
+      heightMap[y] = new Array(gridSize).fill(0);
+    }
+
+    const seededRandom = (s: number): number => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+    let seedCounter = seed;
+    const random = (): number => seededRandom(seedCounter++);
+
+    heightMap[0][0] = random() * (maxElev - minElev) + minElev;
+    heightMap[0][gridSize - 1] = random() * (maxElev - minElev) + minElev;
+    heightMap[gridSize - 1][0] = random() * (maxElev - minElev) + minElev;
+    heightMap[gridSize - 1][gridSize - 1] = random() * (maxElev - minElev) + minElev;
+
+    let step = gridSize - 1;
+    let scale = roughness * (maxElev - minElev);
+
+    while (step > 1) {
+      const half = step / 2;
+
+      for (let y = half; y < gridSize - 1; y += step) {
+        for (let x = half; x < gridSize - 1; x += step) {
+          const avg = (heightMap[y - half][x - half] + heightMap[y - half][x + half] +
+                       heightMap[y + half][x - half] + heightMap[y + half][x + half]) / 4;
+          heightMap[y][x] = avg + (random() - 0.5) * scale;
+        }
+      }
+
+      for (let y = 0; y < gridSize; y += half) {
+        for (let x = (y + half) % step; x < gridSize; x += step) {
+          let sum = 0;
+          let count = 0;
+          if (y >= half) { sum += heightMap[y - half][x]; count++; }
+          if (y + half < gridSize) { sum += heightMap[y + half][x]; count++; }
+          if (x >= half) { sum += heightMap[y][x - half]; count++; }
+          if (x + half < gridSize) { sum += heightMap[y][x + half]; count++; }
+          heightMap[y][x] = sum / count + (random() - 0.5) * scale;
+        }
+      }
+
+      step = half;
+      scale *= roughness;
+    }
+
+    const modifiedTiles: Array<{ x: number; y: number; oldElevation: number; newElevation: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const oldElevation = this.getElevationAt(x, y);
+        const newElevation = Math.max(minElev, Math.min(maxElev, heightMap[y][x]));
+        this.setElevationAtInternal(x, y, newElevation);
+        modifiedTiles.push({ x, y, oldElevation, newElevation });
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { heightMap, modifiedTiles, roughness, seed, minElev, maxElev, gridSize, tilesModified: modifiedTiles.length };
+  }
+
+  public applyDetailedThermalErosion(iterations: number = 50, talusAngle: number = 30, erosionRate: number = 0.5): ThermalErosionResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const talusSlope = Math.tan(talusAngle * Math.PI / 180);
+    let totalMaterialMoved = 0;
+    const erosionMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      erosionMap[y] = new Array(width).fill(0);
+    }
+
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const currentElev = this.getElevationAt(x, y);
+          let maxDiff = 0;
+          let maxNeighbor: { x: number; y: number; dist: number } | null = null;
+
+          for (const [dx, dy] of directions) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+            const neighborElev = this.getElevationAt(nx, ny);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const slope = (currentElev - neighborElev) / dist;
+
+            if (slope > talusSlope && slope > maxDiff) {
+              maxDiff = slope;
+              maxNeighbor = { x: nx, y: ny, dist };
+            }
+          }
+
+          if (maxNeighbor) {
+            const neighborElev = this.getElevationAt(maxNeighbor.x, maxNeighbor.y);
+            const transfer = (maxDiff - talusSlope) * maxNeighbor.dist * erosionRate * 0.5;
+            this.setElevationAtInternal(x, y, currentElev - transfer);
+            this.setElevationAtInternal(maxNeighbor.x, maxNeighbor.y, neighborElev + transfer);
+            erosionMap[y][x] -= transfer;
+            erosionMap[maxNeighbor.y][maxNeighbor.x] += transfer;
+            totalMaterialMoved += Math.abs(transfer);
+          }
+        }
+      }
+    }
+
+    const modifiedTiles: Array<{ x: number; y: number; erosion: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (erosionMap[y][x] !== 0) {
+          modifiedTiles.push({ x, y, erosion: erosionMap[y][x] });
+        }
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { erosionMap, modifiedTiles, totalMaterialMoved, iterations, talusAngle, erosionRate, tilesAffected: modifiedTiles.length };
+  }
+
+  public applyDetailedHydraulicErosion(iterations: number = 100, rainAmount: number = 0.1, solubility: number = 0.01, evaporation: number = 0.5, capacity: number = 1.0): HydraulicErosionResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const water: number[][] = [];
+    const sediment: number[][] = [];
+    const erosionMap: number[][] = [];
+    let totalErosion = 0;
+    let totalDeposition = 0;
+
+    for (let y = 0; y < height; y++) {
+      water[y] = new Array(width).fill(0);
+      sediment[y] = new Array(width).fill(0);
+      erosionMap[y] = new Array(width).fill(0);
+    }
+
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          water[y][x] += rainAmount;
+        }
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const erosionAmount = water[y][x] * solubility;
+          const currentElev = this.getElevationAt(x, y);
+          this.setElevationAtInternal(x, y, currentElev - erosionAmount);
+          sediment[y][x] += erosionAmount;
+          erosionMap[y][x] -= erosionAmount;
+          totalErosion += erosionAmount;
+        }
+      }
+
+      const newWater: number[][] = [];
+      const newSediment: number[][] = [];
+      for (let y = 0; y < height; y++) {
+        newWater[y] = new Array(width).fill(0);
+        newSediment[y] = new Array(width).fill(0);
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const currentElev = this.getElevationAt(x, y) + water[y][x];
+          let totalDiff = 0;
+          const lowerNeighbors: Array<{ x: number; y: number; diff: number }> = [];
+
+          for (const [dx, dy] of directions) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+            const neighborElev = this.getElevationAt(nx, ny) + water[ny][nx];
+            const diff = currentElev - neighborElev;
+            if (diff > 0) {
+              lowerNeighbors.push({ x: nx, y: ny, diff });
+              totalDiff += diff;
+            }
+          }
+
+          if (totalDiff > 0) {
+            const waterToMove = Math.min(water[y][x], totalDiff * 0.5);
+            for (const neighbor of lowerNeighbors) {
+              const fraction = neighbor.diff / totalDiff;
+              const waterFlow = waterToMove * fraction;
+              const sedimentFlow = sediment[y][x] * fraction * (waterFlow / (water[y][x] || 1));
+              newWater[neighbor.y][neighbor.x] += waterFlow;
+              newSediment[neighbor.y][neighbor.x] += sedimentFlow;
+            }
+            newWater[y][x] += water[y][x] - waterToMove;
+            newSediment[y][x] += sediment[y][x] * (1 - waterToMove / (water[y][x] || 1));
+          } else {
+            newWater[y][x] += water[y][x];
+            newSediment[y][x] += sediment[y][x];
+          }
+        }
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          water[y][x] = newWater[y][x];
+          sediment[y][x] = newSediment[y][x];
+        }
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          water[y][x] *= (1 - evaporation);
+          const maxSediment = water[y][x] * capacity;
+          if (sediment[y][x] > maxSediment) {
+            const deposit = sediment[y][x] - maxSediment;
+            const currentElev = this.getElevationAt(x, y);
+            this.setElevationAtInternal(x, y, currentElev + deposit);
+            sediment[y][x] = maxSediment;
+            erosionMap[y][x] += deposit;
+            totalDeposition += deposit;
+          }
+        }
+      }
+    }
+
+    const modifiedTiles: Array<{ x: number; y: number; netChange: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (erosionMap[y][x] !== 0) {
+          modifiedTiles.push({ x, y, netChange: erosionMap[y][x] });
+        }
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { erosionMap, modifiedTiles, totalErosion, totalDeposition, netChange: totalDeposition - totalErosion, iterations, rainAmount, solubility, evaporation, capacity, tilesAffected: modifiedTiles.length };
+  }
+
+  public generateVoronoiBiomes(numSeeds: number = 10, seed: number = 12345, elevationVariance: number = 2): VoronoiBiomeResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const biomeTypes: TerrainType[] = ['fairway', 'rough', 'green', 'bunker'];
+
+    const seededRandom = (s: number): number => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+    let seedCounter = seed;
+    const random = (): number => seededRandom(seedCounter++);
+
+    const seeds: Array<{ x: number; y: number; biome: TerrainType; baseElevation: number }> = [];
+    for (let i = 0; i < numSeeds; i++) {
+      seeds.push({
+        x: Math.floor(random() * width),
+        y: Math.floor(random() * height),
+        biome: biomeTypes[Math.floor(random() * biomeTypes.length)],
+        baseElevation: random() * elevationVariance
+      });
+    }
+
+    const biomeMap: TerrainType[][] = [];
+    const modifiedTiles: Array<{ x: number; y: number; oldType: TerrainType; newType: TerrainType; oldElev: number; newElev: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      biomeMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        let minDist = Infinity;
+        let closestSeed = seeds[0];
+
+        for (const s of seeds) {
+          const dist = Math.sqrt((x - s.x) ** 2 + (y - s.y) ** 2);
+          if (dist < minDist) {
+            minDist = dist;
+            closestSeed = s;
+          }
+        }
+
+        const oldType = this.getTerrainTypeAt(x, y);
+        const oldElev = this.getElevationAt(x, y);
+        const newType = closestSeed.biome;
+        const newElev = oldElev + closestSeed.baseElevation * (1 - minDist / Math.max(width, height));
+
+        biomeMap[y][x] = newType;
+        this.setTerrainTypeAt(x, y, newType, false);
+        this.setElevationAtInternal(x, y, newElev);
+        modifiedTiles.push({ x, y, oldType, newType, oldElev, newElev });
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { seeds, biomeMap, modifiedTiles, numSeeds, elevationVariance, width, height };
+  }
+
+  public generateFractalTerrain(roughness: number = 0.6, seed: number = 12345, minElev: number = 0, maxElev: number = 8): FractalTerrainResult {
+    const perlinResult = this.generatePerlinNoise(seed, 0.05, 6, roughness, 2.0);
+    this.applyPerlinNoiseToElevation(perlinResult, maxElev - minElev, minElev);
+
+    const thermalResult = this.applyDetailedThermalErosion(20, 35, 0.3);
+
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const modifiedTiles: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        modifiedTiles.push({ x, y, elevation: this.getElevationAt(x, y) });
+      }
+    }
+
+    return { perlinResult, thermalErosionApplied: true, thermalResult, modifiedTiles, roughness, seed, minElev, maxElev, width, height };
+  }
+
+  public blendTerrainNoise(noiseResult1: PerlinNoiseResult, noiseResult2: PerlinNoiseResult, blendFactor: number = 0.5, amplitude: number = 5): ProceduralTerrainResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const modifiedTiles: Array<{ x: number; y: number; oldElevation: number; newElevation: number }> = [];
+
+    const normalize = (value: number, min: number, max: number): number => {
+      return max !== min ? (value - min) / (max - min) : 0.5;
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const oldElevation = this.getElevationAt(x, y);
+        const n1 = normalize(noiseResult1.noiseMap[y]?.[x] ?? 0, noiseResult1.minValue, noiseResult1.maxValue);
+        const n2 = normalize(noiseResult2.noiseMap[y]?.[x] ?? 0, noiseResult2.minValue, noiseResult2.maxValue);
+        const blendedNoise = n1 * (1 - blendFactor) + n2 * blendFactor;
+        const elevationChange = (blendedNoise - 0.5) * amplitude;
+        const newElevation = oldElevation + elevationChange;
+        this.setElevationAtInternal(x, y, newElevation);
+        modifiedTiles.push({ x, y, oldElevation, newElevation });
+      }
+    }
+
+    this.rebuildAllTiles();
+    return { modifiedTiles, tilesModified: modifiedTiles.length, method: 'blended_noise' };
+  }
+}
+
+export interface PerlinNoiseResult {
+  noiseMap: number[][];
+  seed: number;
+  scale: number;
+  octaves: number;
+  persistence: number;
+  lacunarity: number;
+  minValue: number;
+  maxValue: number;
+  width: number;
+  height: number;
+}
+
+export interface ProceduralTerrainResult {
+  modifiedTiles: Array<{ x: number; y: number; oldElevation: number; newElevation: number }>;
+  tilesModified: number;
+  method: string;
+}
+
+export interface DiamondSquareResult {
+  heightMap: number[][];
+  modifiedTiles: Array<{ x: number; y: number; oldElevation: number; newElevation: number }>;
+  roughness: number;
+  seed: number;
+  minElev: number;
+  maxElev: number;
+  gridSize: number;
+  tilesModified: number;
+}
+
+export interface ThermalErosionResult {
+  erosionMap: number[][];
+  modifiedTiles: Array<{ x: number; y: number; erosion: number }>;
+  totalMaterialMoved: number;
+  iterations: number;
+  talusAngle: number;
+  erosionRate: number;
+  tilesAffected: number;
+}
+
+export interface HydraulicErosionResult {
+  erosionMap: number[][];
+  modifiedTiles: Array<{ x: number; y: number; netChange: number }>;
+  totalErosion: number;
+  totalDeposition: number;
+  netChange: number;
+  iterations: number;
+  rainAmount: number;
+  solubility: number;
+  evaporation: number;
+  capacity: number;
+  tilesAffected: number;
+}
+
+export interface VoronoiBiomeResult {
+  seeds: Array<{ x: number; y: number; biome: TerrainType; baseElevation: number }>;
+  biomeMap: TerrainType[][];
+  modifiedTiles: Array<{ x: number; y: number; oldType: TerrainType; newType: TerrainType; oldElev: number; newElev: number }>;
+  numSeeds: number;
+  elevationVariance: number;
+  width: number;
+  height: number;
+}
+
+export interface FractalTerrainResult {
+  perlinResult: PerlinNoiseResult;
+  thermalErosionApplied: boolean;
+  thermalResult: ThermalErosionResult;
+  modifiedTiles: Array<{ x: number; y: number; elevation: number }>;
+  roughness: number;
+  seed: number;
+  minElev: number;
+  maxElev: number;
+  width: number;
+  height: number;
 }
 
 export interface AStarPathOptions {
