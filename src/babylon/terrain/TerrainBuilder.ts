@@ -25505,6 +25505,377 @@ export class TerrainBuilder {
       averageSlope: avgSlope
     };
   }
+
+  public createTileBatches(): TileBatchMap {
+    const batches: Map<string, TileBatch> = new Map();
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+        const elevation = this.getElevationAt(x, y);
+        const elevationBucket = Math.floor(elevation / 0.5);
+
+        const batchKey = `${terrainType}_${elevationBucket}`;
+
+        if (!batches.has(batchKey)) {
+          batches.set(batchKey, {
+            terrainType,
+            elevationRange: { min: elevationBucket * 0.5, max: (elevationBucket + 1) * 0.5 },
+            tiles: [],
+            instanceCount: 0,
+            boundingBox: { minX: x, maxX: x, minY: y, maxY: y }
+          });
+        }
+
+        const batch = batches.get(batchKey)!;
+        batch.tiles.push({ x, y, elevation });
+        batch.instanceCount++;
+        batch.boundingBox.minX = Math.min(batch.boundingBox.minX, x);
+        batch.boundingBox.maxX = Math.max(batch.boundingBox.maxX, x);
+        batch.boundingBox.minY = Math.min(batch.boundingBox.minY, y);
+        batch.boundingBox.maxY = Math.max(batch.boundingBox.maxY, y);
+      }
+    }
+
+    return {
+      batches: Object.fromEntries(batches),
+      batchCount: batches.size,
+      totalTiles: this.courseData.width * this.courseData.height
+    };
+  }
+
+  public generateInstanceMatrices(batch: TileBatch): InstanceMatrixData {
+    const matrices: Float32Array = new Float32Array(batch.tiles.length * 16);
+
+    for (let i = 0; i < batch.tiles.length; i++) {
+      const tile = batch.tiles[i];
+      const offset = i * 16;
+
+      matrices[offset + 0] = 1;
+      matrices[offset + 1] = 0;
+      matrices[offset + 2] = 0;
+      matrices[offset + 3] = 0;
+
+      matrices[offset + 4] = 0;
+      matrices[offset + 5] = 1;
+      matrices[offset + 6] = 0;
+      matrices[offset + 7] = 0;
+
+      matrices[offset + 8] = 0;
+      matrices[offset + 9] = 0;
+      matrices[offset + 10] = 1;
+      matrices[offset + 11] = 0;
+
+      matrices[offset + 12] = tile.x;
+      matrices[offset + 13] = tile.elevation;
+      matrices[offset + 14] = tile.y;
+      matrices[offset + 15] = 1;
+    }
+
+    return {
+      matrices,
+      instanceCount: batch.tiles.length,
+      byteSize: matrices.length * 4
+    };
+  }
+
+  public createLODBatches(lodLevel: number): LODBatchMap {
+    const step = Math.pow(2, lodLevel);
+    const batches: Map<string, LODBatch> = new Map();
+
+    for (let y = 0; y < this.courseData.height; y += step) {
+      for (let x = 0; x < this.courseData.width; x += step) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+
+        if (!batches.has(terrainType)) {
+          batches.set(terrainType, {
+            terrainType,
+            lodLevel,
+            tiles: [],
+            vertexCount: 0
+          });
+        }
+
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(Math.min(x + step, this.courseData.width - 1), y);
+        const e01 = this.getElevationAt(x, Math.min(y + step, this.courseData.height - 1));
+        const e11 = this.getElevationAt(
+          Math.min(x + step, this.courseData.width - 1),
+          Math.min(y + step, this.courseData.height - 1)
+        );
+
+        const batch = batches.get(terrainType)!;
+        batch.tiles.push({
+          x, y,
+          width: step,
+          height: step,
+          corners: { e00, e10, e01, e11 }
+        });
+        batch.vertexCount += 6;
+      }
+    }
+
+    return {
+      batches: Object.fromEntries(batches),
+      lodLevel,
+      batchCount: batches.size,
+      totalVertices: Array.from(batches.values()).reduce((sum, b) => sum + b.vertexCount, 0)
+    };
+  }
+
+  public generateBatchedVertexBuffer(batches: TileBatchMap): BatchedVertexBuffer {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const batchIds: number[] = [];
+    const indices: number[] = [];
+
+    let vertexIndex = 0;
+    let batchIndex = 0;
+
+    for (const [, batch] of Object.entries(batches.batches)) {
+      const colorRGB = this.getTerrainColorRGB(batch.terrainType);
+
+      for (const tile of batch.tiles) {
+        const e00 = this.getElevationAt(tile.x, tile.y);
+        const e10 = this.getElevationAt(tile.x + 1, tile.y);
+        const e01 = this.getElevationAt(tile.x, tile.y + 1);
+        const e11 = this.getElevationAt(tile.x + 1, tile.y + 1);
+
+        const diag1 = Math.abs(e00 - e11);
+        const diag2 = Math.abs(e10 - e01);
+
+        if (diag1 <= diag2) {
+          positions.push(tile.x, e00, tile.y, tile.x + 1, e10, tile.y, tile.x + 1, e11, tile.y + 1);
+          positions.push(tile.x, e00, tile.y, tile.x + 1, e11, tile.y + 1, tile.x, e01, tile.y + 1);
+        } else {
+          positions.push(tile.x, e00, tile.y, tile.x + 1, e10, tile.y, tile.x, e01, tile.y + 1);
+          positions.push(tile.x + 1, e10, tile.y, tile.x + 1, e11, tile.y + 1, tile.x, e01, tile.y + 1);
+        }
+
+        for (let t = 0; t < 6; t++) {
+          normals.push(0, 1, 0);
+          colors.push(colorRGB.r, colorRGB.g, colorRGB.b, 1.0);
+          batchIds.push(batchIndex);
+        }
+
+        uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+
+        for (let i = 0; i < 6; i++) {
+          indices.push(vertexIndex + i);
+        }
+        vertexIndex += 6;
+      }
+      batchIndex++;
+    }
+
+    return {
+      positions: new Float32Array(positions),
+      normals: new Float32Array(normals),
+      uvs: new Float32Array(uvs),
+      colors: new Float32Array(colors),
+      batchIds: new Uint32Array(batchIds),
+      indices: new Uint32Array(indices),
+      vertexCount: vertexIndex,
+      batchCount: batchIndex
+    };
+  }
+
+  public computeBatchStatistics(batches: TileBatchMap): BatchStatistics {
+    const batchSizes = Object.values(batches.batches).map(b => b.instanceCount);
+
+    const terrainTypeCounts: Record<string, number> = {};
+    for (const batch of Object.values(batches.batches)) {
+      terrainTypeCounts[batch.terrainType] = (terrainTypeCounts[batch.terrainType] || 0) + batch.instanceCount;
+    }
+
+    return {
+      totalBatches: batches.batchCount,
+      totalTiles: batches.totalTiles,
+      averageBatchSize: batches.totalTiles / batches.batchCount,
+      maxBatchSize: Math.max(...batchSizes),
+      minBatchSize: Math.min(...batchSizes),
+      terrainTypeCounts,
+      drawCallReduction: batches.totalTiles / batches.batchCount
+    };
+  }
+
+  public sortBatchesByDistance(
+    batches: TileBatchMap,
+    cameraX: number,
+    cameraZ: number
+  ): SortedBatchList {
+    const sorted = Object.entries(batches.batches)
+      .map(([key, batch]) => {
+        const centerX = (batch.boundingBox.minX + batch.boundingBox.maxX) / 2;
+        const centerY = (batch.boundingBox.minY + batch.boundingBox.maxY) / 2;
+        const distance = Math.sqrt(
+          Math.pow(centerX - cameraX, 2) +
+          Math.pow(centerY - cameraZ, 2)
+        );
+        return { key, batch, distance };
+      })
+      .sort((a, b) => a.distance - b.distance);
+
+    return {
+      sortedBatches: sorted,
+      nearestBatch: sorted[0]?.key ?? '',
+      farthestBatch: sorted[sorted.length - 1]?.key ?? ''
+    };
+  }
+
+  public mergeBatches(batches: TileBatchMap, minBatchSize: number = 100): TileBatchMap {
+    const mergedBatches: Map<string, TileBatch> = new Map();
+    const smallBatches: TileBatch[] = [];
+
+    for (const batch of Object.values(batches.batches)) {
+      if (batch.instanceCount >= minBatchSize) {
+        mergedBatches.set(`${batch.terrainType}_large_${mergedBatches.size}`, batch);
+      } else {
+        smallBatches.push(batch);
+      }
+    }
+
+    const groupedSmall: Map<string, TileBatch[]> = new Map();
+    for (const batch of smallBatches) {
+      if (!groupedSmall.has(batch.terrainType)) {
+        groupedSmall.set(batch.terrainType, []);
+      }
+      groupedSmall.get(batch.terrainType)!.push(batch);
+    }
+
+    for (const [terrainType, batchGroup] of groupedSmall) {
+      const mergedTiles: Array<{ x: number; y: number; elevation: number }> = [];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+      for (const batch of batchGroup) {
+        mergedTiles.push(...batch.tiles);
+        minX = Math.min(minX, batch.boundingBox.minX);
+        maxX = Math.max(maxX, batch.boundingBox.maxX);
+        minY = Math.min(minY, batch.boundingBox.minY);
+        maxY = Math.max(maxY, batch.boundingBox.maxY);
+      }
+
+      mergedBatches.set(`${terrainType}_merged`, {
+        terrainType: terrainType as TerrainType,
+        elevationRange: { min: 0, max: 10 },
+        tiles: mergedTiles,
+        instanceCount: mergedTiles.length,
+        boundingBox: { minX, maxX, minY, maxY }
+      });
+    }
+
+    return {
+      batches: Object.fromEntries(mergedBatches),
+      batchCount: mergedBatches.size,
+      totalTiles: batches.totalTiles
+    };
+  }
+
+  public createFrustumCulledBatches(
+    batches: TileBatchMap,
+    cameraX: number, cameraZ: number,
+    viewDirX: number, viewDirZ: number,
+    fov: number = 90
+  ): TileBatchMap {
+    const halfFov = (fov * Math.PI / 180) / 2;
+    const visibleBatches: Map<string, TileBatch> = new Map();
+
+    for (const [key, batch] of Object.entries(batches.batches)) {
+      const centerX = (batch.boundingBox.minX + batch.boundingBox.maxX) / 2;
+      const centerY = (batch.boundingBox.minY + batch.boundingBox.maxY) / 2;
+
+      const toX = centerX - cameraX;
+      const toZ = centerY - cameraZ;
+      const length = Math.sqrt(toX * toX + toZ * toZ);
+
+      if (length < 0.01) {
+        visibleBatches.set(key, batch);
+        continue;
+      }
+
+      const dot = (toX * viewDirX + toZ * viewDirZ) / length;
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+      if (angle <= halfFov + 0.2) {
+        visibleBatches.set(key, batch);
+      }
+    }
+
+    return {
+      batches: Object.fromEntries(visibleBatches),
+      batchCount: visibleBatches.size,
+      totalTiles: Array.from(visibleBatches.values()).reduce((sum, b) => sum + b.instanceCount, 0)
+    };
+  }
+}
+
+export interface TileBatch {
+  terrainType: TerrainType;
+  elevationRange: { min: number; max: number };
+  tiles: Array<{ x: number; y: number; elevation: number }>;
+  instanceCount: number;
+  boundingBox: { minX: number; maxX: number; minY: number; maxY: number };
+}
+
+export interface TileBatchMap {
+  batches: Record<string, TileBatch>;
+  batchCount: number;
+  totalTiles: number;
+}
+
+export interface InstanceMatrixData {
+  matrices: Float32Array;
+  instanceCount: number;
+  byteSize: number;
+}
+
+export interface LODBatch {
+  terrainType: TerrainType;
+  lodLevel: number;
+  tiles: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    corners: { e00: number; e10: number; e01: number; e11: number };
+  }>;
+  vertexCount: number;
+}
+
+export interface LODBatchMap {
+  batches: Record<string, LODBatch>;
+  lodLevel: number;
+  batchCount: number;
+  totalVertices: number;
+}
+
+export interface BatchedVertexBuffer {
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs: Float32Array;
+  colors: Float32Array;
+  batchIds: Uint32Array;
+  indices: Uint32Array;
+  vertexCount: number;
+  batchCount: number;
+}
+
+export interface BatchStatistics {
+  totalBatches: number;
+  totalTiles: number;
+  averageBatchSize: number;
+  maxBatchSize: number;
+  minBatchSize: number;
+  terrainTypeCounts: Record<string, number>;
+  drawCallReduction: number;
+}
+
+export interface SortedBatchList {
+  sortedBatches: Array<{ key: string; batch: TileBatch; distance: number }>;
+  nearestBatch: string;
+  farthestBatch: string;
 }
 
 export interface BilinearSampleResult {
