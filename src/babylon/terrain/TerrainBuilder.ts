@@ -27309,6 +27309,288 @@ export class TerrainBuilder {
       totalZones: zones.zoneCount
     };
   }
+
+  public computeTraversalCost(fromX: number, fromZ: number, toX: number, toZ: number): TraversalCostData {
+    const fromElevation = this.getElevationAt(fromX, fromZ);
+    const toElevation = this.getElevationAt(toX, toZ);
+    const elevationDiff = toElevation - fromElevation;
+
+    const distance = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toZ - fromZ, 2));
+    const baseCost = distance;
+
+    const slopeMultiplier = elevationDiff > 0 ? 1 + Math.abs(elevationDiff) * 0.5 : 1 + Math.abs(elevationDiff) * 0.2;
+
+    const toTerrain = this.getTerrainTypeAt(toX, toZ);
+    const terrainMultiplier = toTerrain === 'bunker' ? 3.0 :
+                              toTerrain === 'rough' ? 1.5 :
+                              toTerrain === 'water' ? 10.0 :
+                              toTerrain === 'green' ? 0.8 : 1.0;
+
+    const totalCost = baseCost * slopeMultiplier * terrainMultiplier;
+
+    return {
+      from: { x: fromX, z: fromZ },
+      to: { x: toX, z: toZ },
+      distance,
+      elevationDiff,
+      slopeMultiplier,
+      terrainMultiplier,
+      totalCost,
+      traversable: toTerrain !== 'water' && Math.abs(elevationDiff) <= 2
+    };
+  }
+
+  public findTerrainPath(startX: number, startZ: number, endX: number, endZ: number, maxIterations: number = 10000): TerrainPathfindingResult {
+    const openSet = new Map<string, { x: number; z: number; g: number; f: number; parent: string | null }>();
+    const closedSet = new Set<string>();
+
+    const heuristic = (x: number, z: number) => {
+      return Math.sqrt(Math.pow(endX - x, 2) + Math.pow(endZ - z, 2));
+    };
+
+    const startKey = `${startX},${startZ}`;
+    openSet.set(startKey, { x: startX, z: startZ, g: 0, f: heuristic(startX, startZ), parent: null });
+
+    let iterations = 0;
+    const neighbors = [
+      { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+      { dx: 0, dz: -1 }, { dx: 0, dz: 1 },
+      { dx: -1, dz: -1 }, { dx: 1, dz: -1 },
+      { dx: -1, dz: 1 }, { dx: 1, dz: 1 }
+    ];
+
+    while (openSet.size > 0 && iterations < maxIterations) {
+      iterations++;
+
+      let currentKey = '';
+      let lowestF = Infinity;
+      for (const [key, node] of openSet) {
+        if (node.f < lowestF) {
+          lowestF = node.f;
+          currentKey = key;
+        }
+      }
+
+      const current = openSet.get(currentKey)!;
+      openSet.delete(currentKey);
+      closedSet.add(currentKey);
+
+      if (current.x === endX && current.z === endZ) {
+        const path: Array<{ x: number; z: number }> = [];
+        let pathKey: string | null = currentKey;
+        const allNodes = new Map(closedSet.size > 0 ? [...closedSet].map(k => [k, openSet.get(k) || { x: 0, z: 0, g: 0, f: 0, parent: null }]) : []);
+        allNodes.set(currentKey, current);
+
+        while (pathKey) {
+          const [px, pz] = pathKey.split(',').map(Number);
+          path.unshift({ x: px, z: pz });
+          const node = allNodes.get(pathKey);
+          pathKey = node?.parent || null;
+        }
+
+        return {
+          path,
+          found: true,
+          totalCost: current.g,
+          iterations,
+          nodesExplored: closedSet.size
+        };
+      }
+
+      for (const { dx, dz } of neighbors) {
+        const nx = current.x + dx, nz = current.z + dz;
+        if (nx < 0 || nx >= this.courseData.width || nz < 0 || nz >= this.courseData.height) {
+          continue;
+        }
+
+        const neighborKey = `${nx},${nz}`;
+        if (closedSet.has(neighborKey)) {
+          continue;
+        }
+
+        const traversal = this.computeTraversalCost(current.x, current.z, nx, nz);
+        if (!traversal.traversable) {
+          continue;
+        }
+
+        const g = current.g + traversal.totalCost;
+        const existing = openSet.get(neighborKey);
+
+        if (!existing || g < existing.g) {
+          openSet.set(neighborKey, { x: nx, z: nz, g, f: g + heuristic(nx, nz), parent: currentKey });
+        }
+      }
+    }
+
+    return {
+      path: [],
+      found: false,
+      totalCost: Infinity,
+      iterations,
+      nodesExplored: closedSet.size
+    };
+  }
+
+  public computeReachableArea(startX: number, startZ: number, maxCost: number): ReachableAreaData {
+    const reachable: Array<{ x: number; z: number; cost: number }> = [];
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; z: number; cost: number }> = [{ x: startX, z: startZ, cost: 0 }];
+
+    const neighbors = [
+      { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+      { dx: 0, dz: -1 }, { dx: 0, dz: 1 }
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = `${current.x},${current.z}`;
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      if (current.cost <= maxCost) {
+        reachable.push(current);
+
+        for (const { dx, dz } of neighbors) {
+          const nx = current.x + dx, nz = current.z + dz;
+          if (nx < 0 || nx >= this.courseData.width || nz < 0 || nz >= this.courseData.height) {
+            continue;
+          }
+
+          const traversal = this.computeTraversalCost(current.x, current.z, nx, nz);
+          if (traversal.traversable) {
+            const newCost = current.cost + traversal.totalCost;
+            if (newCost <= maxCost) {
+              queue.push({ x: nx, z: nz, cost: newCost });
+            }
+          }
+        }
+      }
+    }
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const cell of reachable) {
+      minX = Math.min(minX, cell.x);
+      maxX = Math.max(maxX, cell.x);
+      minZ = Math.min(minZ, cell.z);
+      maxZ = Math.max(maxZ, cell.z);
+    }
+
+    return {
+      reachableCells: reachable,
+      totalCells: reachable.length,
+      maxCost,
+      boundingBox: { minX, maxX, minZ, maxZ },
+      startPosition: { x: startX, z: startZ }
+    };
+  }
+
+  public computeDistanceField(targetX: number, targetZ: number): DistanceFieldData {
+    const distanceField: number[][] = [];
+    const maxDistance = this.courseData.width + this.courseData.height;
+
+    for (let z = 0; z < this.courseData.height; z++) {
+      distanceField[z] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        distanceField[z][x] = maxDistance;
+      }
+    }
+
+    distanceField[targetZ][targetX] = 0;
+    const queue: Array<{ x: number; z: number }> = [{ x: targetX, z: targetZ }];
+
+    const neighbors = [
+      { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+      { dx: 0, dz: -1 }, { dx: 0, dz: 1 }
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const currentDist = distanceField[current.z][current.x];
+
+      for (const { dx, dz } of neighbors) {
+        const nx = current.x + dx, nz = current.z + dz;
+        if (nx < 0 || nx >= this.courseData.width || nz < 0 || nz >= this.courseData.height) {
+          continue;
+        }
+
+        const traversal = this.computeTraversalCost(current.x, current.z, nx, nz);
+        const newDist = currentDist + (traversal.traversable ? traversal.totalCost : maxDistance);
+
+        if (newDist < distanceField[nz][nx]) {
+          distanceField[nz][nx] = newDist;
+          queue.push({ x: nx, z: nz });
+        }
+      }
+    }
+
+    return {
+      distanceField,
+      width: this.courseData.width,
+      height: this.courseData.height,
+      target: { x: targetX, z: targetZ },
+      maxDistance
+    };
+  }
+
+  public findTerrainMultiplePaths(startX: number, startZ: number, targets: Array<{ x: number; z: number }>): TerrainMultiplePathsResult {
+    const paths: Array<{ target: { x: number; z: number }; path: Array<{ x: number; z: number }>; cost: number; found: boolean }> = [];
+
+    for (const target of targets) {
+      const result = this.findTerrainPath(startX, startZ, target.x, target.z, 5000);
+      paths.push({
+        target,
+        path: result.path,
+        cost: result.totalCost,
+        found: result.found
+      });
+    }
+
+    paths.sort((a, b) => a.cost - b.cost);
+
+    return {
+      paths,
+      startPosition: { x: startX, z: startZ },
+      targetCount: targets.length,
+      pathsFound: paths.filter(p => p.found).length,
+      shortestPath: paths.length > 0 && paths[0].found ? paths[0] : null
+    };
+  }
+
+  public computePathfindingStatistics(): PathfindingStatistics {
+    const sampleSize = 20;
+    const samplePaths: Array<{ found: boolean; cost: number; iterations: number }> = [];
+
+    for (let i = 0; i < sampleSize; i++) {
+      const startX = Math.floor(Math.random() * this.courseData.width);
+      const startZ = Math.floor(Math.random() * this.courseData.height);
+      const endX = Math.floor(Math.random() * this.courseData.width);
+      const endZ = Math.floor(Math.random() * this.courseData.height);
+
+      const result = this.findTerrainPath(startX, startZ, endX, endZ, 2000);
+      samplePaths.push({
+        found: result.found,
+        cost: result.found ? result.totalCost : Infinity,
+        iterations: result.iterations
+      });
+    }
+
+    const foundPaths = samplePaths.filter(p => p.found);
+    const avgCost = foundPaths.length > 0
+      ? foundPaths.reduce((sum, p) => sum + p.cost, 0) / foundPaths.length
+      : 0;
+    const avgIterations = samplePaths.reduce((sum, p) => sum + p.iterations, 0) / samplePaths.length;
+
+    return {
+      sampleSize,
+      pathsFound: foundPaths.length,
+      successRate: foundPaths.length / sampleSize,
+      averageCost: avgCost,
+      averageIterations: avgIterations,
+      gridWidth: this.courseData.width,
+      gridHeight: this.courseData.height
+    };
+  }
 }
 
 export interface WaterTileData {
@@ -30281,4 +30563,57 @@ export interface WindStatistics {
   exposedZones: number;
   shelteredZones: number;
   totalZones: number;
+}
+
+export interface TraversalCostData {
+  from: { x: number; z: number };
+  to: { x: number; z: number };
+  distance: number;
+  elevationDiff: number;
+  slopeMultiplier: number;
+  terrainMultiplier: number;
+  totalCost: number;
+  traversable: boolean;
+}
+
+export interface TerrainPathfindingResult {
+  path: Array<{ x: number; z: number }>;
+  found: boolean;
+  totalCost: number;
+  iterations: number;
+  nodesExplored: number;
+}
+
+export interface ReachableAreaData {
+  reachableCells: Array<{ x: number; z: number; cost: number }>;
+  totalCells: number;
+  maxCost: number;
+  boundingBox: { minX: number; maxX: number; minZ: number; maxZ: number };
+  startPosition: { x: number; z: number };
+}
+
+export interface DistanceFieldData {
+  distanceField: number[][];
+  width: number;
+  height: number;
+  target: { x: number; z: number };
+  maxDistance: number;
+}
+
+export interface TerrainMultiplePathsResult {
+  paths: Array<{ target: { x: number; z: number }; path: Array<{ x: number; z: number }>; cost: number; found: boolean }>;
+  startPosition: { x: number; z: number };
+  targetCount: number;
+  pathsFound: number;
+  shortestPath: { target: { x: number; z: number }; path: Array<{ x: number; z: number }>; cost: number; found: boolean } | null;
+}
+
+export interface PathfindingStatistics {
+  sampleSize: number;
+  pathsFound: number;
+  successRate: number;
+  averageCost: number;
+  averageIterations: number;
+  gridWidth: number;
+  gridHeight: number;
 }
