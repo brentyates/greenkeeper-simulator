@@ -38,6 +38,8 @@ export class TerrainBuilder {
   private nextFaceId: number = 0;
   private waterLevel: number = DEFAULT_WATER_LEVEL;
   private waterMesh: Mesh | null = null;
+  private batchedTerrainMesh: Mesh | null = null;
+  private isBatched: boolean = false;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -1083,6 +1085,11 @@ export class TerrainBuilder {
       this.waterMesh.dispose();
       this.waterMesh = null;
     }
+    if (this.batchedTerrainMesh) {
+      this.batchedTerrainMesh.dispose();
+      this.batchedTerrainMesh = null;
+    }
+    this.isBatched = false;
   }
 
   public setWaterLevel(level: number): void {
@@ -1327,6 +1334,115 @@ export class TerrainBuilder {
     const elevDiff = Math.abs(toElev - fromElev);
 
     return elevDiff <= maxSlopeDelta;
+  }
+
+  public batchTerrain(): void {
+    if (this.isBatched || this.tileMeshes.length === 0) return;
+
+    const nonMowedMeshes = this.tileMeshes.filter(mesh => !mesh.name.includes('mowed'));
+    if (nonMowedMeshes.length === 0) return;
+
+    const allPositions: number[] = [];
+    const allIndices: number[] = [];
+    const allColors: number[] = [];
+    const allUvs: number[] = [];
+    let vertexOffset = 0;
+
+    for (const mesh of nonMowedMeshes) {
+      const positions = mesh.getVerticesData('position');
+      const indices = mesh.getIndices();
+      const colors = mesh.getVerticesData('color');
+      const uvs = mesh.getVerticesData('uv');
+
+      if (!positions || !indices) continue;
+
+      for (let i = 0; i < positions.length; i++) {
+        allPositions.push(positions[i]);
+      }
+
+      for (let i = 0; i < indices.length; i++) {
+        allIndices.push(indices[i] + vertexOffset);
+      }
+
+      if (colors) {
+        for (let i = 0; i < colors.length; i++) {
+          allColors.push(colors[i]);
+        }
+      }
+
+      if (uvs) {
+        for (let i = 0; i < uvs.length; i++) {
+          allUvs.push(uvs[i]);
+        }
+      }
+
+      vertexOffset += positions.length / 3;
+    }
+
+    const vertexData = new VertexData();
+    vertexData.positions = allPositions;
+    vertexData.indices = allIndices;
+    if (allColors.length > 0) {
+      vertexData.colors = allColors;
+    }
+    if (allUvs.length > 0) {
+      vertexData.uvs = allUvs;
+    }
+
+    this.batchedTerrainMesh = new Mesh('batchedTerrain', this.scene);
+    vertexData.applyToMesh(this.batchedTerrainMesh);
+    this.batchedTerrainMesh.convertToFlatShadedMesh();
+    this.batchedTerrainMesh.material = this.getTileMaterial();
+    this.batchedTerrainMesh.useVertexColors = true;
+
+    for (const mesh of nonMowedMeshes) {
+      mesh.setEnabled(false);
+    }
+
+    this.isBatched = true;
+  }
+
+  public unbatchTerrain(): void {
+    if (!this.isBatched) return;
+
+    if (this.batchedTerrainMesh) {
+      this.batchedTerrainMesh.dispose();
+      this.batchedTerrainMesh = null;
+    }
+
+    for (const mesh of this.tileMeshes) {
+      mesh.setEnabled(true);
+    }
+
+    this.isBatched = false;
+  }
+
+  public isBatchedMode(): boolean {
+    return this.isBatched;
+  }
+
+  public getBatchedMesh(): Mesh | null {
+    return this.batchedTerrainMesh;
+  }
+
+  public getTileMeshCount(): number {
+    return this.tileMeshes.length;
+  }
+
+  public getVisibleMeshCount(): number {
+    if (this.isBatched) {
+      const mowedMeshes = this.tileMeshes.filter(mesh => mesh.name.includes('mowed') || mesh.isEnabled());
+      return mowedMeshes.length + (this.batchedTerrainMesh ? 1 : 0);
+    }
+    return this.tileMeshes.filter(mesh => mesh.isEnabled()).length;
+  }
+
+  public getDrawCallEstimate(): number {
+    let count = this.getVisibleMeshCount();
+    if (this.gridLines?.isEnabled()) count++;
+    if (this.waterMesh?.isEnabled()) count++;
+    count += this.obstacleMeshes.filter(m => m.isEnabled()).length;
+    return count;
   }
 }
 
