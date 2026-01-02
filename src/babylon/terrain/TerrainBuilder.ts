@@ -27813,6 +27813,358 @@ export class TerrainBuilder {
       valleyCount: ridgesValleys.valleyCount
     };
   }
+
+  public computeEnhancedViewshed(
+    viewerX: number,
+    viewerZ: number,
+    viewerHeight: number = 1.7,
+    maxDistance: number = 50
+  ): EnhancedViewshedData {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const viewerElevation = this.getElevationAt(viewerX, viewerZ) + viewerHeight;
+
+    const visibilityMap: boolean[][] = [];
+    const distanceMap: number[][] = [];
+
+    for (let z = 0; z < height; z++) {
+      visibilityMap[z] = [];
+      distanceMap[z] = [];
+      for (let x = 0; x < width; x++) {
+        visibilityMap[z][x] = false;
+        distanceMap[z][x] = -1;
+      }
+    }
+
+    let visibleCount = 0;
+    let totalChecked = 0;
+
+    for (let z = 0; z < height; z++) {
+      for (let x = 0; x < width; x++) {
+        const dx = x - viewerX;
+        const dz = z - viewerZ;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+
+        if (distance > maxDistance) continue;
+        totalChecked++;
+
+        const targetElevation = this.getElevationAt(x, z);
+        const isVisible = this.detailedRaycastVisibility(
+          viewerX, viewerZ, viewerElevation,
+          x, z, targetElevation,
+          distance
+        );
+
+        visibilityMap[z][x] = isVisible;
+        distanceMap[z][x] = distance;
+        if (isVisible) visibleCount++;
+      }
+    }
+
+    return {
+      visibilityMap,
+      distanceMap,
+      viewerPosition: { x: viewerX, z: viewerZ, elevation: viewerElevation },
+      maxDistance,
+      visibleCells: visibleCount,
+      totalCells: totalChecked,
+      visibilityPercentage: totalChecked > 0 ? (visibleCount / totalChecked) * 100 : 0
+    };
+  }
+
+  private detailedRaycastVisibility(
+    fromX: number, fromZ: number, fromElevation: number,
+    toX: number, toZ: number, toElevation: number,
+    distance: number
+  ): boolean {
+    if (distance < 0.5) return true;
+
+    const steps = Math.max(Math.ceil(distance * 2), 2);
+    const dx = (toX - fromX) / steps;
+    const dz = (toZ - fromZ) / steps;
+    const dElevation = (toElevation - fromElevation) / steps;
+
+    for (let i = 1; i < steps; i++) {
+      const checkX = fromX + dx * i;
+      const checkZ = fromZ + dz * i;
+      const rayElevation = fromElevation + dElevation * i;
+      const terrainElevation = this.getElevationAt(
+        Math.floor(checkX),
+        Math.floor(checkZ)
+      );
+
+      if (terrainElevation > rayElevation + 0.1) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  public computeEnhancedLineOfSight(
+    fromX: number, fromZ: number, fromHeight: number,
+    toX: number, toZ: number, toHeight: number
+  ): EnhancedLineOfSightData {
+    const fromElevation = this.getElevationAt(fromX, fromZ) + fromHeight;
+    const toElevation = this.getElevationAt(toX, toZ) + toHeight;
+
+    const dx = toX - fromX;
+    const dz = toZ - fromZ;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+
+    const steps = Math.max(Math.ceil(distance * 4), 4);
+    const profile: Array<{ x: number; z: number; terrainElevation: number; rayElevation: number }> = [];
+
+    let blocked = false;
+    let blockPoint: { x: number; z: number; elevation: number } | null = null;
+    let maxClearance = Infinity;
+    let minClearance = Infinity;
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = fromX + dx * t;
+      const z = fromZ + dz * t;
+      const rayElevation = fromElevation + (toElevation - fromElevation) * t;
+      const terrainElevation = this.getElevationAt(Math.floor(x), Math.floor(z));
+
+      profile.push({ x, z, terrainElevation, rayElevation });
+
+      const clearance = rayElevation - terrainElevation;
+      if (clearance < minClearance) minClearance = clearance;
+      if (clearance > maxClearance) maxClearance = clearance;
+
+      if (!blocked && terrainElevation > rayElevation + 0.1) {
+        blocked = true;
+        blockPoint = { x, z, elevation: terrainElevation };
+      }
+    }
+
+    return {
+      visible: !blocked,
+      distance,
+      fromPosition: { x: fromX, z: fromZ, elevation: fromElevation },
+      toPosition: { x: toX, z: toZ, elevation: toElevation },
+      blockPoint,
+      profile,
+      minClearance: minClearance === Infinity ? 0 : minClearance,
+      maxClearance: maxClearance === Infinity ? 0 : maxClearance
+    };
+  }
+
+  public computeEnhancedVisibleArea(
+    viewerX: number,
+    viewerZ: number,
+    viewerHeight: number = 1.7,
+    numRays: number = 360
+  ): EnhancedVisibleAreaData {
+    const maxDistance = Math.max(this.courseData.width, this.courseData.height);
+    const viewerElevation = this.getElevationAt(viewerX, viewerZ) + viewerHeight;
+
+    const visibleBoundary: Array<{ x: number; z: number; distance: number }> = [];
+
+    for (let i = 0; i < numRays; i++) {
+      const angle = (i / numRays) * Math.PI * 2;
+      const dirX = Math.cos(angle);
+      const dirZ = Math.sin(angle);
+
+      let lastVisibleDistance = 0;
+
+      for (let d = 0.5; d <= maxDistance; d += 0.5) {
+        const x = viewerX + dirX * d;
+        const z = viewerZ + dirZ * d;
+
+        if (x < 0 || x >= this.courseData.width || z < 0 || z >= this.courseData.height) {
+          break;
+        }
+
+        const terrainElevation = this.getElevationAt(Math.floor(x), Math.floor(z));
+
+        if (this.detailedRaycastVisibility(viewerX, viewerZ, viewerElevation, x, z, terrainElevation, d)) {
+          lastVisibleDistance = d;
+        } else {
+          break;
+        }
+      }
+
+      if (lastVisibleDistance > 0) {
+        visibleBoundary.push({
+          x: viewerX + dirX * lastVisibleDistance,
+          z: viewerZ + dirZ * lastVisibleDistance,
+          distance: lastVisibleDistance
+        });
+      }
+    }
+
+    let visibleArea = 0;
+    for (let i = 0; i < visibleBoundary.length; i++) {
+      const current = visibleBoundary[i];
+      const next = visibleBoundary[(i + 1) % visibleBoundary.length];
+      visibleArea += 0.5 * Math.abs(
+        (current.x - viewerX) * (next.z - viewerZ) -
+        (next.x - viewerX) * (current.z - viewerZ)
+      );
+    }
+
+    const totalArea = this.courseData.width * this.courseData.height;
+
+    return {
+      viewerPosition: { x: viewerX, z: viewerZ, elevation: viewerElevation },
+      boundary: visibleBoundary,
+      visibleArea,
+      totalArea,
+      coveragePercentage: (visibleArea / totalArea) * 100,
+      averageViewDistance: visibleBoundary.reduce((sum, p) => sum + p.distance, 0) / visibleBoundary.length
+    };
+  }
+
+  public computeEnhancedHorizonProfile(
+    viewerX: number,
+    viewerZ: number,
+    viewerHeight: number = 1.7,
+    numAngles: number = 360
+  ): EnhancedHorizonProfileData {
+    const viewerElevation = this.getElevationAt(viewerX, viewerZ) + viewerHeight;
+    const horizonAngles: Array<{ azimuth: number; elevationAngle: number; distance: number }> = [];
+
+    for (let i = 0; i < numAngles; i++) {
+      const azimuth = (i / numAngles) * 360;
+      const azimuthRad = (azimuth * Math.PI) / 180;
+      const dirX = Math.cos(azimuthRad);
+      const dirZ = Math.sin(azimuthRad);
+
+      let maxElevationAngle = -90;
+      let horizonDistance = 0;
+      const maxDistance = Math.max(this.courseData.width, this.courseData.height);
+
+      for (let d = 1; d <= maxDistance; d += 0.5) {
+        const x = viewerX + dirX * d;
+        const z = viewerZ + dirZ * d;
+
+        if (x < 0 || x >= this.courseData.width || z < 0 || z >= this.courseData.height) {
+          break;
+        }
+
+        const terrainElevation = this.getElevationAt(Math.floor(x), Math.floor(z));
+        const elevationDiff = terrainElevation - viewerElevation;
+        const elevationAngle = Math.atan2(elevationDiff, d) * (180 / Math.PI);
+
+        if (elevationAngle > maxElevationAngle) {
+          maxElevationAngle = elevationAngle;
+          horizonDistance = d;
+        }
+      }
+
+      horizonAngles.push({
+        azimuth,
+        elevationAngle: maxElevationAngle,
+        distance: horizonDistance
+      });
+    }
+
+    const avgHorizonAngle = horizonAngles.reduce((sum, h) => sum + h.elevationAngle, 0) / horizonAngles.length;
+    const skyViewFactor = horizonAngles.reduce((sum, h) => sum + Math.cos((h.elevationAngle * Math.PI) / 180), 0) / horizonAngles.length;
+
+    return {
+      viewerPosition: { x: viewerX, z: viewerZ, elevation: viewerElevation },
+      horizonAngles,
+      averageHorizonAngle: avgHorizonAngle,
+      skyViewFactor,
+      maxHorizonAngle: Math.max(...horizonAngles.map(h => h.elevationAngle)),
+      minHorizonAngle: Math.min(...horizonAngles.map(h => h.elevationAngle))
+    };
+  }
+
+  public computeEnhancedVisibilityStatistics(): EnhancedVisibilityStatistics {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const samplePoints = [
+      { x: Math.floor(width / 4), z: Math.floor(height / 4) },
+      { x: Math.floor(width * 3 / 4), z: Math.floor(height / 4) },
+      { x: Math.floor(width / 2), z: Math.floor(height / 2) },
+      { x: Math.floor(width / 4), z: Math.floor(height * 3 / 4) },
+      { x: Math.floor(width * 3 / 4), z: Math.floor(height * 3 / 4) }
+    ];
+
+    let totalVisibility = 0;
+    let totalSkyView = 0;
+    let minVisibility = 100;
+    let maxVisibility = 0;
+
+    for (const point of samplePoints) {
+      const viewshed = this.computeEnhancedViewshed(point.x, point.z, 1.7, 30);
+      const horizon = this.computeEnhancedHorizonProfile(point.x, point.z, 1.7, 36);
+
+      totalVisibility += viewshed.visibilityPercentage;
+      totalSkyView += horizon.skyViewFactor;
+
+      if (viewshed.visibilityPercentage < minVisibility) {
+        minVisibility = viewshed.visibilityPercentage;
+      }
+      if (viewshed.visibilityPercentage > maxVisibility) {
+        maxVisibility = viewshed.visibilityPercentage;
+      }
+    }
+
+    return {
+      averageVisibility: totalVisibility / samplePoints.length,
+      minVisibility,
+      maxVisibility,
+      averageSkyViewFactor: totalSkyView / samplePoints.length,
+      sampleCount: samplePoints.length,
+      terrainWidth: width,
+      terrainHeight: height
+    };
+  }
+}
+
+export interface EnhancedViewshedData {
+  visibilityMap: boolean[][];
+  distanceMap: number[][];
+  viewerPosition: { x: number; z: number; elevation: number };
+  maxDistance: number;
+  visibleCells: number;
+  totalCells: number;
+  visibilityPercentage: number;
+}
+
+export interface EnhancedLineOfSightData {
+  visible: boolean;
+  distance: number;
+  fromPosition: { x: number; z: number; elevation: number };
+  toPosition: { x: number; z: number; elevation: number };
+  blockPoint: { x: number; z: number; elevation: number } | null;
+  profile: Array<{ x: number; z: number; terrainElevation: number; rayElevation: number }>;
+  minClearance: number;
+  maxClearance: number;
+}
+
+export interface EnhancedVisibleAreaData {
+  viewerPosition: { x: number; z: number; elevation: number };
+  boundary: Array<{ x: number; z: number; distance: number }>;
+  visibleArea: number;
+  totalArea: number;
+  coveragePercentage: number;
+  averageViewDistance: number;
+}
+
+export interface EnhancedHorizonProfileData {
+  viewerPosition: { x: number; z: number; elevation: number };
+  horizonAngles: Array<{ azimuth: number; elevationAngle: number; distance: number }>;
+  averageHorizonAngle: number;
+  skyViewFactor: number;
+  maxHorizonAngle: number;
+  minHorizonAngle: number;
+}
+
+export interface EnhancedVisibilityStatistics {
+  averageVisibility: number;
+  minVisibility: number;
+  maxVisibility: number;
+  averageSkyViewFactor: number;
+  sampleCount: number;
+  terrainWidth: number;
+  terrainHeight: number;
 }
 
 export interface WaterTileData {
