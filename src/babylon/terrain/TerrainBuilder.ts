@@ -11889,6 +11889,306 @@ export class TerrainBuilder {
     };
   }
 
+  public computeElevationDistanceField(targetElevation: number): TerrainDistanceField {
+    const { width, height } = this.courseData;
+    const field: number[][] = [];
+    const signs: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      field[y] = [];
+      signs[y] = [];
+      for (let x = 0; x < width; x++) {
+        const elev = this.getElevationAt(x, y);
+        const diff = elev - targetElevation;
+        signs[y][x] = diff >= 0 ? 1 : -1;
+        field[y][x] = Math.abs(diff);
+      }
+    }
+
+    const propagateDistance = (iterations: number = Math.max(width, height)) => {
+      for (let iter = 0; iter < iterations; iter++) {
+        let changed = false;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const current = field[y][x];
+            const neighbors = [
+              { nx: x - 1, ny: y, dist: 1 },
+              { nx: x + 1, ny: y, dist: 1 },
+              { nx: x, ny: y - 1, dist: 1 },
+              { nx: x, ny: y + 1, dist: 1 },
+              { nx: x - 1, ny: y - 1, dist: Math.SQRT2 },
+              { nx: x + 1, ny: y - 1, dist: Math.SQRT2 },
+              { nx: x - 1, ny: y + 1, dist: Math.SQRT2 },
+              { nx: x + 1, ny: y + 1, dist: Math.SQRT2 }
+            ];
+            for (const { nx, ny, dist } of neighbors) {
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const neighborVal = field[ny][nx] + dist;
+                if (neighborVal < current) {
+                  field[y][x] = neighborVal;
+                  changed = true;
+                }
+              }
+            }
+          }
+        }
+        if (!changed) break;
+      }
+    };
+
+    propagateDistance();
+
+    let maxDistance = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        maxDistance = Math.max(maxDistance, field[y][x]);
+      }
+    }
+
+    return {
+      targetElevation,
+      width,
+      height,
+      field,
+      signs,
+      maxDistance,
+      getSignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x] * signs[y][x];
+      },
+      getUnsignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x];
+      }
+    };
+  }
+
+  public computeTerrainTypeDistanceField(targetType: TerrainType): TerrainDistanceField {
+    const { width, height, layout } = this.courseData;
+    const field: number[][] = [];
+    const signs: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      field[y] = [];
+      signs[y] = [];
+      for (let x = 0; x < width; x++) {
+        const tileType = getTerrainType(layout[y][x]);
+        const isTarget = tileType === targetType;
+        signs[y][x] = isTarget ? 1 : -1;
+        field[y][x] = isTarget ? 0 : Infinity;
+      }
+    }
+
+    for (let iter = 0; iter < Math.max(width, height); iter++) {
+      let changed = false;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (field[y][x] === 0) continue;
+          const neighbors = [
+            { nx: x - 1, ny: y, dist: 1 },
+            { nx: x + 1, ny: y, dist: 1 },
+            { nx: x, ny: y - 1, dist: 1 },
+            { nx: x, ny: y + 1, dist: 1 }
+          ];
+          for (const { nx, ny, dist } of neighbors) {
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const neighborVal = field[ny][nx] + dist;
+              if (neighborVal < field[y][x]) {
+                field[y][x] = neighborVal;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    let maxDistance = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (field[y][x] !== Infinity) {
+          maxDistance = Math.max(maxDistance, field[y][x]);
+        }
+      }
+    }
+
+    return {
+      targetElevation: 0,
+      width,
+      height,
+      field,
+      signs,
+      maxDistance,
+      getSignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x] * signs[y][x];
+      },
+      getUnsignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x];
+      }
+    };
+  }
+
+  public computeSlopeDistanceField(maxSlopeAngle: number): TerrainDistanceField {
+    const { width, height } = this.courseData;
+    const field: number[][] = [];
+    const signs: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      field[y] = [];
+      signs[y] = [];
+      for (let x = 0; x < width; x++) {
+        const slope = this.getSlopeVectorAt(x, y);
+        const isFlat = slope.angle <= maxSlopeAngle;
+        signs[y][x] = isFlat ? 1 : -1;
+        field[y][x] = isFlat ? 0 : Infinity;
+      }
+    }
+
+    for (let iter = 0; iter < Math.max(width, height); iter++) {
+      let changed = false;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (field[y][x] === 0) continue;
+          const neighbors = [
+            { nx: x - 1, ny: y, dist: 1 },
+            { nx: x + 1, ny: y, dist: 1 },
+            { nx: x, ny: y - 1, dist: 1 },
+            { nx: x, ny: y + 1, dist: 1 }
+          ];
+          for (const { nx, ny, dist } of neighbors) {
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const neighborVal = field[ny][nx] + dist;
+              if (neighborVal < field[y][x]) {
+                field[y][x] = neighborVal;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    let maxDistance = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (field[y][x] !== Infinity) {
+          maxDistance = Math.max(maxDistance, field[y][x]);
+        }
+      }
+    }
+
+    return {
+      targetElevation: maxSlopeAngle,
+      width,
+      height,
+      field,
+      signs,
+      maxDistance,
+      getSignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x] * signs[y][x];
+      },
+      getUnsignedDistance: (x: number, y: number) => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+        return field[y][x];
+      }
+    };
+  }
+
+  public findNearestElevationBoundary(gridX: number, gridY: number, targetElevation: number): NearestBoundaryResult | null {
+    const { width, height } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) return null;
+
+    const currentElev = this.getElevationAt(gridX, gridY);
+    const isAbove = currentElev >= targetElevation;
+
+    const maxSearchRadius = Math.max(width, height);
+    for (let radius = 1; radius <= maxSearchRadius; radius++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+
+          const nx = gridX + dx;
+          const ny = gridY + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+          const neighborElev = this.getElevationAt(nx, ny);
+          const neighborAbove = neighborElev >= targetElevation;
+
+          if (neighborAbove !== isAbove) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const direction = Math.atan2(dy, dx) * 180 / Math.PI;
+            return {
+              boundaryX: nx,
+              boundaryY: ny,
+              distance,
+              direction,
+              crossingElevation: targetElevation
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  public getDistanceFieldGradient(field: TerrainDistanceField, gridX: number, gridY: number): { dx: number; dy: number; magnitude: number } {
+    const { width, height } = field;
+    if (gridX < 1 || gridX >= width - 1 || gridY < 1 || gridY >= height - 1) {
+      return { dx: 0, dy: 0, magnitude: 0 };
+    }
+
+    const dx = (field.field[gridY][gridX + 1] - field.field[gridY][gridX - 1]) / 2;
+    const dy = (field.field[gridY + 1][gridX] - field.field[gridY - 1][gridX]) / 2;
+    const magnitude = Math.sqrt(dx * dx + dy * dy);
+
+    return { dx, dy, magnitude };
+  }
+
+  public sampleDistanceFieldAlongRay(
+    field: TerrainDistanceField,
+    startX: number,
+    startY: number,
+    dirX: number,
+    dirY: number,
+    maxDistance: number,
+    stepSize: number = 0.5
+  ): DistanceFieldRaySample[] {
+    const samples: DistanceFieldRaySample[] = [];
+    const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
+    if (dirLength === 0) return samples;
+
+    const normalizedDirX = dirX / dirLength;
+    const normalizedDirY = dirY / dirLength;
+    let currentDistance = 0;
+
+    while (currentDistance <= maxDistance) {
+      const x = startX + normalizedDirX * currentDistance;
+      const y = startY + normalizedDirY * currentDistance;
+      const gridX = Math.floor(x);
+      const gridY = Math.floor(y);
+
+      if (gridX >= 0 && gridX < field.width && gridY >= 0 && gridY < field.height) {
+        samples.push({
+          x,
+          y,
+          distance: currentDistance,
+          fieldValue: field.field[gridY][gridX],
+          signedValue: field.getSignedDistance(gridX, gridY)
+        });
+      }
+
+      currentDistance += stepSize;
+    }
+
+    return samples;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -17770,4 +18070,31 @@ export interface TerrainProfileGrid {
   verticalProfiles: TerrainProfile[];
   horizontalCount: number;
   verticalCount: number;
+}
+
+export interface TerrainDistanceField {
+  targetElevation: number;
+  width: number;
+  height: number;
+  field: number[][];
+  signs: number[][];
+  maxDistance: number;
+  getSignedDistance: (x: number, y: number) => number;
+  getUnsignedDistance: (x: number, y: number) => number;
+}
+
+export interface NearestBoundaryResult {
+  boundaryX: number;
+  boundaryY: number;
+  distance: number;
+  direction: number;
+  crossingElevation: number;
+}
+
+export interface DistanceFieldRaySample {
+  x: number;
+  y: number;
+  distance: number;
+  fieldValue: number;
+  signedValue: number;
 }
