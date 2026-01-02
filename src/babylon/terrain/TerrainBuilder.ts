@@ -6527,6 +6527,265 @@ export class TerrainBuilder {
     return areas.sort((a, b) => b.avgRisk - a.avgRisk).slice(0, 10);
   }
 
+  public computeTerrainComplexity(): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const complexity: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      complexity[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return complexity;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const slope = this.getSlopeAngle(x, y);
+        const roughness = this.getLocalRoughness(x, y, 1);
+        const curvature = this.getCurvature(x, y);
+
+        const neighbors = [
+          { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+          { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+        ];
+
+        let aspectVariance = 0;
+        const centerAspect = this.getAspect(x, y);
+        let validNeighbors = 0;
+
+        for (const n of neighbors) {
+          const nx = x + n.dx;
+          const ny = y + n.dy;
+          if (this.isValidGridPosition(nx, ny)) {
+            const neighborAspect = this.getAspect(nx, ny);
+            const diff = Math.abs(((centerAspect - neighborAspect + 180) % 360) - 180);
+            aspectVariance += diff;
+            validNeighbors++;
+          }
+        }
+        aspectVariance = validNeighbors > 0 ? aspectVariance / validNeighbors / 180 : 0;
+
+        const slopeComponent = Math.min(slope / 60, 1) * 0.35;
+        const roughnessComponent = Math.min(roughness / 2, 1) * 0.25;
+        const curvatureComponent = Math.min(Math.abs(curvature.total) / 0.5, 1) * 0.25;
+        const aspectComponent = aspectVariance * 0.15;
+
+        complexity[y][x] = Math.min(1, slopeComponent + roughnessComponent + curvatureComponent + aspectComponent);
+      }
+    }
+
+    return complexity;
+  }
+
+  public computeFeatureDensity(featureType: 'slope' | 'roughness' | 'peaks' | 'valleys', windowSize: number = 5): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const density: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      density[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return density;
+
+    let features: Set<string>;
+    switch (featureType) {
+      case 'peaks':
+        features = new Set(this.findPeaks(0.5).map(p => `${p.x},${p.y}`));
+        break;
+      case 'valleys':
+        features = new Set(this.findValleys(0.5).map(v => `${v.x},${v.y}`));
+        break;
+      default:
+        features = new Set();
+    }
+
+    const halfWindow = Math.floor(windowSize / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let count = 0;
+        let total = 0;
+
+        for (let dy = -halfWindow; dy <= halfWindow; dy++) {
+          for (let dx = -halfWindow; dx <= halfWindow; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (!this.isValidGridPosition(nx, ny)) continue;
+
+            total++;
+            if (featureType === 'slope') {
+              const slope = this.getSlopeAngle(nx, ny);
+              if (slope > 15) count++;
+            } else if (featureType === 'roughness') {
+              const rough = this.getLocalRoughness(nx, ny, 1);
+              if (rough > 0.5) count++;
+            } else {
+              if (features.has(`${nx},${ny}`)) count++;
+            }
+          }
+        }
+
+        density[y][x] = total > 0 ? count / total : 0;
+      }
+    }
+
+    return density;
+  }
+
+  public computeSpatialVariance(property: 'elevation' | 'slope' | 'aspect', windowSize: number = 5): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const variance: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      variance[y] = new Array(width).fill(0);
+    }
+
+    if (!elevation) return variance;
+
+    const halfWindow = Math.floor(windowSize / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const values: number[] = [];
+
+        for (let dy = -halfWindow; dy <= halfWindow; dy++) {
+          for (let dx = -halfWindow; dx <= halfWindow; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (!this.isValidGridPosition(nx, ny)) continue;
+
+            let value: number;
+            switch (property) {
+              case 'elevation':
+                value = elevation[ny][nx];
+                break;
+              case 'slope':
+                value = this.getSlopeAngle(nx, ny);
+                break;
+              case 'aspect':
+                value = this.getAspect(nx, ny);
+                break;
+            }
+            values.push(value);
+          }
+        }
+
+        if (values.length > 1) {
+          const mean = values.reduce((a, b) => a + b, 0) / values.length;
+          const sumSquaredDiff = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0);
+          variance[y][x] = sumSquaredDiff / values.length;
+        }
+      }
+    }
+
+    return variance;
+  }
+
+  public getTerrainComplexityAnalysis(): TerrainComplexityAnalysis {
+    const complexity = this.computeTerrainComplexity();
+    const { width, height } = this.courseData;
+
+    let minComplexity = Infinity;
+    let maxComplexity = 0;
+    let totalComplexity = 0;
+    let simpleCount = 0;
+    let moderateCount = 0;
+    let complexCount = 0;
+    let veryComplexCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const c = complexity[y][x];
+        minComplexity = Math.min(minComplexity, c);
+        maxComplexity = Math.max(maxComplexity, c);
+        totalComplexity += c;
+
+        if (c < 0.25) simpleCount++;
+        else if (c < 0.5) moderateCount++;
+        else if (c < 0.75) complexCount++;
+        else veryComplexCount++;
+      }
+    }
+
+    const peaks = this.findPeaks(0.5);
+    const valleys = this.findValleys(0.5);
+    const ridges = this.findRidgeLines();
+    const totalTiles = width * height;
+
+    return {
+      minComplexity,
+      maxComplexity,
+      avgComplexity: totalComplexity / totalTiles,
+      simpleTileCount: simpleCount,
+      moderateTileCount: moderateCount,
+      complexTileCount: complexCount,
+      veryComplexTileCount: veryComplexCount,
+      peakCount: peaks.length,
+      valleyCount: valleys.length,
+      ridgeLineCount: ridges.length,
+      overallComplexityScore: (totalComplexity / totalTiles) * 100
+    };
+  }
+
+  public findMostComplexAreas(minSize: number = 5): Array<{ x: number; y: number; avgComplexity: number }> {
+    const complexity = this.computeTerrainComplexity();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgComplexity: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += complexity[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgComplexity: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => b.avgComplexity - a.avgComplexity).slice(0, 10);
+  }
+
+  public findSimplestAreas(minSize: number = 5): Array<{ x: number; y: number; avgComplexity: number }> {
+    const complexity = this.computeTerrainComplexity();
+    const { width, height } = this.courseData;
+    const areas: Array<{ x: number; y: number; avgComplexity: number }> = [];
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            total += complexity[y + dy]?.[x + dx] ?? 0;
+            count++;
+          }
+        }
+
+        areas.push({ x, y, avgComplexity: total / count });
+      }
+    }
+
+    return areas.sort((a, b) => a.avgComplexity - b.avgComplexity).slice(0, 10);
+  }
+
+  public classifyTerrainComplexity(gridX: number, gridY: number): 'simple' | 'moderate' | 'complex' | 'very_complex' {
+    const complexity = this.computeTerrainComplexity();
+    if (!this.isValidGridPosition(gridX, gridY)) return 'simple';
+
+    const c = complexity[gridY][gridX];
+
+    if (c < 0.25) return 'simple';
+    if (c < 0.5) return 'moderate';
+    if (c < 0.75) return 'complex';
+    return 'very_complex';
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -11555,6 +11814,20 @@ export interface FrostAnalysis {
   highRiskCount: number;
   severeRiskCount: number;
   atRiskPercentage: number;
+}
+
+export interface TerrainComplexityAnalysis {
+  minComplexity: number;
+  maxComplexity: number;
+  avgComplexity: number;
+  simpleTileCount: number;
+  moderateTileCount: number;
+  complexTileCount: number;
+  veryComplexTileCount: number;
+  peakCount: number;
+  valleyCount: number;
+  ridgeLineCount: number;
+  overallComplexityScore: number;
 }
 
 export interface LineSampleOptions {
