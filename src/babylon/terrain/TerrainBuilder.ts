@@ -83,6 +83,16 @@ export class TerrainBuilder {
     batchDescription: null
   };
   private historyEnabled: boolean = false;
+  private selection: TerrainSelection = {
+    tiles: new Set<string>(),
+    mode: 'single',
+    anchorX: null,
+    anchorY: null,
+    isActive: false,
+    color: { r: 0.2, g: 0.6, b: 1.0 },
+    brushRadius: 3
+  };
+  private selectionEnabled: boolean = false;
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -3982,6 +3992,379 @@ export class TerrainBuilder {
       newestTimestamp
     };
   }
+
+  public setSelectionEnabled(enabled: boolean): void {
+    this.selectionEnabled = enabled;
+    if (!enabled) {
+      this.clearSelection();
+    }
+  }
+
+  public isSelectionEnabled(): boolean {
+    return this.selectionEnabled;
+  }
+
+  public setSelectionMode(mode: SelectionMode): void {
+    this.selection.mode = mode;
+  }
+
+  public getSelectionMode(): SelectionMode {
+    return this.selection.mode;
+  }
+
+  public setSelectionColor(r: number, g: number, b: number): void {
+    this.selection.color = { r, g, b };
+  }
+
+  public getSelectionColor(): { r: number; g: number; b: number } {
+    return { ...this.selection.color };
+  }
+
+  public setBrushRadius(radius: number): void {
+    this.selection.brushRadius = Math.max(1, radius);
+  }
+
+  public getBrushRadius(): number {
+    return this.selection.brushRadius;
+  }
+
+  public clearSelection(): void {
+    this.selection.tiles.clear();
+    this.selection.anchorX = null;
+    this.selection.anchorY = null;
+    this.selection.isActive = false;
+  }
+
+  public selectTile(gridX: number, gridY: number): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) return;
+
+    const key = `${gridX}_${gridY}`;
+    this.selection.tiles.add(key);
+  }
+
+  public deselectTile(gridX: number, gridY: number): void {
+    const key = `${gridX}_${gridY}`;
+    this.selection.tiles.delete(key);
+  }
+
+  public toggleTileSelection(gridX: number, gridY: number): void {
+    if (!this.selectionEnabled) return;
+    const key = `${gridX}_${gridY}`;
+    if (this.selection.tiles.has(key)) {
+      this.selection.tiles.delete(key);
+    } else {
+      const { width, height } = this.courseData;
+      if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
+        this.selection.tiles.add(key);
+      }
+    }
+  }
+
+  public isTileSelected(gridX: number, gridY: number): boolean {
+    const key = `${gridX}_${gridY}`;
+    return this.selection.tiles.has(key);
+  }
+
+  public getSelectedTileCount(): number {
+    return this.selection.tiles.size;
+  }
+
+  public getSelectedTiles(): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    for (const key of this.selection.tiles) {
+      const [x, y] = key.split('_').map(Number);
+      tiles.push({ x, y });
+    }
+    return tiles;
+  }
+
+  public startRectSelection(gridX: number, gridY: number): void {
+    if (!this.selectionEnabled) return;
+    this.selection.anchorX = gridX;
+    this.selection.anchorY = gridY;
+    this.selection.isActive = true;
+  }
+
+  public updateRectSelection(gridX: number, gridY: number): void {
+    if (!this.selection.isActive || this.selection.anchorX === null || this.selection.anchorY === null) return;
+
+    this.selection.tiles.clear();
+
+    const minX = Math.min(this.selection.anchorX, gridX);
+    const maxX = Math.max(this.selection.anchorX, gridX);
+    const minY = Math.min(this.selection.anchorY, gridY);
+    const maxY = Math.max(this.selection.anchorY, gridY);
+
+    const { width, height } = this.courseData;
+
+    for (let y = Math.max(0, minY); y <= Math.min(height - 1, maxY); y++) {
+      for (let x = Math.max(0, minX); x <= Math.min(width - 1, maxX); x++) {
+        const key = `${x}_${y}`;
+        this.selection.tiles.add(key);
+      }
+    }
+  }
+
+  public endRectSelection(): void {
+    this.selection.isActive = false;
+    this.selection.anchorX = null;
+    this.selection.anchorY = null;
+  }
+
+  public selectInRadius(centerX: number, centerY: number, radius?: number): void {
+    if (!this.selectionEnabled) return;
+    const r = radius ?? this.selection.brushRadius;
+    const tiles = this.getTilesInRadius(centerX, centerY, r);
+    for (const tile of tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      this.selection.tiles.add(key);
+    }
+  }
+
+  public deselectInRadius(centerX: number, centerY: number, radius?: number): void {
+    const r = radius ?? this.selection.brushRadius;
+    const tiles = this.getTilesInRadius(centerX, centerY, r);
+    for (const tile of tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      this.selection.tiles.delete(key);
+    }
+  }
+
+  public selectAll(): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        this.selection.tiles.add(key);
+      }
+    }
+  }
+
+  public selectByTerrainType(type: TerrainType): void {
+    if (!this.selectionEnabled) return;
+    const { width, height, layout } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (layout[y]?.[x] !== undefined) {
+          const tileType = getTerrainType(layout[y][x]);
+          if (tileType === type) {
+            const key = `${x}_${y}`;
+            this.selection.tiles.add(key);
+          }
+        }
+      }
+    }
+  }
+
+  public selectMowed(): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.isMowed(x, y)) {
+          const key = `${x}_${y}`;
+          this.selection.tiles.add(key);
+        }
+      }
+    }
+  }
+
+  public selectUnmowed(): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (!this.isMowed(x, y)) {
+          const key = `${x}_${y}`;
+          this.selection.tiles.add(key);
+        }
+      }
+    }
+  }
+
+  public selectByElevation(minElevation: number, maxElevation: number): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = this.getElevationAt(x, y);
+        if (elev >= minElevation && elev <= maxElevation) {
+          const key = `${x}_${y}`;
+          this.selection.tiles.add(key);
+        }
+      }
+    }
+  }
+
+  public invertSelection(): void {
+    if (!this.selectionEnabled) return;
+    const { width, height } = this.courseData;
+    const newSelection = new Set<string>();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x}_${y}`;
+        if (!this.selection.tiles.has(key)) {
+          newSelection.add(key);
+        }
+      }
+    }
+    this.selection.tiles = newSelection;
+  }
+
+  public expandSelection(amount: number = 1): void {
+    if (!this.selectionEnabled) return;
+    const currentTiles = this.getSelectedTiles();
+    for (const tile of currentTiles) {
+      const neighbors = this.getTilesInRadius(tile.x, tile.y, amount);
+      for (const neighbor of neighbors) {
+        const key = `${neighbor.x}_${neighbor.y}`;
+        this.selection.tiles.add(key);
+      }
+    }
+  }
+
+  public contractSelection(amount: number = 1): void {
+    const { width, height } = this.courseData;
+    const toRemove = new Set<string>();
+
+    for (const key of this.selection.tiles) {
+      const [x, y] = key.split('_').map(Number);
+
+      for (let dy = -amount; dy <= amount; dy++) {
+        for (let dx = -amount; dx <= amount; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+            toRemove.add(key);
+            break;
+          }
+          const neighborKey = `${nx}_${ny}`;
+          if (!this.selection.tiles.has(neighborKey)) {
+            toRemove.add(key);
+            break;
+          }
+        }
+        if (toRemove.has(key)) break;
+      }
+    }
+
+    for (const key of toRemove) {
+      this.selection.tiles.delete(key);
+    }
+  }
+
+  public getSelectionBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
+    if (this.selection.tiles.size === 0) return null;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const key of this.selection.tiles) {
+      const [x, y] = key.split('_').map(Number);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+
+    return { minX, minY, maxX, maxY };
+  }
+
+  public getSelectionStatistics(): {
+    count: number;
+    terrainCounts: Record<TerrainType, number>;
+    mowedCount: number;
+    avgElevation: number;
+  } {
+    const tiles = this.getSelectedTiles();
+    const terrainCounts: Record<TerrainType, number> = {
+      fairway: 0,
+      rough: 0,
+      green: 0,
+      bunker: 0,
+      water: 0
+    };
+
+    let mowedCount = 0;
+    let totalElevation = 0;
+
+    for (const tile of tiles) {
+      const type = this.getTerrainTypeAt(tile.x, tile.y);
+      if (type) {
+        terrainCounts[type]++;
+      }
+      if (this.isMowed(tile.x, tile.y)) {
+        mowedCount++;
+      }
+      totalElevation += this.getElevationAt(tile.x, tile.y);
+    }
+
+    return {
+      count: tiles.length,
+      terrainCounts,
+      mowedCount,
+      avgElevation: tiles.length > 0 ? totalElevation / tiles.length : 0
+    };
+  }
+
+  public setMowedForSelection(mowed: boolean): void {
+    const tiles = this.getSelectedTiles();
+    if (this.historyEnabled) {
+      this.beginBatch(mowed ? 'Mow selected tiles' : 'Unmow selected tiles');
+    }
+    for (const tile of tiles) {
+      if (this.historyEnabled) {
+        this.setMowedWithHistory(tile.x, tile.y, mowed);
+      } else {
+        this.setMowed(tile.x, tile.y, mowed);
+      }
+    }
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+  }
+
+  public setElevationForSelection(elevation: number): void {
+    const tiles = this.getSelectedTiles();
+    if (this.historyEnabled) {
+      this.beginBatch(`Set elevation to ${elevation} for selected tiles`);
+    }
+    for (const tile of tiles) {
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, elevation);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, elevation);
+      }
+    }
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+  }
+
+  public adjustElevationForSelection(delta: number): void {
+    const tiles = this.getSelectedTiles();
+    if (this.historyEnabled) {
+      this.beginBatch(`Adjust elevation by ${delta} for selected tiles`);
+    }
+    for (const tile of tiles) {
+      const currentElevation = this.getElevationAt(tile.x, tile.y);
+      const newElevation = currentElevation + delta;
+      if (this.historyEnabled) {
+        this.setElevationWithHistory(tile.x, tile.y, newElevation);
+      } else {
+        this.setElevationAtInternal(tile.x, tile.y, newElevation);
+      }
+    }
+    if (this.historyEnabled) {
+      this.endBatch();
+    }
+  }
 }
 
 export interface TerrainStatistics {
@@ -4169,4 +4552,16 @@ export interface TerrainHistory {
   maxHistorySize: number;
   currentBatch: TerrainModification[] | null;
   batchDescription: string | null;
+}
+
+export type SelectionMode = 'single' | 'rect' | 'lasso' | 'brush';
+
+export interface TerrainSelection {
+  tiles: Set<string>;
+  mode: SelectionMode;
+  anchorX: number | null;
+  anchorY: number | null;
+  isActive: boolean;
+  color: { r: number; g: number; b: number };
+  brushRadius: number;
 }
