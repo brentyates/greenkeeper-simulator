@@ -24169,6 +24169,368 @@ export class TerrainBuilder {
     const typeMap: Record<string, number> = { fairway: 0, rough: 1, green: 2, bunker: 3, water: 4 };
     return typeMap[type] ?? 0;
   }
+
+  public createStreamingChunks(chunkSize: number): StreamingChunkMap {
+    const numChunksX = Math.ceil(this.courseData.width / chunkSize);
+    const numChunksY = Math.ceil(this.courseData.height / chunkSize);
+    const chunks: StreamingChunk[] = [];
+
+    for (let cy = 0; cy < numChunksY; cy++) {
+      for (let cx = 0; cx < numChunksX; cx++) {
+        const startX = cx * chunkSize;
+        const startY = cy * chunkSize;
+        const endX = Math.min(startX + chunkSize, this.courseData.width);
+        const endY = Math.min(startY + chunkSize, this.courseData.height);
+
+        const elevations: number[][] = [];
+        const terrainTypes: number[][] = [];
+        let minElev = Infinity;
+        let maxElev = -Infinity;
+
+        for (let y = startY; y < endY; y++) {
+          const row: number[] = [];
+          const typeRow: number[] = [];
+          for (let x = startX; x < endX; x++) {
+            const elev = this.getElevationAt(x, y);
+            row.push(elev);
+            typeRow.push(this.getTerrainTypeNumber(x, y));
+            minElev = Math.min(minElev, elev);
+            maxElev = Math.max(maxElev, elev);
+          }
+          elevations.push(row);
+          terrainTypes.push(typeRow);
+        }
+
+        chunks.push({
+          chunkX: cx,
+          chunkY: cy,
+          worldStartX: startX,
+          worldStartY: startY,
+          worldEndX: endX,
+          worldEndY: endY,
+          width: endX - startX,
+          height: endY - startY,
+          elevations,
+          terrainTypes,
+          minElevation: minElev,
+          maxElevation: maxElev,
+          isLoaded: true,
+          isDirty: false
+        });
+      }
+    }
+
+    return {
+      chunkSize,
+      numChunksX,
+      numChunksY,
+      totalChunks: chunks.length,
+      chunks,
+      worldWidth: this.courseData.width,
+      worldHeight: this.courseData.height
+    };
+  }
+
+  public getStreamingChunkAtWorldPosition(chunkMap: StreamingChunkMap, worldX: number, worldY: number): StreamingChunk | null {
+    const cx = Math.floor(worldX / chunkMap.chunkSize);
+    const cy = Math.floor(worldY / chunkMap.chunkSize);
+    return chunkMap.chunks.find(c => c.chunkX === cx && c.chunkY === cy) ?? null;
+  }
+
+  public getStreamingChunksInRadius(chunkMap: StreamingChunkMap, centerX: number, centerY: number, radius: number): StreamingChunk[] {
+    const result: StreamingChunk[] = [];
+
+    for (const chunk of chunkMap.chunks) {
+      const chunkCenterX = (chunk.worldStartX + chunk.worldEndX) / 2;
+      const chunkCenterY = (chunk.worldStartY + chunk.worldEndY) / 2;
+      const dx = chunkCenterX - centerX;
+      const dy = chunkCenterY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist <= radius + chunkMap.chunkSize * Math.SQRT2 / 2) {
+        result.push(chunk);
+      }
+    }
+
+    return result;
+  }
+
+  public computeStreamingChunkVisibility(
+    chunkMap: StreamingChunkMap,
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    viewDistance: number
+  ): StreamingChunkVisibilityResult {
+    const visibleChunks: StreamingChunk[] = [];
+    const hiddenChunks: StreamingChunk[] = [];
+    const distances: Map<StreamingChunk, number> = new Map();
+
+    for (const chunk of chunkMap.chunks) {
+      const chunkCenterX = (chunk.worldStartX + chunk.worldEndX) / 2;
+      const chunkCenterY = (chunk.worldStartY + chunk.worldEndY) / 2;
+      const chunkCenterZ = (chunk.minElevation + chunk.maxElevation) / 2;
+
+      const dx = chunkCenterX - cameraX;
+      const dy = chunkCenterY - cameraY;
+      const dz = chunkCenterZ - cameraZ;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      distances.set(chunk, dist);
+
+      if (dist <= viewDistance) {
+        visibleChunks.push(chunk);
+      } else {
+        hiddenChunks.push(chunk);
+      }
+    }
+
+    visibleChunks.sort((a, b) => (distances.get(a) ?? 0) - (distances.get(b) ?? 0));
+
+    return {
+      visibleChunks,
+      hiddenChunks,
+      visibleCount: visibleChunks.length,
+      hiddenCount: hiddenChunks.length,
+      totalChunks: chunkMap.totalChunks,
+      viewDistance
+    };
+  }
+
+  public serializeStreamingChunk(chunk: StreamingChunk): SerializedStreamingChunk {
+    const elevationBytes: number[] = [];
+    const typeBytes: number[] = [];
+
+    for (const row of chunk.elevations) {
+      for (const elev of row) {
+        const normalized = Math.round(((elev - chunk.minElevation) / (chunk.maxElevation - chunk.minElevation || 1)) * 255);
+        elevationBytes.push(Math.max(0, Math.min(255, normalized)));
+      }
+    }
+
+    for (const row of chunk.terrainTypes) {
+      for (const type of row) {
+        typeBytes.push(type);
+      }
+    }
+
+    return {
+      chunkX: chunk.chunkX,
+      chunkY: chunk.chunkY,
+      width: chunk.width,
+      height: chunk.height,
+      minElevation: chunk.minElevation,
+      maxElevation: chunk.maxElevation,
+      elevationData: elevationBytes,
+      typeData: typeBytes,
+      byteSize: elevationBytes.length + typeBytes.length + 32
+    };
+  }
+
+  public deserializeStreamingChunk(serialized: SerializedStreamingChunk, chunkSize: number): StreamingChunk {
+    const elevations: number[][] = [];
+    const terrainTypes: number[][] = [];
+    let idx = 0;
+
+    for (let y = 0; y < serialized.height; y++) {
+      const elevRow: number[] = [];
+      for (let x = 0; x < serialized.width; x++) {
+        const normalized = serialized.elevationData[idx++];
+        const elev = serialized.minElevation + (normalized / 255) * (serialized.maxElevation - serialized.minElevation);
+        elevRow.push(elev);
+      }
+      elevations.push(elevRow);
+    }
+
+    idx = 0;
+    for (let y = 0; y < serialized.height; y++) {
+      const typeRow: number[] = [];
+      for (let x = 0; x < serialized.width; x++) {
+        typeRow.push(serialized.typeData[idx++]);
+      }
+      terrainTypes.push(typeRow);
+    }
+
+    return {
+      chunkX: serialized.chunkX,
+      chunkY: serialized.chunkY,
+      worldStartX: serialized.chunkX * chunkSize,
+      worldStartY: serialized.chunkY * chunkSize,
+      worldEndX: serialized.chunkX * chunkSize + serialized.width,
+      worldEndY: serialized.chunkY * chunkSize + serialized.height,
+      width: serialized.width,
+      height: serialized.height,
+      elevations,
+      terrainTypes,
+      minElevation: serialized.minElevation,
+      maxElevation: serialized.maxElevation,
+      isLoaded: true,
+      isDirty: false
+    };
+  }
+
+  public createStreamingManager(chunkSize: number, maxLoadedChunks: number = 16): TerrainStreamingManager {
+    const chunkMap = this.createStreamingChunks(chunkSize);
+    const loadedChunks = new Set<string>();
+    const chunkCache = new Map<string, StreamingChunk>();
+
+    for (const chunk of chunkMap.chunks) {
+      const key = `${chunk.chunkX},${chunk.chunkY}`;
+      chunkCache.set(key, chunk);
+      loadedChunks.add(key);
+    }
+
+    return {
+      chunkMap,
+      loadedChunks,
+      chunkCache,
+      maxLoadedChunks,
+      loadQueue: [],
+      unloadQueue: [],
+      currentCenterX: 0,
+      currentCenterY: 0,
+      streamingRadius: chunkSize * 4
+    };
+  }
+
+  public updateStreaming(
+    manager: TerrainStreamingManager,
+    centerX: number,
+    centerY: number
+  ): StreamingUpdateResult {
+    manager.currentCenterX = centerX;
+    manager.currentCenterY = centerY;
+
+    const chunksToLoad: string[] = [];
+    const chunksToUnload: string[] = [];
+
+    const cx = Math.floor(centerX / manager.chunkMap.chunkSize);
+    const cy = Math.floor(centerY / manager.chunkMap.chunkSize);
+    const radius = Math.ceil(manager.streamingRadius / manager.chunkMap.chunkSize);
+
+    const neededChunks = new Set<string>();
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const tcx = cx + dx;
+        const tcy = cy + dy;
+        if (tcx >= 0 && tcx < manager.chunkMap.numChunksX && tcy >= 0 && tcy < manager.chunkMap.numChunksY) {
+          neededChunks.add(`${tcx},${tcy}`);
+        }
+      }
+    }
+
+    for (const key of neededChunks) {
+      if (!manager.loadedChunks.has(key)) {
+        chunksToLoad.push(key);
+      }
+    }
+
+    for (const key of manager.loadedChunks) {
+      if (!neededChunks.has(key)) {
+        chunksToUnload.push(key);
+      }
+    }
+
+    for (const key of chunksToLoad) {
+      if (manager.loadedChunks.size < manager.maxLoadedChunks) {
+        manager.loadedChunks.add(key);
+      }
+    }
+
+    for (const key of chunksToUnload) {
+      if (manager.loadedChunks.size > manager.maxLoadedChunks / 2) {
+        manager.loadedChunks.delete(key);
+      }
+    }
+
+    return {
+      chunksLoaded: chunksToLoad.length,
+      chunksUnloaded: chunksToUnload.length,
+      totalLoaded: manager.loadedChunks.size,
+      maxChunks: manager.maxLoadedChunks,
+      centerChunkX: cx,
+      centerChunkY: cy
+    };
+  }
+
+  public computeStreamingChunkPriorities(
+    manager: TerrainStreamingManager,
+    cameraX: number,
+    cameraY: number,
+    cameraDirectionX: number,
+    cameraDirectionY: number
+  ): StreamingChunkPriorityList {
+    const priorities: Array<{ chunk: StreamingChunk; priority: number; distance: number }> = [];
+
+    for (const chunk of manager.chunkMap.chunks) {
+      const chunkCenterX = (chunk.worldStartX + chunk.worldEndX) / 2;
+      const chunkCenterY = (chunk.worldStartY + chunk.worldEndY) / 2;
+
+      const dx = chunkCenterX - cameraX;
+      const dy = chunkCenterY - cameraY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      const dirLen = Math.sqrt(cameraDirectionX * cameraDirectionX + cameraDirectionY * cameraDirectionY);
+      const dot = dirLen > 0 ? (dx * cameraDirectionX + dy * cameraDirectionY) / (dist * dirLen) : 0;
+
+      const distancePriority = 1 / (1 + dist * 0.1);
+      const directionPriority = (dot + 1) / 2;
+
+      const priority = distancePriority * 0.7 + directionPriority * 0.3;
+
+      priorities.push({ chunk, priority, distance: dist });
+    }
+
+    priorities.sort((a, b) => b.priority - a.priority);
+
+    return {
+      priorities,
+      highPriorityCount: priorities.filter(p => p.priority > 0.7).length,
+      mediumPriorityCount: priorities.filter(p => p.priority > 0.4 && p.priority <= 0.7).length,
+      lowPriorityCount: priorities.filter(p => p.priority <= 0.4).length
+    };
+  }
+
+  public getStreamingChunkMemoryUsage(chunk: StreamingChunk): ChunkMemoryInfo {
+    const elevationBytes = chunk.width * chunk.height * 8;
+    const typeBytes = chunk.width * chunk.height * 4;
+    const metadataBytes = 64;
+
+    return {
+      chunkX: chunk.chunkX,
+      chunkY: chunk.chunkY,
+      elevationBytes,
+      typeBytes,
+      metadataBytes,
+      totalBytes: elevationBytes + typeBytes + metadataBytes,
+      tileCount: chunk.width * chunk.height
+    };
+  }
+
+  public computeStreamingStatistics(manager: TerrainStreamingManager): StreamingStatistics {
+    let totalMemory = 0;
+    const memoryByChunk: Array<{ key: string; bytes: number }> = [];
+
+    for (const key of manager.loadedChunks) {
+      const chunk = manager.chunkCache.get(key);
+      if (chunk) {
+        const mem = this.getStreamingChunkMemoryUsage(chunk);
+        totalMemory += mem.totalBytes;
+        memoryByChunk.push({ key, bytes: mem.totalBytes });
+      }
+    }
+
+    return {
+      loadedChunkCount: manager.loadedChunks.size,
+      maxChunkCount: manager.maxLoadedChunks,
+      totalMemoryBytes: totalMemory,
+      averageChunkBytes: manager.loadedChunks.size > 0 ? totalMemory / manager.loadedChunks.size : 0,
+      streamingRadius: manager.streamingRadius,
+      currentCenterX: manager.currentCenterX,
+      currentCenterY: manager.currentCenterY,
+      memoryByChunk
+    };
+  }
 }
 
 export interface CompressedElevationData {
@@ -26461,4 +26823,101 @@ export interface TerrainLODStatistics {
   minTriangleCount: number;
   maxReductionPercent: number;
   estimatedMemoryBytes: number;
+}
+
+export interface StreamingChunk {
+  chunkX: number;
+  chunkY: number;
+  worldStartX: number;
+  worldStartY: number;
+  worldEndX: number;
+  worldEndY: number;
+  width: number;
+  height: number;
+  elevations: number[][];
+  terrainTypes: number[][];
+  minElevation: number;
+  maxElevation: number;
+  isLoaded: boolean;
+  isDirty: boolean;
+}
+
+export interface StreamingChunkMap {
+  chunkSize: number;
+  numChunksX: number;
+  numChunksY: number;
+  totalChunks: number;
+  chunks: StreamingChunk[];
+  worldWidth: number;
+  worldHeight: number;
+}
+
+export interface StreamingChunkVisibilityResult {
+  visibleChunks: StreamingChunk[];
+  hiddenChunks: StreamingChunk[];
+  visibleCount: number;
+  hiddenCount: number;
+  totalChunks: number;
+  viewDistance: number;
+}
+
+export interface SerializedStreamingChunk {
+  chunkX: number;
+  chunkY: number;
+  width: number;
+  height: number;
+  minElevation: number;
+  maxElevation: number;
+  elevationData: number[];
+  typeData: number[];
+  byteSize: number;
+}
+
+export interface TerrainStreamingManager {
+  chunkMap: StreamingChunkMap;
+  loadedChunks: Set<string>;
+  chunkCache: Map<string, StreamingChunk>;
+  maxLoadedChunks: number;
+  loadQueue: string[];
+  unloadQueue: string[];
+  currentCenterX: number;
+  currentCenterY: number;
+  streamingRadius: number;
+}
+
+export interface StreamingUpdateResult {
+  chunksLoaded: number;
+  chunksUnloaded: number;
+  totalLoaded: number;
+  maxChunks: number;
+  centerChunkX: number;
+  centerChunkY: number;
+}
+
+export interface StreamingChunkPriorityList {
+  priorities: Array<{ chunk: StreamingChunk; priority: number; distance: number }>;
+  highPriorityCount: number;
+  mediumPriorityCount: number;
+  lowPriorityCount: number;
+}
+
+export interface ChunkMemoryInfo {
+  chunkX: number;
+  chunkY: number;
+  elevationBytes: number;
+  typeBytes: number;
+  metadataBytes: number;
+  totalBytes: number;
+  tileCount: number;
+}
+
+export interface StreamingStatistics {
+  loadedChunkCount: number;
+  maxChunkCount: number;
+  totalMemoryBytes: number;
+  averageChunkBytes: number;
+  streamingRadius: number;
+  currentCenterX: number;
+  currentCenterY: number;
+  memoryByChunk: Array<{ key: string; bytes: number }>;
 }
