@@ -28707,6 +28707,328 @@ export class TerrainBuilder {
       hazardDensity: ((totalBunkerArea + totalWaterArea) / totalArea) * 100
     };
   }
+
+  public computeTileUVCoordinates(
+    x: number, z: number,
+    atlasWidth: number = 4, atlasHeight: number = 4
+  ): TileUVData {
+    const terrainType = this.getTerrainTypeAt(x, z);
+
+    const typeIndex = this.getTextureAtlasIndex(terrainType);
+    const atlasX = typeIndex % atlasWidth;
+    const atlasY = Math.floor(typeIndex / atlasWidth);
+
+    const uMin = atlasX / atlasWidth;
+    const uMax = (atlasX + 1) / atlasWidth;
+    const vMin = atlasY / atlasHeight;
+    const vMax = (atlasY + 1) / atlasHeight;
+
+    const corners = {
+      nw: { u: uMin, v: vMin },
+      ne: { u: uMax, v: vMin },
+      se: { u: uMax, v: vMax },
+      sw: { u: uMin, v: vMax }
+    };
+
+    return {
+      tilePosition: { x, z },
+      terrainType,
+      atlasIndex: typeIndex,
+      atlasCell: { x: atlasX, y: atlasY },
+      uvBounds: { uMin, uMax, vMin, vMax },
+      corners
+    };
+  }
+
+  private getTextureAtlasIndex(terrainType: string): number {
+    switch (terrainType) {
+      case 'fairway': return 0;
+      case 'rough': return 1;
+      case 'green': return 2;
+      case 'bunker': return 3;
+      case 'water': return 4;
+      case 'tee': return 5;
+      case 'path': return 6;
+      case 'dirt': return 7;
+      default: return 0;
+    }
+  }
+
+  public computeTerrainBlendWeights(
+    x: number, z: number,
+    blendRadius: number = 0.5
+  ): BlendWeightsData {
+    const centerType = this.getTerrainTypeAt(x, z);
+    const weights = new Map<string, number>();
+    weights.set(centerType, 1.0);
+
+    const neighbors = [
+      { dx: -1, dz: 0 }, { dx: 1, dz: 0 },
+      { dx: 0, dz: -1 }, { dx: 0, dz: 1 },
+      { dx: -1, dz: -1 }, { dx: 1, dz: -1 },
+      { dx: -1, dz: 1 }, { dx: 1, dz: 1 }
+    ];
+
+    for (const n of neighbors) {
+      const nx = x + n.dx;
+      const nz = z + n.dz;
+      if (nx >= 0 && nx < this.courseData.width &&
+          nz >= 0 && nz < this.courseData.height) {
+        const neighborType = this.getTerrainTypeAt(nx, nz);
+        if (neighborType !== centerType) {
+          const dist = Math.sqrt(n.dx * n.dx + n.dz * n.dz);
+          const weight = Math.max(0, 1 - dist / (blendRadius * 2));
+          weights.set(neighborType, (weights.get(neighborType) || 0) + weight * 0.125);
+        }
+      }
+    }
+
+    let totalWeight = 0;
+    for (const w of weights.values()) totalWeight += w;
+    const normalizedWeights: Record<string, number> = {};
+    for (const [type, w] of weights) {
+      normalizedWeights[type] = w / totalWeight;
+    }
+
+    return {
+      position: { x, z },
+      primaryType: centerType,
+      weights: normalizedWeights,
+      blendRadius,
+      isTransition: Object.keys(normalizedWeights).length > 1
+    };
+  }
+
+  public computeSlopeBasedUV(
+    x: number, z: number,
+    tileSize: number = 1
+  ): SlopeBasedUVData {
+    const e00 = this.getElevationAt(x, z);
+    const e10 = this.getElevationAt(x + 1, z);
+    const e01 = this.getElevationAt(x, z + 1);
+    const e11 = this.getElevationAt(x + 1, z + 1);
+
+    const avgElevation = (e00 + e10 + e01 + e11) / 4;
+    const slopeX = ((e10 - e00) + (e11 - e01)) / 2;
+    const slopeZ = ((e01 - e00) + (e11 - e10)) / 2;
+    const slopeMagnitude = Math.sqrt(slopeX * slopeX + slopeZ * slopeZ);
+    const slopeAngle = Math.atan(slopeMagnitude) * (180 / Math.PI);
+
+    const stretching = 1 + slopeMagnitude * 0.5;
+
+    const rotation = Math.atan2(slopeZ, slopeX);
+
+    return {
+      position: { x, z },
+      cornerElevations: { nw: e00, ne: e10, se: e11, sw: e01 },
+      averageElevation: avgElevation,
+      slopeVector: { x: slopeX, z: slopeZ },
+      slopeAngle,
+      uvStretching: stretching,
+      uvRotation: rotation,
+      adjustedUVScale: tileSize * stretching
+    };
+  }
+
+  public computeWorldToUVMapping(
+    worldX: number, worldZ: number,
+    textureScale: number = 1
+  ): WorldToUVData {
+    const tileX = Math.floor(worldX);
+    const tileZ = Math.floor(worldZ);
+    const fracX = worldX - tileX;
+    const fracZ = worldZ - tileZ;
+
+    const tileUV = this.computeTileUVCoordinates(tileX, tileZ);
+
+    const u = tileUV.uvBounds.uMin + fracX * (tileUV.uvBounds.uMax - tileUV.uvBounds.uMin);
+    const v = tileUV.uvBounds.vMin + fracZ * (tileUV.uvBounds.vMax - tileUV.uvBounds.vMin);
+
+    return {
+      worldPosition: { x: worldX, z: worldZ },
+      tilePosition: { x: tileX, z: tileZ },
+      tileFraction: { x: fracX, z: fracZ },
+      uv: { u, v },
+      textureScale,
+      scaledUV: { u: u * textureScale, v: v * textureScale }
+    };
+  }
+
+  public computeCliffUVMapping(
+    x: number, z: number,
+    direction: 'north' | 'south' | 'east' | 'west',
+    cliffHeight: number
+  ): CliffUVData {
+    const cliffAtlasIndex = 8;
+    const atlasWidth = 4;
+    const atlasHeight = 4;
+
+    const atlasX = cliffAtlasIndex % atlasWidth;
+    const atlasY = Math.floor(cliffAtlasIndex / atlasWidth);
+
+    const uMin = atlasX / atlasWidth;
+    const uMax = (atlasX + 1) / atlasWidth;
+    const vMin = atlasY / atlasHeight;
+    const vMax = (atlasY + 1) / atlasHeight;
+
+    const vScale = Math.min(1, cliffHeight / 4);
+
+    return {
+      position: { x, z },
+      direction,
+      cliffHeight,
+      atlasIndex: cliffAtlasIndex,
+      uvBounds: { uMin, uMax, vMin, vMax: vMin + (vMax - vMin) * vScale },
+      vScale,
+      tileRepeat: Math.ceil(cliffHeight / 2)
+    };
+  }
+
+  public computeTriplanarMapping(
+    x: number, z: number,
+    normal: { x: number; y: number; z: number }
+  ): TriplanarMappingData {
+    const absNormal = {
+      x: Math.abs(normal.x),
+      y: Math.abs(normal.y),
+      z: Math.abs(normal.z)
+    };
+
+    const sum = absNormal.x + absNormal.y + absNormal.z;
+    const weights = {
+      x: absNormal.x / sum,
+      y: absNormal.y / sum,
+      z: absNormal.z / sum
+    };
+
+    const elevation = this.getElevationAt(x, z);
+
+    return {
+      position: { x, z, y: elevation },
+      normal,
+      projectionWeights: weights,
+      dominantAxis: weights.x >= weights.y && weights.x >= weights.z ? 'x' :
+                    weights.y >= weights.z ? 'y' : 'z',
+      uvX: { u: z, v: elevation },
+      uvY: { u: x, v: z },
+      uvZ: { u: x, v: elevation }
+    };
+  }
+
+  public computeUVMappingStatistics(): UVMappingStatistics {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    let transitionTiles = 0;
+    let cliffTiles = 0;
+    let totalSlopeAngle = 0;
+    const textureUsage = new Map<string, number>();
+
+    for (let z = 0; z < height; z++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, z);
+        textureUsage.set(terrainType, (textureUsage.get(terrainType) || 0) + 1);
+
+        const blend = this.computeTerrainBlendWeights(x, z);
+        if (blend.isTransition) transitionTiles++;
+
+        const slopeUV = this.computeSlopeBasedUV(x, z);
+        totalSlopeAngle += slopeUV.slopeAngle;
+
+        if (slopeUV.slopeAngle > 45) cliffTiles++;
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      terrainWidth: width,
+      terrainHeight: height,
+      totalTiles,
+      transitionTiles,
+      transitionPercentage: (transitionTiles / totalTiles) * 100,
+      cliffTiles,
+      cliffPercentage: (cliffTiles / totalTiles) * 100,
+      averageSlopeAngle: totalSlopeAngle / totalTiles,
+      textureUsage: Object.fromEntries(textureUsage),
+      uniqueTextures: textureUsage.size
+    };
+  }
+}
+
+export interface TileUVData {
+  tilePosition: { x: number; z: number };
+  terrainType: string;
+  atlasIndex: number;
+  atlasCell: { x: number; y: number };
+  uvBounds: { uMin: number; uMax: number; vMin: number; vMax: number };
+  corners: {
+    nw: { u: number; v: number };
+    ne: { u: number; v: number };
+    se: { u: number; v: number };
+    sw: { u: number; v: number };
+  };
+}
+
+export interface BlendWeightsData {
+  position: { x: number; z: number };
+  primaryType: string;
+  weights: Record<string, number>;
+  blendRadius: number;
+  isTransition: boolean;
+}
+
+export interface SlopeBasedUVData {
+  position: { x: number; z: number };
+  cornerElevations: { nw: number; ne: number; se: number; sw: number };
+  averageElevation: number;
+  slopeVector: { x: number; z: number };
+  slopeAngle: number;
+  uvStretching: number;
+  uvRotation: number;
+  adjustedUVScale: number;
+}
+
+export interface WorldToUVData {
+  worldPosition: { x: number; z: number };
+  tilePosition: { x: number; z: number };
+  tileFraction: { x: number; z: number };
+  uv: { u: number; v: number };
+  textureScale: number;
+  scaledUV: { u: number; v: number };
+}
+
+export interface CliffUVData {
+  position: { x: number; z: number };
+  direction: string;
+  cliffHeight: number;
+  atlasIndex: number;
+  uvBounds: { uMin: number; uMax: number; vMin: number; vMax: number };
+  vScale: number;
+  tileRepeat: number;
+}
+
+export interface TriplanarMappingData {
+  position: { x: number; z: number; y: number };
+  normal: { x: number; y: number; z: number };
+  projectionWeights: { x: number; y: number; z: number };
+  dominantAxis: string;
+  uvX: { u: number; v: number };
+  uvY: { u: number; v: number };
+  uvZ: { u: number; v: number };
+}
+
+export interface UVMappingStatistics {
+  terrainWidth: number;
+  terrainHeight: number;
+  totalTiles: number;
+  transitionTiles: number;
+  transitionPercentage: number;
+  cliffTiles: number;
+  cliffPercentage: number;
+  averageSlopeAngle: number;
+  textureUsage: Record<string, number>;
+  uniqueTextures: number;
 }
 
 export interface GolfRouteData {
