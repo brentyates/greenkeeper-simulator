@@ -4815,6 +4815,169 @@ export class TerrainBuilder {
     this.rebuildArea(minX, minY, maxX, maxY);
   }
 
+  public cutToClipboard(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    fillElevation: number = 0,
+    fillTerrain: TerrainType = 'rough'
+  ): boolean {
+    if (!this.copyRegionToClipboard(startX, startY, endX, endY)) return false;
+
+    const { width, height, elevation, layout } = this.courseData;
+    if (!elevation) return true;
+
+    const minX = Math.max(0, Math.min(startX, endX));
+    const maxX = Math.min(width - 1, Math.max(startX, endX));
+    const minY = Math.max(0, Math.min(startY, endY));
+    const maxY = Math.min(height - 1, Math.max(startY, endY));
+
+    const fillTerrainCode = getTerrainCode(fillTerrain);
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        elevation[y][x] = fillElevation;
+        layout[y][x] = fillTerrainCode;
+        if (this.mowedState[y]) {
+          this.mowedState[y][x] = false;
+        }
+      }
+    }
+
+    this.rebuildArea(minX, minY, maxX, maxY);
+    return true;
+  }
+
+  public stampClipboardPattern(
+    positions: Array<{ x: number; y: number }>,
+    options?: { includeElevation?: boolean; includeMowed?: boolean; elevationOffset?: number }
+  ): number {
+    if (!this.clipboard) return 0;
+    let totalPasted = 0;
+    for (const pos of positions) {
+      totalPasted += this.pasteFromClipboard(pos.x, pos.y, options);
+    }
+    return totalPasted;
+  }
+
+  public tileClipboardPattern(
+    startX: number,
+    startY: number,
+    repeatX: number,
+    repeatY: number,
+    options?: { includeElevation?: boolean; includeMowed?: boolean; elevationOffset?: number }
+  ): number {
+    if (!this.clipboard) return 0;
+    let totalPasted = 0;
+    for (let ry = 0; ry < repeatY; ry++) {
+      for (let rx = 0; rx < repeatX; rx++) {
+        const targetX = startX + rx * this.clipboard.width;
+        const targetY = startY + ry * this.clipboard.height;
+        totalPasted += this.pasteFromClipboard(targetX, targetY, options);
+      }
+    }
+    return totalPasted;
+  }
+
+  public blendClipboard(
+    targetX: number,
+    targetY: number,
+    blendFactor: number = 0.5
+  ): number {
+    if (!this.clipboard) return 0;
+
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const factor = Math.max(0, Math.min(1, blendFactor));
+    let pastedCount = 0;
+    const affectedMinX = Math.max(0, targetX);
+    const affectedMinY = Math.max(0, targetY);
+    const affectedMaxX = Math.min(width - 1, targetX + this.clipboard.width - 1);
+    const affectedMaxY = Math.min(height - 1, targetY + this.clipboard.height - 1);
+
+    for (const tile of this.clipboard.tiles) {
+      const destX = targetX + tile.relativeX;
+      const destY = targetY + tile.relativeY;
+
+      if (destX < 0 || destX >= width || destY < 0 || destY >= height) continue;
+
+      elevation[destY][destX] = Math.round(
+        elevation[destY][destX] * (1 - factor) + tile.elevation * factor
+      );
+      pastedCount++;
+    }
+
+    if (pastedCount > 0) {
+      this.rebuildArea(affectedMinX, affectedMinY, affectedMaxX, affectedMaxY);
+    }
+
+    return pastedCount;
+  }
+
+  public compareAreas(
+    area1StartX: number,
+    area1StartY: number,
+    area1EndX: number,
+    area1EndY: number,
+    area2StartX: number,
+    area2StartY: number
+  ): TerrainComparison {
+    const { width, height, elevation, layout } = this.courseData;
+    const result: TerrainComparison = {
+      identical: true,
+      elevationDifferences: 0,
+      terrainDifferences: 0,
+      maxElevationDiff: 0,
+      avgElevationDiff: 0
+    };
+
+    if (!elevation) return result;
+
+    const minX1 = Math.max(0, Math.min(area1StartX, area1EndX));
+    const maxX1 = Math.min(width - 1, Math.max(area1StartX, area1EndX));
+    const minY1 = Math.max(0, Math.min(area1StartY, area1EndY));
+    const maxY1 = Math.min(height - 1, Math.max(area1StartY, area1EndY));
+
+    const areaWidth = maxX1 - minX1 + 1;
+    const areaHeight = maxY1 - minY1 + 1;
+
+    let totalElevationDiff = 0;
+    let compareCount = 0;
+
+    for (let y = 0; y < areaHeight; y++) {
+      for (let x = 0; x < areaWidth; x++) {
+        const src1X = minX1 + x;
+        const src1Y = minY1 + y;
+        const src2X = area2StartX + x;
+        const src2Y = area2StartY + y;
+
+        if (src2X < 0 || src2X >= width || src2Y < 0 || src2Y >= height) continue;
+
+        const elevDiff = Math.abs(elevation[src1Y][src1X] - elevation[src2Y][src2X]);
+        if (elevDiff > 0) {
+          result.elevationDifferences++;
+          result.identical = false;
+          totalElevationDiff += elevDiff;
+          result.maxElevationDiff = Math.max(result.maxElevationDiff, elevDiff);
+        }
+
+        if (layout[src1Y][src1X] !== layout[src2Y][src2X]) {
+          result.terrainDifferences++;
+          result.identical = false;
+        }
+
+        compareCount++;
+      }
+    }
+
+    if (compareCount > 0) {
+      result.avgElevationDiff = totalElevationDiff / compareCount;
+    }
+
+    return result;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -9751,6 +9914,14 @@ export interface HeightmapComparison {
     otherValue: number;
     difference: number;
   }>;
+}
+
+export interface TerrainComparison {
+  identical: boolean;
+  elevationDifferences: number;
+  terrainDifferences: number;
+  maxElevationDiff: number;
+  avgElevationDiff: number;
 }
 
 export interface LineSampleOptions {
