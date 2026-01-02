@@ -2114,6 +2114,147 @@ export class TerrainBuilder {
       return slope.magnitude;
     });
   }
+
+  public pickTileAtScreenPosition(
+    screenX: number,
+    screenY: number,
+    camera: { x: number; y: number }
+  ): { x: number; y: number } | null {
+    const worldX = screenX + camera.x;
+    const worldY = screenY + camera.y;
+    const grid = this.worldToGrid(worldX, worldY);
+
+    if (this.isValidGridPosition(grid.x, grid.y)) {
+      return grid;
+    }
+    return null;
+  }
+
+  public getTileUnderWorldPosition(worldX: number, worldY: number): {
+    gridX: number;
+    gridY: number;
+    terrainType: TerrainType;
+    elevation: number;
+    isMowed: boolean;
+    physics: SurfacePhysics;
+  } | null {
+    const grid = this.worldToGrid(worldX, worldY);
+
+    if (!this.isValidGridPosition(grid.x, grid.y)) {
+      return null;
+    }
+
+    return {
+      gridX: grid.x,
+      gridY: grid.y,
+      terrainType: this.getTerrainTypeAt(grid.x, grid.y),
+      elevation: this.getElevationAt(grid.x, grid.y),
+      isMowed: this.isMowed(grid.x, grid.y),
+      physics: this.getSurfacePhysicsAt(grid.x, grid.y)
+    };
+  }
+
+  public findNearestTileOfType(
+    fromX: number,
+    fromY: number,
+    terrainType: TerrainType,
+    maxRadius: number = 50
+  ): { x: number; y: number; distance: number } | null {
+    let nearest: { x: number; y: number; distance: number } | null = null;
+
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      const tiles = this.getTilesInRadius(fromX, fromY, radius);
+
+      for (const tile of tiles) {
+        if (this.getTerrainTypeAt(tile.x, tile.y) === terrainType) {
+          const dx = tile.x - fromX;
+          const dy = tile.y - fromY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (!nearest || dist < nearest.distance) {
+            nearest = { x: tile.x, y: tile.y, distance: dist };
+          }
+        }
+      }
+
+      if (nearest) {
+        return nearest;
+      }
+    }
+
+    return null;
+  }
+
+  public findNearestMowedTile(
+    fromX: number,
+    fromY: number,
+    mowed: boolean = true,
+    maxRadius: number = 50
+  ): { x: number; y: number; distance: number } | null {
+    let nearest: { x: number; y: number; distance: number } | null = null;
+
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      const tiles = this.getTilesInRadius(fromX, fromY, radius);
+
+      for (const tile of tiles) {
+        if (this.isMowed(tile.x, tile.y) === mowed) {
+          const type = this.getTerrainTypeAt(tile.x, tile.y);
+          if (type === 'fairway' || type === 'rough' || type === 'green') {
+            const dx = tile.x - fromX;
+            const dy = tile.y - fromY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (!nearest || dist < nearest.distance) {
+              nearest = { x: tile.x, y: tile.y, distance: dist };
+            }
+          }
+        }
+      }
+
+      if (nearest) {
+        return nearest;
+      }
+    }
+
+    return null;
+  }
+
+  public getRandomTileOfType(terrainType: TerrainType): { x: number; y: number } | null {
+    const { width, height } = this.courseData;
+    const matchingTiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.getTerrainTypeAt(x, y) === terrainType) {
+          matchingTiles.push({ x, y });
+        }
+      }
+    }
+
+    if (matchingTiles.length === 0) return null;
+
+    const idx = Math.floor(Math.random() * matchingTiles.length);
+    return matchingTiles[idx];
+  }
+
+  public getRandomWalkableTile(): { x: number; y: number } | null {
+    const { width, height } = this.courseData;
+    const walkableTiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const type = this.getTerrainTypeAt(x, y);
+        if (type !== 'water') {
+          walkableTiles.push({ x, y });
+        }
+      }
+    }
+
+    if (walkableTiles.length === 0) return null;
+
+    const idx = Math.floor(Math.random() * walkableTiles.length);
+    return walkableTiles[idx];
+  }
 }
 
 export interface TerrainStatistics {
