@@ -13468,6 +13468,295 @@ export class TerrainBuilder {
     return recommendations;
   }
 
+  public computeElevationAutocorrelation(maxLag: number = 10): AutocorrelationResult {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        lags: [],
+        correlations: [],
+        meanElevation: 0,
+        variance: 0,
+        correlationLength: 0,
+        isStationary: false
+      };
+    }
+
+    const values: number[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        values.push(elevation[y][x]);
+      }
+    }
+
+    const n = values.length;
+    const mean = values.reduce((sum, v) => sum + v, 0) / n;
+    const variance = values.reduce((sum, v) => sum + (v - mean) * (v - mean), 0) / n;
+
+    const lags: number[] = [];
+    const correlations: number[] = [];
+
+    for (let lag = 0; lag <= maxLag; lag++) {
+      let sumProduct = 0;
+      let count = 0;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width - lag; x++) {
+          const v1 = elevation[y][x] - mean;
+          const v2 = elevation[y][x + lag] - mean;
+          sumProduct += v1 * v2;
+          count++;
+        }
+      }
+
+      for (let y = 0; y < height - lag; y++) {
+        for (let x = 0; x < width; x++) {
+          const v1 = elevation[y][x] - mean;
+          const v2 = elevation[y + lag][x] - mean;
+          sumProduct += v1 * v2;
+          count++;
+        }
+      }
+
+      const correlation = count > 0 && variance > 0 ? sumProduct / (count * variance) : 0;
+      lags.push(lag);
+      correlations.push(correlation);
+    }
+
+    let correlationLength = maxLag;
+    for (let i = 1; i < correlations.length; i++) {
+      if (correlations[i] < 1 / Math.E) {
+        correlationLength = lags[i];
+        break;
+      }
+    }
+
+    const isStationary = correlations.length > 3 &&
+      Math.abs(correlations[correlations.length - 1]) < 0.3;
+
+    return {
+      lags,
+      correlations,
+      meanElevation: mean,
+      variance,
+      correlationLength,
+      isStationary
+    };
+  }
+
+  public computeSemivariogram(maxLag: number = 10, binSize: number = 1): SemivariogramResult {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        lags: [],
+        semivariances: [],
+        nugget: 0,
+        sill: 0,
+        range: 0,
+        modelType: 'unknown'
+      };
+    }
+
+    const bins: Map<number, { sum: number; count: number }> = new Map();
+    for (let i = 0; i <= maxLag; i++) {
+      bins.set(i, { sum: 0, count: 0 });
+    }
+
+    for (let y1 = 0; y1 < height; y1++) {
+      for (let x1 = 0; x1 < width; x1++) {
+        const v1 = elevation[y1][x1];
+
+        for (let dy = 0; dy <= maxLag; dy++) {
+          for (let dx = 0; dx <= maxLag; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const x2 = x1 + dx;
+            const y2 = y1 + dy;
+            if (x2 >= width || y2 >= height) continue;
+
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const binIdx = Math.round(dist / binSize);
+            if (binIdx > maxLag) continue;
+
+            const v2 = elevation[y2][x2];
+            const diff = v1 - v2;
+            const bin = bins.get(binIdx)!;
+            bin.sum += diff * diff;
+            bin.count++;
+          }
+        }
+      }
+    }
+
+    const lags: number[] = [];
+    const semivariances: number[] = [];
+
+    for (let i = 0; i <= maxLag; i++) {
+      const bin = bins.get(i)!;
+      if (bin.count > 0) {
+        lags.push(i * binSize);
+        semivariances.push(bin.sum / (2 * bin.count));
+      }
+    }
+
+    const nugget = semivariances.length > 0 ? semivariances[0] : 0;
+    const sill = semivariances.length > 0 ? Math.max(...semivariances) : 0;
+
+    let range = maxLag * binSize;
+    for (let i = 1; i < semivariances.length; i++) {
+      if (semivariances[i] >= sill * 0.95) {
+        range = lags[i];
+        break;
+      }
+    }
+
+    let modelType: 'spherical' | 'exponential' | 'gaussian' | 'linear' | 'unknown' = 'unknown';
+    if (semivariances.length >= 3) {
+      const midIdx = Math.floor(semivariances.length / 2);
+      const midRatio = semivariances[midIdx] / sill;
+      if (midRatio > 0.7 && midRatio < 0.9) modelType = 'spherical';
+      else if (midRatio > 0.5 && midRatio < 0.7) modelType = 'exponential';
+      else if (midRatio > 0.3 && midRatio < 0.5) modelType = 'gaussian';
+      else if (midRatio > 0.4 && midRatio < 0.6) modelType = 'linear';
+    }
+
+    return {
+      lags,
+      semivariances,
+      nugget,
+      sill,
+      range,
+      modelType
+    };
+  }
+
+  public computeDirectionalSemivariogram(direction: number, maxLag: number = 10, tolerance: number = 22.5): SemivariogramResult {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        lags: [],
+        semivariances: [],
+        nugget: 0,
+        sill: 0,
+        range: 0,
+        modelType: 'unknown'
+      };
+    }
+
+    const bins: Map<number, { sum: number; count: number }> = new Map();
+    for (let i = 0; i <= maxLag; i++) {
+      bins.set(i, { sum: 0, count: 0 });
+    }
+
+    for (let y1 = 0; y1 < height; y1++) {
+      for (let x1 = 0; x1 < width; x1++) {
+        const v1 = elevation[y1][x1];
+
+        for (let y2 = 0; y2 < height; y2++) {
+          for (let x2 = 0; x2 < width; x2++) {
+            if (x1 === x2 && y1 === y2) continue;
+
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > maxLag) continue;
+
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            let angleDiff = Math.abs(angle - direction);
+            if (angleDiff > 180) angleDiff = 360 - angleDiff;
+            if (angleDiff > tolerance) continue;
+
+            const binIdx = Math.round(dist);
+            const v2 = elevation[y2][x2];
+            const diff = v1 - v2;
+            const bin = bins.get(binIdx)!;
+            bin.sum += diff * diff;
+            bin.count++;
+          }
+        }
+      }
+    }
+
+    const lags: number[] = [];
+    const semivariances: number[] = [];
+
+    for (let i = 0; i <= maxLag; i++) {
+      const bin = bins.get(i)!;
+      if (bin.count > 0) {
+        lags.push(i);
+        semivariances.push(bin.sum / (2 * bin.count));
+      }
+    }
+
+    const nugget = semivariances.length > 0 ? semivariances[0] : 0;
+    const sill = semivariances.length > 0 ? Math.max(...semivariances) : 0;
+
+    let range = maxLag;
+    for (let i = 1; i < semivariances.length; i++) {
+      if (semivariances[i] >= sill * 0.95) {
+        range = lags[i];
+        break;
+      }
+    }
+
+    return {
+      lags,
+      semivariances,
+      nugget,
+      sill,
+      range,
+      modelType: 'unknown'
+    };
+  }
+
+  public analyzeSpatialAnisotropy(): SpatialAnisotropyResult {
+    const directions = [0, 45, 90, 135];
+    const variograms: Array<{ direction: number; variogram: SemivariogramResult }> = [];
+
+    for (const dir of directions) {
+      variograms.push({
+        direction: dir,
+        variogram: this.computeDirectionalSemivariogram(dir, 8)
+      });
+    }
+
+    const ranges = variograms.map(v => v.variogram.range);
+    const maxRange = Math.max(...ranges);
+    const minRange = Math.min(...ranges);
+    const anisotropyRatio = minRange > 0 ? maxRange / minRange : 1;
+
+    const maxRangeDir = variograms.find(v => v.variogram.range === maxRange)?.direction ?? 0;
+    const minRangeDir = variograms.find(v => v.variogram.range === minRange)?.direction ?? 0;
+
+    return {
+      directionalVariograms: variograms,
+      maxRangeDirection: maxRangeDir,
+      minRangeDirection: minRangeDir,
+      anisotropyRatio,
+      isAnisotropic: anisotropyRatio > 1.5
+    };
+  }
+
+  public getTerrainCorrelationSummary(): TerrainCorrelationSummary {
+    const autocorr = this.computeElevationAutocorrelation(8);
+    const variogram = this.computeSemivariogram(8);
+    const anisotropy = this.analyzeSpatialAnisotropy();
+
+    let spatialStructure: 'random' | 'clustered' | 'regular' = 'random';
+    if (autocorr.correlationLength > 3) {
+      spatialStructure = 'clustered';
+    } else if (autocorr.correlations[1] < 0) {
+      spatialStructure = 'regular';
+    }
+
+    return {
+      autocorrelation: autocorr,
+      semivariogram: variogram,
+      anisotropy,
+      spatialStructure,
+      terrainSmoothnessIndex: autocorr.correlationLength / 8,
+      spatialDependenceStrength: 1 - (variogram.nugget / (variogram.sill || 1))
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -19503,4 +19792,39 @@ export interface TerrainBalanceScore {
   centroid: { x: number; y: number; z: number };
   inertiaRatio: number;
   recommendations: string[];
+}
+
+export interface AutocorrelationResult {
+  lags: number[];
+  correlations: number[];
+  meanElevation: number;
+  variance: number;
+  correlationLength: number;
+  isStationary: boolean;
+}
+
+export interface SemivariogramResult {
+  lags: number[];
+  semivariances: number[];
+  nugget: number;
+  sill: number;
+  range: number;
+  modelType: 'spherical' | 'exponential' | 'gaussian' | 'linear' | 'unknown';
+}
+
+export interface SpatialAnisotropyResult {
+  directionalVariograms: Array<{ direction: number; variogram: SemivariogramResult }>;
+  maxRangeDirection: number;
+  minRangeDirection: number;
+  anisotropyRatio: number;
+  isAnisotropic: boolean;
+}
+
+export interface TerrainCorrelationSummary {
+  autocorrelation: AutocorrelationResult;
+  semivariogram: SemivariogramResult;
+  anisotropy: SpatialAnisotropyResult;
+  spatialStructure: 'random' | 'clustered' | 'regular';
+  terrainSmoothnessIndex: number;
+  spatialDependenceStrength: number;
 }
