@@ -9973,6 +9973,234 @@ export class TerrainBuilder {
     };
   }
 
+  public compareAreaStatistics(
+    area1: { minX: number; minY: number; maxX: number; maxY: number },
+    area2: { minX: number; minY: number; maxX: number; maxY: number }
+  ): AreaComparison {
+    const stats1 = this.computeAreaStatistics(area1.minX, area1.minY, area1.maxX, area1.maxY);
+    const stats2 = this.computeAreaStatistics(area2.minX, area2.minY, area2.maxX, area2.maxY);
+
+    const terrainDifferences: { [key: string]: number } = {};
+    const allTerrainTypes = new Set([
+      ...Object.keys(stats1.terrainCounts),
+      ...Object.keys(stats2.terrainCounts)
+    ]);
+    for (const type of allTerrainTypes) {
+      const count1 = stats1.terrainCounts[type] || 0;
+      const count2 = stats2.terrainCounts[type] || 0;
+      if (count1 !== count2) {
+        terrainDifferences[type] = count2 - count1;
+      }
+    }
+
+    const geometryDifferences: { [key: string]: number } = {};
+    const allGeometryTypes = new Set([
+      ...Object.keys(stats1.geometryCounts),
+      ...Object.keys(stats2.geometryCounts)
+    ]);
+    for (const type of allGeometryTypes) {
+      const count1 = stats1.geometryCounts[type] || 0;
+      const count2 = stats2.geometryCounts[type] || 0;
+      if (count1 !== count2) {
+        geometryDifferences[type] = count2 - count1;
+      }
+    }
+
+    return {
+      area1Stats: stats1,
+      area2Stats: stats2,
+      elevationDifference: stats2.avgElevation - stats1.avgElevation,
+      slopeDifference: stats2.avgSlope - stats1.avgSlope,
+      terrainDifferences,
+      geometryDifferences,
+      area1HasMoreSlopes: stats1.avgSlope > stats2.avgSlope,
+      area2HasMoreSlopes: stats2.avgSlope > stats1.avgSlope,
+      elevationRangeDifference: stats2.elevationRange - stats1.elevationRange
+    };
+  }
+
+  public computeElevationHistogram(
+    binSize: number = 0.5,
+    minX?: number,
+    minY?: number,
+    maxX?: number,
+    maxY?: number
+  ): ElevationHistogram {
+    const { width, height } = this.courseData;
+    const x1 = minX ?? 0;
+    const y1 = minY ?? 0;
+    const x2 = maxX ?? width - 1;
+    const y2 = maxY ?? height - 1;
+
+    const bins: { [key: string]: number } = {};
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    let sumElev = 0;
+    let count = 0;
+
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        if (!this.isValidGridPosition(x, y)) continue;
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+        sumElev += elev;
+        count++;
+
+        const binKey = Math.floor(elev / binSize) * binSize;
+        bins[binKey] = (bins[binKey] || 0) + 1;
+      }
+    }
+
+    const sortedBins = Object.keys(bins)
+      .map(k => ({ elevation: parseFloat(k), count: bins[k] }))
+      .sort((a, b) => a.elevation - b.elevation);
+
+    let peakBin = sortedBins[0]?.elevation || 0;
+    let peakCount = 0;
+    for (const bin of sortedBins) {
+      if (bin.count > peakCount) {
+        peakCount = bin.count;
+        peakBin = bin.elevation;
+      }
+    }
+
+    return {
+      bins: sortedBins,
+      binSize,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      avgElevation: count > 0 ? sumElev / count : 0,
+      peakElevation: peakBin,
+      totalCount: count
+    };
+  }
+
+  public computeSlopeHistogram(
+    binSize: number = 5,
+    minX?: number,
+    minY?: number,
+    maxX?: number,
+    maxY?: number
+  ): SlopeHistogram {
+    const { width, height } = this.courseData;
+    const x1 = minX ?? 0;
+    const y1 = minY ?? 0;
+    const x2 = maxX ?? width - 1;
+    const y2 = maxY ?? height - 1;
+
+    const bins: { [key: string]: number } = {};
+    let minSlope = Infinity;
+    let maxSlope = -Infinity;
+    let sumSlope = 0;
+    let count = 0;
+
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        if (!this.isValidGridPosition(x, y)) continue;
+        const slope = this.getSlopeAngle(x, y);
+        minSlope = Math.min(minSlope, slope);
+        maxSlope = Math.max(maxSlope, slope);
+        sumSlope += slope;
+        count++;
+
+        const binKey = Math.floor(slope / binSize) * binSize;
+        bins[binKey] = (bins[binKey] || 0) + 1;
+      }
+    }
+
+    const sortedBins = Object.keys(bins)
+      .map(k => ({ slope: parseFloat(k), count: bins[k] }))
+      .sort((a, b) => a.slope - b.slope);
+
+    let flatCount = 0;
+    let moderateCount = 0;
+    let steepCount = 0;
+    for (const bin of sortedBins) {
+      if (bin.slope < 10) flatCount += bin.count;
+      else if (bin.slope < 30) moderateCount += bin.count;
+      else steepCount += bin.count;
+    }
+
+    return {
+      bins: sortedBins,
+      binSize,
+      minSlope: minSlope === Infinity ? 0 : minSlope,
+      maxSlope: maxSlope === -Infinity ? 0 : maxSlope,
+      avgSlope: count > 0 ? sumSlope / count : 0,
+      flatCount,
+      moderateCount,
+      steepCount,
+      totalCount: count
+    };
+  }
+
+  public findSimilarAreas(
+    sourceX: number,
+    sourceY: number,
+    sourceSize: number,
+    searchRadius: number = 20,
+    tolerance: number = 0.2
+  ): Array<{ x: number; y: number; similarity: number }> {
+    const sourceStats = this.computeAreaStatistics(
+      sourceX - Math.floor(sourceSize / 2),
+      sourceY - Math.floor(sourceSize / 2),
+      sourceX + Math.floor(sourceSize / 2),
+      sourceY + Math.floor(sourceSize / 2)
+    );
+
+    const results: Array<{ x: number; y: number; similarity: number }> = [];
+    const halfSize = Math.floor(sourceSize / 2);
+
+    for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+      for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+        if (dx === 0 && dy === 0) continue;
+
+        const cx = sourceX + dx;
+        const cy = sourceY + dy;
+
+        if (!this.isValidGridPosition(cx - halfSize, cy - halfSize) ||
+            !this.isValidGridPosition(cx + halfSize, cy + halfSize)) continue;
+
+        const targetStats = this.computeAreaStatistics(
+          cx - halfSize, cy - halfSize,
+          cx + halfSize, cy + halfSize
+        );
+
+        const elevDiff = Math.abs(targetStats.avgElevation - sourceStats.avgElevation) / (sourceStats.avgElevation + 0.1);
+        const slopeDiff = Math.abs(targetStats.avgSlope - sourceStats.avgSlope) / (sourceStats.avgSlope + 0.1);
+        const rangeDiff = Math.abs(targetStats.elevationRange - sourceStats.elevationRange) / (sourceStats.elevationRange + 0.1);
+
+        const similarity = 1 - (elevDiff + slopeDiff + rangeDiff) / 3;
+
+        if (similarity > 1 - tolerance) {
+          results.push({ x: cx, y: cy, similarity });
+        }
+      }
+    }
+
+    return results.sort((a, b) => b.similarity - a.similarity);
+  }
+
+  public getTerrainSummary(): TerrainSummary {
+    const { width, height } = this.courseData;
+    const stats = this.computeAreaStatistics(0, 0, width - 1, height - 1);
+    const tileStats = this.getTileStatistics();
+    const vertexStats = this.getVertexStatistics();
+
+    return {
+      dimensions: { width, height },
+      totalTiles: width * height,
+      ...stats,
+      tileStatistics: tileStats,
+      vertexStatistics: vertexStats,
+      hasSteepSlopes: stats.maxSlope > 30,
+      hasWater: (stats.terrainCounts['water'] || 0) > 0,
+      hasBunkers: (stats.terrainCounts['bunker'] || 0) > 0,
+      hasCliffs: (stats.geometryCounts['cliff'] || 0) > 0
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -15307,6 +15535,51 @@ export interface AreaStatistics {
   maxSlope: number;
   terrainCounts: { [key: string]: number };
   geometryCounts: { [key: string]: number };
+}
+
+export interface AreaComparison {
+  area1Stats: AreaStatistics;
+  area2Stats: AreaStatistics;
+  elevationDifference: number;
+  slopeDifference: number;
+  terrainDifferences: { [key: string]: number };
+  geometryDifferences: { [key: string]: number };
+  area1HasMoreSlopes: boolean;
+  area2HasMoreSlopes: boolean;
+  elevationRangeDifference: number;
+}
+
+export interface ElevationHistogram {
+  bins: Array<{ elevation: number; count: number }>;
+  binSize: number;
+  minElevation: number;
+  maxElevation: number;
+  avgElevation: number;
+  peakElevation: number;
+  totalCount: number;
+}
+
+export interface SlopeHistogram {
+  bins: Array<{ slope: number; count: number }>;
+  binSize: number;
+  minSlope: number;
+  maxSlope: number;
+  avgSlope: number;
+  flatCount: number;
+  moderateCount: number;
+  steepCount: number;
+  totalCount: number;
+}
+
+export interface TerrainSummary extends AreaStatistics {
+  dimensions: { width: number; height: number };
+  totalTiles: number;
+  tileStatistics: TileStatistics;
+  vertexStatistics: VertexStatistics;
+  hasSteepSlopes: boolean;
+  hasWater: boolean;
+  hasBunkers: boolean;
+  hasCliffs: boolean;
 }
 
 export interface TileStatistics {
