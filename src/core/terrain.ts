@@ -330,6 +330,60 @@ export function getSlopeFrictionModifier(slopeAngle: number): number {
   return 1.0 + normalizedAngle * 0.3;
 }
 
+export function calculateSlopeAngle(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): number {
+  const avgNorth = (corners.nw + corners.ne) / 2;
+  const avgSouth = (corners.sw + corners.se) / 2;
+  const avgEast = (corners.ne + corners.se) / 2;
+  const avgWest = (corners.nw + corners.sw) / 2;
+
+  const nsSlope = (avgNorth - avgSouth) * heightStep;
+  const ewSlope = (avgEast - avgWest) * heightStep;
+
+  const maxSlope = Math.max(Math.abs(nsSlope), Math.abs(ewSlope));
+  return Math.atan2(maxSlope, TILE_WIDTH) * (180 / Math.PI);
+}
+
+export interface SlopeVector {
+  angle: number;
+  direction: number;
+  magnitude: number;
+}
+
+export function getSlopeVector(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): SlopeVector {
+  const avgNorth = (corners.nw + corners.ne) / 2;
+  const avgSouth = (corners.sw + corners.se) / 2;
+  const avgEast = (corners.ne + corners.se) / 2;
+  const avgWest = (corners.nw + corners.sw) / 2;
+
+  const nsSlope = (avgSouth - avgNorth) * heightStep;
+  const ewSlope = (avgEast - avgWest) * heightStep;
+
+  const magnitude = Math.sqrt(nsSlope * nsSlope + ewSlope * ewSlope);
+  const direction = Math.atan2(nsSlope, ewSlope) * (180 / Math.PI);
+  const angle = Math.atan2(magnitude, TILE_WIDTH) * (180 / Math.PI);
+
+  return { angle, direction, magnitude };
+}
+
+export function getTileNormal(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): { x: number; y: number; z: number } {
+  const v1x = TILE_WIDTH;
+  const v1y = 0;
+  const v1z = ((corners.ne + corners.se) / 2 - (corners.nw + corners.sw) / 2) * heightStep;
+
+  const v2x = 0;
+  const v2y = TILE_HEIGHT;
+  const v2z = ((corners.sw + corners.se) / 2 - (corners.nw + corners.ne) / 2) * heightStep;
+
+  const nx = v1y * v2z - v1z * v2y;
+  const ny = v1z * v2x - v1x * v2z;
+  const nz = v1x * v2y - v1y * v2x;
+
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (len === 0) return { x: 0, y: 0, z: 1 };
+
+  return { x: nx / len, y: ny / len, z: nz / len };
+}
+
 export const DEFAULT_WATER_LEVEL = 0;
 
 export function isSubmerged(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): boolean {

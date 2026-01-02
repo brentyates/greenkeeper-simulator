@@ -29,6 +29,9 @@ import {
   validateSlopeConstraint,
   getSurfacePhysics,
   getSlopeFrictionModifier,
+  calculateSlopeAngle,
+  getSlopeVector,
+  getTileNormal,
   isSubmerged,
   isPartiallySubmerged,
   getWaterDepth,
@@ -1281,5 +1284,118 @@ describe('Water Level Handling', () => {
 
   it('DEFAULT_WATER_LEVEL is 0', () => {
     expect(DEFAULT_WATER_LEVEL).toBe(0);
+  });
+});
+
+describe('Slope Calculations', () => {
+  describe('calculateSlopeAngle', () => {
+    it('returns 0 for flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      expect(calculateSlopeAngle(corners)).toBe(0);
+    });
+
+    it('returns 0 for uniformly elevated flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 5, ne: 5, se: 5, sw: 5 };
+      expect(calculateSlopeAngle(corners)).toBe(0);
+    });
+
+    it('returns positive angle for north-sloping terrain', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      expect(calculateSlopeAngle(corners)).toBeGreaterThan(0);
+    });
+
+    it('returns positive angle for east-sloping terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 1, sw: 0 };
+      expect(calculateSlopeAngle(corners)).toBeGreaterThan(0);
+    });
+
+    it('steeper slopes have larger angles', () => {
+      const gentle: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      const steep: RCTCornerHeights = { nw: 2, ne: 2, se: 0, sw: 0 };
+      expect(calculateSlopeAngle(steep)).toBeGreaterThan(calculateSlopeAngle(gentle));
+    });
+
+    it('respects custom height step', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      const smallStep = calculateSlopeAngle(corners, 8);
+      const largeStep = calculateSlopeAngle(corners, 32);
+      expect(largeStep).toBeGreaterThan(smallStep);
+    });
+  });
+
+  describe('getSlopeVector', () => {
+    it('returns zero magnitude for flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const vector = getSlopeVector(corners);
+      expect(vector.magnitude).toBe(0);
+      expect(vector.angle).toBe(0);
+    });
+
+    it('returns downward south direction for north-high terrain', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      const vector = getSlopeVector(corners);
+      expect(vector.magnitude).toBeGreaterThan(0);
+      expect(vector.direction).toBeCloseTo(-90, 0);
+    });
+
+    it('returns downward east direction for west-high terrain', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 0, se: 0, sw: 1 };
+      const vector = getSlopeVector(corners);
+      expect(vector.magnitude).toBeGreaterThan(0);
+      expect(Math.abs(vector.direction)).toBeCloseTo(180, 0);
+    });
+
+    it('returns downward north direction for south-high terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 1, sw: 1 };
+      const vector = getSlopeVector(corners);
+      expect(vector.magnitude).toBeGreaterThan(0);
+      expect(vector.direction).toBeCloseTo(90, 0);
+    });
+
+    it('returns downward west direction for east-high terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 1, sw: 0 };
+      const vector = getSlopeVector(corners);
+      expect(vector.magnitude).toBeGreaterThan(0);
+      expect(vector.direction).toBeCloseTo(0, 0);
+    });
+
+    it('angle matches calculateSlopeAngle', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      const vector = getSlopeVector(corners);
+      const angle = calculateSlopeAngle(corners);
+      expect(vector.angle).toBeCloseTo(angle, 5);
+    });
+  });
+
+  describe('getTileNormal', () => {
+    it('returns upward normal for flat terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 0, se: 0, sw: 0 };
+      const normal = getTileNormal(corners);
+      expect(normal.x).toBeCloseTo(0, 5);
+      expect(normal.y).toBeCloseTo(0, 5);
+      expect(normal.z).toBeCloseTo(1, 5);
+    });
+
+    it('returns normalized vector', () => {
+      const corners: RCTCornerHeights = { nw: 1, ne: 0, se: 0, sw: 1 };
+      const normal = getTileNormal(corners);
+      const length = Math.sqrt(normal.x ** 2 + normal.y ** 2 + normal.z ** 2);
+      expect(length).toBeCloseTo(1, 5);
+    });
+
+    it('tilts toward low side for sloped terrain', () => {
+      const corners: RCTCornerHeights = { nw: 0, ne: 1, se: 1, sw: 0 };
+      const normal = getTileNormal(corners);
+      expect(normal.x).toBeLessThan(0);
+      expect(normal.z).toBeGreaterThan(0);
+    });
+
+    it('different slopes produce different normals', () => {
+      const cornersNS: RCTCornerHeights = { nw: 1, ne: 1, se: 0, sw: 0 };
+      const cornersEW: RCTCornerHeights = { nw: 0, ne: 1, se: 1, sw: 0 };
+      const normalNS = getTileNormal(cornersNS);
+      const normalEW = getTileNormal(cornersEW);
+      expect(normalNS.x).not.toBeCloseTo(normalEW.x, 3);
+    });
   });
 });
