@@ -7481,6 +7481,191 @@ export class TerrainBuilder {
     return areas.sort((a, b) => a.avgFrostRisk - b.avgFrostRisk).slice(0, 10);
   }
 
+  public computeMicroclimateFactors(gridX: number, gridY: number): MicroclimateFactors {
+    if (!this.isValidGridPosition(gridX, gridY)) {
+      return { sunExposure: 0, windExposure: 0, frostRisk: 0, drainageQuality: 0, elevation: 0 };
+    }
+
+    const { elevation } = this.courseData;
+    if (!elevation) {
+      return { sunExposure: 0, windExposure: 0, frostRisk: 0, drainageQuality: 0, elevation: 0 };
+    }
+
+    const solarData = this.computeDailyInsolation(45, 172);
+    const sunExposure = solarData[gridY]?.[gridX] ?? 0;
+
+    const windData = this.computeWindExposure(270);
+    const windExposure = windData[gridY]?.[gridX] ?? 0;
+
+    const frostData = this.computeFrostRisk();
+    const frostRisk = frostData[gridY]?.[gridX] ?? 0;
+
+    const flowAcc = this.computeFlowAccumulation();
+    const drainage = flowAcc[gridY]?.[gridX] ?? 0;
+    const drainageQuality = Math.max(0, 1 - Math.min(drainage / 20, 1));
+
+    const elev = elevation[gridY][gridX];
+
+    return { sunExposure, windExposure, frostRisk, drainageQuality, elevation: elev };
+  }
+
+  public classifyMicroclimate(gridX: number, gridY: number): MicroclimateZone {
+    const factors = this.computeMicroclimateFactors(gridX, gridY);
+
+    const avgSun = this.getArrayAverage(this.computeDailyInsolation(45, 172));
+    const avgWind = this.getArrayAverage(this.computeWindExposure(270));
+    const avgFrost = this.getArrayAverage(this.computeFrostRisk());
+
+    const isHighSun = factors.sunExposure > avgSun * 1.2;
+    const isLowSun = factors.sunExposure < avgSun * 0.8;
+    const isHighWind = factors.windExposure > avgWind * 1.3;
+    const isLowWind = factors.windExposure < avgWind * 0.7;
+    const isHighFrost = factors.frostRisk > avgFrost * 1.3;
+    const isPoorDrainage = factors.drainageQuality < 0.4;
+
+    if (isHighSun && isLowWind && !isHighFrost && !isPoorDrainage) {
+      return 'warm_sheltered';
+    }
+    if (isHighSun && isHighWind && !isHighFrost) {
+      return 'warm_exposed';
+    }
+    if (isLowSun && isLowWind && !isPoorDrainage) {
+      return 'cool_sheltered';
+    }
+    if (isLowSun && isHighWind) {
+      return 'cool_exposed';
+    }
+    if (isHighFrost || isPoorDrainage) {
+      return 'frost_prone';
+    }
+    if (isPoorDrainage && isLowSun) {
+      return 'wet_shaded';
+    }
+    return 'transitional';
+  }
+
+  public computeMicroclimateMap(): MicroclimateZone[][] {
+    const { width, height, elevation } = this.courseData;
+    const map: MicroclimateZone[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      map[y] = [];
+      for (let x = 0; x < width; x++) {
+        map[y][x] = elevation ? this.classifyMicroclimate(x, y) : 'transitional';
+      }
+    }
+
+    return map;
+  }
+
+  public getMicroclimateAnalysis(): MicroclimateAnalysis {
+    const map = this.computeMicroclimateMap();
+    const { width, height } = this.courseData;
+
+    const counts: Record<MicroclimateZone, number> = {
+      'warm_sheltered': 0,
+      'warm_exposed': 0,
+      'cool_sheltered': 0,
+      'cool_exposed': 0,
+      'frost_prone': 0,
+      'wet_shaded': 0,
+      'transitional': 0
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        counts[map[y][x]]++;
+      }
+    }
+
+    const zoneCount = Object.values(counts).filter(c => c > 0).length;
+
+    return {
+      warmShelteredCount: counts['warm_sheltered'],
+      warmExposedCount: counts['warm_exposed'],
+      coolShelteredCount: counts['cool_sheltered'],
+      coolExposedCount: counts['cool_exposed'],
+      frostProneCount: counts['frost_prone'],
+      wetShadedCount: counts['wet_shaded'],
+      transitionalCount: counts['transitional'],
+      dominantZone: (Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] as MicroclimateZone),
+      zoneCount,
+      diversityIndex: zoneCount / 7
+    };
+  }
+
+  public findMicroclimateZoneBoundaries(): Array<{ x: number; y: number; zone: MicroclimateZone; adjacentZone: MicroclimateZone }> {
+    const map = this.computeMicroclimateMap();
+    const { width, height } = this.courseData;
+    const boundaries: Array<{ x: number; y: number; zone: MicroclimateZone; adjacentZone: MicroclimateZone }> = [];
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: 0, dy: 1 }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const zone = map[y][x];
+        for (const n of neighbors) {
+          const nx = x + n.dx;
+          const ny = y + n.dy;
+          if (this.isValidGridPosition(nx, ny)) {
+            const adjacentZone = map[ny][nx];
+            if (zone !== adjacentZone) {
+              boundaries.push({ x, y, zone, adjacentZone });
+            }
+          }
+        }
+      }
+    }
+
+    return boundaries;
+  }
+
+  public findLargestMicroclimateZone(targetZone: MicroclimateZone): Array<{ x: number; y: number }> {
+    const map = this.computeMicroclimateMap();
+    const { width, height } = this.courseData;
+    const visited = new Set<string>();
+    let largestRegion: Array<{ x: number; y: number }> = [];
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x},${y}`;
+        if (visited.has(key) || map[y][x] !== targetZone) continue;
+
+        const region: Array<{ x: number; y: number }> = [];
+        const queue: Array<{ x: number; y: number }> = [{ x, y }];
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          const curKey = `${current.x},${current.y}`;
+          if (visited.has(curKey)) continue;
+          visited.add(curKey);
+          region.push(current);
+
+          for (const n of neighbors) {
+            const nx = current.x + n.dx;
+            const ny = current.y + n.dy;
+            if (this.isValidGridPosition(nx, ny) && map[ny][nx] === targetZone && !visited.has(`${nx},${ny}`)) {
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+
+        if (region.length > largestRegion.length) {
+          largestRegion = region;
+        }
+      }
+    }
+
+    return largestRegion;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -12569,6 +12754,29 @@ export interface SeasonalTerrainAnalysis {
   yearRoundShadedCount: number;
   summerSunnyOnlyCount: number;
   variablePatternCount: number;
+}
+
+export type MicroclimateZone = 'warm_sheltered' | 'warm_exposed' | 'cool_sheltered' | 'cool_exposed' | 'frost_prone' | 'wet_shaded' | 'transitional';
+
+export interface MicroclimateFactors {
+  sunExposure: number;
+  windExposure: number;
+  frostRisk: number;
+  drainageQuality: number;
+  elevation: number;
+}
+
+export interface MicroclimateAnalysis {
+  warmShelteredCount: number;
+  warmExposedCount: number;
+  coolShelteredCount: number;
+  coolExposedCount: number;
+  frostProneCount: number;
+  wetShadedCount: number;
+  transitionalCount: number;
+  dominantZone: MicroclimateZone;
+  zoneCount: number;
+  diversityIndex: number;
 }
 
 export interface LineSampleOptions {
