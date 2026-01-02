@@ -23112,6 +23112,501 @@ export class TerrainBuilder {
     this.rebuildAllTiles();
     return { modifiedTiles, tilesModified: modifiedTiles.length, method: 'blended_noise' };
   }
+
+  public evaluateTerrainDesign(): TerrainDesignEvaluation {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const totalTiles = width * height;
+
+    const terrainTypeCounts: Record<string, number> = {};
+    let elevationSum = 0;
+    let slopeSum = 0;
+    let maxSlope = 0;
+    let violationCount = 0;
+    const violations: Array<{ x: number; y: number; type: string; severity: 'low' | 'medium' | 'high' }> = [];
+    const maxSlopeDelta = 2;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+        terrainTypeCounts[terrainType] = (terrainTypeCounts[terrainType] || 0) + 1;
+        elevationSum += this.getElevationAt(x, y);
+
+        const slopeAngle = this.getSlopeAngle(x, y);
+        slopeSum += slopeAngle;
+        if (slopeAngle > maxSlope) maxSlope = slopeAngle;
+
+        const corners = this.getCornerHeights(x, y);
+        const heights = [corners.nw, corners.ne, corners.se, corners.sw];
+        const minH = Math.min(...heights);
+        const maxH = Math.max(...heights);
+        const delta = maxH - minH;
+
+        if (delta > maxSlopeDelta) {
+          violationCount++;
+          const severity = delta > maxSlopeDelta * 2 ? 'high' : delta > maxSlopeDelta * 1.5 ? 'medium' : 'low';
+          violations.push({ x, y, type: 'excessive_slope', severity });
+        }
+      }
+    }
+
+    const avgElevation = elevationSum / totalTiles;
+    const avgSlope = slopeSum / totalTiles;
+
+    const fairwayPercent = ((terrainTypeCounts['fairway'] || 0) / totalTiles) * 100;
+    const greenPercent = ((terrainTypeCounts['green'] || 0) / totalTiles) * 100;
+    const roughPercent = ((terrainTypeCounts['rough'] || 0) / totalTiles) * 100;
+    const bunkerPercent = ((terrainTypeCounts['bunker'] || 0) / totalTiles) * 100;
+    const waterPercent = ((terrainTypeCounts['water'] || 0) / totalTiles) * 100;
+
+    let varietyScore = 100;
+    if (fairwayPercent < 20 || fairwayPercent > 60) varietyScore -= 15;
+    if (greenPercent < 2 || greenPercent > 15) varietyScore -= 10;
+    if (bunkerPercent > 20) varietyScore -= 10;
+    if (waterPercent > 25) varietyScore -= 10;
+
+    let slopeScore = 100;
+    slopeScore -= (violationCount / totalTiles) * 200;
+    if (avgSlope > 30) slopeScore -= 20;
+    if (maxSlope > 60) slopeScore -= 15;
+    slopeScore = Math.max(0, slopeScore);
+
+    const playabilityScore = (varietyScore * 0.4 + slopeScore * 0.6);
+    const overallScore = Math.round(playabilityScore);
+
+    let rating: 'excellent' | 'good' | 'fair' | 'poor' = 'poor';
+    if (overallScore >= 85) rating = 'excellent';
+    else if (overallScore >= 70) rating = 'good';
+    else if (overallScore >= 50) rating = 'fair';
+
+    return {
+      overallScore,
+      rating,
+      varietyScore: Math.round(varietyScore),
+      slopeScore: Math.round(slopeScore),
+      playabilityScore: Math.round(playabilityScore),
+      terrainTypeCounts,
+      fairwayPercent,
+      greenPercent,
+      roughPercent,
+      bunkerPercent,
+      waterPercent,
+      avgElevation,
+      avgSlope,
+      maxSlope,
+      violationCount,
+      violations: violations.slice(0, 50),
+      width,
+      height,
+      totalTiles
+    };
+  }
+
+  public suggestTerrainImprovements(): TerrainImprovementSuggestions {
+    const evaluation = this.evaluateTerrainDesign();
+    const suggestions: Array<{ priority: 'high' | 'medium' | 'low'; category: string; description: string; location?: { x: number; y: number } }> = [];
+
+    if (evaluation.violationCount > 0) {
+      suggestions.push({
+        priority: 'high',
+        category: 'slope_violation',
+        description: `${evaluation.violationCount} tiles exceed maximum slope delta of 2 steps. Use smoothTerrainArea() to fix.`
+      });
+      const highPriorityViolations = evaluation.violations.filter(v => v.severity === 'high').slice(0, 5);
+      for (const v of highPriorityViolations) {
+        suggestions.push({
+          priority: 'high',
+          category: 'slope_violation',
+          description: `Severe slope violation at (${v.x}, ${v.y})`,
+          location: { x: v.x, y: v.y }
+        });
+      }
+    }
+
+    if (evaluation.fairwayPercent < 20) {
+      suggestions.push({
+        priority: 'medium',
+        category: 'terrain_balance',
+        description: `Fairway coverage (${evaluation.fairwayPercent.toFixed(1)}%) is below recommended 20%. Add more fairway terrain.`
+      });
+    } else if (evaluation.fairwayPercent > 60) {
+      suggestions.push({
+        priority: 'low',
+        category: 'terrain_balance',
+        description: `Fairway coverage (${evaluation.fairwayPercent.toFixed(1)}%) is above recommended 60%. Consider adding rough or hazards.`
+      });
+    }
+
+    if (evaluation.greenPercent < 2) {
+      suggestions.push({
+        priority: 'high',
+        category: 'terrain_balance',
+        description: `Green coverage (${evaluation.greenPercent.toFixed(1)}%) is very low. Add putting greens for playability.`
+      });
+    }
+
+    if (evaluation.bunkerPercent > 20) {
+      suggestions.push({
+        priority: 'medium',
+        category: 'terrain_balance',
+        description: `Bunker coverage (${evaluation.bunkerPercent.toFixed(1)}%) may be excessive. Consider reducing for better playability.`
+      });
+    }
+
+    if (evaluation.waterPercent > 25) {
+      suggestions.push({
+        priority: 'medium',
+        category: 'terrain_balance',
+        description: `Water coverage (${evaluation.waterPercent.toFixed(1)}%) is high. Ensure sufficient playable paths.`
+      });
+    }
+
+    if (evaluation.avgSlope > 30) {
+      suggestions.push({
+        priority: 'medium',
+        category: 'slope_quality',
+        description: `Average slope (${evaluation.avgSlope.toFixed(1)}°) is high. Consider flattening some areas.`
+      });
+    }
+
+    if (evaluation.maxSlope > 60) {
+      suggestions.push({
+        priority: 'high',
+        category: 'slope_quality',
+        description: `Maximum slope (${evaluation.maxSlope.toFixed(1)}°) is extreme. May cause rendering or gameplay issues.`
+      });
+    }
+
+    suggestions.sort((a, b) => {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority];
+    });
+
+    const totalIssues = suggestions.length;
+    const highPriority = suggestions.filter(s => s.priority === 'high').length;
+    const mediumPriority = suggestions.filter(s => s.priority === 'medium').length;
+    const lowPriority = suggestions.filter(s => s.priority === 'low').length;
+
+    return {
+      suggestions,
+      totalIssues,
+      highPriority,
+      mediumPriority,
+      lowPriority,
+      evaluation
+    };
+  }
+
+  public computeDesignMetrics(): TerrainDesignMetrics {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const totalTiles = width * height;
+
+    const elevations: number[] = [];
+    const slopes: number[] = [];
+    let cliffCount = 0;
+    let waterBoundaryCount = 0;
+    let hazardCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        elevations.push(this.getElevationAt(x, y));
+        slopes.push(this.getSlopeAngle(x, y));
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (terrainType === 'bunker' || terrainType === 'water') {
+          hazardCount++;
+          if (terrainType === 'water') {
+            const neighbors = this.getNeighborTiles(x, y, false);
+            for (const n of neighbors) {
+              if (this.getTerrainTypeAt(n.x, n.y) !== 'water') {
+                waterBoundaryCount++;
+                break;
+              }
+            }
+          }
+        }
+
+        const corners = this.getCornerHeights(x, y);
+        const heights = [corners.nw, corners.ne, corners.se, corners.sw];
+        if (Math.max(...heights) - Math.min(...heights) > 2) {
+          cliffCount++;
+        }
+      }
+    }
+
+    elevations.sort((a, b) => a - b);
+    slopes.sort((a, b) => a - b);
+
+    const elevationRange = elevations[elevations.length - 1] - elevations[0];
+    const elevationMedian = elevations[Math.floor(elevations.length / 2)];
+    const elevationStdDev = Math.sqrt(elevations.reduce((sum, e) => sum + (e - (elevations.reduce((a, b) => a + b, 0) / elevations.length)) ** 2, 0) / elevations.length);
+
+    const slopeMedian = slopes[Math.floor(slopes.length / 2)];
+    const slope90th = slopes[Math.floor(slopes.length * 0.9)];
+
+    const terrainComplexityIndex = (elevationStdDev * 10 + cliffCount) / totalTiles * 100;
+    const hazardDensity = hazardCount / totalTiles * 100;
+    const verticalVariety = elevationRange / 10;
+
+    return {
+      elevationRange,
+      elevationMedian,
+      elevationStdDev,
+      slopeMedian,
+      slope90thPercentile: slope90th,
+      cliffCount,
+      waterBoundaryLength: waterBoundaryCount,
+      hazardDensity,
+      terrainComplexityIndex,
+      verticalVariety,
+      width,
+      height,
+      totalTiles
+    };
+  }
+
+  public findDesignHotspots(): DesignHotspots {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const interestingAreas: Array<{ x: number; y: number; score: number; reason: string }> = [];
+    const problematicAreas: Array<{ x: number; y: number; score: number; issue: string }> = [];
+    const potentialFocalPoints: Array<{ x: number; y: number; elevationAdvantage: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elevation = this.getElevationAt(x, y);
+        const slopeAngle = this.getSlopeAngle(x, y);
+        const terrainType = this.getTerrainTypeAt(x, y);
+        const corners = this.getCornerHeights(x, y);
+
+        const localPeakScore = this.checkLocalPeak(x, y);
+        if (localPeakScore > 0) {
+          potentialFocalPoints.push({ x, y, elevationAdvantage: localPeakScore });
+        }
+
+        let interestScore = 0;
+        let interestReason = '';
+
+        if (terrainType === 'green' && slopeAngle < 10) {
+          interestScore = 80;
+          interestReason = 'Well-sloped putting green';
+        } else if (terrainType === 'bunker' && elevation > 2) {
+          interestScore = 60;
+          interestReason = 'Elevated bunker hazard';
+        }
+
+        const heightDelta = Math.max(corners.nw, corners.ne, corners.se, corners.sw) - Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+        if (heightDelta > 2) {
+          problematicAreas.push({ x, y, score: heightDelta * 20, issue: 'Excessive corner height delta' });
+        }
+
+        if (slopeAngle > 45 && terrainType === 'fairway') {
+          problematicAreas.push({ x, y, score: slopeAngle, issue: 'Steep fairway slope' });
+        }
+
+        if (interestScore > 0) {
+          interestingAreas.push({ x, y, score: interestScore, reason: interestReason });
+        }
+      }
+    }
+
+    interestingAreas.sort((a, b) => b.score - a.score);
+    problematicAreas.sort((a, b) => b.score - a.score);
+    potentialFocalPoints.sort((a, b) => b.elevationAdvantage - a.elevationAdvantage);
+
+    return {
+      interestingAreas: interestingAreas.slice(0, 20),
+      problematicAreas: problematicAreas.slice(0, 20),
+      potentialFocalPoints: potentialFocalPoints.slice(0, 10),
+      totalInteresting: interestingAreas.length,
+      totalProblematic: problematicAreas.length,
+      totalFocalPoints: potentialFocalPoints.length
+    };
+  }
+
+  private checkLocalPeak(x: number, y: number): number {
+    const elevation = this.getElevationAt(x, y);
+    let minNeighborElev = Infinity;
+    const neighbors = this.getNeighborTiles(x, y, true);
+
+    for (const n of neighbors) {
+      const nElev = this.getElevationAt(n.x, n.y);
+      if (nElev < minNeighborElev) minNeighborElev = nElev;
+    }
+
+    if (elevation > minNeighborElev) {
+      return elevation - minNeighborElev;
+    }
+    return 0;
+  }
+
+  public generateDesignReport(): TerrainDesignReport {
+    const evaluation = this.evaluateTerrainDesign();
+    const suggestions = this.suggestTerrainImprovements();
+    const metrics = this.computeDesignMetrics();
+    const hotspots = this.findDesignHotspots();
+
+    const reportSections: Array<{ title: string; content: string }> = [];
+
+    reportSections.push({
+      title: 'Overview',
+      content: `Terrain: ${metrics.width}x${metrics.height} tiles (${metrics.totalTiles} total). Overall score: ${evaluation.overallScore}/100 (${evaluation.rating}).`
+    });
+
+    reportSections.push({
+      title: 'Terrain Distribution',
+      content: `Fairway: ${evaluation.fairwayPercent.toFixed(1)}%, Green: ${evaluation.greenPercent.toFixed(1)}%, Rough: ${evaluation.roughPercent.toFixed(1)}%, Bunker: ${evaluation.bunkerPercent.toFixed(1)}%, Water: ${evaluation.waterPercent.toFixed(1)}%`
+    });
+
+    reportSections.push({
+      title: 'Elevation Analysis',
+      content: `Range: ${metrics.elevationRange.toFixed(1)}, Median: ${metrics.elevationMedian.toFixed(1)}, StdDev: ${metrics.elevationStdDev.toFixed(2)}`
+    });
+
+    reportSections.push({
+      title: 'Slope Analysis',
+      content: `Avg: ${evaluation.avgSlope.toFixed(1)}°, Max: ${evaluation.maxSlope.toFixed(1)}°, Median: ${metrics.slopeMedian.toFixed(1)}°, 90th: ${metrics.slope90thPercentile.toFixed(1)}°`
+    });
+
+    reportSections.push({
+      title: 'Issues',
+      content: `${suggestions.totalIssues} issues: ${suggestions.highPriority} high, ${suggestions.mediumPriority} medium, ${suggestions.lowPriority} low priority`
+    });
+
+    reportSections.push({
+      title: 'Hotspots',
+      content: `${hotspots.totalInteresting} interesting areas, ${hotspots.totalProblematic} problematic areas, ${hotspots.totalFocalPoints} potential focal points`
+    });
+
+    return {
+      generatedAt: Date.now(),
+      evaluation,
+      suggestions,
+      metrics,
+      hotspots,
+      reportSections,
+      summary: `${evaluation.rating.charAt(0).toUpperCase() + evaluation.rating.slice(1)} terrain design (${evaluation.overallScore}/100) with ${suggestions.highPriority} critical issues.`
+    };
+  }
+
+  public autoFixSlopeViolations(maxDelta: number = 2, iterations: number = 5): AutoFixResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    let fixedCount = 0;
+    const fixedTiles: Array<{ x: number; y: number; oldDelta: number; newDelta: number }> = [];
+
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const corners = this.getCornerHeights(x, y);
+          const heights = [corners.nw, corners.ne, corners.se, corners.sw];
+          const minH = Math.min(...heights);
+          const maxH = Math.max(...heights);
+          const delta = maxH - minH;
+
+          if (delta > maxDelta) {
+            const avgH = (corners.nw + corners.ne + corners.se + corners.sw) / 4;
+            const newElevation = avgH;
+            const oldDelta = delta;
+            this.setElevationAtInternal(x, y, newElevation);
+
+            const newCorners = this.getCornerHeights(x, y);
+            const newHeights = [newCorners.nw, newCorners.ne, newCorners.se, newCorners.sw];
+            const newDelta = Math.max(...newHeights) - Math.min(...newHeights);
+
+            if (newDelta < oldDelta) {
+              fixedCount++;
+              fixedTiles.push({ x, y, oldDelta, newDelta });
+            }
+          }
+        }
+      }
+    }
+
+    this.rebuildAllTiles();
+
+    const postEvaluation = this.evaluateTerrainDesign();
+    return {
+      fixedCount,
+      fixedTiles: fixedTiles.slice(0, 100),
+      iterations,
+      remainingViolations: postEvaluation.violationCount
+    };
+  }
+}
+
+export interface TerrainDesignEvaluation {
+  overallScore: number;
+  rating: 'excellent' | 'good' | 'fair' | 'poor';
+  varietyScore: number;
+  slopeScore: number;
+  playabilityScore: number;
+  terrainTypeCounts: Record<string, number>;
+  fairwayPercent: number;
+  greenPercent: number;
+  roughPercent: number;
+  bunkerPercent: number;
+  waterPercent: number;
+  avgElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  violationCount: number;
+  violations: Array<{ x: number; y: number; type: string; severity: 'low' | 'medium' | 'high' }>;
+  width: number;
+  height: number;
+  totalTiles: number;
+}
+
+export interface TerrainImprovementSuggestions {
+  suggestions: Array<{ priority: 'high' | 'medium' | 'low'; category: string; description: string; location?: { x: number; y: number } }>;
+  totalIssues: number;
+  highPriority: number;
+  mediumPriority: number;
+  lowPriority: number;
+  evaluation: TerrainDesignEvaluation;
+}
+
+export interface TerrainDesignMetrics {
+  elevationRange: number;
+  elevationMedian: number;
+  elevationStdDev: number;
+  slopeMedian: number;
+  slope90thPercentile: number;
+  cliffCount: number;
+  waterBoundaryLength: number;
+  hazardDensity: number;
+  terrainComplexityIndex: number;
+  verticalVariety: number;
+  width: number;
+  height: number;
+  totalTiles: number;
+}
+
+export interface DesignHotspots {
+  interestingAreas: Array<{ x: number; y: number; score: number; reason: string }>;
+  problematicAreas: Array<{ x: number; y: number; score: number; issue: string }>;
+  potentialFocalPoints: Array<{ x: number; y: number; elevationAdvantage: number }>;
+  totalInteresting: number;
+  totalProblematic: number;
+  totalFocalPoints: number;
+}
+
+export interface TerrainDesignReport {
+  generatedAt: number;
+  evaluation: TerrainDesignEvaluation;
+  suggestions: TerrainImprovementSuggestions;
+  metrics: TerrainDesignMetrics;
+  hotspots: DesignHotspots;
+  reportSections: Array<{ title: string; content: string }>;
+  summary: string;
+}
+
+export interface AutoFixResult {
+  fixedCount: number;
+  fixedTiles: Array<{ x: number; y: number; oldDelta: number; newDelta: number }>;
+  iterations: number;
+  remainingViolations: number;
 }
 
 export interface PerlinNoiseResult {
