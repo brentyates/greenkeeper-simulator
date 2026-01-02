@@ -28390,6 +28390,401 @@ export class TerrainBuilder {
       estimatedMemorySavingsPercent: (vertexSharingReduction + strips.vertexReduction) / 2
     };
   }
+
+  public computeGolfRoute(
+    teeX: number, teeZ: number,
+    greenX: number, greenZ: number,
+    numWaypoints: number = 10
+  ): GolfRouteData {
+    const dx = greenX - teeX;
+    const dz = greenZ - teeZ;
+    const totalDistance = Math.sqrt(dx * dx + dz * dz);
+
+    const waypoints: GolfWaypoint[] = [];
+
+    for (let i = 0; i <= numWaypoints; i++) {
+      const t = i / numWaypoints;
+      const x = teeX + dx * t;
+      const z = teeZ + dz * t;
+      const gridX = Math.floor(x);
+      const gridZ = Math.floor(z);
+
+      const elevation = this.getElevationAt(gridX, gridZ);
+      const terrainType = this.getTerrainTypeAt(gridX, gridZ);
+      const gradient = this.computeGradient(gridX, gridZ);
+      const slopeAngle = Math.atan(Math.sqrt(gradient.gradientX * gradient.gradientX + gradient.gradientZ * gradient.gradientZ)) * (180 / Math.PI);
+
+      let playability = 1.0;
+      if (terrainType === 'rough') playability = 0.8;
+      else if (terrainType === 'bunker') playability = 0.5;
+      else if (terrainType === 'water') playability = 0;
+
+      if (slopeAngle > 15) playability *= 0.7;
+
+      waypoints.push({
+        x, z,
+        elevation,
+        terrainType,
+        slopeAngle,
+        distanceFromTee: t * totalDistance,
+        distanceToGreen: (1 - t) * totalDistance,
+        playability
+      });
+    }
+
+    const avgPlayability = waypoints.reduce((sum, w) => sum + w.playability, 0) / waypoints.length;
+    const minElevation = Math.min(...waypoints.map(w => w.elevation));
+    const maxElevation = Math.max(...waypoints.map(w => w.elevation));
+
+    return {
+      tee: { x: teeX, z: teeZ },
+      green: { x: greenX, z: greenZ },
+      totalDistance,
+      waypoints,
+      elevationChange: maxElevation - minElevation,
+      uphill: waypoints[waypoints.length - 1].elevation > waypoints[0].elevation,
+      averagePlayability: avgPlayability,
+      hazardCount: waypoints.filter(w => w.terrainType === 'water' || w.terrainType === 'bunker').length
+    };
+  }
+
+  public computeLandingZone(
+    originX: number, originZ: number,
+    shotDistance: number, shotAngle: number,
+    dispersion: number = 5
+  ): LandingZoneData {
+    const angleRad = (shotAngle * Math.PI) / 180;
+    const centerX = originX + Math.cos(angleRad) * shotDistance;
+    const centerZ = originZ + Math.sin(angleRad) * shotDistance;
+
+    const landingPoints: Array<{ x: number; z: number; elevation: number; terrainType: string; quality: number }> = [];
+
+    for (let r = 0; r <= dispersion; r += 1) {
+      const numPoints = r === 0 ? 1 : Math.ceil(2 * Math.PI * r);
+      for (let i = 0; i < numPoints; i++) {
+        const theta = (i / numPoints) * 2 * Math.PI;
+        const px = centerX + Math.cos(theta) * r;
+        const pz = centerZ + Math.sin(theta) * r;
+
+        const gridX = Math.floor(px);
+        const gridZ = Math.floor(pz);
+
+        if (gridX >= 0 && gridX < this.courseData.width &&
+            gridZ >= 0 && gridZ < this.courseData.height) {
+          const elevation = this.getElevationAt(gridX, gridZ);
+          const terrainType = this.getTerrainTypeAt(gridX, gridZ);
+
+          let quality = 1.0;
+          if (terrainType === 'fairway') quality = 1.0;
+          else if (terrainType === 'rough') quality = 0.6;
+          else if (terrainType === 'bunker') quality = 0.3;
+          else if (terrainType === 'water') quality = 0;
+          else if (terrainType === 'green') quality = 0.9;
+
+          landingPoints.push({ x: px, z: pz, elevation, terrainType, quality });
+        }
+      }
+    }
+
+    const avgQuality = landingPoints.length > 0
+      ? landingPoints.reduce((sum, p) => sum + p.quality, 0) / landingPoints.length
+      : 0;
+
+    const fairwayPoints = landingPoints.filter(p => p.terrainType === 'fairway').length;
+    const fairwayPercentage = landingPoints.length > 0
+      ? (fairwayPoints / landingPoints.length) * 100
+      : 0;
+
+    return {
+      center: { x: centerX, z: centerZ },
+      radius: dispersion,
+      landingPoints,
+      averageQuality: avgQuality,
+      fairwayPercentage,
+      hazardPercentage: landingPoints.length > 0
+        ? (landingPoints.filter(p => p.terrainType === 'water' || p.terrainType === 'bunker').length / landingPoints.length) * 100
+        : 0,
+      bestLandingSpot: landingPoints.reduce((best, p) => p.quality > best.quality ? p : best, landingPoints[0] || { x: centerX, z: centerZ, elevation: 0, terrainType: 'unknown', quality: 0 })
+    };
+  }
+
+  public computePlayableCorridor(
+    startX: number, startZ: number,
+    endX: number, endZ: number,
+    corridorWidth: number = 10
+  ): PlayableCorridorData {
+    const dx = endX - startX;
+    const dz = endZ - startZ;
+    const length = Math.sqrt(dx * dx + dz * dz);
+    const dirX = dx / length;
+    const dirZ = dz / length;
+    const perpX = -dirZ;
+    const perpZ = dirX;
+
+    const corridorPoints: Array<{ x: number; z: number; terrainType: string; playable: boolean }> = [];
+    const stepLength = 1;
+    const halfWidth = corridorWidth / 2;
+
+    let playableArea = 0;
+    let totalArea = 0;
+
+    for (let d = 0; d <= length; d += stepLength) {
+      for (let w = -halfWidth; w <= halfWidth; w += stepLength) {
+        const px = startX + dirX * d + perpX * w;
+        const pz = startZ + dirZ * d + perpZ * w;
+        const gridX = Math.floor(px);
+        const gridZ = Math.floor(pz);
+
+        if (gridX >= 0 && gridX < this.courseData.width &&
+            gridZ >= 0 && gridZ < this.courseData.height) {
+          const terrainType = this.getTerrainTypeAt(gridX, gridZ);
+          const playable = terrainType !== 'water';
+
+          corridorPoints.push({ x: px, z: pz, terrainType, playable });
+          totalArea++;
+          if (playable) playableArea++;
+        }
+      }
+    }
+
+    const terrainBreakdown = new Map<string, number>();
+    for (const point of corridorPoints) {
+      const count = terrainBreakdown.get(point.terrainType) || 0;
+      terrainBreakdown.set(point.terrainType, count + 1);
+    }
+
+    return {
+      start: { x: startX, z: startZ },
+      end: { x: endX, z: endZ },
+      width: corridorWidth,
+      length,
+      corridorPoints,
+      playablePercentage: totalArea > 0 ? (playableArea / totalArea) * 100 : 0,
+      terrainBreakdown: Object.fromEntries(terrainBreakdown),
+      narrowestPlayableWidth: this.findNarrowestPlayableWidth(corridorPoints, halfWidth, dirX, dirZ, perpX, perpZ, length)
+    };
+  }
+
+  private findNarrowestPlayableWidth(
+    points: Array<{ x: number; z: number; playable: boolean }>,
+    halfWidth: number,
+    dirX: number, dirZ: number,
+    perpX: number, perpZ: number,
+    length: number
+  ): number {
+    let narrowest = halfWidth * 2;
+
+    for (let d = 0; d <= length; d++) {
+      const playableAtDistance = points.filter(p => {
+        const projD = (p.x * dirX + p.z * dirZ);
+        return Math.abs(projD - d) < 0.5 && p.playable;
+      });
+
+      if (playableAtDistance.length > 0) {
+        const widths = playableAtDistance.map(p => Math.abs(p.x * perpX + p.z * perpZ));
+        const maxWidth = Math.max(...widths) * 2;
+        if (maxWidth < narrowest) narrowest = maxWidth;
+      }
+    }
+
+    return narrowest;
+  }
+
+  public computeHoleStrategy(
+    teeX: number, teeZ: number,
+    greenX: number, greenZ: number,
+    playerMaxDistance: number = 250
+  ): HoleStrategyData {
+    const route = this.computeGolfRoute(teeX, teeZ, greenX, greenZ, 20);
+    const shots: ShotStrategy[] = [];
+
+    let currentX = teeX;
+    let currentZ = teeZ;
+    let remainingDistance = route.totalDistance;
+    let shotNumber = 1;
+
+    while (remainingDistance > 0) {
+      const shotDistance = Math.min(playerMaxDistance, remainingDistance);
+      const dx = greenX - currentX;
+      const dz = greenZ - currentZ;
+      const angle = Math.atan2(dz, dx) * (180 / Math.PI);
+
+      const landingZone = this.computeLandingZone(currentX, currentZ, shotDistance, angle, 8);
+
+      shots.push({
+        shotNumber,
+        from: { x: currentX, z: currentZ },
+        distance: shotDistance,
+        angle,
+        landingZone,
+        club: this.recommendClub(shotDistance),
+        risk: 1 - landingZone.averageQuality
+      });
+
+      currentX = landingZone.center.x;
+      currentZ = landingZone.center.z;
+      remainingDistance -= shotDistance;
+      shotNumber++;
+
+      if (shotNumber > 10) break;
+    }
+
+    const totalRisk = shots.reduce((sum, s) => sum + s.risk, 0) / shots.length;
+    const parEstimate = shots.length <= 2 ? 3 : (shots.length === 3 ? 4 : 5);
+
+    return {
+      tee: { x: teeX, z: teeZ },
+      green: { x: greenX, z: greenZ },
+      totalDistance: route.totalDistance,
+      shots,
+      estimatedPar: parEstimate,
+      overallRisk: totalRisk,
+      difficulty: this.assessHoleDifficulty(route, shots)
+    };
+  }
+
+  private recommendClub(distance: number): string {
+    if (distance > 220) return 'Driver';
+    if (distance > 200) return '3-Wood';
+    if (distance > 180) return '5-Wood';
+    if (distance > 160) return '4-Iron';
+    if (distance > 150) return '5-Iron';
+    if (distance > 140) return '6-Iron';
+    if (distance > 130) return '7-Iron';
+    if (distance > 120) return '8-Iron';
+    if (distance > 110) return '9-Iron';
+    if (distance > 90) return 'PW';
+    if (distance > 60) return 'SW';
+    return 'Putter';
+  }
+
+  private assessHoleDifficulty(route: GolfRouteData, shots: ShotStrategy[]): string {
+    const avgRisk = shots.reduce((sum, s) => sum + s.risk, 0) / shots.length;
+    const elevationFactor = route.elevationChange / 10;
+    const hazardFactor = route.hazardCount / 5;
+
+    const difficultyScore = avgRisk + elevationFactor + hazardFactor;
+
+    if (difficultyScore < 0.3) return 'Easy';
+    if (difficultyScore < 0.5) return 'Moderate';
+    if (difficultyScore < 0.7) return 'Challenging';
+    return 'Difficult';
+  }
+
+  public computeGolfRoutingStatistics(): GolfRoutingStatistics {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    let totalFairwayArea = 0;
+    let totalGreenArea = 0;
+    let totalBunkerArea = 0;
+    let totalWaterArea = 0;
+
+    for (let z = 0; z < height; z++) {
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, z);
+        if (terrainType === 'fairway') totalFairwayArea++;
+        else if (terrainType === 'green') totalGreenArea++;
+        else if (terrainType === 'bunker') totalBunkerArea++;
+        else if (terrainType === 'water') totalWaterArea++;
+      }
+    }
+
+    const totalArea = width * height;
+
+    return {
+      terrainWidth: width,
+      terrainHeight: height,
+      totalArea,
+      fairwayArea: totalFairwayArea,
+      fairwayPercentage: (totalFairwayArea / totalArea) * 100,
+      greenArea: totalGreenArea,
+      greenPercentage: (totalGreenArea / totalArea) * 100,
+      bunkerArea: totalBunkerArea,
+      bunkerPercentage: (totalBunkerArea / totalArea) * 100,
+      waterArea: totalWaterArea,
+      waterPercentage: (totalWaterArea / totalArea) * 100,
+      hazardDensity: ((totalBunkerArea + totalWaterArea) / totalArea) * 100
+    };
+  }
+}
+
+export interface GolfRouteData {
+  tee: { x: number; z: number };
+  green: { x: number; z: number };
+  totalDistance: number;
+  waypoints: GolfWaypoint[];
+  elevationChange: number;
+  uphill: boolean;
+  averagePlayability: number;
+  hazardCount: number;
+}
+
+export interface GolfWaypoint {
+  x: number;
+  z: number;
+  elevation: number;
+  terrainType: string;
+  slopeAngle: number;
+  distanceFromTee: number;
+  distanceToGreen: number;
+  playability: number;
+}
+
+export interface LandingZoneData {
+  center: { x: number; z: number };
+  radius: number;
+  landingPoints: Array<{ x: number; z: number; elevation: number; terrainType: string; quality: number }>;
+  averageQuality: number;
+  fairwayPercentage: number;
+  hazardPercentage: number;
+  bestLandingSpot: { x: number; z: number; elevation: number; terrainType: string; quality: number };
+}
+
+export interface PlayableCorridorData {
+  start: { x: number; z: number };
+  end: { x: number; z: number };
+  width: number;
+  length: number;
+  corridorPoints: Array<{ x: number; z: number; terrainType: string; playable: boolean }>;
+  playablePercentage: number;
+  terrainBreakdown: Record<string, number>;
+  narrowestPlayableWidth: number;
+}
+
+export interface HoleStrategyData {
+  tee: { x: number; z: number };
+  green: { x: number; z: number };
+  totalDistance: number;
+  shots: ShotStrategy[];
+  estimatedPar: number;
+  overallRisk: number;
+  difficulty: string;
+}
+
+export interface ShotStrategy {
+  shotNumber: number;
+  from: { x: number; z: number };
+  distance: number;
+  angle: number;
+  landingZone: LandingZoneData;
+  club: string;
+  risk: number;
+}
+
+export interface GolfRoutingStatistics {
+  terrainWidth: number;
+  terrainHeight: number;
+  totalArea: number;
+  fairwayArea: number;
+  fairwayPercentage: number;
+  greenArea: number;
+  greenPercentage: number;
+  bunkerArea: number;
+  bunkerPercentage: number;
+  waterArea: number;
+  waterPercentage: number;
+  hazardDensity: number;
 }
 
 export interface MeshLODConfiguration {
