@@ -22105,6 +22105,672 @@ export class TerrainBuilder {
       litPercent: (litTiles.length / totalTiles) * 100
     };
   }
+
+  public findAStarPath(startX: number, startY: number, endX: number, endY: number, options: AStarPathOptions = {}): AStarPathResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const maxSlope = options.maxSlopeAngle ?? 45;
+    const avoidTypes = options.avoidTerrainTypes ?? ['water'];
+    const preferTypes = options.preferTerrainTypes ?? [];
+    const slopePenalty = options.slopePenalty ?? 1.0;
+    const terrainTypePenalty = options.terrainTypePenalty ?? 1.0;
+    const allowDiagonal = options.allowDiagonal ?? true;
+    const maxIterations = options.maxIterations ?? 10000;
+
+    if (!this.isValidGridPosition(startX, startY) || !this.isValidGridPosition(endX, endY)) {
+      return { found: false, path: [], cost: Infinity, nodesExplored: 0, iterations: 0, reason: 'Invalid start or end position' };
+    }
+
+    const startType = this.getTerrainTypeAt(startX, startY);
+    const endType = this.getTerrainTypeAt(endX, endY);
+    if (avoidTypes.includes(startType) || avoidTypes.includes(endType)) {
+      return { found: false, path: [], cost: Infinity, nodesExplored: 0, iterations: 0, reason: 'Start or end is on avoided terrain type' };
+    }
+
+    const heuristic = (x: number, y: number): number => {
+      return Math.sqrt((endX - x) ** 2 + (endY - y) ** 2);
+    };
+
+    const getMoveCost = (fromX: number, fromY: number, toX: number, toY: number): number => {
+      const toType = this.getTerrainTypeAt(toX, toY);
+      if (avoidTypes.includes(toType)) return Infinity;
+
+      const fromElev = this.getElevationAt(fromX, fromY);
+      const toElev = this.getElevationAt(toX, toY);
+      const elevDiff = Math.abs(toElev - fromElev);
+      const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
+      const slopeAngle = Math.atan2(elevDiff, dist) * 180 / Math.PI;
+
+      if (slopeAngle > maxSlope) return Infinity;
+
+      let cost = dist;
+      cost += elevDiff * slopePenalty;
+      if (!preferTypes.includes(toType)) {
+        cost += terrainTypePenalty;
+      }
+      return cost;
+    };
+
+    const openSet: Array<{ x: number; y: number; f: number; g: number }> = [];
+    const closedSet = new Set<string>();
+    const gScore = new Map<string, number>();
+    const cameFrom = new Map<string, { x: number; y: number }>();
+
+    const startKey = `${startX},${startY}`;
+    gScore.set(startKey, 0);
+    openSet.push({ x: startX, y: startY, f: heuristic(startX, startY), g: 0 });
+
+    const directions = allowDiagonal
+      ? [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]
+      : [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+    let iterations = 0;
+    let nodesExplored = 0;
+
+    while (openSet.length > 0 && iterations < maxIterations) {
+      iterations++;
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+      nodesExplored++;
+
+      if (current.x === endX && current.y === endY) {
+        const path: Array<{ x: number; y: number; elevation: number; terrainType: TerrainType }> = [];
+        let curr: { x: number; y: number } | undefined = { x: current.x, y: current.y };
+        while (curr) {
+          path.unshift({
+            x: curr.x,
+            y: curr.y,
+            elevation: this.getElevationAt(curr.x, curr.y),
+            terrainType: this.getTerrainTypeAt(curr.x, curr.y)
+          });
+          curr = cameFrom.get(`${curr.x},${curr.y}`);
+        }
+        return { found: true, path, cost: current.g, nodesExplored, iterations, reason: null };
+      }
+
+      const currentKey = `${current.x},${current.y}`;
+      closedSet.add(currentKey);
+
+      for (const [dx, dy] of directions) {
+        const nx = current.x + dx;
+        const ny = current.y + dy;
+        const neighborKey = `${nx},${ny}`;
+
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        if (closedSet.has(neighborKey)) continue;
+
+        const moveCost = getMoveCost(current.x, current.y, nx, ny);
+        if (moveCost === Infinity) continue;
+
+        const tentativeG = current.g + moveCost;
+        const existingG = gScore.get(neighborKey) ?? Infinity;
+
+        if (tentativeG < existingG) {
+          cameFrom.set(neighborKey, { x: current.x, y: current.y });
+          gScore.set(neighborKey, tentativeG);
+          const f = tentativeG + heuristic(nx, ny);
+
+          const existingIndex = openSet.findIndex(n => n.x === nx && n.y === ny);
+          if (existingIndex >= 0) {
+            openSet[existingIndex] = { x: nx, y: ny, f, g: tentativeG };
+          } else {
+            openSet.push({ x: nx, y: ny, f, g: tentativeG });
+          }
+        }
+      }
+    }
+
+    return { found: false, path: [], cost: Infinity, nodesExplored, iterations, reason: iterations >= maxIterations ? 'Max iterations reached' : 'No path found' };
+  }
+
+  public computeTraversabilityMap(options: TraversabilityOptions = {}): TraversabilityMapResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const maxSlope = options.maxSlopeAngle ?? 45;
+    const avoidTypes = options.avoidTerrainTypes ?? ['water'];
+    const traversabilityMap: number[][] = [];
+    const traversableTiles: Array<{ x: number; y: number; score: number }> = [];
+    const impassableTiles: Array<{ x: number; y: number; reason: string }> = [];
+
+    for (let y = 0; y < height; y++) {
+      traversabilityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const terrainType = this.getTerrainTypeAt(x, y);
+        if (avoidTypes.includes(terrainType)) {
+          traversabilityMap[y][x] = 0;
+          impassableTiles.push({ x, y, reason: `Terrain type: ${terrainType}` });
+          continue;
+        }
+
+        const slopeAngle = this.getSlopeAngle(x, y);
+        if (slopeAngle > maxSlope) {
+          traversabilityMap[y][x] = 0;
+          impassableTiles.push({ x, y, reason: `Slope too steep: ${slopeAngle.toFixed(1)}°` });
+          continue;
+        }
+
+        const slopeScore = 1 - (slopeAngle / maxSlope);
+        let terrainBonus = 0.5;
+        if (terrainType === 'fairway' || terrainType === 'green') terrainBonus = 1.0;
+        else if (terrainType === 'rough') terrainBonus = 0.7;
+        else if (terrainType === 'bunker') terrainBonus = 0.3;
+
+        const score = slopeScore * 0.6 + terrainBonus * 0.4;
+        traversabilityMap[y][x] = score;
+        traversableTiles.push({ x, y, score });
+      }
+    }
+
+    const totalTiles = width * height;
+    const traversableCount = traversableTiles.length;
+    const avgScore = traversableTiles.length > 0
+      ? traversableTiles.reduce((sum, t) => sum + t.score, 0) / traversableTiles.length
+      : 0;
+
+    return {
+      traversabilityMap,
+      traversableTiles,
+      impassableTiles,
+      traversablePercent: (traversableCount / totalTiles) * 100,
+      impassablePercent: (impassableTiles.length / totalTiles) * 100,
+      averageTraversability: avgScore,
+      width,
+      height
+    };
+  }
+
+  public analyzePathDifficulty(path: Array<{ x: number; y: number }>): PathDifficultyAnalysis {
+    if (path.length === 0) {
+      return {
+        totalLength: 0,
+        totalElevationGain: 0,
+        totalElevationLoss: 0,
+        maxSlope: 0,
+        avgSlope: 0,
+        terrainBreakdown: {},
+        difficultyScore: 0,
+        difficultyRating: 'easy',
+        steepSections: [],
+        flatSections: []
+      };
+    }
+
+    let totalLength = 0;
+    let totalElevationGain = 0;
+    let totalElevationLoss = 0;
+    let maxSlope = 0;
+    let slopeSum = 0;
+    const terrainBreakdown: Record<string, number> = {};
+    const steepSections: Array<{ startIndex: number; endIndex: number; avgSlope: number }> = [];
+    const flatSections: Array<{ startIndex: number; endIndex: number; length: number }> = [];
+
+    let currentSteepStart = -1;
+    let currentFlatStart = -1;
+    const steepThreshold = 15;
+    const flatThreshold = 5;
+
+    for (let i = 0; i < path.length; i++) {
+      const { x, y } = path[i];
+      const terrainType = this.getTerrainTypeAt(x, y);
+      terrainBreakdown[terrainType] = (terrainBreakdown[terrainType] || 0) + 1;
+
+      if (i > 0) {
+        const prev = path[i - 1];
+        const dist = Math.sqrt((x - prev.x) ** 2 + (y - prev.y) ** 2);
+        totalLength += dist;
+
+        const prevElev = this.getElevationAt(prev.x, prev.y);
+        const currElev = this.getElevationAt(x, y);
+        const elevDiff = currElev - prevElev;
+
+        if (elevDiff > 0) totalElevationGain += elevDiff;
+        else totalElevationLoss += Math.abs(elevDiff);
+
+        const slope = dist > 0 ? Math.atan2(Math.abs(elevDiff), dist) * 180 / Math.PI : 0;
+        slopeSum += slope;
+        if (slope > maxSlope) maxSlope = slope;
+
+        if (slope > steepThreshold) {
+          if (currentSteepStart === -1) currentSteepStart = i - 1;
+          if (currentFlatStart !== -1) {
+            flatSections.push({ startIndex: currentFlatStart, endIndex: i - 1, length: i - 1 - currentFlatStart });
+            currentFlatStart = -1;
+          }
+        } else if (slope < flatThreshold) {
+          if (currentFlatStart === -1) currentFlatStart = i - 1;
+          if (currentSteepStart !== -1) {
+            let avgSteepSlope = 0;
+            for (let j = currentSteepStart + 1; j < i; j++) {
+              const pPrev = path[j - 1];
+              const pCurr = path[j];
+              const d = Math.sqrt((pCurr.x - pPrev.x) ** 2 + (pCurr.y - pPrev.y) ** 2);
+              const e = Math.abs(this.getElevationAt(pCurr.x, pCurr.y) - this.getElevationAt(pPrev.x, pPrev.y));
+              avgSteepSlope += d > 0 ? Math.atan2(e, d) * 180 / Math.PI : 0;
+            }
+            avgSteepSlope /= (i - currentSteepStart - 1) || 1;
+            steepSections.push({ startIndex: currentSteepStart, endIndex: i - 1, avgSlope: avgSteepSlope });
+            currentSteepStart = -1;
+          }
+        }
+      }
+    }
+
+    if (currentSteepStart !== -1) {
+      steepSections.push({ startIndex: currentSteepStart, endIndex: path.length - 1, avgSlope: maxSlope });
+    }
+    if (currentFlatStart !== -1) {
+      flatSections.push({ startIndex: currentFlatStart, endIndex: path.length - 1, length: path.length - 1 - currentFlatStart });
+    }
+
+    const avgSlope = path.length > 1 ? slopeSum / (path.length - 1) : 0;
+
+    let difficultyScore = 0;
+    difficultyScore += avgSlope * 2;
+    difficultyScore += maxSlope;
+    difficultyScore += (totalElevationGain + totalElevationLoss) * 5;
+    difficultyScore += (terrainBreakdown['bunker'] || 0) * 3;
+    difficultyScore += (terrainBreakdown['rough'] || 0);
+    difficultyScore = Math.min(100, difficultyScore);
+
+    let difficultyRating: 'easy' | 'moderate' | 'difficult' | 'very_difficult' | 'extreme' = 'easy';
+    if (difficultyScore > 80) difficultyRating = 'extreme';
+    else if (difficultyScore > 60) difficultyRating = 'very_difficult';
+    else if (difficultyScore > 40) difficultyRating = 'difficult';
+    else if (difficultyScore > 20) difficultyRating = 'moderate';
+
+    return {
+      totalLength,
+      totalElevationGain,
+      totalElevationLoss,
+      maxSlope,
+      avgSlope,
+      terrainBreakdown,
+      difficultyScore,
+      difficultyRating,
+      steepSections,
+      flatSections
+    };
+  }
+
+  public findMultiplePaths(startX: number, startY: number, endX: number, endY: number, numPaths: number = 3, options: AStarPathOptions = {}): MultiplePathsResult {
+    const paths: AStarPathResult[] = [];
+    const blockedTiles = new Set<string>();
+
+    for (let i = 0; i < numPaths; i++) {
+      const modifiedOptions: AStarPathOptions = {
+        ...options,
+        avoidTerrainTypes: [...(options.avoidTerrainTypes ?? ['water'])]
+      };
+
+      const originalGetMoveCost = options.customCostFn;
+      modifiedOptions.customCostFn = (fromX: number, fromY: number, toX: number, toY: number) => {
+        const key = `${toX},${toY}`;
+        if (blockedTiles.has(key)) return Infinity;
+        return originalGetMoveCost ? originalGetMoveCost(fromX, fromY, toX, toY) : 1;
+      };
+
+      const result = this.findAStarPath(startX, startY, endX, endY, modifiedOptions);
+      if (result.found) {
+        paths.push(result);
+        for (const node of result.path) {
+          if (node.x !== startX || node.y !== startY) {
+            if (node.x !== endX || node.y !== endY) {
+              blockedTiles.add(`${node.x},${node.y}`);
+            }
+          }
+        }
+      } else {
+        break;
+      }
+    }
+
+    const analyses = paths.map(p => this.analyzePathDifficulty(p.path));
+    let shortestIndex = 0;
+    let easiestIndex = 0;
+
+    for (let i = 1; i < paths.length; i++) {
+      if (paths[i].cost < paths[shortestIndex].cost) shortestIndex = i;
+      if (analyses[i].difficultyScore < analyses[easiestIndex].difficultyScore) easiestIndex = i;
+    }
+
+    return {
+      paths,
+      analyses,
+      shortestPathIndex: paths.length > 0 ? shortestIndex : -1,
+      easiestPathIndex: paths.length > 0 ? easiestIndex : -1,
+      foundCount: paths.length,
+      requestedCount: numPaths
+    };
+  }
+
+  public computeReachabilityMap(startX: number, startY: number, maxCost: number, options: TraversabilityOptions = {}): ReachabilityMapResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const maxSlope = options.maxSlopeAngle ?? 45;
+    const avoidTypes = options.avoidTerrainTypes ?? ['water'];
+    const reachabilityMap: number[][] = [];
+    const reachableTiles: Array<{ x: number; y: number; cost: number }> = [];
+    const unreachableTiles: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      reachabilityMap[y] = new Array(width).fill(Infinity);
+    }
+
+    if (!this.isValidGridPosition(startX, startY)) {
+      return {
+        startX,
+        startY,
+        maxCost,
+        reachabilityMap,
+        reachableTiles,
+        unreachableTiles,
+        reachablePercent: 0,
+        avgCostToReachable: 0,
+        maxCostTile: null,
+        width,
+        height
+      };
+    }
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number; cost: number }> = [{ x: startX, y: startY, cost: 0 }];
+    reachabilityMap[startY][startX] = 0;
+
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => a.cost - b.cost);
+      const current = queue.shift()!;
+      const currentKey = `${current.x},${current.y}`;
+
+      if (visited.has(currentKey)) continue;
+      visited.add(currentKey);
+
+      for (const [dx, dy] of directions) {
+        const nx = current.x + dx;
+        const ny = current.y + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+        const neighborKey = `${nx},${ny}`;
+        if (visited.has(neighborKey)) continue;
+
+        const terrainType = this.getTerrainTypeAt(nx, ny);
+        if (avoidTypes.includes(terrainType)) continue;
+
+        const slopeAngle = this.getSlopeAngle(nx, ny);
+        if (slopeAngle > maxSlope) continue;
+
+        const fromElev = this.getElevationAt(current.x, current.y);
+        const toElev = this.getElevationAt(nx, ny);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const moveCost = dist + Math.abs(toElev - fromElev) * 0.5;
+        const newCost = current.cost + moveCost;
+
+        if (newCost <= maxCost && newCost < reachabilityMap[ny][nx]) {
+          reachabilityMap[ny][nx] = newCost;
+          queue.push({ x: nx, y: ny, cost: newCost });
+        }
+      }
+    }
+
+    let maxFoundCost = 0;
+    let maxCostTile: { x: number; y: number; cost: number } | null = null;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cost = reachabilityMap[y][x];
+        if (cost !== Infinity) {
+          reachableTiles.push({ x, y, cost });
+          if (cost > maxFoundCost) {
+            maxFoundCost = cost;
+            maxCostTile = { x, y, cost };
+          }
+        } else {
+          unreachableTiles.push({ x, y });
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    const avgCost = reachableTiles.length > 0
+      ? reachableTiles.reduce((sum, t) => sum + t.cost, 0) / reachableTiles.length
+      : 0;
+
+    return {
+      startX,
+      startY,
+      maxCost,
+      reachabilityMap,
+      reachableTiles,
+      unreachableTiles,
+      reachablePercent: (reachableTiles.length / totalTiles) * 100,
+      avgCostToReachable: avgCost,
+      maxCostTile,
+      width,
+      height
+    };
+  }
+
+  public findPathCorridors(startX: number, startY: number, endX: number, endY: number, corridorWidth: number = 3): PathCorridorResult {
+    const pathResult = this.findAStarPath(startX, startY, endX, endY);
+    if (!pathResult.found) {
+      return {
+        found: false,
+        path: [],
+        corridorTiles: [],
+        corridorWidth,
+        corridorArea: 0,
+        avgTraversability: 0,
+        chokePoints: []
+      };
+    }
+
+    const corridorTiles = new Set<string>();
+    const corridorTilesList: Array<{ x: number; y: number; distanceToPath: number }> = [];
+
+    for (const node of pathResult.path) {
+      for (let dy = -corridorWidth; dy <= corridorWidth; dy++) {
+        for (let dx = -corridorWidth; dx <= corridorWidth; dx++) {
+          const nx = node.x + dx;
+          const ny = node.y + dy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist <= corridorWidth && this.isValidGridPosition(nx, ny)) {
+            const key = `${nx},${ny}`;
+            if (!corridorTiles.has(key)) {
+              corridorTiles.add(key);
+              corridorTilesList.push({ x: nx, y: ny, distanceToPath: dist });
+            }
+          }
+        }
+      }
+    }
+
+    const traversabilityMap = this.computeTraversabilityMap();
+    let traversabilitySum = 0;
+    for (const tile of corridorTilesList) {
+      traversabilitySum += traversabilityMap.traversabilityMap[tile.y]?.[tile.x] ?? 0;
+    }
+    const avgTraversability = corridorTilesList.length > 0 ? traversabilitySum / corridorTilesList.length : 0;
+
+    const chokePoints: Array<{ x: number; y: number; width: number }> = [];
+    for (let i = 0; i < pathResult.path.length; i++) {
+      const node = pathResult.path[i];
+      let localWidth = 0;
+      for (let d = 1; d <= corridorWidth; d++) {
+        let canExpand = true;
+        const perpDirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        for (const [dx, dy] of perpDirs) {
+          const nx = node.x + dx * d;
+          const ny = node.y + dy * d;
+          if (!this.isValidGridPosition(nx, ny) || traversabilityMap.traversabilityMap[ny][nx] === 0) {
+            canExpand = false;
+            break;
+          }
+        }
+        if (canExpand) localWidth = d;
+        else break;
+      }
+      if (localWidth < corridorWidth * 0.5) {
+        chokePoints.push({ x: node.x, y: node.y, width: localWidth });
+      }
+    }
+
+    return {
+      found: true,
+      path: pathResult.path,
+      corridorTiles: corridorTilesList,
+      corridorWidth,
+      corridorArea: corridorTilesList.length,
+      avgTraversability,
+      chokePoints
+    };
+  }
+
+  public computePathNetwork(keyPoints: Array<{ x: number; y: number; label: string }>, options: AStarPathOptions = {}): PathNetworkResult {
+    const connections: Array<{
+      from: string;
+      to: string;
+      path: AStarPathResult;
+      analysis: PathDifficultyAnalysis;
+    }> = [];
+
+    for (let i = 0; i < keyPoints.length; i++) {
+      for (let j = i + 1; j < keyPoints.length; j++) {
+        const fromPoint = keyPoints[i];
+        const toPoint = keyPoints[j];
+        const pathResult = this.findAStarPath(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y, options);
+        const analysis = this.analyzePathDifficulty(pathResult.path);
+        connections.push({
+          from: fromPoint.label,
+          to: toPoint.label,
+          path: pathResult,
+          analysis
+        });
+      }
+    }
+
+    const connectedPairs = connections.filter(c => c.path.found).length;
+    const totalPairs = connections.length;
+    const connectivity = totalPairs > 0 ? connectedPairs / totalPairs : 0;
+
+    let totalPathLength = 0;
+    let avgDifficulty = 0;
+    const validConnections = connections.filter(c => c.path.found);
+    for (const conn of validConnections) {
+      totalPathLength += conn.analysis.totalLength;
+      avgDifficulty += conn.analysis.difficultyScore;
+    }
+    if (validConnections.length > 0) {
+      avgDifficulty /= validConnections.length;
+    }
+
+    return {
+      keyPoints,
+      connections,
+      connectivity,
+      connectedPairs,
+      totalPairs,
+      totalNetworkLength: totalPathLength,
+      avgPathDifficulty: avgDifficulty
+    };
+  }
+}
+
+export interface AStarPathOptions {
+  maxSlopeAngle?: number;
+  avoidTerrainTypes?: TerrainType[];
+  preferTerrainTypes?: TerrainType[];
+  slopePenalty?: number;
+  terrainTypePenalty?: number;
+  allowDiagonal?: boolean;
+  maxIterations?: number;
+  customCostFn?: (fromX: number, fromY: number, toX: number, toY: number) => number;
+}
+
+export interface AStarPathResult {
+  found: boolean;
+  path: Array<{ x: number; y: number; elevation: number; terrainType: TerrainType }>;
+  cost: number;
+  nodesExplored: number;
+  iterations: number;
+  reason: string | null;
+}
+
+export interface TraversabilityOptions {
+  maxSlopeAngle?: number;
+  avoidTerrainTypes?: TerrainType[];
+}
+
+export interface TraversabilityMapResult {
+  traversabilityMap: number[][];
+  traversableTiles: Array<{ x: number; y: number; score: number }>;
+  impassableTiles: Array<{ x: number; y: number; reason: string }>;
+  traversablePercent: number;
+  impassablePercent: number;
+  averageTraversability: number;
+  width: number;
+  height: number;
+}
+
+export interface PathDifficultyAnalysis {
+  totalLength: number;
+  totalElevationGain: number;
+  totalElevationLoss: number;
+  maxSlope: number;
+  avgSlope: number;
+  terrainBreakdown: Record<string, number>;
+  difficultyScore: number;
+  difficultyRating: 'easy' | 'moderate' | 'difficult' | 'very_difficult' | 'extreme';
+  steepSections: Array<{ startIndex: number; endIndex: number; avgSlope: number }>;
+  flatSections: Array<{ startIndex: number; endIndex: number; length: number }>;
+}
+
+export interface MultiplePathsResult {
+  paths: AStarPathResult[];
+  analyses: PathDifficultyAnalysis[];
+  shortestPathIndex: number;
+  easiestPathIndex: number;
+  foundCount: number;
+  requestedCount: number;
+}
+
+export interface ReachabilityMapResult {
+  startX: number;
+  startY: number;
+  maxCost: number;
+  reachabilityMap: number[][];
+  reachableTiles: Array<{ x: number; y: number; cost: number }>;
+  unreachableTiles: Array<{ x: number; y: number }>;
+  reachablePercent: number;
+  avgCostToReachable: number;
+  maxCostTile: { x: number; y: number; cost: number } | null;
+  width: number;
+  height: number;
+}
+
+export interface PathCorridorResult {
+  found: boolean;
+  path: Array<{ x: number; y: number; elevation: number; terrainType: TerrainType }>;
+  corridorTiles: Array<{ x: number; y: number; distanceToPath: number }>;
+  corridorWidth: number;
+  corridorArea: number;
+  avgTraversability: number;
+  chokePoints: Array<{ x: number; y: number; width: number }>;
+}
+
+export interface PathNetworkResult {
+  keyPoints: Array<{ x: number; y: number; label: string }>;
+  connections: Array<{
+    from: string;
+    to: string;
+    path: AStarPathResult;
+    analysis: PathDifficultyAnalysis;
+  }>;
+  connectivity: number;
+  connectedPairs: number;
+  totalPairs: number;
+  totalNetworkLength: number;
+  avgPathDifficulty: number;
 }
 
 export interface LineOfSightTraceResult {
