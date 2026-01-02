@@ -24886,6 +24886,337 @@ export class TerrainBuilder {
     traverse(root);
     return visibleTiles;
   }
+
+  public generateVertexBuffer(): TerrainVertexBuffer {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+
+    let vertexIndex = 0;
+
+    for (let y = 0; y < this.courseData.height - 1; y++) {
+      for (let x = 0; x < this.courseData.width - 1; x++) {
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(x + 1, y);
+        const e01 = this.getElevationAt(x, y + 1);
+        const e11 = this.getElevationAt(x + 1, y + 1);
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        const color = this.getTerrainColorRGB(terrainType);
+
+        const diag1 = Math.abs(e00 - e11);
+        const diag2 = Math.abs(e10 - e01);
+        const useDiag1 = diag1 <= diag2;
+
+        if (useDiag1) {
+          positions.push(x, e00, y, x + 1, e10, y, x + 1, e11, y + 1);
+          positions.push(x, e00, y, x + 1, e11, y + 1, x, e01, y + 1);
+        } else {
+          positions.push(x, e00, y, x + 1, e10, y, x, e01, y + 1);
+          positions.push(x + 1, e10, y, x + 1, e11, y + 1, x, e01, y + 1);
+        }
+
+        for (let t = 0; t < 2; t++) {
+          const baseIdx = (vertexIndex + t * 3) * 3;
+          const v1 = [positions[baseIdx], positions[baseIdx + 1], positions[baseIdx + 2]];
+          const v2 = [positions[baseIdx + 3], positions[baseIdx + 4], positions[baseIdx + 5]];
+          const v3 = [positions[baseIdx + 6], positions[baseIdx + 7], positions[baseIdx + 8]];
+
+          const edge1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+          const edge2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+          const nx = edge1[1] * edge2[2] - edge1[2] * edge2[1];
+          const ny = edge1[2] * edge2[0] - edge1[0] * edge2[2];
+          const nz = edge1[0] * edge2[1] - edge1[1] * edge2[0];
+          const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+          for (let v = 0; v < 3; v++) {
+            normals.push(nx / len, ny / len, nz / len);
+            colors.push(color.r, color.g, color.b, 1.0);
+          }
+        }
+
+        uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+
+        for (let i = 0; i < 6; i++) {
+          indices.push(vertexIndex + i);
+        }
+        vertexIndex += 6;
+      }
+    }
+
+    return {
+      positions: new Float32Array(positions),
+      normals: new Float32Array(normals),
+      uvs: new Float32Array(uvs),
+      colors: new Float32Array(colors),
+      indices: new Uint32Array(indices),
+      vertexCount: vertexIndex,
+      triangleCount: vertexIndex / 3,
+      byteSize: (positions.length + normals.length + uvs.length + colors.length) * 4 + indices.length * 4
+    };
+  }
+
+  private getTerrainColorRGB(terrainType: TerrainType): { r: number; g: number; b: number } {
+    const colors: Record<string, { r: number; g: number; b: number }> = {
+      fairway: { r: 0.4, g: 0.7, b: 0.3 },
+      rough: { r: 0.3, g: 0.5, b: 0.2 },
+      green: { r: 0.3, g: 0.8, b: 0.4 },
+      bunker: { r: 0.9, g: 0.85, b: 0.6 },
+      water: { r: 0.2, g: 0.4, b: 0.8 }
+    };
+    return colors[terrainType] ?? colors.fairway;
+  }
+
+  public generateIndexedVertexBuffer(): IndexedTerrainVertexBuffer {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const elev = this.getElevationAt(x, y);
+        positions.push(x, elev, y);
+
+        normals.push(0, 1, 0);
+
+        uvs.push(x / this.courseData.width, y / this.courseData.height);
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        const color = this.getTerrainColorRGB(terrainType);
+        colors.push(color.r, color.g, color.b, 1.0);
+      }
+    }
+
+    for (let y = 0; y < this.courseData.height - 1; y++) {
+      for (let x = 0; x < this.courseData.width - 1; x++) {
+        const i00 = y * this.courseData.width + x;
+        const i10 = y * this.courseData.width + x + 1;
+        const i01 = (y + 1) * this.courseData.width + x;
+        const i11 = (y + 1) * this.courseData.width + x + 1;
+
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(x + 1, y);
+        const e01 = this.getElevationAt(x, y + 1);
+        const e11 = this.getElevationAt(x + 1, y + 1);
+
+        const diag1 = Math.abs(e00 - e11);
+        const diag2 = Math.abs(e10 - e01);
+
+        if (diag1 <= diag2) {
+          indices.push(i00, i10, i11, i00, i11, i01);
+        } else {
+          indices.push(i00, i10, i01, i10, i11, i01);
+        }
+      }
+    }
+
+    return {
+      positions: new Float32Array(positions),
+      normals: new Float32Array(normals),
+      uvs: new Float32Array(uvs),
+      colors: new Float32Array(colors),
+      indices: new Uint32Array(indices),
+      vertexCount: positions.length / 3,
+      indexCount: indices.length,
+      triangleCount: indices.length / 3,
+      byteSize: (positions.length + normals.length + uvs.length + colors.length) * 4 + indices.length * 4
+    };
+  }
+
+  public generateCliffVertexBuffer(): TerrainVertexBuffer {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    let vertexIndex = 0;
+
+    const cliffColor = { r: 0.5, g: 0.4, b: 0.3 };
+
+    for (let y = 0; y < this.courseData.height - 1; y++) {
+      for (let x = 0; x < this.courseData.width - 1; x++) {
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(x + 1, y);
+        const e01 = this.getElevationAt(x, y + 1);
+        const e11 = this.getElevationAt(x + 1, y + 1);
+
+        if (Math.abs(e00 - e10) > 0.5) {
+          positions.push(x + 1, e00, y, x + 1, e10, y, x + 1, e10, y + 0.5, x + 1, e00, y + 0.5);
+          const nx = e00 > e10 ? 1 : -1;
+          for (let v = 0; v < 4; v++) {
+            normals.push(nx, 0, 0);
+            colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1.0);
+          }
+          uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+          indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2, vertexIndex, vertexIndex + 2, vertexIndex + 3);
+          vertexIndex += 4;
+        }
+
+        if (Math.abs(e00 - e01) > 0.5) {
+          positions.push(x, e00, y + 1, x, e01, y + 1, x + 0.5, e01, y + 1, x + 0.5, e00, y + 1);
+          const nz = e00 > e01 ? 1 : -1;
+          for (let v = 0; v < 4; v++) {
+            normals.push(0, 0, nz);
+            colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1.0);
+          }
+          uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+          indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2, vertexIndex, vertexIndex + 2, vertexIndex + 3);
+          vertexIndex += 4;
+        }
+
+        if (Math.abs(e10 - e11) > 0.5) {
+          positions.push(x + 1, e10, y + 1, x + 1, e11, y + 1, x + 0.5, e11, y + 1, x + 0.5, e10, y + 1);
+          const nz = e10 > e11 ? 1 : -1;
+          for (let v = 0; v < 4; v++) {
+            normals.push(0, 0, nz);
+            colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1.0);
+          }
+          uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+          indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2, vertexIndex, vertexIndex + 2, vertexIndex + 3);
+          vertexIndex += 4;
+        }
+
+        if (Math.abs(e01 - e11) > 0.5) {
+          positions.push(x + 1, e01, y + 1, x + 1, e11, y + 1, x + 1, e11, y + 0.5, x + 1, e01, y + 0.5);
+          const nx = e01 > e11 ? 1 : -1;
+          for (let v = 0; v < 4; v++) {
+            normals.push(nx, 0, 0);
+            colors.push(cliffColor.r, cliffColor.g, cliffColor.b, 1.0);
+          }
+          uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+          indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2, vertexIndex, vertexIndex + 2, vertexIndex + 3);
+          vertexIndex += 4;
+        }
+      }
+    }
+
+    return {
+      positions: new Float32Array(positions),
+      normals: new Float32Array(normals),
+      uvs: new Float32Array(uvs),
+      colors: new Float32Array(colors),
+      indices: new Uint32Array(indices),
+      vertexCount: vertexIndex,
+      triangleCount: indices.length / 3,
+      byteSize: (positions.length + normals.length + uvs.length + colors.length) * 4 + indices.length * 4
+    };
+  }
+
+  public generateVertexNormals(): TerrainNormalData {
+    const normals: number[][][] = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      normals[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        const e = this.getElevationAt(x, y);
+        const eN = y > 0 ? this.getElevationAt(x, y - 1) : e;
+        const eS = y < this.courseData.height - 1 ? this.getElevationAt(x, y + 1) : e;
+        const eE = x < this.courseData.width - 1 ? this.getElevationAt(x + 1, y) : e;
+        const eW = x > 0 ? this.getElevationAt(x - 1, y) : e;
+
+        const nx = (eW - eE) / 2;
+        const nz = (eN - eS) / 2;
+        const ny = 1;
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+        normals[y][x] = [nx / len, ny / len, nz / len];
+      }
+    }
+
+    return {
+      normals,
+      width: this.courseData.width,
+      height: this.courseData.height
+    };
+  }
+
+  public computeVertexBufferStatistics(buffer: TerrainVertexBuffer | IndexedTerrainVertexBuffer): VertexBufferStatistics {
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let sumY = 0;
+
+    for (let i = 1; i < buffer.positions.length; i += 3) {
+      const y = buffer.positions[i];
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      sumY += y;
+    }
+
+    const vertexCount = buffer.positions.length / 3;
+
+    return {
+      vertexCount,
+      triangleCount: buffer.triangleCount,
+      byteSize: buffer.byteSize,
+      minElevation: minY,
+      maxElevation: maxY,
+      avgElevation: sumY / vertexCount,
+      hasColors: buffer.colors.length > 0,
+      hasNormals: buffer.normals.length > 0,
+      hasUVs: buffer.uvs.length > 0
+    };
+  }
+
+  public generateSubregionVertexBuffer(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): TerrainVertexBuffer {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    let vertexIndex = 0;
+
+    const clampedStartX = Math.max(0, startX);
+    const clampedStartY = Math.max(0, startY);
+    const clampedEndX = Math.min(this.courseData.width - 1, endX);
+    const clampedEndY = Math.min(this.courseData.height - 1, endY);
+
+    for (let y = clampedStartY; y < clampedEndY; y++) {
+      for (let x = clampedStartX; x < clampedEndX; x++) {
+        const e00 = this.getElevationAt(x, y);
+        const e10 = this.getElevationAt(x + 1, y);
+        const e01 = this.getElevationAt(x, y + 1);
+        const e11 = this.getElevationAt(x + 1, y + 1);
+
+        const terrainType = this.getTerrainTypeAt(x, y);
+        const color = this.getTerrainColorRGB(terrainType);
+
+        positions.push(x, e00, y, x + 1, e10, y, x + 1, e11, y + 1);
+        positions.push(x, e00, y, x + 1, e11, y + 1, x, e01, y + 1);
+
+        for (let t = 0; t < 6; t++) {
+          normals.push(0, 1, 0);
+          colors.push(color.r, color.g, color.b, 1.0);
+        }
+
+        uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+
+        for (let i = 0; i < 6; i++) {
+          indices.push(vertexIndex + i);
+        }
+        vertexIndex += 6;
+      }
+    }
+
+    return {
+      positions: new Float32Array(positions),
+      normals: new Float32Array(normals),
+      uvs: new Float32Array(uvs),
+      colors: new Float32Array(colors),
+      indices: new Uint32Array(indices),
+      vertexCount: vertexIndex,
+      triangleCount: vertexIndex / 3,
+      byteSize: (positions.length + normals.length + uvs.length + colors.length) * 4 + indices.length * 4
+    };
+  }
 }
 
 export interface CompressedElevationData {
@@ -27332,4 +27663,45 @@ export interface OcclusionQuadTreeNode {
   maxElevation: number;
   visible: boolean;
   children?: OcclusionQuadTreeNode[];
+}
+
+export interface TerrainVertexBuffer {
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs: Float32Array;
+  colors: Float32Array;
+  indices: Uint32Array;
+  vertexCount: number;
+  triangleCount: number;
+  byteSize: number;
+}
+
+export interface IndexedTerrainVertexBuffer {
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs: Float32Array;
+  colors: Float32Array;
+  indices: Uint32Array;
+  vertexCount: number;
+  indexCount: number;
+  triangleCount: number;
+  byteSize: number;
+}
+
+export interface TerrainNormalData {
+  normals: number[][][];
+  width: number;
+  height: number;
+}
+
+export interface VertexBufferStatistics {
+  vertexCount: number;
+  triangleCount: number;
+  byteSize: number;
+  minElevation: number;
+  maxElevation: number;
+  avgElevation: number;
+  hasColors: boolean;
+  hasNormals: boolean;
+  hasUVs: boolean;
 }
