@@ -12852,6 +12852,235 @@ export class TerrainBuilder {
     return graph;
   }
 
+  public traceDetailedFlowPath(startX: number, startY: number, maxSteps: number = 100): FlowPathResult {
+    const { width, height } = this.courseData;
+    const path: Array<{ x: number; y: number; elevation: number }> = [];
+    const visited = new Set<string>();
+
+    let currentX = startX;
+    let currentY = startY;
+    let totalDrop = 0;
+    const startElev = this.getElevationAt(startX, startY);
+
+    for (let step = 0; step < maxSteps; step++) {
+      const key = `${currentX}_${currentY}`;
+      if (visited.has(key)) break;
+      visited.add(key);
+
+      const currentElev = this.getElevationAt(currentX, currentY);
+      path.push({ x: currentX, y: currentY, elevation: currentElev });
+
+      const neighbors = [
+        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+        { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+        { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+        { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+      ];
+
+      let lowestElev = currentElev;
+      let lowestX = currentX;
+      let lowestY = currentY;
+
+      for (const { dx, dy } of neighbors) {
+        const nx = currentX + dx;
+        const ny = currentY + dy;
+
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborElev = this.getElevationAt(nx, ny);
+          if (neighborElev < lowestElev) {
+            lowestElev = neighborElev;
+            lowestX = nx;
+            lowestY = ny;
+          }
+        }
+      }
+
+      if (lowestX === currentX && lowestY === currentY) {
+        break;
+      }
+
+      totalDrop += currentElev - lowestElev;
+      currentX = lowestX;
+      currentY = lowestY;
+    }
+
+    const endElev = path.length > 0 ? path[path.length - 1].elevation : startElev;
+
+    return {
+      path,
+      startX,
+      startY,
+      endX: currentX,
+      endY: currentY,
+      startElevation: startElev,
+      endElevation: endElev,
+      totalDrop,
+      pathLength: path.length,
+      reachedSink: path.length > 0 && path[path.length - 1].x === currentX && path[path.length - 1].y === currentY
+    };
+  }
+
+  public computeDetailedFlowAccumulation(): FlowAccumulationResult {
+    const { width, height } = this.courseData;
+    const accumulation: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      accumulation[y] = new Array(width).fill(1);
+    }
+
+    const cells: Array<{ x: number; y: number; elev: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        cells.push({ x, y, elev: this.getElevationAt(x, y) });
+      }
+    }
+
+    cells.sort((a, b) => b.elev - a.elev);
+
+    for (const cell of cells) {
+      const { x, y } = cell;
+      const currentElev = this.getElevationAt(x, y);
+
+      const neighbors = [
+        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+        { dx: 0, dy: -1 }, { dx: 0, dy: 1 }
+      ];
+
+      let lowestElev = currentElev;
+      let lowestX = x;
+      let lowestY = y;
+
+      for (const { dx, dy } of neighbors) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborElev = this.getElevationAt(nx, ny);
+          if (neighborElev < lowestElev) {
+            lowestElev = neighborElev;
+            lowestX = nx;
+            lowestY = ny;
+          }
+        }
+      }
+
+      if (lowestX !== x || lowestY !== y) {
+        accumulation[lowestY][lowestX] += accumulation[y][x];
+      }
+    }
+
+    let maxAccumulation = 0;
+    let totalAccumulation = 0;
+    const highFlowCells: Array<{ x: number; y: number; value: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const value = accumulation[y][x];
+        totalAccumulation += value;
+        if (value > maxAccumulation) {
+          maxAccumulation = value;
+        }
+        if (value > 10) {
+          highFlowCells.push({ x, y, value });
+        }
+      }
+    }
+
+    return {
+      accumulation,
+      maxAccumulation,
+      avgAccumulation: totalAccumulation / (width * height),
+      highFlowCells: highFlowCells.sort((a, b) => b.value - a.value).slice(0, 100),
+      width,
+      height
+    };
+  }
+
+  public findStreamChannels(minAccumulation: number = 20): Array<{ x: number; y: number; accumulation: number }> {
+    const flowResult = this.computeDetailedFlowAccumulation();
+    const channels: Array<{ x: number; y: number; accumulation: number }> = [];
+
+    for (let y = 0; y < flowResult.height; y++) {
+      for (let x = 0; x < flowResult.width; x++) {
+        if (flowResult.accumulation[y][x] >= minAccumulation) {
+          channels.push({
+            x,
+            y,
+            accumulation: flowResult.accumulation[y][x]
+          });
+        }
+      }
+    }
+
+    return channels.sort((a, b) => b.accumulation - a.accumulation);
+  }
+
+  public traceMultipleFlowPaths(numPaths: number = 10, maxSteps: number = 100): FlowPathResult[] {
+    const { width, height } = this.courseData;
+    const paths: FlowPathResult[] = [];
+
+    const candidates: Array<{ x: number; y: number; elev: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        candidates.push({ x, y, elev: this.getElevationAt(x, y) });
+      }
+    }
+
+    candidates.sort((a, b) => b.elev - a.elev);
+
+    const usedSinks = new Set<string>();
+    for (const candidate of candidates.slice(0, numPaths * 5)) {
+      if (paths.length >= numPaths) break;
+
+      const flowPath = this.traceDetailedFlowPath(candidate.x, candidate.y, maxSteps);
+      const sinkKey = `${flowPath.endX}_${flowPath.endY}`;
+
+      if (!usedSinks.has(sinkKey) && flowPath.pathLength > 3) {
+        paths.push(flowPath);
+        usedSinks.add(sinkKey);
+      }
+    }
+
+    return paths;
+  }
+
+  public getDetailedFlowDirection(gridX: number, gridY: number): { dx: number; dy: number; magnitude: number } | null {
+    const { width, height } = this.courseData;
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) return null;
+
+    const currentElev = this.getElevationAt(gridX, gridY);
+    const neighbors = [
+      { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+      { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+      { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+      { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+    ];
+
+    let maxDrop = 0;
+    let flowDx = 0;
+    let flowDy = 0;
+
+    for (const { dx, dy } of neighbors) {
+      const nx = gridX + dx;
+      const ny = gridY + dy;
+
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const neighborElev = this.getElevationAt(nx, ny);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const drop = (currentElev - neighborElev) / dist;
+
+        if (drop > maxDrop) {
+          maxDrop = drop;
+          flowDx = dx;
+          flowDy = dy;
+        }
+      }
+    }
+
+    if (maxDrop === 0) return null;
+
+    return { dx: flowDx, dy: flowDy, magnitude: maxDrop };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -18815,6 +19044,28 @@ export interface VoronoiResult {
   assignments: string[][];
   regions: Record<string, Array<{ x: number; y: number }>>;
   regionStats: Array<{ id: string; area: number; perimeter: number; centroid: { x: number; y: number } }>;
+  width: number;
+  height: number;
+}
+
+export interface FlowPathResult {
+  path: Array<{ x: number; y: number; elevation: number }>;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  startElevation: number;
+  endElevation: number;
+  totalDrop: number;
+  pathLength: number;
+  reachedSink: boolean;
+}
+
+export interface FlowAccumulationResult {
+  accumulation: number[][];
+  maxAccumulation: number;
+  avgAccumulation: number;
+  highFlowCells: Array<{ x: number; y: number; value: number }>;
   width: number;
   height: number;
 }
