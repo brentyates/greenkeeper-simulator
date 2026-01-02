@@ -6045,6 +6045,239 @@ export class TerrainBuilder {
     return areas.sort((a, b) => a.avgExposure - b.avgExposure).slice(0, 10);
   }
 
+  public computeAccessibility(
+    startX: number,
+    startY: number,
+    maxSlopeTraversable: number = 45,
+    slopePenaltyFactor: number = 2.0
+  ): number[][] {
+    const { width, height, elevation } = this.courseData;
+    const accessibility: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      accessibility[y] = new Array(width).fill(Infinity);
+    }
+
+    if (!elevation || !this.isValidGridPosition(startX, startY)) {
+      return accessibility;
+    }
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number; cost: number }> = [{ x: startX, y: startY, cost: 0 }];
+    accessibility[startY][startX] = 0;
+
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
+      { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
+    ];
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => a.cost - b.cost);
+      const current = queue.shift()!;
+      const key = `${current.x},${current.y}`;
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      for (const n of neighbors) {
+        const nx = current.x + n.dx;
+        const ny = current.y + n.dy;
+
+        if (!this.isValidGridPosition(nx, ny)) continue;
+
+        const terrainCode = this.courseData.layout[ny][nx];
+        if (terrainCode === 5) continue;
+
+        const elevDiff = Math.abs(elevation[ny][nx] - elevation[current.y][current.x]);
+        const dist = Math.sqrt(n.dx * n.dx + n.dy * n.dy);
+        const slopeAngle = Math.atan2(elevDiff * 0.25, dist) * (180 / Math.PI);
+
+        if (slopeAngle > maxSlopeTraversable) continue;
+
+        const slopePenalty = 1 + (slopeAngle / 45) * slopePenaltyFactor;
+        const moveCost = dist * slopePenalty;
+        const newCost = current.cost + moveCost;
+
+        if (newCost < accessibility[ny][nx]) {
+          accessibility[ny][nx] = newCost;
+          queue.push({ x: nx, y: ny, cost: newCost });
+        }
+      }
+    }
+
+    return accessibility;
+  }
+
+  public computeMultiPointAccessibility(
+    startPoints: Array<{ x: number; y: number }>,
+    maxSlopeTraversable: number = 45
+  ): number[][] {
+    const { width, height } = this.courseData;
+    const combined: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      combined[y] = new Array(width).fill(Infinity);
+    }
+
+    for (const start of startPoints) {
+      const singleAccess = this.computeAccessibility(start.x, start.y, maxSlopeTraversable);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          combined[y][x] = Math.min(combined[y][x], singleAccess[y][x]);
+        }
+      }
+    }
+
+    return combined;
+  }
+
+  public classifyAccessibility(gridX: number, gridY: number, accessibility: number[][]): 'easy' | 'moderate' | 'difficult' | 'inaccessible' {
+    if (!this.isValidGridPosition(gridX, gridY)) return 'inaccessible';
+
+    const cost = accessibility[gridY][gridX];
+
+    if (cost === Infinity) return 'inaccessible';
+    if (cost <= 5) return 'easy';
+    if (cost <= 15) return 'moderate';
+    return 'difficult';
+  }
+
+  public getAccessibilityAnalysis(startX: number, startY: number): AccessibilityAnalysis {
+    const accessibility = this.computeAccessibility(startX, startY);
+    const { width, height } = this.courseData;
+
+    let minCost = Infinity;
+    let maxCost = 0;
+    let totalCost = 0;
+    let accessibleCount = 0;
+    let easyCount = 0;
+    let moderateCount = 0;
+    let difficultCount = 0;
+    let inaccessibleCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cost = accessibility[y][x];
+        const classification = this.classifyAccessibility(x, y, accessibility);
+
+        switch (classification) {
+          case 'easy': easyCount++; break;
+          case 'moderate': moderateCount++; break;
+          case 'difficult': difficultCount++; break;
+          case 'inaccessible': inaccessibleCount++; break;
+        }
+
+        if (cost !== Infinity) {
+          minCost = Math.min(minCost, cost);
+          maxCost = Math.max(maxCost, cost);
+          totalCost += cost;
+          accessibleCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+
+    return {
+      startPoint: { x: startX, y: startY },
+      minAccessibilityCost: minCost === Infinity ? 0 : minCost,
+      maxAccessibilityCost: maxCost,
+      avgAccessibilityCost: accessibleCount > 0 ? totalCost / accessibleCount : 0,
+      accessibleTileCount: accessibleCount,
+      inaccessibleTileCount: inaccessibleCount,
+      easyAccessCount: easyCount,
+      moderateAccessCount: moderateCount,
+      difficultAccessCount: difficultCount,
+      accessibilityPercentage: (accessibleCount / totalTiles) * 100
+    };
+  }
+
+  public findBestAccessPoint(candidates: Array<{ x: number; y: number }>): { x: number; y: number; avgCost: number } | null {
+    if (candidates.length === 0) return null;
+
+    const { width, height } = this.courseData;
+    let bestPoint: { x: number; y: number; avgCost: number } | null = null;
+
+    for (const candidate of candidates) {
+      const accessibility = this.computeAccessibility(candidate.x, candidate.y);
+      let totalCost = 0;
+      let count = 0;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (accessibility[y][x] !== Infinity) {
+            totalCost += accessibility[y][x];
+            count++;
+          }
+        }
+      }
+
+      const avgCost = count > 0 ? totalCost / count : Infinity;
+
+      if (!bestPoint || avgCost < bestPoint.avgCost) {
+        bestPoint = { x: candidate.x, y: candidate.y, avgCost };
+      }
+    }
+
+    return bestPoint;
+  }
+
+  public findInaccessibleAreas(startX: number, startY: number): Array<{ x: number; y: number }> {
+    const accessibility = this.computeAccessibility(startX, startY);
+    const { width, height } = this.courseData;
+    const inaccessible: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (accessibility[y][x] === Infinity) {
+          const terrainCode = this.courseData.layout[y][x];
+          if (terrainCode !== 5) {
+            inaccessible.push({ x, y });
+          }
+        }
+      }
+    }
+
+    return inaccessible;
+  }
+
+  public findMostAccessibleArea(startX: number, startY: number, minSize: number = 5): { x: number; y: number; avgCost: number } | null {
+    const accessibility = this.computeAccessibility(startX, startY);
+    const { width, height } = this.courseData;
+    let bestArea: { x: number; y: number; avgCost: number } | null = null;
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let total = 0;
+        let count = 0;
+        let valid = true;
+
+        for (let dy = 0; dy < minSize && valid; dy++) {
+          for (let dx = 0; dx < minSize && valid; dx++) {
+            const cost = accessibility[y + dy]?.[x + dx];
+            if (cost === undefined || cost === Infinity) {
+              valid = false;
+            } else {
+              total += cost;
+              count++;
+            }
+          }
+        }
+
+        if (valid && count > 0) {
+          const avgCost = total / count;
+          if (!bestArea || avgCost < bestArea.avgCost) {
+            bestArea = { x, y, avgCost };
+          }
+        }
+      }
+    }
+
+    return bestArea;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -11046,6 +11279,19 @@ export interface WindExposureAnalysis {
   neutralTileCount: number;
   highlyExposedPercentage: number;
   shelteredPercentage: number;
+}
+
+export interface AccessibilityAnalysis {
+  startPoint: { x: number; y: number };
+  minAccessibilityCost: number;
+  maxAccessibilityCost: number;
+  avgAccessibilityCost: number;
+  accessibleTileCount: number;
+  inaccessibleTileCount: number;
+  easyAccessCount: number;
+  moderateAccessCount: number;
+  difficultAccessCount: number;
+  accessibilityPercentage: number;
 }
 
 export interface LineSampleOptions {
