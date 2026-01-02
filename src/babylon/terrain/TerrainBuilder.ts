@@ -11673,6 +11673,222 @@ export class TerrainBuilder {
     return max;
   }
 
+  public getDetailedTerrainProfile(x1: number, y1: number, x2: number, y2: number, numSamples: number = 50): TerrainProfile {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const totalDistance = Math.sqrt(dx * dx + dy * dy);
+    const samples: TerrainProfileSample[] = [];
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    let totalAscent = 0;
+    let totalDescent = 0;
+    let prevElev: number | null = null;
+
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const x = x1 + dx * t;
+      const y = y1 + dy * t;
+      const gridX = Math.round(x);
+      const gridY = Math.round(y);
+      const distance = totalDistance * t;
+
+      const elev = this.isValidGridPosition(gridX, gridY) ? this.getElevationAt(gridX, gridY) : 0;
+      const slope = this.isValidGridPosition(gridX, gridY) ? this.getSlopeVectorAt(gridX, gridY) : { angle: 0, direction: 0, magnitude: 0 };
+      const terrainType = this.isValidGridPosition(gridX, gridY) ? this.getTerrainTypeAt(gridX, gridY) : 'fairway';
+
+      minElev = Math.min(minElev, elev);
+      maxElev = Math.max(maxElev, elev);
+
+      if (prevElev !== null) {
+        const diff = elev - prevElev;
+        if (diff > 0) totalAscent += diff;
+        else totalDescent += Math.abs(diff);
+      }
+      prevElev = elev;
+
+      samples.push({
+        x: gridX,
+        y: gridY,
+        distance,
+        elevation: elev,
+        slopeAngle: slope.angle,
+        terrainType: terrainType as TerrainType
+      });
+    }
+
+    const elevationChange = samples.length > 0 ? samples[samples.length - 1].elevation - samples[0].elevation : 0;
+    const avgGrade = totalDistance > 0 ? (elevationChange / totalDistance) * 100 : 0;
+
+    return {
+      startX: x1,
+      startY: y1,
+      endX: x2,
+      endY: y2,
+      totalDistance,
+      numSamples: samples.length,
+      samples,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      elevationChange,
+      totalAscent,
+      totalDescent,
+      avgGrade
+    };
+  }
+
+  public getTerrainCrossSection(centerX: number, centerY: number, direction: number, length: number, numSamples: number = 30): TerrainCrossSection {
+    const radians = direction * Math.PI / 180;
+    const halfLength = length / 2;
+
+    const x1 = centerX - Math.cos(radians) * halfLength;
+    const y1 = centerY - Math.sin(radians) * halfLength;
+    const x2 = centerX + Math.cos(radians) * halfLength;
+    const y2 = centerY + Math.sin(radians) * halfLength;
+
+    const profile = this.getDetailedTerrainProfile(x1, y1, x2, y2, numSamples);
+
+    const leftSamples = profile.samples.slice(0, Math.floor(numSamples / 2) + 1);
+    const rightSamples = profile.samples.slice(Math.floor(numSamples / 2));
+
+    const leftAvgElev = leftSamples.reduce((sum, s) => sum + s.elevation, 0) / leftSamples.length;
+    const rightAvgElev = rightSamples.reduce((sum, s) => sum + s.elevation, 0) / rightSamples.length;
+    const tilt = rightAvgElev - leftAvgElev;
+
+    return {
+      centerX,
+      centerY,
+      direction,
+      length,
+      profile,
+      leftAvgElevation: leftAvgElev,
+      rightAvgElevation: rightAvgElev,
+      tilt,
+      isLevel: Math.abs(tilt) < 0.5
+    };
+  }
+
+  public analyzeTerrainAlongPath(path: Array<{ x: number; y: number }>): TerrainPathAnalysis {
+    if (path.length < 2) {
+      return {
+        path,
+        totalDistance: 0,
+        profiles: [],
+        totalAscent: 0,
+        totalDescent: 0,
+        minElevation: 0,
+        maxElevation: 0,
+        avgSlope: 0,
+        maxSlope: 0,
+        terrainTypeCounts: {}
+      };
+    }
+
+    const profiles: TerrainProfile[] = [];
+    let totalDistance = 0;
+    let totalAscent = 0;
+    let totalDescent = 0;
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    let maxSlope = 0;
+    let slopeSum = 0;
+    let slopeCount = 0;
+    const terrainTypeCounts: Record<string, number> = {};
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const profile = this.getDetailedTerrainProfile(path[i].x, path[i].y, path[i + 1].x, path[i + 1].y, 10);
+      profiles.push(profile);
+
+      totalDistance += profile.totalDistance;
+      totalAscent += profile.totalAscent;
+      totalDescent += profile.totalDescent;
+      minElev = Math.min(minElev, profile.minElevation);
+      maxElev = Math.max(maxElev, profile.maxElevation);
+
+      for (const sample of profile.samples) {
+        maxSlope = Math.max(maxSlope, Math.abs(sample.slopeAngle));
+        slopeSum += Math.abs(sample.slopeAngle);
+        slopeCount++;
+
+        const type = sample.terrainType;
+        terrainTypeCounts[type] = (terrainTypeCounts[type] || 0) + 1;
+      }
+    }
+
+    return {
+      path,
+      totalDistance,
+      profiles,
+      totalAscent,
+      totalDescent,
+      minElevation: minElev === Infinity ? 0 : minElev,
+      maxElevation: maxElev === -Infinity ? 0 : maxElev,
+      avgSlope: slopeCount > 0 ? slopeSum / slopeCount : 0,
+      maxSlope,
+      terrainTypeCounts
+    };
+  }
+
+  public findSteepestPath(x1: number, y1: number, x2: number, y2: number): SteepestPathResult {
+    const profile = this.getDetailedTerrainProfile(x1, y1, x2, y2, 100);
+    let steepestSegmentStart = 0;
+    let steepestSegmentEnd = 0;
+    let maxSlopeMagnitude = 0;
+
+    for (let i = 1; i < profile.samples.length; i++) {
+      const elevDiff = Math.abs(profile.samples[i].elevation - profile.samples[i - 1].elevation);
+      const distDiff = profile.samples[i].distance - profile.samples[i - 1].distance;
+      const slope = distDiff > 0 ? elevDiff / distDiff : 0;
+
+      if (slope > maxSlopeMagnitude) {
+        maxSlopeMagnitude = slope;
+        steepestSegmentStart = i - 1;
+        steepestSegmentEnd = i;
+      }
+    }
+
+    const startSample = profile.samples[steepestSegmentStart];
+    const endSample = profile.samples[steepestSegmentEnd];
+
+    return {
+      startX: startSample?.x ?? x1,
+      startY: startSample?.y ?? y1,
+      endX: endSample?.x ?? x2,
+      endY: endSample?.y ?? y2,
+      slopeMagnitude: maxSlopeMagnitude,
+      slopeAngle: Math.atan(maxSlopeMagnitude) * 180 / Math.PI,
+      elevationDiff: startSample && endSample ? Math.abs(endSample.elevation - startSample.elevation) : 0,
+      segmentLength: startSample && endSample ? endSample.distance - startSample.distance : 0
+    };
+  }
+
+  public getTerrainProfileGrid(minX: number, minY: number, maxX: number, maxY: number, gridSpacing: number = 5): TerrainProfileGrid {
+    const horizontalProfiles: TerrainProfile[] = [];
+    const verticalProfiles: TerrainProfile[] = [];
+
+    for (let y = minY; y <= maxY; y += gridSpacing) {
+      const profile = this.getDetailedTerrainProfile(minX, y, maxX, y, Math.ceil((maxX - minX) / gridSpacing));
+      horizontalProfiles.push(profile);
+    }
+
+    for (let x = minX; x <= maxX; x += gridSpacing) {
+      const profile = this.getDetailedTerrainProfile(x, minY, x, maxY, Math.ceil((maxY - minY) / gridSpacing));
+      verticalProfiles.push(profile);
+    }
+
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      gridSpacing,
+      horizontalProfiles,
+      verticalProfiles,
+      horizontalCount: horizontalProfiles.length,
+      verticalCount: verticalProfiles.length
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -17481,4 +17697,77 @@ export interface TerrainGradientMap {
   maxMagnitude: number;
   avgMagnitude: number;
   gradients: Array<{ x: number; y: number; magnitude: number; direction: number }>;
+}
+
+export interface TerrainProfileSample {
+  x: number;
+  y: number;
+  distance: number;
+  elevation: number;
+  slopeAngle: number;
+  terrainType: TerrainType;
+}
+
+export interface TerrainProfile {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  totalDistance: number;
+  numSamples: number;
+  samples: TerrainProfileSample[];
+  minElevation: number;
+  maxElevation: number;
+  elevationChange: number;
+  totalAscent: number;
+  totalDescent: number;
+  avgGrade: number;
+}
+
+export interface TerrainCrossSection {
+  centerX: number;
+  centerY: number;
+  direction: number;
+  length: number;
+  profile: TerrainProfile;
+  leftAvgElevation: number;
+  rightAvgElevation: number;
+  tilt: number;
+  isLevel: boolean;
+}
+
+export interface TerrainPathAnalysis {
+  path: Array<{ x: number; y: number }>;
+  totalDistance: number;
+  profiles: TerrainProfile[];
+  totalAscent: number;
+  totalDescent: number;
+  minElevation: number;
+  maxElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  terrainTypeCounts: Record<string, number>;
+}
+
+export interface SteepestPathResult {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  slopeMagnitude: number;
+  slopeAngle: number;
+  elevationDiff: number;
+  segmentLength: number;
+}
+
+export interface TerrainProfileGrid {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  gridSpacing: number;
+  horizontalProfiles: TerrainProfile[];
+  verticalProfiles: TerrainProfile[];
+  horizontalCount: number;
+  verticalCount: number;
 }
