@@ -20241,6 +20241,468 @@ export class TerrainBuilder {
       nodesExplored: visited.size
     };
   }
+
+  public classifyTerrainPoint(x: number, y: number): TerrainPointClassification {
+    const curvature = this.computeTerrainCurvature(x, y);
+    const gradient = this.sampleTerrainGradientAt(x, y);
+    const elevation = this.getElevationAt(Math.floor(x), Math.floor(y));
+
+    let classification: TerrainFeatureType;
+    let confidence: number;
+
+    const mc = curvature.meanCurvature;
+    const gc = curvature.gaussianCurvature;
+    const slopeMagnitude = gradient.magnitude;
+
+    if (slopeMagnitude < 0.1 && Math.abs(mc) < 0.05) {
+      classification = 'flat';
+      confidence = 1 - slopeMagnitude * 5;
+    } else if (gc > 0.01 && mc > 0.05) {
+      classification = 'bowl';
+      confidence = Math.min(gc * 50, 0.95);
+    } else if (gc > 0.01 && mc < -0.05) {
+      classification = 'peak';
+      confidence = Math.min(gc * 50, 0.95);
+    } else if (gc < -0.01) {
+      classification = 'saddle';
+      confidence = Math.min(Math.abs(gc) * 50, 0.95);
+    } else if (mc > 0.1 && Math.abs(gc) < 0.01) {
+      classification = 'channel';
+      confidence = Math.min(mc * 5, 0.9);
+    } else if (mc < -0.1 && Math.abs(gc) < 0.01) {
+      classification = 'ridge';
+      confidence = Math.min(Math.abs(mc) * 5, 0.9);
+    } else if (slopeMagnitude > 0.3) {
+      classification = 'slope';
+      confidence = Math.min(slopeMagnitude, 0.95);
+    } else {
+      classification = 'transitional';
+      confidence = 0.5;
+    }
+
+    return {
+      x,
+      y,
+      elevation,
+      classification,
+      confidence,
+      curvature,
+      gradient
+    };
+  }
+
+  public detectTerrainFeatures(): TerrainFeatureDetectionResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const features: TerrainFeature[] = [];
+
+    const visited = new Set<string>();
+
+    const floodFillFeature = (startX: number, startY: number, featureType: TerrainFeatureType): TerrainFeature | null => {
+      const tiles: Array<{ x: number; y: number; elevation: number }> = [];
+      const queue = [{ x: startX, y: startY }];
+      let minX = startX, maxX = startX, minY = startY, maxY = startY;
+      let totalElev = 0;
+
+      while (queue.length > 0 && tiles.length < 500) {
+        const current = queue.shift()!;
+        const key = `${current.x},${current.y}`;
+
+        if (visited.has(key)) continue;
+        if (current.x < 1 || current.x >= width - 1 || current.y < 1 || current.y >= height - 1) continue;
+
+        const classification = this.classifyTerrainPoint(current.x, current.y);
+        if (classification.classification !== featureType || classification.confidence < 0.5) continue;
+
+        visited.add(key);
+        const elevation = this.getElevationAt(current.x, current.y);
+        tiles.push({ x: current.x, y: current.y, elevation });
+        totalElev += elevation;
+
+        minX = Math.min(minX, current.x);
+        maxX = Math.max(maxX, current.x);
+        minY = Math.min(minY, current.y);
+        maxY = Math.max(maxY, current.y);
+
+        queue.push(
+          { x: current.x - 1, y: current.y },
+          { x: current.x + 1, y: current.y },
+          { x: current.x, y: current.y - 1 },
+          { x: current.x, y: current.y + 1 }
+        );
+      }
+
+      if (tiles.length < 3) return null;
+
+      return {
+        type: featureType,
+        tiles,
+        bounds: { minX, maxX, minY, maxY },
+        area: tiles.length,
+        averageElevation: totalElev / tiles.length,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2
+      };
+    };
+
+    for (let y = 1; y < height - 1; y += 2) {
+      for (let x = 1; x < width - 1; x += 2) {
+        const key = `${x},${y}`;
+        if (visited.has(key)) continue;
+
+        const classification = this.classifyTerrainPoint(x, y);
+        if (classification.confidence < 0.6) continue;
+        if (classification.classification === 'flat' || classification.classification === 'transitional') continue;
+
+        const feature = floodFillFeature(x, y, classification.classification);
+        if (feature && feature.area >= 5) {
+          features.push(feature);
+        }
+      }
+    }
+
+    const featureCounts: Record<TerrainFeatureType, number> = {
+      'peak': 0, 'bowl': 0, 'ridge': 0, 'channel': 0,
+      'saddle': 0, 'flat': 0, 'slope': 0, 'transitional': 0
+    };
+
+    for (const f of features) {
+      featureCounts[f.type]++;
+    }
+
+    return {
+      features,
+      totalFeatures: features.length,
+      featureCounts,
+      coveragePercent: (features.reduce((s, f) => s + f.area, 0) / (width * height)) * 100
+    };
+  }
+
+  public analyzeRidgeLines(): RidgeLineResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const ridgePoints: Array<{ x: number; y: number; elevation: number; strength: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const center = this.getElevationAt(x, y);
+        const neighbors = [
+          this.getElevationAt(x - 1, y),
+          this.getElevationAt(x + 1, y),
+          this.getElevationAt(x, y - 1),
+          this.getElevationAt(x, y + 1)
+        ];
+
+        const lowerCount = neighbors.filter(n => n < center).length;
+
+        if (lowerCount >= 3) {
+          const avgDiff = neighbors.reduce((s, n) => s + Math.max(0, center - n), 0) / 4;
+          ridgePoints.push({ x, y, elevation: center, strength: avgDiff });
+        }
+      }
+    }
+
+    const sortedRidges = ridgePoints.sort((a, b) => b.strength - a.strength);
+
+    return {
+      ridgePoints: sortedRidges,
+      totalRidgePoints: ridgePoints.length,
+      strongRidges: ridgePoints.filter(r => r.strength > 1).length,
+      averageStrength: ridgePoints.length > 0
+        ? ridgePoints.reduce((s, r) => s + r.strength, 0) / ridgePoints.length
+        : 0
+    };
+  }
+
+  public findChannelLines(): ChannelLineResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const channelPoints: Array<{ x: number; y: number; elevation: number; depth: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const center = this.getElevationAt(x, y);
+        const neighbors = [
+          this.getElevationAt(x - 1, y),
+          this.getElevationAt(x + 1, y),
+          this.getElevationAt(x, y - 1),
+          this.getElevationAt(x, y + 1)
+        ];
+
+        const higherCount = neighbors.filter(n => n > center).length;
+
+        if (higherCount >= 3) {
+          const avgDiff = neighbors.reduce((s, n) => s + Math.max(0, n - center), 0) / 4;
+          channelPoints.push({ x, y, elevation: center, depth: avgDiff });
+        }
+      }
+    }
+
+    const sortedChannels = channelPoints.sort((a, b) => b.depth - a.depth);
+
+    return {
+      channelPoints: sortedChannels,
+      totalChannelPoints: channelPoints.length,
+      deepChannels: channelPoints.filter(c => c.depth > 1).length,
+      averageDepth: channelPoints.length > 0
+        ? channelPoints.reduce((s, c) => s + c.depth, 0) / channelPoints.length
+        : 0
+    };
+  }
+
+  public findLocalExtrema(): LocalExtremaResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const maxima: Array<{ x: number; y: number; elevation: number }> = [];
+    const minima: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const center = this.getElevationAt(x, y);
+        let isMax = true;
+        let isMin = true;
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const neighbor = this.getElevationAt(x + dx, y + dy);
+            if (neighbor >= center) isMax = false;
+            if (neighbor <= center) isMin = false;
+          }
+        }
+
+        if (isMax) maxima.push({ x, y, elevation: center });
+        if (isMin) minima.push({ x, y, elevation: center });
+      }
+    }
+
+    return {
+      maxima: maxima.sort((a, b) => b.elevation - a.elevation),
+      minima: minima.sort((a, b) => a.elevation - b.elevation),
+      totalMaxima: maxima.length,
+      totalMinima: minima.length,
+      highestPeak: maxima[0] || null,
+      lowestBasin: minima[0] || null
+    };
+  }
+
+  public detectPlateaus(minSize: number = 5, elevationTolerance: number = 0.5): PlateauDetectionResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const plateaus: Plateau[] = [];
+    const visited = new Set<string>();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const key = `${x},${y}`;
+        if (visited.has(key)) continue;
+
+        const baseElevation = this.getElevationAt(x, y);
+        const tiles: Array<{ x: number; y: number }> = [];
+        const queue = [{ x, y }];
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          const currentKey = `${current.x},${current.y}`;
+
+          if (visited.has(currentKey)) continue;
+          if (current.x < 0 || current.x >= width || current.y < 0 || current.y >= height) continue;
+
+          const elevation = this.getElevationAt(current.x, current.y);
+          if (Math.abs(elevation - baseElevation) > elevationTolerance) continue;
+
+          visited.add(currentKey);
+          tiles.push({ x: current.x, y: current.y });
+
+          queue.push(
+            { x: current.x - 1, y: current.y },
+            { x: current.x + 1, y: current.y },
+            { x: current.x, y: current.y - 1 },
+            { x: current.x, y: current.y + 1 }
+          );
+        }
+
+        if (tiles.length >= minSize) {
+          let perimeter = 0;
+          for (const tile of tiles) {
+            const neighbors = [
+              { x: tile.x - 1, y: tile.y },
+              { x: tile.x + 1, y: tile.y },
+              { x: tile.x, y: tile.y - 1 },
+              { x: tile.x, y: tile.y + 1 }
+            ];
+            for (const n of neighbors) {
+              if (!tiles.some(t => t.x === n.x && t.y === n.y)) {
+                perimeter++;
+              }
+            }
+          }
+
+          plateaus.push({
+            tiles,
+            area: tiles.length,
+            elevation: baseElevation,
+            perimeter,
+            compactness: (4 * Math.PI * tiles.length) / (perimeter * perimeter)
+          });
+        }
+      }
+    }
+
+    return {
+      plateaus: plateaus.sort((a, b) => b.area - a.area),
+      totalPlateaus: plateaus.length,
+      largestPlateau: plateaus[0] || null,
+      totalPlateauArea: plateaus.reduce((s, p) => s + p.area, 0),
+      averagePlateauSize: plateaus.length > 0
+        ? plateaus.reduce((s, p) => s + p.area, 0) / plateaus.length
+        : 0
+    };
+  }
+
+  public analyzeTerrainRoughness(windowSize: number = 3): TerrainRoughnessAnalysis {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const roughnessMap: number[][] = [];
+    const half = Math.floor(windowSize / 2);
+
+    let totalRoughness = 0;
+    let count = 0;
+
+    for (let y = 0; y < height; y++) {
+      roughnessMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const elevations: number[] = [];
+
+        for (let dy = -half; dy <= half; dy++) {
+          for (let dx = -half; dx <= half; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              elevations.push(this.getElevationAt(nx, ny));
+            }
+          }
+        }
+
+        if (elevations.length > 0) {
+          const mean = elevations.reduce((s, e) => s + e, 0) / elevations.length;
+          const variance = elevations.reduce((s, e) => s + (e - mean) ** 2, 0) / elevations.length;
+          const roughness = Math.sqrt(variance);
+          roughnessMap[y][x] = roughness;
+          totalRoughness += roughness;
+          count++;
+        } else {
+          roughnessMap[y][x] = 0;
+        }
+      }
+    }
+
+    const avgRoughness = count > 0 ? totalRoughness / count : 0;
+
+    const roughTiles: Array<{ x: number; y: number; roughness: number }> = [];
+    const smoothTiles: Array<{ x: number; y: number; roughness: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const r = roughnessMap[y][x];
+        if (r > avgRoughness * 1.5) {
+          roughTiles.push({ x, y, roughness: r });
+        } else if (r < avgRoughness * 0.5) {
+          smoothTiles.push({ x, y, roughness: r });
+        }
+      }
+    }
+
+    return {
+      roughnessMap,
+      averageRoughness: avgRoughness,
+      maxRoughness: Math.max(...roughnessMap.flat()),
+      minRoughness: Math.min(...roughnessMap.flat()),
+      roughTiles: roughTiles.sort((a, b) => b.roughness - a.roughness).slice(0, 50),
+      smoothTiles: smoothTiles.sort((a, b) => a.roughness - b.roughness).slice(0, 50),
+      roughnessVariation: Math.sqrt(
+        roughnessMap.flat().reduce((s, r) => s + (r - avgRoughness) ** 2, 0) / count
+      )
+    };
+  }
+}
+
+export type TerrainFeatureType = 'peak' | 'bowl' | 'ridge' | 'channel' | 'saddle' | 'flat' | 'slope' | 'transitional';
+
+export interface TerrainPointClassification {
+  x: number;
+  y: number;
+  elevation: number;
+  classification: TerrainFeatureType;
+  confidence: number;
+  curvature: TerrainCurvatureResult;
+  gradient: { dx: number; dy: number; magnitude: number; direction: number };
+}
+
+export interface TerrainFeature {
+  type: TerrainFeatureType;
+  tiles: Array<{ x: number; y: number; elevation: number }>;
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  area: number;
+  averageElevation: number;
+  centerX: number;
+  centerY: number;
+}
+
+export interface TerrainFeatureDetectionResult {
+  features: TerrainFeature[];
+  totalFeatures: number;
+  featureCounts: Record<TerrainFeatureType, number>;
+  coveragePercent: number;
+}
+
+export interface RidgeLineResult {
+  ridgePoints: Array<{ x: number; y: number; elevation: number; strength: number }>;
+  totalRidgePoints: number;
+  strongRidges: number;
+  averageStrength: number;
+}
+
+export interface ChannelLineResult {
+  channelPoints: Array<{ x: number; y: number; elevation: number; depth: number }>;
+  totalChannelPoints: number;
+  deepChannels: number;
+  averageDepth: number;
+}
+
+export interface LocalExtremaResult {
+  maxima: Array<{ x: number; y: number; elevation: number }>;
+  minima: Array<{ x: number; y: number; elevation: number }>;
+  totalMaxima: number;
+  totalMinima: number;
+  highestPeak: { x: number; y: number; elevation: number } | null;
+  lowestBasin: { x: number; y: number; elevation: number } | null;
+}
+
+export interface Plateau {
+  tiles: Array<{ x: number; y: number }>;
+  area: number;
+  elevation: number;
+  perimeter: number;
+  compactness: number;
+}
+
+export interface PlateauDetectionResult {
+  plateaus: Plateau[];
+  totalPlateaus: number;
+  largestPlateau: Plateau | null;
+  totalPlateauArea: number;
+  averagePlateauSize: number;
+}
+
+export interface TerrainRoughnessAnalysis {
+  roughnessMap: number[][];
+  averageRoughness: number;
+  maxRoughness: number;
+  minRoughness: number;
+  roughTiles: Array<{ x: number; y: number; roughness: number }>;
+  smoothTiles: Array<{ x: number; y: number; roughness: number }>;
+  roughnessVariation: number;
 }
 
 export interface NearestTerrainResult {
