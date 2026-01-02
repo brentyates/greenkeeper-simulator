@@ -19831,6 +19831,468 @@ export class TerrainBuilder {
       curvatureType
     };
   }
+
+  public computeDistanceToTerrainType(targetType: TerrainType): number[][] {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const distances: number[][] = [];
+    const INF = width * height + 1;
+
+    for (let y = 0; y < height; y++) {
+      distances[y] = [];
+      for (let x = 0; x < width; x++) {
+        const currentType = getTerrainType(this.courseData.layout[y]?.[x] ?? 0);
+        distances[y][x] = currentType === targetType ? 0 : INF;
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (y > 0) {
+          distances[y][x] = Math.min(distances[y][x], distances[y - 1][x] + 1);
+        }
+        if (x > 0) {
+          distances[y][x] = Math.min(distances[y][x], distances[y][x - 1] + 1);
+        }
+      }
+    }
+
+    for (let y = height - 1; y >= 0; y--) {
+      for (let x = width - 1; x >= 0; x--) {
+        if (y < height - 1) {
+          distances[y][x] = Math.min(distances[y][x], distances[y + 1][x] + 1);
+        }
+        if (x < width - 1) {
+          distances[y][x] = Math.min(distances[y][x], distances[y][x + 1] + 1);
+        }
+      }
+    }
+
+    return distances;
+  }
+
+  public findNearestTerrainOfType(fromX: number, fromY: number, targetType: TerrainType): NearestTerrainResult | null {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const visited = new Set<string>();
+    const queue: Array<{ x: number; y: number; distance: number }> = [{ x: fromX, y: fromY, distance: 0 }];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = `${current.x},${current.y}`;
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      if (current.x < 0 || current.x >= width || current.y < 0 || current.y >= height) continue;
+
+      const terrainType = getTerrainType(this.courseData.layout[current.y]?.[current.x] ?? 0);
+      if (terrainType === targetType && current.distance > 0) {
+        return {
+          x: current.x,
+          y: current.y,
+          distance: current.distance,
+          terrainType,
+          elevation: this.getElevationAt(current.x, current.y)
+        };
+      }
+
+      const neighbors = [
+        { x: current.x - 1, y: current.y },
+        { x: current.x + 1, y: current.y },
+        { x: current.x, y: current.y - 1 },
+        { x: current.x, y: current.y + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        const neighborKey = `${neighbor.x},${neighbor.y}`;
+        if (!visited.has(neighborKey)) {
+          queue.push({ x: neighbor.x, y: neighbor.y, distance: current.distance + 1 });
+        }
+      }
+    }
+
+    return null;
+  }
+
+  public findAllNearestTerrainTypes(fromX: number, fromY: number): NearestTerrainsByType {
+    const terrainTypes: TerrainType[] = ['fairway', 'rough', 'green', 'bunker', 'water'];
+    const result: NearestTerrainsByType = {
+      fromX,
+      fromY,
+      nearestByType: {}
+    };
+
+    for (const targetType of terrainTypes) {
+      const nearest = this.findNearestTerrainOfType(fromX, fromY, targetType);
+      if (nearest) {
+        result.nearestByType[targetType] = nearest;
+      }
+    }
+
+    return result;
+  }
+
+  public computeProximityScore(x: number, y: number, config: ProximityScoreConfig): number {
+    let score = 0;
+
+    for (const [terrainType, weight] of Object.entries(config.weights)) {
+      const nearest = this.findNearestTerrainOfType(x, y, terrainType as TerrainType);
+      if (nearest) {
+        const normalizedDistance = Math.min(nearest.distance / config.maxDistance, 1);
+        score += weight * (1 - normalizedDistance);
+      }
+    }
+
+    return score;
+  }
+
+  public findTilesWithinDistance(centerX: number, centerY: number, maxDistance: number, targetType?: TerrainType): Array<{ x: number; y: number; distance: number; terrainType: TerrainType }> {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const result: Array<{ x: number; y: number; distance: number; terrainType: TerrainType }> = [];
+
+    const minX = Math.max(0, Math.floor(centerX - maxDistance));
+    const maxX = Math.min(width - 1, Math.ceil(centerX + maxDistance));
+    const minY = Math.max(0, Math.floor(centerY - maxDistance));
+    const maxY = Math.min(height - 1, Math.ceil(centerY + maxDistance));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= maxDistance) {
+          const terrainType = getTerrainType(this.courseData.layout[y]?.[x] ?? 0);
+          if (!targetType || terrainType === targetType) {
+            result.push({ x, y, distance, terrainType });
+          }
+        }
+      }
+    }
+
+    return result.sort((a, b) => a.distance - b.distance);
+  }
+
+  public computeTerrainProximityMap(targetType: TerrainType, maxDistance: number): TerrainProximityMap {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const distanceField = this.computeDistanceToTerrainType(targetType);
+
+    const proximityMap: number[][] = [];
+    let totalProximity = 0;
+    let proximityCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      proximityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const distance = distanceField[y][x];
+        if (distance <= maxDistance) {
+          const proximity = 1 - (distance / maxDistance);
+          proximityMap[y][x] = proximity;
+          totalProximity += proximity;
+          proximityCount++;
+        } else {
+          proximityMap[y][x] = 0;
+        }
+      }
+    }
+
+    return {
+      targetType,
+      maxDistance,
+      proximityMap,
+      averageProximity: proximityCount > 0 ? totalProximity / proximityCount : 0,
+      tilesInRange: proximityCount
+    };
+  }
+
+  public findTerrainBoundaryDistances(): TerrainBoundaryDistances {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const distanceToNorth: number[][] = [];
+    const distanceToSouth: number[][] = [];
+    const distanceToEast: number[][] = [];
+    const distanceToWest: number[][] = [];
+    const distanceToAnyBoundary: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      distanceToNorth[y] = [];
+      distanceToSouth[y] = [];
+      distanceToEast[y] = [];
+      distanceToWest[y] = [];
+      distanceToAnyBoundary[y] = [];
+
+      for (let x = 0; x < width; x++) {
+        distanceToNorth[y][x] = y;
+        distanceToSouth[y][x] = height - 1 - y;
+        distanceToEast[y][x] = width - 1 - x;
+        distanceToWest[y][x] = x;
+        distanceToAnyBoundary[y][x] = Math.min(y, height - 1 - y, x, width - 1 - x);
+      }
+    }
+
+    const interiorTiles: Array<{ x: number; y: number; minDistance: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (distanceToAnyBoundary[y][x] > 0) {
+          interiorTiles.push({ x, y, minDistance: distanceToAnyBoundary[y][x] });
+        }
+      }
+    }
+
+    interiorTiles.sort((a, b) => b.minDistance - a.minDistance);
+    const mostInteriorTile = interiorTiles[0] || null;
+
+    return {
+      distanceToNorth,
+      distanceToSouth,
+      distanceToEast,
+      distanceToWest,
+      distanceToAnyBoundary,
+      mostInteriorTile,
+      averageDistanceToBoundary: interiorTiles.length > 0
+        ? interiorTiles.reduce((s, t) => s + t.minDistance, 0) / interiorTiles.length
+        : 0
+    };
+  }
+
+  public computeVoronoiDistances(seedPoints: Array<{ x: number; y: number; label: string }>): VoronoiDistanceResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const nearestSeed: string[][] = [];
+    const distanceToSeed: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      nearestSeed[y] = [];
+      distanceToSeed[y] = [];
+
+      for (let x = 0; x < width; x++) {
+        let minDistance = Infinity;
+        let nearest = '';
+
+        for (const seed of seedPoints) {
+          const dx = x - seed.x;
+          const dy = y - seed.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = seed.label;
+          }
+        }
+
+        nearestSeed[y][x] = nearest;
+        distanceToSeed[y][x] = minDistance;
+      }
+    }
+
+    const regionSizes: Record<string, number> = {};
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const label = nearestSeed[y][x];
+        regionSizes[label] = (regionSizes[label] || 0) + 1;
+      }
+    }
+
+    return {
+      nearestSeed,
+      distanceToSeed,
+      regionSizes,
+      seedCount: seedPoints.length
+    };
+  }
+
+  public computeElevationTargetDistanceField(targetElevation: number, tolerance: number = 0.5): number[][] {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const distances: number[][] = [];
+    const INF = width * height + 1;
+
+    for (let y = 0; y < height; y++) {
+      distances[y] = [];
+      for (let x = 0; x < width; x++) {
+        const elevation = this.getElevationAt(x, y);
+        distances[y][x] = Math.abs(elevation - targetElevation) <= tolerance ? 0 : INF;
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (y > 0) {
+          distances[y][x] = Math.min(distances[y][x], distances[y - 1][x] + 1);
+        }
+        if (x > 0) {
+          distances[y][x] = Math.min(distances[y][x], distances[y][x - 1] + 1);
+        }
+      }
+    }
+
+    for (let y = height - 1; y >= 0; y--) {
+      for (let x = width - 1; x >= 0; x--) {
+        if (y < height - 1) {
+          distances[y][x] = Math.min(distances[y][x], distances[y + 1][x] + 1);
+        }
+        if (x < width - 1) {
+          distances[y][x] = Math.min(distances[y][x], distances[y][x + 1] + 1);
+        }
+      }
+    }
+
+    return distances;
+  }
+
+  public findPathBetweenPoints(startX: number, startY: number, endX: number, endY: number, avoidTypes?: TerrainType[]): PathFindingResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    const avoidSet = new Set(avoidTypes || []);
+    const visited = new Set<string>();
+    const cameFrom = new Map<string, string>();
+    const gScore = new Map<string, number>();
+    const fScore = new Map<string, number>();
+
+    const startKey = `${startX},${startY}`;
+    const endKey = `${endX},${endY}`;
+
+    gScore.set(startKey, 0);
+    fScore.set(startKey, Math.abs(endX - startX) + Math.abs(endY - startY));
+
+    const openSet: Array<{ key: string; f: number }> = [{ key: startKey, f: fScore.get(startKey)! }];
+
+    while (openSet.length > 0) {
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+
+      if (current.key === endKey) {
+        const path: Array<{ x: number; y: number }> = [];
+        let currentKey = endKey;
+        while (currentKey) {
+          const [x, y] = currentKey.split(',').map(Number);
+          path.unshift({ x, y });
+          currentKey = cameFrom.get(currentKey)!;
+        }
+
+        let totalElevationChange = 0;
+        for (let i = 1; i < path.length; i++) {
+          totalElevationChange += Math.abs(
+            this.getElevationAt(path[i].x, path[i].y) -
+            this.getElevationAt(path[i - 1].x, path[i - 1].y)
+          );
+        }
+
+        return {
+          path,
+          found: true,
+          totalDistance: path.length - 1,
+          totalElevationChange,
+          nodesExplored: visited.size
+        };
+      }
+
+      visited.add(current.key);
+      const [cx, cy] = current.key.split(',').map(Number);
+
+      const neighbors = [
+        { x: cx - 1, y: cy },
+        { x: cx + 1, y: cy },
+        { x: cx, y: cy - 1 },
+        { x: cx, y: cy + 1 }
+      ];
+
+      for (const neighbor of neighbors) {
+        if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+
+        const neighborKey = `${neighbor.x},${neighbor.y}`;
+        if (visited.has(neighborKey)) continue;
+
+        const terrainType = getTerrainType(this.courseData.layout[neighbor.y]?.[neighbor.x] ?? 0);
+        if (avoidSet.has(terrainType)) continue;
+
+        const elevationDiff = Math.abs(
+          this.getElevationAt(neighbor.x, neighbor.y) - this.getElevationAt(cx, cy)
+        );
+        const moveCost = 1 + elevationDiff * 0.5;
+
+        const tentativeG = (gScore.get(current.key) || Infinity) + moveCost;
+
+        if (tentativeG < (gScore.get(neighborKey) || Infinity)) {
+          cameFrom.set(neighborKey, current.key);
+          gScore.set(neighborKey, tentativeG);
+          const h = Math.abs(endX - neighbor.x) + Math.abs(endY - neighbor.y);
+          fScore.set(neighborKey, tentativeG + h);
+
+          if (!openSet.some(item => item.key === neighborKey)) {
+            openSet.push({ key: neighborKey, f: fScore.get(neighborKey)! });
+          }
+        }
+      }
+    }
+
+    return {
+      path: [],
+      found: false,
+      totalDistance: 0,
+      totalElevationChange: 0,
+      nodesExplored: visited.size
+    };
+  }
+}
+
+export interface NearestTerrainResult {
+  x: number;
+  y: number;
+  distance: number;
+  terrainType: TerrainType;
+  elevation: number;
+}
+
+export interface NearestTerrainsByType {
+  fromX: number;
+  fromY: number;
+  nearestByType: Partial<Record<TerrainType, NearestTerrainResult>>;
+}
+
+export interface ProximityScoreConfig {
+  weights: Partial<Record<TerrainType, number>>;
+  maxDistance: number;
+}
+
+export interface TerrainProximityMap {
+  targetType: TerrainType;
+  maxDistance: number;
+  proximityMap: number[][];
+  averageProximity: number;
+  tilesInRange: number;
+}
+
+export interface TerrainBoundaryDistances {
+  distanceToNorth: number[][];
+  distanceToSouth: number[][];
+  distanceToEast: number[][];
+  distanceToWest: number[][];
+  distanceToAnyBoundary: number[][];
+  mostInteriorTile: { x: number; y: number; minDistance: number } | null;
+  averageDistanceToBoundary: number;
+}
+
+export interface VoronoiDistanceResult {
+  nearestSeed: string[][];
+  distanceToSeed: number[][];
+  regionSizes: Record<string, number>;
+  seedCount: number;
+}
+
+export interface PathFindingResult {
+  path: Array<{ x: number; y: number }>;
+  found: boolean;
+  totalDistance: number;
+  totalElevationChange: number;
+  nodesExplored: number;
 }
 
 export interface ResampledTerrainResult {
