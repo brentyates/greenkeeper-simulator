@@ -338,15 +338,21 @@ export class TerrainBuilder {
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const elev = this.getElevationAt(x, y);
-        const center = this.gridToScreen(x, y, elev);
+        const corners = this.getCornerHeights(x, y);
+        const baseElev = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
+        const center = this.gridToScreen(x, y, baseElev);
+
+        const nwOffset = (corners.nw - baseElev) * ELEVATION_HEIGHT;
+        const neOffset = (corners.ne - baseElev) * ELEVATION_HEIGHT;
+        const seOffset = (corners.se - baseElev) * ELEVATION_HEIGHT;
+        const swOffset = (corners.sw - baseElev) * ELEVATION_HEIGHT;
 
         const tileOutline: Vector3[] = [
-          new Vector3(center.x, center.y + hh, center.z - 0.1),
-          new Vector3(center.x + hw, center.y, center.z - 0.1),
-          new Vector3(center.x, center.y - hh, center.z - 0.1),
-          new Vector3(center.x - hw, center.y, center.z - 0.1),
-          new Vector3(center.x, center.y + hh, center.z - 0.1),
+          new Vector3(center.x, center.y + hh + nwOffset, center.z - 0.1),
+          new Vector3(center.x + hw, center.y + neOffset, center.z - 0.1),
+          new Vector3(center.x, center.y - hh + seOffset, center.z - 0.1),
+          new Vector3(center.x - hw, center.y + swOffset, center.z - 0.1),
+          new Vector3(center.x, center.y + hh + nwOffset, center.z - 0.1),
         ];
         lines.push(tileOutline);
       }
