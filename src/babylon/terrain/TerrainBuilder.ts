@@ -21782,6 +21782,402 @@ export class TerrainBuilder {
         : 0
     };
   }
+
+  public traceLineOfSight(fromX: number, fromY: number, toX: number, toY: number, observerHeight: number = 1.5): LineOfSightTraceResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+
+    if (fromX < 0 || fromX >= width || fromY < 0 || fromY >= height ||
+        toX < 0 || toX >= width || toY < 0 || toY >= height) {
+      return { visible: false, blockedAt: null, path: [], observerHeight, targetHeight: 0 };
+    }
+
+    const fromElevation = this.getElevationAt(fromX, fromY) + observerHeight;
+    const toElevation = this.getElevationAt(toX, toY);
+    const path: Array<{ x: number; y: number; elevation: number; lineHeight: number }> = [];
+
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+    if (steps === 0) {
+      return { visible: true, blockedAt: null, path: [], observerHeight, targetHeight: toElevation };
+    }
+
+    const xStep = dx / steps;
+    const yStep = dy / steps;
+
+    for (let i = 1; i <= steps; i++) {
+      const x = Math.round(fromX + xStep * i);
+      const y = Math.round(fromY + yStep * i);
+      const t = i / steps;
+      const lineHeight = fromElevation + t * (toElevation - fromElevation);
+      const terrainHeight = this.getElevationAt(x, y);
+
+      path.push({ x, y, elevation: terrainHeight, lineHeight });
+
+      if (terrainHeight > lineHeight && !(x === toX && y === toY)) {
+        return { visible: false, blockedAt: { x, y, elevation: terrainHeight }, path, observerHeight, targetHeight: toElevation };
+      }
+    }
+
+    return { visible: true, blockedAt: null, path, observerHeight, targetHeight: toElevation };
+  }
+
+  public computeDetailedViewshed(centerX: number, centerY: number, observerHeight: number = 1.5, maxRadius?: number): DetailedViewshedResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const radius = maxRadius ?? Math.max(width, height);
+    const visibilityMap: boolean[][] = [];
+    const visibleTiles: Array<{ x: number; y: number; distance: number }> = [];
+    const hiddenTiles: Array<{ x: number; y: number; distance: number; blockedBy: { x: number; y: number } | null }> = [];
+
+    for (let y = 0; y < height; y++) {
+      visibilityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        visibilityMap[y][x] = false;
+      }
+    }
+
+    if (centerX >= 0 && centerX < width && centerY >= 0 && centerY < height) {
+      visibilityMap[centerY][centerX] = true;
+      visibleTiles.push({ x: centerX, y: centerY, distance: 0 });
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (x === centerX && y === centerY) continue;
+
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        if (distance > radius) {
+          visibilityMap[y][x] = false;
+          continue;
+        }
+
+        const los = this.traceLineOfSight(centerX, centerY, x, y, observerHeight);
+        visibilityMap[y][x] = los.visible;
+
+        if (los.visible) {
+          visibleTiles.push({ x, y, distance });
+        } else {
+          hiddenTiles.push({ x, y, distance, blockedBy: los.blockedAt ? { x: los.blockedAt.x, y: los.blockedAt.y } : null });
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      centerX,
+      centerY,
+      observerHeight,
+      radius,
+      visibilityMap,
+      visibleTiles,
+      hiddenTiles,
+      visibleCount: visibleTiles.length,
+      hiddenCount: hiddenTiles.length,
+      visibilityPercent: (visibleTiles.length / totalTiles) * 100
+    };
+  }
+
+  public findVisibleTilesOfType(centerX: number, centerY: number, targetType: TerrainType, observerHeight: number = 1.5): VisibleTilesOfTypeResult {
+    const viewshed = this.computeDetailedViewshed(centerX, centerY, observerHeight);
+    const layout = this.courseData.layout;
+    const visibleOfType: Array<{ x: number; y: number; distance: number }> = [];
+    const hiddenOfType: Array<{ x: number; y: number; distance: number }> = [];
+
+    for (const tile of viewshed.visibleTiles) {
+      const terrainType = getTerrainType(layout[tile.y]?.[tile.x]);
+      if (terrainType === targetType) {
+        visibleOfType.push(tile);
+      }
+    }
+
+    for (const tile of viewshed.hiddenTiles) {
+      const terrainType = getTerrainType(layout[tile.y]?.[tile.x]);
+      if (terrainType === targetType) {
+        hiddenOfType.push(tile);
+      }
+    }
+
+    return {
+      centerX,
+      centerY,
+      targetType,
+      visibleOfType,
+      hiddenOfType,
+      totalOfType: visibleOfType.length + hiddenOfType.length,
+      visiblePercent: visibleOfType.length + hiddenOfType.length > 0
+        ? (visibleOfType.length / (visibleOfType.length + hiddenOfType.length)) * 100
+        : 0
+    };
+  }
+
+  public computePointIntervisibility(points: Array<{ x: number; y: number }>, observerHeight: number = 1.5): PointIntervisibilityResult {
+    const matrix: boolean[][] = [];
+    const connections: Array<{ from: number; to: number; visible: boolean; distance: number }> = [];
+
+    for (let i = 0; i < points.length; i++) {
+      matrix[i] = [];
+      for (let j = 0; j < points.length; j++) {
+        if (i === j) {
+          matrix[i][j] = true;
+        } else if (j < i) {
+          matrix[i][j] = matrix[j][i];
+        } else {
+          const los = this.traceLineOfSight(points[i].x, points[i].y, points[j].x, points[j].y, observerHeight);
+          matrix[i][j] = los.visible;
+          const distance = Math.sqrt((points[j].x - points[i].x) ** 2 + (points[j].y - points[i].y) ** 2);
+          connections.push({ from: i, to: j, visible: los.visible, distance });
+        }
+      }
+    }
+
+    const visibleConnections = connections.filter(c => c.visible).length;
+    const totalConnections = connections.length;
+
+    return {
+      points,
+      matrix,
+      connections,
+      visibleConnections,
+      totalConnections,
+      connectivityPercent: totalConnections > 0 ? (visibleConnections / totalConnections) * 100 : 100
+    };
+  }
+
+  public findOptimalViewpoint(targetX: number, targetY: number, searchRadius: number = 10, observerHeight: number = 1.5): OptimalViewpointResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    let bestX = targetX;
+    let bestY = targetY;
+    let bestVisibleCount = 0;
+    let bestElevation = 0;
+    const candidates: Array<{ x: number; y: number; visibleCount: number; elevation: number }> = [];
+
+    const minX = Math.max(0, targetX - searchRadius);
+    const maxX = Math.min(width - 1, targetX + searchRadius);
+    const minY = Math.max(0, targetY - searchRadius);
+    const maxY = Math.min(height - 1, targetY + searchRadius);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const distance = Math.sqrt((x - targetX) ** 2 + (y - targetY) ** 2);
+        if (distance > searchRadius) continue;
+
+        const viewshed = this.computeDetailedViewshed(x, y, observerHeight, searchRadius * 2);
+        const elevation = this.getElevationAt(x, y);
+
+        candidates.push({ x, y, visibleCount: viewshed.visibleCount, elevation });
+
+        if (viewshed.visibleCount > bestVisibleCount ||
+            (viewshed.visibleCount === bestVisibleCount && elevation > bestElevation)) {
+          bestX = x;
+          bestY = y;
+          bestVisibleCount = viewshed.visibleCount;
+          bestElevation = elevation;
+        }
+      }
+    }
+
+    return {
+      targetX,
+      targetY,
+      bestX,
+      bestY,
+      bestVisibleCount,
+      bestElevation,
+      searchRadius,
+      candidates
+    };
+  }
+
+  public computeHorizonProfile(centerX: number, centerY: number, numRays: number = 36, observerHeight: number = 1.5): HorizonProfileResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const maxDist = Math.max(width, height);
+    const horizonAngles: Array<{ direction: number; elevationAngle: number; distance: number; hitX: number; hitY: number }> = [];
+
+    for (let i = 0; i < numRays; i++) {
+      const direction = (i / numRays) * 360;
+      const radians = direction * Math.PI / 180;
+      const dx = Math.cos(radians);
+      const dy = Math.sin(radians);
+
+      let maxElevAngle = -90;
+      let maxDist2 = 0;
+      let hitX = centerX;
+      let hitY = centerY;
+
+      const fromElevation = this.getElevationAt(centerX, centerY) + observerHeight;
+
+      for (let d = 1; d < maxDist; d++) {
+        const x = Math.round(centerX + dx * d);
+        const y = Math.round(centerY + dy * d);
+
+        if (x < 0 || x >= width || y < 0 || y >= height) break;
+
+        const terrainElev = this.getElevationAt(x, y);
+        const elevDiff = terrainElev - fromElevation;
+        const elevAngle = Math.atan2(elevDiff, d) * 180 / Math.PI;
+
+        if (elevAngle > maxElevAngle) {
+          maxElevAngle = elevAngle;
+          maxDist2 = d;
+          hitX = x;
+          hitY = y;
+        }
+      }
+
+      horizonAngles.push({ direction, elevationAngle: maxElevAngle, distance: maxDist2, hitX, hitY });
+    }
+
+    const avgHorizonAngle = horizonAngles.reduce((sum, h) => sum + h.elevationAngle, 0) / numRays;
+    const maxHorizonAngle = Math.max(...horizonAngles.map(h => h.elevationAngle));
+    const minHorizonAngle = Math.min(...horizonAngles.map(h => h.elevationAngle));
+
+    return {
+      centerX,
+      centerY,
+      observerHeight,
+      numRays,
+      horizonAngles,
+      avgHorizonAngle,
+      maxHorizonAngle,
+      minHorizonAngle,
+      skyViewFactor: (90 - avgHorizonAngle) / 90
+    };
+  }
+
+  public computeTerrainShadowMap(sunAzimuth: number, sunAltitude: number): TerrainShadowMapResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const shadowMap: boolean[][] = [];
+    const shadowedTiles: Array<{ x: number; y: number }> = [];
+    const litTiles: Array<{ x: number; y: number }> = [];
+
+    const radAzimuth = sunAzimuth * Math.PI / 180;
+    const radAltitude = sunAltitude * Math.PI / 180;
+    const sunDirX = -Math.cos(radAzimuth) * Math.cos(radAltitude);
+    const sunDirY = -Math.sin(radAzimuth) * Math.cos(radAltitude);
+    const sunDirZ = Math.sin(radAltitude);
+
+    for (let y = 0; y < height; y++) {
+      shadowMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const elevation = this.getElevationAt(x, y);
+        let inShadow = false;
+
+        const maxDist = Math.max(width, height);
+        for (let d = 1; d < maxDist && !inShadow; d++) {
+          const sampleX = x + sunDirX * d;
+          const sampleY = y + sunDirY * d;
+          const expectedZ = elevation + sunDirZ * d;
+
+          const gridX = Math.round(sampleX);
+          const gridY = Math.round(sampleY);
+
+          if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) break;
+
+          const terrainZ = this.getElevationAt(gridX, gridY);
+          if (terrainZ > expectedZ) {
+            inShadow = true;
+          }
+        }
+
+        shadowMap[y][x] = inShadow;
+        if (inShadow) {
+          shadowedTiles.push({ x, y });
+        } else {
+          litTiles.push({ x, y });
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      sunAzimuth,
+      sunAltitude,
+      shadowMap,
+      shadowedTiles,
+      litTiles,
+      shadowedPercent: (shadowedTiles.length / totalTiles) * 100,
+      litPercent: (litTiles.length / totalTiles) * 100
+    };
+  }
+}
+
+export interface LineOfSightTraceResult {
+  visible: boolean;
+  blockedAt: { x: number; y: number; elevation: number } | null;
+  path: Array<{ x: number; y: number; elevation: number; lineHeight: number }>;
+  observerHeight: number;
+  targetHeight: number;
+}
+
+export interface DetailedViewshedResult {
+  centerX: number;
+  centerY: number;
+  observerHeight: number;
+  radius: number;
+  visibilityMap: boolean[][];
+  visibleTiles: Array<{ x: number; y: number; distance: number }>;
+  hiddenTiles: Array<{ x: number; y: number; distance: number; blockedBy: { x: number; y: number } | null }>;
+  visibleCount: number;
+  hiddenCount: number;
+  visibilityPercent: number;
+}
+
+export interface VisibleTilesOfTypeResult {
+  centerX: number;
+  centerY: number;
+  targetType: TerrainType;
+  visibleOfType: Array<{ x: number; y: number; distance: number }>;
+  hiddenOfType: Array<{ x: number; y: number; distance: number }>;
+  totalOfType: number;
+  visiblePercent: number;
+}
+
+export interface PointIntervisibilityResult {
+  points: Array<{ x: number; y: number }>;
+  matrix: boolean[][];
+  connections: Array<{ from: number; to: number; visible: boolean; distance: number }>;
+  visibleConnections: number;
+  totalConnections: number;
+  connectivityPercent: number;
+}
+
+export interface OptimalViewpointResult {
+  targetX: number;
+  targetY: number;
+  bestX: number;
+  bestY: number;
+  bestVisibleCount: number;
+  bestElevation: number;
+  searchRadius: number;
+  candidates: Array<{ x: number; y: number; visibleCount: number; elevation: number }>;
+}
+
+export interface HorizonProfileResult {
+  centerX: number;
+  centerY: number;
+  observerHeight: number;
+  numRays: number;
+  horizonAngles: Array<{ direction: number; elevationAngle: number; distance: number; hitX: number; hitY: number }>;
+  avgHorizonAngle: number;
+  maxHorizonAngle: number;
+  minHorizonAngle: number;
+  skyViewFactor: number;
+}
+
+export interface TerrainShadowMapResult {
+  sunAzimuth: number;
+  sunAltitude: number;
+  shadowMap: boolean[][];
+  shadowedTiles: Array<{ x: number; y: number }>;
+  litTiles: Array<{ x: number; y: number }>;
+  shadowedPercent: number;
+  litPercent: number;
 }
 
 export interface FloodFillResult {
