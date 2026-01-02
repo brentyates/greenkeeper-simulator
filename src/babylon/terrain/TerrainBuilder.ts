@@ -24531,6 +24531,361 @@ export class TerrainBuilder {
       memoryByChunk
     };
   }
+
+  public computeOcclusionMap(
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    rayCount: number = 360
+  ): OcclusionMapResult {
+    const occlusionMap: boolean[][] = [];
+    const visibleTiles: Array<{ x: number; y: number }> = [];
+    const occludedTiles: Array<{ x: number; y: number; occluderX: number; occluderY: number }> = [];
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      occlusionMap[y] = [];
+      for (let x = 0; x < this.courseData.width; x++) {
+        occlusionMap[y][x] = true;
+      }
+    }
+
+    const angleStep = (2 * Math.PI) / rayCount;
+    for (let i = 0; i < rayCount; i++) {
+      const angle = i * angleStep;
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      this.traceOcclusionRay(cameraX, cameraY, cameraZ, dirX, dirY, occlusionMap);
+    }
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        if (occlusionMap[y][x]) {
+          visibleTiles.push({ x, y });
+        } else {
+          occludedTiles.push({ x, y, occluderX: -1, occluderY: -1 });
+        }
+      }
+    }
+
+    return {
+      occlusionMap,
+      visibleTiles,
+      occludedTiles,
+      visibleCount: visibleTiles.length,
+      occludedCount: occludedTiles.length,
+      totalTiles: this.courseData.width * this.courseData.height,
+      occlusionPercent: (occludedTiles.length / (this.courseData.width * this.courseData.height)) * 100
+    };
+  }
+
+  private traceOcclusionRay(
+    startX: number,
+    startY: number,
+    startZ: number,
+    dirX: number,
+    dirY: number,
+    occlusionMap: boolean[][]
+  ): void {
+    const maxDist = Math.sqrt(this.courseData.width ** 2 + this.courseData.height ** 2);
+    let maxAngle = -Infinity;
+
+    for (let dist = 1; dist < maxDist; dist += 0.5) {
+      const x = Math.floor(startX + dirX * dist);
+      const y = Math.floor(startY + dirY * dist);
+
+      if (x < 0 || x >= this.courseData.width || y < 0 || y >= this.courseData.height) {
+        break;
+      }
+
+      const elev = this.getElevationAt(x, y);
+      const angle = Math.atan2(elev - startZ, dist);
+
+      if (angle > maxAngle) {
+        maxAngle = angle;
+        occlusionMap[y][x] = true;
+      } else {
+        occlusionMap[y][x] = false;
+      }
+    }
+  }
+
+  public computeHierarchicalOcclusion(
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    chunkSize: number = 8
+  ): HierarchicalOcclusionResult {
+    const numChunksX = Math.ceil(this.courseData.width / chunkSize);
+    const numChunksY = Math.ceil(this.courseData.height / chunkSize);
+    const chunkOcclusion: Array<{ chunkX: number; chunkY: number; visible: boolean; maxElevation: number }> = [];
+
+    for (let cy = 0; cy < numChunksY; cy++) {
+      for (let cx = 0; cx < numChunksX; cx++) {
+        const chunkCenterX = (cx + 0.5) * chunkSize;
+        const chunkCenterY = (cy + 0.5) * chunkSize;
+
+        let maxElev = -Infinity;
+        for (let dy = 0; dy < chunkSize && cy * chunkSize + dy < this.courseData.height; dy++) {
+          for (let dx = 0; dx < chunkSize && cx * chunkSize + dx < this.courseData.width; dx++) {
+            const elev = this.getElevationAt(cx * chunkSize + dx, cy * chunkSize + dy);
+            maxElev = Math.max(maxElev, elev);
+          }
+        }
+
+        const dx = chunkCenterX - cameraX;
+        const dy = chunkCenterY - cameraY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(maxElev - cameraZ, dist);
+
+        chunkOcclusion.push({
+          chunkX: cx,
+          chunkY: cy,
+          visible: angle > -Math.PI / 4,
+          maxElevation: maxElev
+        });
+      }
+    }
+
+    const visibleChunks = chunkOcclusion.filter(c => c.visible);
+    const occludedChunks = chunkOcclusion.filter(c => !c.visible);
+
+    return {
+      chunkOcclusion,
+      visibleChunks: visibleChunks.length,
+      occludedChunks: occludedChunks.length,
+      totalChunks: chunkOcclusion.length,
+      chunkSize
+    };
+  }
+
+  public computePortalOcclusion(
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    fovDegrees: number = 90
+  ): PortalOcclusionResult {
+    const fovRadians = (fovDegrees * Math.PI) / 180;
+    const halfFov = fovRadians / 2;
+
+    const visibleSectors: Array<{ startAngle: number; endAngle: number; maxDist: number }> = [];
+    const occludedSectors: Array<{ startAngle: number; endAngle: number; occluderElev: number }> = [];
+
+    const sectorCount = 72;
+    const sectorAngle = (2 * Math.PI) / sectorCount;
+
+    for (let i = 0; i < sectorCount; i++) {
+      const startAngle = i * sectorAngle;
+      const endAngle = (i + 1) * sectorAngle;
+
+      let maxElevAngle = -Infinity;
+      let maxDist = 0;
+      let occluderElev = 0;
+
+      for (let dist = 1; dist < 100; dist += 1) {
+        const x = Math.floor(cameraX + Math.cos((startAngle + endAngle) / 2) * dist);
+        const y = Math.floor(cameraY + Math.sin((startAngle + endAngle) / 2) * dist);
+
+        if (x < 0 || x >= this.courseData.width || y < 0 || y >= this.courseData.height) {
+          break;
+        }
+
+        const elev = this.getElevationAt(x, y);
+        const elevAngle = Math.atan2(elev - cameraZ, dist);
+
+        if (elevAngle > maxElevAngle) {
+          maxElevAngle = elevAngle;
+          maxDist = dist;
+          occluderElev = elev;
+        }
+      }
+
+      if (maxElevAngle < halfFov) {
+        visibleSectors.push({ startAngle, endAngle, maxDist });
+      } else {
+        occludedSectors.push({ startAngle, endAngle, occluderElev });
+      }
+    }
+
+    return {
+      visibleSectors,
+      occludedSectors,
+      visibleSectorCount: visibleSectors.length,
+      occludedSectorCount: occludedSectors.length,
+      fovDegrees
+    };
+  }
+
+  public computeTileOcclusionFromDirection(
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    viewDirX: number,
+    viewDirY: number,
+    fovDegrees: number = 60
+  ): DirectionalOcclusionResult {
+    const fovRadians = (fovDegrees * Math.PI) / 180;
+    const halfFov = fovRadians / 2;
+    const viewAngle = Math.atan2(viewDirY, viewDirX);
+
+    const visibleTiles: Array<{ x: number; y: number; distance: number }> = [];
+    const frustumCulledTiles: Array<{ x: number; y: number }> = [];
+    const occlusionCulledTiles: Array<{ x: number; y: number }> = [];
+
+    const elevationAngles: Map<string, number> = new Map();
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const dx = x - cameraX;
+        const dy = y - cameraY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const tileAngle = Math.atan2(dy, dx);
+
+        let angleDiff = tileAngle - viewAngle;
+        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+        if (Math.abs(angleDiff) > halfFov) {
+          frustumCulledTiles.push({ x, y });
+          continue;
+        }
+
+        const elev = this.getElevationAt(x, y);
+        const elevAngle = Math.atan2(elev - cameraZ, dist);
+
+        const rayKey = Math.floor((tileAngle * 180) / Math.PI).toString();
+        const prevMaxAngle = elevationAngles.get(rayKey) ?? -Infinity;
+
+        if (elevAngle >= prevMaxAngle) {
+          elevationAngles.set(rayKey, elevAngle);
+          visibleTiles.push({ x, y, distance: dist });
+        } else {
+          occlusionCulledTiles.push({ x, y });
+        }
+      }
+    }
+
+    visibleTiles.sort((a, b) => a.distance - b.distance);
+
+    return {
+      visibleTiles,
+      frustumCulledTiles,
+      occlusionCulledTiles,
+      visibleCount: visibleTiles.length,
+      frustumCulledCount: frustumCulledTiles.length,
+      occlusionCulledCount: occlusionCulledTiles.length,
+      totalTiles: this.courseData.width * this.courseData.height,
+      fovDegrees,
+      viewDirection: { x: viewDirX, y: viewDirY }
+    };
+  }
+
+  public computeOcclusionStatistics(occlusionResult: OcclusionMapResult): OcclusionStatistics {
+    let totalOccluded = 0;
+    let maxOccludedRun = 0;
+    let currentRun = 0;
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        if (!occlusionResult.occlusionMap[y][x]) {
+          totalOccluded++;
+          currentRun++;
+          maxOccludedRun = Math.max(maxOccludedRun, currentRun);
+        } else {
+          currentRun = 0;
+        }
+      }
+    }
+
+    const avgOccludedPerRow = totalOccluded / this.courseData.height;
+
+    return {
+      totalVisible: occlusionResult.visibleCount,
+      totalOccluded: occlusionResult.occludedCount,
+      occlusionPercent: occlusionResult.occlusionPercent,
+      avgOccludedPerRow,
+      maxOccludedRun,
+      potentialPerformanceGain: occlusionResult.occlusionPercent * 0.8
+    };
+  }
+
+  public buildOcclusionQuadTree(
+    cameraX: number,
+    cameraY: number,
+    cameraZ: number,
+    minNodeSize: number = 4
+  ): OcclusionQuadTreeNode {
+    const buildNode = (x: number, y: number, size: number): OcclusionQuadTreeNode => {
+      let minElev = Infinity;
+      let maxElev = -Infinity;
+
+      for (let dy = 0; dy < size && y + dy < this.courseData.height; dy++) {
+        for (let dx = 0; dx < size && x + dx < this.courseData.width; dx++) {
+          const elev = this.getElevationAt(x + dx, y + dy);
+          minElev = Math.min(minElev, elev);
+          maxElev = Math.max(maxElev, elev);
+        }
+      }
+
+      const centerX = x + size / 2;
+      const centerY = y + size / 2;
+      const dx = centerX - cameraX;
+      const dy = centerY - cameraY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      const visible = dist < 10 || Math.atan2(maxElev - cameraZ, dist) > -Math.PI / 6;
+
+      const children: OcclusionQuadTreeNode[] = [];
+      if (size > minNodeSize && visible) {
+        const halfSize = size / 2;
+        children.push(buildNode(x, y, halfSize));
+        children.push(buildNode(x + halfSize, y, halfSize));
+        children.push(buildNode(x, y + halfSize, halfSize));
+        children.push(buildNode(x + halfSize, y + halfSize, halfSize));
+      }
+
+      return {
+        x,
+        y,
+        size,
+        minElevation: minElev,
+        maxElevation: maxElev,
+        visible,
+        children: children.length > 0 ? children : undefined
+      };
+    };
+
+    const rootSize = Math.max(
+      Math.pow(2, Math.ceil(Math.log2(this.courseData.width))),
+      Math.pow(2, Math.ceil(Math.log2(this.courseData.height)))
+    );
+
+    return buildNode(0, 0, rootSize);
+  }
+
+  public queryVisibleTilesFromQuadTree(
+    root: OcclusionQuadTreeNode
+  ): Array<{ x: number; y: number }> {
+    const visibleTiles: Array<{ x: number; y: number }> = [];
+
+    const traverse = (node: OcclusionQuadTreeNode) => {
+      if (!node.visible) return;
+
+      if (!node.children) {
+        for (let dy = 0; dy < node.size && node.y + dy < this.courseData.height; dy++) {
+          for (let dx = 0; dx < node.size && node.x + dx < this.courseData.width; dx++) {
+            visibleTiles.push({ x: node.x + dx, y: node.y + dy });
+          }
+        }
+      } else {
+        for (const child of node.children) {
+          traverse(child);
+        }
+      }
+    };
+
+    traverse(root);
+    return visibleTiles;
+  }
 }
 
 export interface CompressedElevationData {
@@ -26920,4 +27275,61 @@ export interface StreamingStatistics {
   currentCenterX: number;
   currentCenterY: number;
   memoryByChunk: Array<{ key: string; bytes: number }>;
+}
+
+export interface OcclusionMapResult {
+  occlusionMap: boolean[][];
+  visibleTiles: Array<{ x: number; y: number }>;
+  occludedTiles: Array<{ x: number; y: number; occluderX: number; occluderY: number }>;
+  visibleCount: number;
+  occludedCount: number;
+  totalTiles: number;
+  occlusionPercent: number;
+}
+
+export interface HierarchicalOcclusionResult {
+  chunkOcclusion: Array<{ chunkX: number; chunkY: number; visible: boolean; maxElevation: number }>;
+  visibleChunks: number;
+  occludedChunks: number;
+  totalChunks: number;
+  chunkSize: number;
+}
+
+export interface PortalOcclusionResult {
+  visibleSectors: Array<{ startAngle: number; endAngle: number; maxDist: number }>;
+  occludedSectors: Array<{ startAngle: number; endAngle: number; occluderElev: number }>;
+  visibleSectorCount: number;
+  occludedSectorCount: number;
+  fovDegrees: number;
+}
+
+export interface DirectionalOcclusionResult {
+  visibleTiles: Array<{ x: number; y: number; distance: number }>;
+  frustumCulledTiles: Array<{ x: number; y: number }>;
+  occlusionCulledTiles: Array<{ x: number; y: number }>;
+  visibleCount: number;
+  frustumCulledCount: number;
+  occlusionCulledCount: number;
+  totalTiles: number;
+  fovDegrees: number;
+  viewDirection: { x: number; y: number };
+}
+
+export interface OcclusionStatistics {
+  totalVisible: number;
+  totalOccluded: number;
+  occlusionPercent: number;
+  avgOccludedPerRow: number;
+  maxOccludedRun: number;
+  potentialPerformanceGain: number;
+}
+
+export interface OcclusionQuadTreeNode {
+  x: number;
+  y: number;
+  size: number;
+  minElevation: number;
+  maxElevation: number;
+  visible: boolean;
+  children?: OcclusionQuadTreeNode[];
 }
