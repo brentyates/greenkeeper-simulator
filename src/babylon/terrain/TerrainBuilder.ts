@@ -4084,6 +4084,299 @@ export class TerrainBuilder {
     return false;
   }
 
+  public getFlowDirection(gridX: number, gridY: number): { dx: number; dy: number; steepness: number } | null {
+    if (!this.isValidGridPosition(gridX, gridY)) return null;
+
+    const currentElev = this.getElevationAt(gridX, gridY);
+    const neighbors = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 }, { dx: -1, dy: -1 },
+      { dx: 1, dy: -1 }, { dx: -1, dy: 1 }
+    ];
+
+    let lowestNeighbor: { dx: number; dy: number; elev: number } | null = null;
+
+    for (const n of neighbors) {
+      const nx = gridX + n.dx;
+      const ny = gridY + n.dy;
+      if (!this.isValidGridPosition(nx, ny)) continue;
+
+      const elev = this.getElevationAt(nx, ny);
+      if (!lowestNeighbor || elev < lowestNeighbor.elev) {
+        lowestNeighbor = { dx: n.dx, dy: n.dy, elev };
+      }
+    }
+
+    if (!lowestNeighbor || lowestNeighbor.elev >= currentElev) {
+      return { dx: 0, dy: 0, steepness: 0 };
+    }
+
+    const dist = Math.sqrt(lowestNeighbor.dx * lowestNeighbor.dx + lowestNeighbor.dy * lowestNeighbor.dy);
+    const steepness = (currentElev - lowestNeighbor.elev) / dist;
+
+    return {
+      dx: lowestNeighbor.dx,
+      dy: lowestNeighbor.dy,
+      steepness
+    };
+  }
+
+  public traceFlowPath(
+    startX: number,
+    startY: number,
+    maxSteps: number = 1000
+  ): Array<{ x: number; y: number; elevation: number }> {
+    const path: Array<{ x: number; y: number; elevation: number }> = [];
+    const visited = new Set<string>();
+
+    let x = startX;
+    let y = startY;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const key = `${x},${y}`;
+      if (visited.has(key)) break;
+      visited.add(key);
+
+      const elev = this.getElevationAt(x, y);
+      path.push({ x, y, elevation: elev });
+
+      const flow = this.getFlowDirection(x, y);
+      if (!flow || (flow.dx === 0 && flow.dy === 0)) break;
+
+      x += flow.dx;
+      y += flow.dy;
+    }
+
+    return path;
+  }
+
+  public computeFlowAccumulation(): number[][] {
+    const { width, height } = this.courseData;
+    const accumulation: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      accumulation[y] = new Array(width).fill(1);
+    }
+
+    const elevations: Array<{ x: number; y: number; elev: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        elevations.push({ x, y, elev: this.getElevationAt(x, y) });
+      }
+    }
+
+    elevations.sort((a, b) => b.elev - a.elev);
+
+    for (const tile of elevations) {
+      const flow = this.getFlowDirection(tile.x, tile.y);
+      if (flow && (flow.dx !== 0 || flow.dy !== 0)) {
+        const nx = tile.x + flow.dx;
+        const ny = tile.y + flow.dy;
+        if (this.isValidGridPosition(nx, ny)) {
+          accumulation[ny][nx] += accumulation[tile.y][tile.x];
+        }
+      }
+    }
+
+    return accumulation;
+  }
+
+  public findDrainageSinks(): Array<{ x: number; y: number; elevation: number }> {
+    const { width, height } = this.courseData;
+    const sinks: Array<{ x: number; y: number; elevation: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const flow = this.getFlowDirection(x, y);
+        if (flow && flow.dx === 0 && flow.dy === 0) {
+          sinks.push({ x, y, elevation: this.getElevationAt(x, y) });
+        }
+      }
+    }
+
+    return sinks;
+  }
+
+  public findDrainageBasins(): Array<{
+    sink: { x: number; y: number };
+    tiles: Array<{ x: number; y: number }>;
+    area: number;
+  }> {
+    const { width, height } = this.courseData;
+    const sinks = this.findDrainageSinks();
+    const basinMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      basinMap[y] = new Array(width).fill(-1);
+    }
+
+    for (let i = 0; i < sinks.length; i++) {
+      basinMap[sinks[i].y][sinks[i].x] = i;
+    }
+
+    const elevations: Array<{ x: number; y: number; elev: number }> = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        elevations.push({ x, y, elev: this.getElevationAt(x, y) });
+      }
+    }
+
+    elevations.sort((a, b) => a.elev - b.elev);
+
+    for (const tile of elevations) {
+      if (basinMap[tile.y][tile.x] !== -1) continue;
+
+      const flow = this.getFlowDirection(tile.x, tile.y);
+      if (flow && (flow.dx !== 0 || flow.dy !== 0)) {
+        const nx = tile.x + flow.dx;
+        const ny = tile.y + flow.dy;
+        if (this.isValidGridPosition(nx, ny) && basinMap[ny][nx] !== -1) {
+          basinMap[tile.y][tile.x] = basinMap[ny][nx];
+        }
+      }
+    }
+
+    const basins: Array<{
+      sink: { x: number; y: number };
+      tiles: Array<{ x: number; y: number }>;
+      area: number;
+    }> = [];
+
+    for (let i = 0; i < sinks.length; i++) {
+      const tiles: Array<{ x: number; y: number }> = [];
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (basinMap[y][x] === i) {
+            tiles.push({ x, y });
+          }
+        }
+      }
+      basins.push({
+        sink: sinks[i],
+        tiles,
+        area: tiles.length
+      });
+    }
+
+    return basins;
+  }
+
+  public getStreamNetwork(
+    minAccumulation: number = 10
+  ): Array<{ x: number; y: number; accumulation: number }> {
+    const accumulation = this.computeFlowAccumulation();
+    const { width, height } = this.courseData;
+    const streams: Array<{ x: number; y: number; accumulation: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (accumulation[y][x] >= minAccumulation) {
+          streams.push({ x, y, accumulation: accumulation[y][x] });
+        }
+      }
+    }
+
+    return streams;
+  }
+
+  public simulateWaterFlow(
+    startX: number,
+    startY: number,
+    volume: number = 1,
+    spreadFactor: number = 0.3
+  ): number[][] {
+    const { width, height } = this.courseData;
+    const waterLevel: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      waterLevel[y] = new Array(width).fill(0);
+    }
+
+    const queue: Array<{ x: number; y: number; vol: number }> = [{ x: startX, y: startY, vol: volume }];
+    const processed = new Set<string>();
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => this.getElevationAt(b.x, b.y) - this.getElevationAt(a.x, a.y));
+      const current = queue.shift()!;
+      const key = `${current.x},${current.y}`;
+
+      if (processed.has(key)) continue;
+      processed.add(key);
+
+      waterLevel[current.y][current.x] += current.vol;
+
+      if (current.vol < 0.01) continue;
+
+      const neighbors = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+      ];
+
+      const currentElev = this.getElevationAt(current.x, current.y);
+      const lowerNeighbors: Array<{ x: number; y: number; drop: number }> = [];
+
+      for (const n of neighbors) {
+        const nx = current.x + n.dx;
+        const ny = current.y + n.dy;
+        if (!this.isValidGridPosition(nx, ny)) continue;
+
+        const nElev = this.getElevationAt(nx, ny);
+        if (nElev < currentElev) {
+          lowerNeighbors.push({ x: nx, y: ny, drop: currentElev - nElev });
+        }
+      }
+
+      if (lowerNeighbors.length > 0) {
+        const totalDrop = lowerNeighbors.reduce((sum, n) => sum + n.drop, 0);
+        const flowVolume = current.vol * (1 - spreadFactor);
+
+        for (const n of lowerNeighbors) {
+          const proportion = n.drop / totalDrop;
+          queue.push({ x: n.x, y: n.y, vol: flowVolume * proportion });
+        }
+      }
+    }
+
+    return waterLevel;
+  }
+
+  public getDrainageStatistics(): {
+    totalSinks: number;
+    totalBasins: number;
+    largestBasinArea: number;
+    averageBasinArea: number;
+    maxFlowAccumulation: number;
+    streamNetworkLength: number;
+  } {
+    const sinks = this.findDrainageSinks();
+    const basins = this.findDrainageBasins();
+    const accumulation = this.computeFlowAccumulation();
+    const streams = this.getStreamNetwork(10);
+
+    const { width, height } = this.courseData;
+    let maxAcc = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (accumulation[y][x] > maxAcc) {
+          maxAcc = accumulation[y][x];
+        }
+      }
+    }
+
+    const largestBasin = basins.reduce((max, b) => b.area > max ? b.area : max, 0);
+    const avgBasinArea = basins.length > 0 ? basins.reduce((sum, b) => sum + b.area, 0) / basins.length : 0;
+
+    return {
+      totalSinks: sinks.length,
+      totalBasins: basins.length,
+      largestBasinArea: largestBasin,
+      averageBasinArea: avgBasinArea,
+      maxFlowAccumulation: maxAcc,
+      streamNetworkLength: streams.length
+    };
+  }
+
   public getBilinearElevation(gridX: number, gridY: number): number {
     const { width, height } = this.courseData;
 
