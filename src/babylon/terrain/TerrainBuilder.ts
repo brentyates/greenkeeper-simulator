@@ -20970,6 +20970,487 @@ export class TerrainBuilder {
       timeBetween: comparison.timeBetween
     };
   }
+
+  public dilateElevation(structuringElementSize: number = 3): MorphologyResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const halfSize = Math.floor(structuringElementSize / 2);
+    const originalElevations: number[][] = [];
+    const resultElevations: number[][] = [];
+    let changedCount = 0;
+    let maxIncrease = 0;
+    let totalIncrease = 0;
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      resultElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let maxElev = originalElevations[y][x];
+        for (let dy = -halfSize; dy <= halfSize; dy++) {
+          for (let dx = -halfSize; dx <= halfSize; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              maxElev = Math.max(maxElev, originalElevations[ny][nx]);
+            }
+          }
+        }
+        resultElevations[y][x] = maxElev;
+        const increase = maxElev - originalElevations[y][x];
+        if (increase > 0) {
+          changedCount++;
+          totalIncrease += increase;
+          maxIncrease = Math.max(maxIncrease, increase);
+        }
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, resultElevations[y][x]);
+      }
+    }
+
+    return {
+      operation: 'dilate',
+      structuringElementSize,
+      changedTiles: changedCount,
+      maxChange: maxIncrease,
+      averageChange: changedCount > 0 ? totalIncrease / changedCount : 0,
+      originalElevations,
+      resultElevations
+    };
+  }
+
+  public erodeElevation(structuringElementSize: number = 3): MorphologyResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const halfSize = Math.floor(structuringElementSize / 2);
+    const originalElevations: number[][] = [];
+    const resultElevations: number[][] = [];
+    let changedCount = 0;
+    let maxDecrease = 0;
+    let totalDecrease = 0;
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      resultElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let minElev = originalElevations[y][x];
+        for (let dy = -halfSize; dy <= halfSize; dy++) {
+          for (let dx = -halfSize; dx <= halfSize; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              minElev = Math.min(minElev, originalElevations[ny][nx]);
+            }
+          }
+        }
+        resultElevations[y][x] = minElev;
+        const decrease = originalElevations[y][x] - minElev;
+        if (decrease > 0) {
+          changedCount++;
+          totalDecrease += decrease;
+          maxDecrease = Math.max(maxDecrease, decrease);
+        }
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, resultElevations[y][x]);
+      }
+    }
+
+    return {
+      operation: 'erode',
+      structuringElementSize,
+      changedTiles: changedCount,
+      maxChange: maxDecrease,
+      averageChange: changedCount > 0 ? totalDecrease / changedCount : 0,
+      originalElevations,
+      resultElevations
+    };
+  }
+
+  public openingElevation(structuringElementSize: number = 3): MorphologyResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const originalElevations: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    this.erodeElevation(structuringElementSize);
+    const dilateResult = this.dilateElevation(structuringElementSize);
+
+    let changedCount = 0;
+    let maxChange = 0;
+    let totalChange = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const diff = Math.abs(dilateResult.resultElevations[y][x] - originalElevations[y][x]);
+        if (diff > 0) {
+          changedCount++;
+          totalChange += diff;
+          maxChange = Math.max(maxChange, diff);
+        }
+      }
+    }
+
+    return {
+      operation: 'opening',
+      structuringElementSize,
+      changedTiles: changedCount,
+      maxChange,
+      averageChange: changedCount > 0 ? totalChange / changedCount : 0,
+      originalElevations,
+      resultElevations: dilateResult.resultElevations
+    };
+  }
+
+  public closingElevation(structuringElementSize: number = 3): MorphologyResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const originalElevations: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    this.dilateElevation(structuringElementSize);
+    const erodeResult = this.erodeElevation(structuringElementSize);
+
+    let changedCount = 0;
+    let maxChange = 0;
+    let totalChange = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const diff = Math.abs(erodeResult.resultElevations[y][x] - originalElevations[y][x]);
+        if (diff > 0) {
+          changedCount++;
+          totalChange += diff;
+          maxChange = Math.max(maxChange, diff);
+        }
+      }
+    }
+
+    return {
+      operation: 'closing',
+      structuringElementSize,
+      changedTiles: changedCount,
+      maxChange,
+      averageChange: changedCount > 0 ? totalChange / changedCount : 0,
+      originalElevations,
+      resultElevations: erodeResult.resultElevations
+    };
+  }
+
+  public morphologicalGradient(structuringElementSize: number = 3): MorphologicalGradientResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const halfSize = Math.floor(structuringElementSize / 2);
+    const gradientMap: number[][] = [];
+    let maxGradient = 0;
+    let totalGradient = 0;
+    let edgeCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      gradientMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const currentElev = this.getElevationAt(x, y);
+        let maxElev = currentElev;
+        let minElev = currentElev;
+
+        for (let dy = -halfSize; dy <= halfSize; dy++) {
+          for (let dx = -halfSize; dx <= halfSize; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const neighborElev = this.getElevationAt(nx, ny);
+              maxElev = Math.max(maxElev, neighborElev);
+              minElev = Math.min(minElev, neighborElev);
+            }
+          }
+        }
+
+        const gradient = maxElev - minElev;
+        gradientMap[y][x] = gradient;
+        totalGradient += gradient;
+        maxGradient = Math.max(maxGradient, gradient);
+        if (gradient > 0) {
+          edgeCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      gradientMap,
+      maxGradient,
+      averageGradient: totalGradient / totalTiles,
+      edgeTileCount: edgeCount,
+      edgeDensity: edgeCount / totalTiles,
+      structuringElementSize
+    };
+  }
+
+  public topHatTransform(structuringElementSize: number = 3): TopHatResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const originalElevations: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    const openingResult = this.openingElevation(structuringElementSize);
+    const topHatMap: number[][] = [];
+    let maxValue = 0;
+    let totalValue = 0;
+    let peakCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      topHatMap[y] = [];
+      this.setElevationAtInternal(0, y, originalElevations[y][0]);
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, originalElevations[y][x]);
+        const diff = originalElevations[y][x] - openingResult.resultElevations[y][x];
+        topHatMap[y][x] = Math.max(0, diff);
+        totalValue += topHatMap[y][x];
+        maxValue = Math.max(maxValue, topHatMap[y][x]);
+        if (diff > 0) {
+          peakCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      topHatMap,
+      maxValue,
+      averageValue: totalValue / totalTiles,
+      peakCount,
+      peakDensity: peakCount / totalTiles,
+      structuringElementSize,
+      transformType: 'white'
+    };
+  }
+
+  public blackHatTransform(structuringElementSize: number = 3): TopHatResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const originalElevations: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+      }
+    }
+
+    const closingResult = this.closingElevation(structuringElementSize);
+    const blackHatMap: number[][] = [];
+    let maxValue = 0;
+    let totalValue = 0;
+    let valleyCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      blackHatMap[y] = [];
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, originalElevations[y][x]);
+        const diff = closingResult.resultElevations[y][x] - originalElevations[y][x];
+        blackHatMap[y][x] = Math.max(0, diff);
+        totalValue += blackHatMap[y][x];
+        maxValue = Math.max(maxValue, blackHatMap[y][x]);
+        if (diff > 0) {
+          valleyCount++;
+        }
+      }
+    }
+
+    const totalTiles = width * height;
+    return {
+      topHatMap: blackHatMap,
+      maxValue,
+      averageValue: totalValue / totalTiles,
+      peakCount: valleyCount,
+      peakDensity: valleyCount / totalTiles,
+      structuringElementSize,
+      transformType: 'black'
+    };
+  }
+
+  public detectMorphologicalEdges(threshold: number = 0.5): MorphologicalEdgeResult {
+    const gradientResult = this.morphologicalGradient(3);
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const edgeMap: boolean[][] = [];
+    const edges: Array<{ x: number; y: number; strength: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      edgeMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        const isEdge = gradientResult.gradientMap[y][x] >= threshold;
+        edgeMap[y][x] = isEdge;
+        if (isEdge) {
+          edges.push({ x, y, strength: gradientResult.gradientMap[y][x] });
+        }
+      }
+    }
+
+    let avgStrength = 0;
+    if (edges.length > 0) {
+      avgStrength = edges.reduce((sum, e) => sum + e.strength, 0) / edges.length;
+    }
+
+    return {
+      edgeMap,
+      edges,
+      edgeCount: edges.length,
+      threshold,
+      maxStrength: gradientResult.maxGradient,
+      averageStrength: avgStrength
+    };
+  }
+
+  public applyMorphologicalReconstruction(markerElevations: number[][], iterations: number = 100): MorphologyResult {
+    const width = this.courseData.width;
+    const height = this.courseData.height;
+    const originalElevations: number[][] = [];
+    const resultElevations: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      originalElevations[y] = [];
+      resultElevations[y] = [];
+      for (let x = 0; x < width; x++) {
+        originalElevations[y][x] = this.getElevationAt(x, y);
+        resultElevations[y][x] = markerElevations[y]?.[x] ?? 0;
+      }
+    }
+
+    for (let iter = 0; iter < iterations; iter++) {
+      let changed = false;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const maskValue = originalElevations[y][x];
+          let maxNeighbor = resultElevations[y][x];
+
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                maxNeighbor = Math.max(maxNeighbor, resultElevations[ny][nx]);
+              }
+            }
+          }
+
+          const newValue = Math.min(maxNeighbor, maskValue);
+          if (newValue !== resultElevations[y][x]) {
+            resultElevations[y][x] = newValue;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+
+    let changedCount = 0;
+    let maxChange = 0;
+    let totalChange = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        this.setElevationAtInternal(x, y, resultElevations[y][x]);
+        const diff = Math.abs(resultElevations[y][x] - originalElevations[y][x]);
+        if (diff > 0) {
+          changedCount++;
+          totalChange += diff;
+          maxChange = Math.max(maxChange, diff);
+        }
+      }
+    }
+
+    return {
+      operation: 'reconstruction',
+      structuringElementSize: 3,
+      changedTiles: changedCount,
+      maxChange,
+      averageChange: changedCount > 0 ? totalChange / changedCount : 0,
+      originalElevations,
+      resultElevations
+    };
+  }
+}
+
+export interface MorphologyResult {
+  operation: 'dilate' | 'erode' | 'opening' | 'closing' | 'reconstruction';
+  structuringElementSize: number;
+  changedTiles: number;
+  maxChange: number;
+  averageChange: number;
+  originalElevations: number[][];
+  resultElevations: number[][];
+}
+
+export interface MorphologicalGradientResult {
+  gradientMap: number[][];
+  maxGradient: number;
+  averageGradient: number;
+  edgeTileCount: number;
+  edgeDensity: number;
+  structuringElementSize: number;
+}
+
+export interface TopHatResult {
+  topHatMap: number[][];
+  maxValue: number;
+  averageValue: number;
+  peakCount: number;
+  peakDensity: number;
+  structuringElementSize: number;
+  transformType: 'white' | 'black';
+}
+
+export interface MorphologicalEdgeResult {
+  edgeMap: boolean[][];
+  edges: Array<{ x: number; y: number; strength: number }>;
+  edgeCount: number;
+  threshold: number;
+  maxStrength: number;
+  averageStrength: number;
 }
 
 export interface TerrainSnapshot {
