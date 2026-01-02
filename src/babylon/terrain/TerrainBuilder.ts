@@ -10905,6 +10905,287 @@ export class TerrainBuilder {
     return modifiedCount;
   }
 
+  public findPathWithCost(startX: number, startY: number, endX: number, endY: number, maxSlope: number = 45): TerrainPathResult | null {
+    if (!this.isValidGridPosition(startX, startY) || !this.isValidGridPosition(endX, endY)) {
+      return null;
+    }
+
+    const openSet: Array<{ x: number; y: number; g: number; h: number; f: number; parent: { x: number; y: number } | null }> = [];
+    const closedSet = new Set<string>();
+    const gScores = new Map<string, number>();
+
+    const heuristic = (x: number, y: number) => {
+      const dx = Math.abs(x - endX);
+      const dy = Math.abs(y - endY);
+      return dx + dy;
+    };
+
+    const startKey = `${startX},${startY}`;
+    gScores.set(startKey, 0);
+    openSet.push({ x: startX, y: startY, g: 0, h: heuristic(startX, startY), f: heuristic(startX, startY), parent: null });
+
+    const cameFrom = new Map<string, { x: number; y: number }>();
+
+    while (openSet.length > 0) {
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+      const currentKey = `${current.x},${current.y}`;
+
+      if (current.x === endX && current.y === endY) {
+        const path: Array<{ x: number; y: number }> = [];
+        let node: { x: number; y: number } | undefined = { x: current.x, y: current.y };
+        while (node) {
+          path.unshift(node);
+          node = cameFrom.get(`${node.x},${node.y}`);
+        }
+
+        let totalElevationChange = 0;
+        let maxSlopeAngle = 0;
+        for (let i = 1; i < path.length; i++) {
+          const elev1 = this.getElevationAt(path[i - 1].x, path[i - 1].y);
+          const elev2 = this.getElevationAt(path[i].x, path[i].y);
+          totalElevationChange += Math.abs(elev2 - elev1);
+          const slopeAngle = Math.atan2(Math.abs(elev2 - elev1), 1) * 180 / Math.PI;
+          maxSlopeAngle = Math.max(maxSlopeAngle, slopeAngle);
+        }
+
+        return {
+          path,
+          totalCost: gScores.get(currentKey) ?? 0,
+          pathLength: path.length,
+          totalElevationChange,
+          maxSlopeAngle,
+          found: true
+        };
+      }
+
+      closedSet.add(currentKey);
+
+      const directions = [
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 },
+        { dx: 1, dy: -1 }, { dx: 1, dy: 1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
+      ];
+
+      for (const dir of directions) {
+        const nx = current.x + dir.dx;
+        const ny = current.y + dir.dy;
+        const neighborKey = `${nx},${ny}`;
+
+        if (!this.isValidGridPosition(nx, ny) || closedSet.has(neighborKey)) continue;
+
+        const currentElev = this.getElevationAt(current.x, current.y);
+        const neighborElev = this.getElevationAt(nx, ny);
+        const dist = Math.sqrt(dir.dx * dir.dx + dir.dy * dir.dy);
+        const slopeAngle = Math.atan2(Math.abs(neighborElev - currentElev), dist) * 180 / Math.PI;
+
+        if (slopeAngle > maxSlope) continue;
+
+        const terrainType = this.getTerrainTypeAt(nx, ny);
+        if (terrainType === 'water') continue;
+
+        const moveCost = dist + Math.abs(neighborElev - currentElev) * 0.5;
+        const tentativeG = (gScores.get(currentKey) ?? 0) + moveCost;
+        const neighborG = gScores.get(neighborKey) ?? Infinity;
+
+        if (tentativeG < neighborG) {
+          cameFrom.set(neighborKey, { x: current.x, y: current.y });
+          gScores.set(neighborKey, tentativeG);
+          const h = heuristic(nx, ny);
+          const existingIndex = openSet.findIndex(n => n.x === nx && n.y === ny);
+          if (existingIndex >= 0) {
+            openSet[existingIndex] = { x: nx, y: ny, g: tentativeG, h, f: tentativeG + h, parent: { x: current.x, y: current.y } };
+          } else {
+            openSet.push({ x: nx, y: ny, g: tentativeG, h, f: tentativeG + h, parent: { x: current.x, y: current.y } });
+          }
+        }
+      }
+    }
+
+    return { path: [], totalCost: Infinity, pathLength: 0, totalElevationChange: 0, maxSlopeAngle: 0, found: false };
+  }
+
+  public checkLineOfSightSimple(x1: number, y1: number, height1: number, x2: number, y2: number, height2: number): SimpleLineOfSightResult {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance === 0) {
+      return { visible: true, blockedAt: null, minClearance: Infinity, obstructions: [] };
+    }
+
+    const steps = Math.ceil(distance * 2);
+    const obstructions: Array<{ x: number; y: number; elevation: number; clearance: number }> = [];
+    let minClearance = Infinity;
+    let blockedAt: { x: number; y: number } | null = null;
+
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const px = x1 + dx * t;
+      const py = y1 + dy * t;
+      const gridX = Math.round(px);
+      const gridY = Math.round(py);
+
+      if (!this.isValidGridPosition(gridX, gridY)) continue;
+
+      const rayHeight = height1 + (height2 - height1) * t;
+      const terrainElev = this.getElevationAt(gridX, gridY);
+      const clearance = rayHeight - terrainElev;
+
+      if (clearance < minClearance) {
+        minClearance = clearance;
+      }
+
+      if (clearance < 0) {
+        obstructions.push({ x: gridX, y: gridY, elevation: terrainElev, clearance });
+        if (!blockedAt) {
+          blockedAt = { x: gridX, y: gridY };
+        }
+      }
+    }
+
+    return {
+      visible: blockedAt === null,
+      blockedAt,
+      minClearance,
+      obstructions
+    };
+  }
+
+  public getVisibleTilesFromPoint(viewX: number, viewY: number, viewHeight: number, maxDistance: number): SimpleVisibilityMap {
+    const visibleTiles: Array<{ x: number; y: number; distance: number; clearance: number }> = [];
+    const hiddenTiles: Array<{ x: number; y: number; distance: number; reason: string }> = [];
+
+    const minX = Math.max(0, Math.floor(viewX - maxDistance));
+    const maxX = Math.min(this.courseData.width - 1, Math.ceil(viewX + maxDistance));
+    const minY = Math.max(0, Math.floor(viewY - maxDistance));
+    const maxY = Math.min(this.courseData.height - 1, Math.ceil(viewY + maxDistance));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (x === viewX && y === viewY) continue;
+
+        const distance = Math.sqrt((x - viewX) ** 2 + (y - viewY) ** 2);
+        if (distance > maxDistance) continue;
+
+        const targetElev = this.getElevationAt(x, y);
+        const los = this.checkLineOfSightSimple(viewX, viewY, viewHeight, x, y, targetElev);
+
+        if (los.visible) {
+          visibleTiles.push({ x, y, distance, clearance: los.minClearance });
+        } else {
+          hiddenTiles.push({ x, y, distance, reason: 'terrain_blocked' });
+        }
+      }
+    }
+
+    return {
+      viewpoint: { x: viewX, y: viewY, height: viewHeight },
+      maxDistance,
+      visibleCount: visibleTiles.length,
+      hiddenCount: hiddenTiles.length,
+      visibilityRatio: visibleTiles.length / (visibleTiles.length + hiddenTiles.length),
+      visibleTiles,
+      hiddenTiles
+    };
+  }
+
+  public findBestViewpointsForTarget(targetX: number, targetY: number, searchRadius: number, minHeight: number = 0): Array<ViewpointScore> {
+    const viewpoints: Array<ViewpointScore> = [];
+
+    const minX = Math.max(0, targetX - searchRadius);
+    const maxX = Math.min(this.courseData.width - 1, targetX + searchRadius);
+    const minY = Math.max(0, targetY - searchRadius);
+    const maxY = Math.min(this.courseData.height - 1, targetY + searchRadius);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (x === targetX && y === targetY) continue;
+
+        const distance = Math.sqrt((x - targetX) ** 2 + (y - targetY) ** 2);
+        if (distance > searchRadius) continue;
+
+        const viewElev = this.getElevationAt(x, y);
+        if (viewElev < minHeight) continue;
+
+        const targetElev = this.getElevationAt(targetX, targetY);
+        const viewHeight = viewElev + 1.5;
+        const los = this.checkLineOfSightSimple(x, y, viewHeight, targetX, targetY, targetElev);
+
+        if (los.visible) {
+          const elevAdvantage = viewElev - targetElev;
+          const score = los.minClearance + elevAdvantage * 0.5 - distance * 0.1;
+
+          viewpoints.push({
+            x, y,
+            elevation: viewElev,
+            distance,
+            clearance: los.minClearance,
+            score,
+            canSeeTarget: true
+          });
+        }
+      }
+    }
+
+    viewpoints.sort((a, b) => b.score - a.score);
+    return viewpoints.slice(0, 10);
+  }
+
+  public computeDetailedShadowMap(sunAngle: number, sunAzimuth: number): DetailedShadowMapResult {
+    const shadowedTiles: Array<{ x: number; y: number; shadowDepth: number }> = [];
+    const litTiles: Array<{ x: number; y: number; illumination: number }> = [];
+
+    const sunRad = sunAngle * Math.PI / 180;
+    const azRad = sunAzimuth * Math.PI / 180;
+    const sunDirX = Math.cos(azRad);
+    const sunDirY = Math.sin(azRad);
+    const sunTan = Math.tan(sunRad);
+
+    for (let y = 0; y < this.courseData.height; y++) {
+      for (let x = 0; x < this.courseData.width; x++) {
+        const tileElev = this.getElevationAt(x, y);
+        let inShadow = false;
+        let shadowDepth = 0;
+
+        for (let dist = 1; dist < 50; dist++) {
+          const checkX = Math.round(x - sunDirX * dist);
+          const checkY = Math.round(y - sunDirY * dist);
+
+          if (!this.isValidGridPosition(checkX, checkY)) break;
+
+          const checkElev = this.getElevationAt(checkX, checkY);
+          const requiredHeight = tileElev + dist * sunTan;
+
+          if (checkElev > requiredHeight) {
+            inShadow = true;
+            shadowDepth = checkElev - requiredHeight;
+            break;
+          }
+        }
+
+        if (inShadow) {
+          shadowedTiles.push({ x, y, shadowDepth });
+        } else {
+          const slope = this.getSlopeVectorAt(x, y);
+          const slopeX = slope.magnitude * Math.cos(slope.direction * Math.PI / 180);
+          const slopeY = slope.magnitude * Math.sin(slope.direction * Math.PI / 180);
+          const dotProduct = Math.cos(sunRad) + (slopeX * sunDirX + slopeY * sunDirY) * Math.sin(sunRad);
+          const illumination = Math.max(0, dotProduct);
+          litTiles.push({ x, y, illumination });
+        }
+      }
+    }
+
+    return {
+      sunAngle,
+      sunAzimuth,
+      shadowedCount: shadowedTiles.length,
+      litCount: litTiles.length,
+      shadowCoverage: shadowedTiles.length / (this.courseData.width * this.courseData.height),
+      shadowedTiles,
+      litTiles
+    };
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -16603,4 +16884,50 @@ export interface TerrainHealth {
   anomalies: TerrainAnomalies;
   excessiveSlopeCount: number;
   status: 'healthy' | 'warning' | 'critical';
+}
+
+export interface TerrainPathResult {
+  path: Array<{ x: number; y: number }>;
+  totalCost: number;
+  pathLength: number;
+  totalElevationChange: number;
+  maxSlopeAngle: number;
+  found: boolean;
+}
+
+export interface SimpleLineOfSightResult {
+  visible: boolean;
+  blockedAt: { x: number; y: number } | null;
+  minClearance: number;
+  obstructions: Array<{ x: number; y: number; elevation: number; clearance: number }>;
+}
+
+export interface SimpleVisibilityMap {
+  viewpoint: { x: number; y: number; height: number };
+  maxDistance: number;
+  visibleCount: number;
+  hiddenCount: number;
+  visibilityRatio: number;
+  visibleTiles: Array<{ x: number; y: number; distance: number; clearance: number }>;
+  hiddenTiles: Array<{ x: number; y: number; distance: number; reason: string }>;
+}
+
+export interface ViewpointScore {
+  x: number;
+  y: number;
+  elevation: number;
+  distance: number;
+  clearance: number;
+  score: number;
+  canSeeTarget: boolean;
+}
+
+export interface DetailedShadowMapResult {
+  sunAngle: number;
+  sunAzimuth: number;
+  shadowedCount: number;
+  litCount: number;
+  shadowCoverage: number;
+  shadowedTiles: Array<{ x: number; y: number; shadowDepth: number }>;
+  litTiles: Array<{ x: number; y: number; illumination: number }>;
 }
