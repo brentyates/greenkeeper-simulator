@@ -5449,6 +5449,233 @@ export class TerrainBuilder {
     return bestArea;
   }
 
+  public computeViewshed(
+    observerX: number,
+    observerY: number,
+    observerHeight: number = 1.5,
+    maxRadius?: number
+  ): boolean[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const viewshed: boolean[][] = [];
+    const radius = maxRadius ?? Math.max(width, height);
+    const observerElev = (elevation[observerY]?.[observerX] ?? 0) + observerHeight;
+
+    for (let y = 0; y < height; y++) {
+      viewshed[y] = [];
+      for (let x = 0; x < width; x++) {
+        if (x === observerX && y === observerY) {
+          viewshed[y][x] = true;
+          continue;
+        }
+
+        const dx = x - observerX;
+        const dy = y - observerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > radius) {
+          viewshed[y][x] = false;
+          continue;
+        }
+
+        viewshed[y][x] = this.isVisibleFromPoint(observerX, observerY, observerElev, x, y);
+      }
+    }
+
+    return viewshed;
+  }
+
+  private isVisibleFromPoint(
+    obsX: number,
+    obsY: number,
+    obsElev: number,
+    targetX: number,
+    targetY: number
+  ): boolean {
+    const { elevation } = this.courseData;
+    if (!elevation) return false;
+
+    const dx = targetX - obsX;
+    const dy = targetY - obsY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return true;
+
+    const targetElev = elevation[targetY]?.[targetX] ?? 0;
+    const steps = Math.ceil(dist);
+    const stepX = dx / steps;
+    const stepY = dy / steps;
+
+    let maxAngle = -Infinity;
+
+    for (let i = 1; i <= steps; i++) {
+      const sampleX = Math.round(obsX + stepX * i);
+      const sampleY = Math.round(obsY + stepY * i);
+      const sampleDist = Math.sqrt(Math.pow(sampleX - obsX, 2) + Math.pow(sampleY - obsY, 2));
+
+      if (sampleDist === 0) continue;
+
+      const sampleElev = elevation[sampleY]?.[sampleX] ?? 0;
+      const angle = Math.atan2(sampleElev - obsElev, sampleDist);
+
+      if (i === steps) {
+        return angle >= maxAngle;
+      }
+
+      if (angle > maxAngle) {
+        maxAngle = angle;
+      }
+    }
+
+    const finalAngle = Math.atan2(targetElev - obsElev, dist);
+    return finalAngle >= maxAngle;
+  }
+
+  public computeMultiViewshed(
+    observers: Array<{ x: number; y: number; height?: number }>,
+    maxRadius?: number
+  ): { combined: boolean[][]; coverage: number[][] } {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation || observers.length === 0) return { combined: [], coverage: [] };
+
+    const combined: boolean[][] = [];
+    const coverage: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      combined[y] = [];
+      coverage[y] = [];
+      for (let x = 0; x < width; x++) {
+        combined[y][x] = false;
+        coverage[y][x] = 0;
+      }
+    }
+
+    for (const obs of observers) {
+      const viewshed = this.computeViewshed(obs.x, obs.y, obs.height ?? 1.5, maxRadius);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (viewshed[y]?.[x]) {
+            combined[y][x] = true;
+            coverage[y][x]++;
+          }
+        }
+      }
+    }
+
+    return { combined, coverage };
+  }
+
+  public getViewshedStatistics(viewshed: boolean[][]): ViewshedStatistics {
+    const { width, height } = this.courseData;
+    let visibleCount = 0;
+    let hiddenCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (viewshed[y]?.[x]) {
+          visibleCount++;
+        } else {
+          hiddenCount++;
+        }
+      }
+    }
+
+    const totalTiles = visibleCount + hiddenCount;
+    return {
+      visibleCount,
+      hiddenCount,
+      totalTiles,
+      visibilityPercentage: totalTiles > 0 ? (visibleCount / totalTiles) * 100 : 0
+    };
+  }
+
+  public findOptimalObserverPosition(
+    numCandidates: number = 100,
+    observerHeight: number = 1.5,
+    maxRadius?: number
+  ): { x: number; y: number; visibilityPercentage: number } | null {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return null;
+
+    let bestPosition: { x: number; y: number; visibilityPercentage: number } | null = null;
+    let bestVisibility = -1;
+
+    const stepX = Math.max(1, Math.floor(width / Math.sqrt(numCandidates)));
+    const stepY = Math.max(1, Math.floor(height / Math.sqrt(numCandidates)));
+
+    for (let y = 0; y < height; y += stepY) {
+      for (let x = 0; x < width; x += stepX) {
+        const viewshed = this.computeViewshed(x, y, observerHeight, maxRadius);
+        const stats = this.getViewshedStatistics(viewshed);
+
+        if (stats.visibilityPercentage > bestVisibility) {
+          bestVisibility = stats.visibilityPercentage;
+          bestPosition = { x, y, visibilityPercentage: stats.visibilityPercentage };
+        }
+      }
+    }
+
+    return bestPosition;
+  }
+
+  public computeCumulativeViewshed(gridSpacing: number = 5, observerHeight: number = 1.5): number[][] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    const cumulativeVisibility: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      cumulativeVisibility[y] = [];
+      for (let x = 0; x < width; x++) {
+        cumulativeVisibility[y][x] = 0;
+      }
+    }
+
+    for (let obsY = 0; obsY < height; obsY += gridSpacing) {
+      for (let obsX = 0; obsX < width; obsX += gridSpacing) {
+        const viewshed = this.computeViewshed(obsX, obsY, observerHeight);
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            if (viewshed[y]?.[x]) {
+              cumulativeVisibility[y][x]++;
+            }
+          }
+        }
+      }
+    }
+
+    return cumulativeVisibility;
+  }
+
+  public getViewshedBoundary(viewshed: boolean[][]): Array<{ x: number; y: number }> {
+    const { width, height } = this.courseData;
+    const boundary: Array<{ x: number; y: number }> = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (!viewshed[y]?.[x]) continue;
+
+        let isBoundary = false;
+        for (let dy = -1; dy <= 1 && !isBoundary; dy++) {
+          for (let dx = -1; dx <= 1 && !isBoundary; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height || !viewshed[ny]?.[nx]) {
+              isBoundary = true;
+            }
+          }
+        }
+
+        if (isBoundary) {
+          boundary.push({ x, y });
+        }
+      }
+    }
+
+    return boundary;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -10420,6 +10647,13 @@ export interface SurfaceRoughnessAnalysis {
   veryRoughTileCount: number;
   avgRugosity: number;
   terrainComplexity: number;
+}
+
+export interface ViewshedStatistics {
+  visibleCount: number;
+  hiddenCount: number;
+  totalTiles: number;
+  visibilityPercentage: number;
 }
 
 export interface LineSampleOptions {
