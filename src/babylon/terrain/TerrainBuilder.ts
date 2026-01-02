@@ -5239,6 +5239,216 @@ export class TerrainBuilder {
     };
   }
 
+  public getLocalRoughness(gridX: number, gridY: number, radius: number = 1): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 0;
+
+    const centerElev = elevation[gridY]?.[gridX] ?? 0;
+    let sumSquaredDiff = 0;
+    let count = 0;
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = gridX + dx;
+        const ny = gridY + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+        const diff = elevation[ny][nx] - centerElev;
+        sumSquaredDiff += diff * diff;
+        count++;
+      }
+    }
+
+    return count > 0 ? Math.sqrt(sumSquaredDiff / count) : 0;
+  }
+
+  public computeRoughnessMap(radius: number = 1): number[][] {
+    const { width, height } = this.courseData;
+    const roughnessMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      roughnessMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        roughnessMap[y][x] = this.getLocalRoughness(x, y, radius);
+      }
+    }
+
+    return roughnessMap;
+  }
+
+  public getRugosityIndex(gridX: number, gridY: number, windowSize: number = 3): number {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return 1;
+
+    const halfSize = Math.floor(windowSize / 2);
+    let surfaceArea = 0;
+    let projectedArea = 0;
+
+    for (let dy = -halfSize; dy < halfSize; dy++) {
+      for (let dx = -halfSize; dx < halfSize; dx++) {
+        const x = gridX + dx;
+        const y = gridY + dy;
+        if (x < 0 || x >= width - 1 || y < 0 || y >= height - 1) continue;
+
+        const e00 = elevation[y][x];
+        const e10 = elevation[y][x + 1];
+        const e01 = elevation[y + 1][x];
+
+        const dx1 = 1;
+        const dy1 = 0;
+        const dz1 = (e10 - e00) * ELEVATION_HEIGHT;
+        const dx2 = 0;
+        const dy2 = 1;
+        const dz2 = (e01 - e00) * ELEVATION_HEIGHT;
+
+        const crossX = dy1 * dz2 - dz1 * dy2;
+        const crossY = dz1 * dx2 - dx1 * dz2;
+        const crossZ = dx1 * dy2 - dy1 * dx2;
+
+        surfaceArea += Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ) * 0.5;
+        projectedArea += 0.5;
+      }
+    }
+
+    return projectedArea > 0 ? surfaceArea / projectedArea : 1;
+  }
+
+  public computeRugosityMap(windowSize: number = 3): number[][] {
+    const { width, height } = this.courseData;
+    const rugosityMap: number[][] = [];
+
+    for (let y = 0; y < height; y++) {
+      rugosityMap[y] = [];
+      for (let x = 0; x < width; x++) {
+        rugosityMap[y][x] = this.getRugosityIndex(x, y, windowSize);
+      }
+    }
+
+    return rugosityMap;
+  }
+
+  public getTerrainSmoothness(gridX: number, gridY: number, radius: number = 2): number {
+    const roughness = this.getLocalRoughness(gridX, gridY, radius);
+    return 1 / (1 + roughness);
+  }
+
+  public getSurfaceRoughnessAnalysis(): SurfaceRoughnessAnalysis {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) {
+      return {
+        minRoughness: 0,
+        maxRoughness: 0,
+        avgRoughness: 0,
+        stdDevRoughness: 0,
+        smoothTileCount: 0,
+        roughTileCount: 0,
+        veryRoughTileCount: 0,
+        avgRugosity: 1,
+        terrainComplexity: 0
+      };
+    }
+
+    const roughnessValues: number[] = [];
+    let totalRugosity = 0;
+    let rugosityCount = 0;
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        roughnessValues.push(this.getLocalRoughness(x, y, 1));
+        totalRugosity += this.getRugosityIndex(x, y, 3);
+        rugosityCount++;
+      }
+    }
+
+    const minRoughness = Math.min(...roughnessValues);
+    const maxRoughness = Math.max(...roughnessValues);
+    const avgRoughness = roughnessValues.reduce((a, b) => a + b, 0) / roughnessValues.length;
+
+    const variance = roughnessValues.reduce((sum, r) => sum + Math.pow(r - avgRoughness, 2), 0) / roughnessValues.length;
+    const stdDevRoughness = Math.sqrt(variance);
+
+    const smoothTileCount = roughnessValues.filter(r => r < 0.5).length;
+    const roughTileCount = roughnessValues.filter(r => r >= 0.5 && r < 1.5).length;
+    const veryRoughTileCount = roughnessValues.filter(r => r >= 1.5).length;
+
+    const avgRugosity = rugosityCount > 0 ? totalRugosity / rugosityCount : 1;
+
+    const terrainComplexity = avgRoughness * avgRugosity * (1 + stdDevRoughness / (avgRoughness + 0.001));
+
+    return {
+      minRoughness,
+      maxRoughness,
+      avgRoughness,
+      stdDevRoughness,
+      smoothTileCount,
+      roughTileCount,
+      veryRoughTileCount,
+      avgRugosity,
+      terrainComplexity
+    };
+  }
+
+  public findSmoothestArea(minSize: number = 5): { x: number; y: number; width: number; height: number; avgRoughness: number } | null {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation || minSize > width || minSize > height) return null;
+
+    let bestArea: { x: number; y: number; width: number; height: number; avgRoughness: number } | null = null;
+    let bestRoughness = Infinity;
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let totalRoughness = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            totalRoughness += this.getLocalRoughness(x + dx, y + dy, 1);
+            count++;
+          }
+        }
+
+        const avgRoughness = totalRoughness / count;
+        if (avgRoughness < bestRoughness) {
+          bestRoughness = avgRoughness;
+          bestArea = { x, y, width: minSize, height: minSize, avgRoughness };
+        }
+      }
+    }
+
+    return bestArea;
+  }
+
+  public findRoughestArea(minSize: number = 5): { x: number; y: number; width: number; height: number; avgRoughness: number } | null {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation || minSize > width || minSize > height) return null;
+
+    let bestArea: { x: number; y: number; width: number; height: number; avgRoughness: number } | null = null;
+    let bestRoughness = -Infinity;
+
+    for (let y = 0; y <= height - minSize; y++) {
+      for (let x = 0; x <= width - minSize; x++) {
+        let totalRoughness = 0;
+        let count = 0;
+
+        for (let dy = 0; dy < minSize; dy++) {
+          for (let dx = 0; dx < minSize; dx++) {
+            totalRoughness += this.getLocalRoughness(x + dx, y + dy, 1);
+            count++;
+          }
+        }
+
+        const avgRoughness = totalRoughness / count;
+        if (avgRoughness > bestRoughness) {
+          bestRoughness = avgRoughness;
+          bestArea = { x, y, width: minSize, height: minSize, avgRoughness };
+        }
+      }
+    }
+
+    return bestArea;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -10198,6 +10408,18 @@ export interface TerrainFeatureClassification {
   valleyLineCount: number;
   totalRidgeLength: number;
   totalValleyLength: number;
+}
+
+export interface SurfaceRoughnessAnalysis {
+  minRoughness: number;
+  maxRoughness: number;
+  avgRoughness: number;
+  stdDevRoughness: number;
+  smoothTileCount: number;
+  roughTileCount: number;
+  veryRoughTileCount: number;
+  avgRugosity: number;
+  terrainComplexity: number;
 }
 
 export interface LineSampleOptions {
