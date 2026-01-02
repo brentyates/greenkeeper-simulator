@@ -8645,6 +8645,188 @@ export class TerrainBuilder {
     return patches;
   }
 
+  public generateContourLines(interval: number = 0.5): ContourLine[] {
+    const { width, height, elevation } = this.courseData;
+    if (!elevation) return [];
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+      }
+    }
+
+    const contours: ContourLine[] = [];
+    const startLevel = Math.ceil(minElev / interval) * interval;
+
+    for (let level = startLevel; level <= maxElev; level += interval) {
+      const segments = this.traceContourAtLevel(level);
+      if (segments.length > 0) {
+        contours.push({
+          elevation: level,
+          segments,
+          isMajor: Math.abs(level % (interval * 5)) < 0.001
+        });
+      }
+    }
+
+    return contours;
+  }
+
+  private traceContourAtLevel(level: number): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    const { width, height } = this.courseData;
+    const segments: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+
+    for (let y = 0; y < height - 1; y++) {
+      for (let x = 0; x < width - 1; x++) {
+        const corners = [
+          { x, y, elev: this.getElevationAt(x, y) },
+          { x: x + 1, y, elev: this.getElevationAt(x + 1, y) },
+          { x: x + 1, y: y + 1, elev: this.getElevationAt(x + 1, y + 1) },
+          { x, y: y + 1, elev: this.getElevationAt(x, y + 1) }
+        ];
+
+        const cellSegments = this.marchingSquaresCell(corners, level);
+        segments.push(...cellSegments);
+      }
+    }
+
+    return segments;
+  }
+
+  private marchingSquaresCell(corners: Array<{ x: number; y: number; elev: number }>, level: number): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    const above = corners.map(c => c.elev >= level);
+    const caseIndex = (above[0] ? 1 : 0) + (above[1] ? 2 : 0) + (above[2] ? 4 : 0) + (above[3] ? 8 : 0);
+
+    if (caseIndex === 0 || caseIndex === 15) return [];
+
+    const interpolate = (c1: typeof corners[0], c2: typeof corners[0]): { x: number; y: number } => {
+      const t = (level - c1.elev) / (c2.elev - c1.elev);
+      return {
+        x: c1.x + t * (c2.x - c1.x),
+        y: c1.y + t * (c2.y - c1.y)
+      };
+    };
+
+    const edges = [
+      () => interpolate(corners[0], corners[1]),
+      () => interpolate(corners[1], corners[2]),
+      () => interpolate(corners[2], corners[3]),
+      () => interpolate(corners[3], corners[0])
+    ];
+
+    const lookupTable: { [key: number]: number[][] } = {
+      1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]],
+      5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]],
+      9: [[2, 0]], 10: [[0, 1], [2, 3]], 11: [[2, 1]], 12: [[1, 3]],
+      13: [[1, 0]], 14: [[0, 3]]
+    };
+
+    const edgePairs = lookupTable[caseIndex] || [];
+    return edgePairs.map(pair => {
+      const p1 = edges[pair[0]]();
+      const p2 = edges[pair[1]]();
+      return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    });
+  }
+
+  public getContourAnalysis(interval: number = 0.5): ContourAnalysis {
+    const contours = this.generateContourLines(interval);
+    const { width, height } = this.courseData;
+
+    let minElev = Infinity;
+    let maxElev = -Infinity;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const elev = this.getElevationAt(x, y);
+        minElev = Math.min(minElev, elev);
+        maxElev = Math.max(maxElev, elev);
+      }
+    }
+
+    let totalLength = 0;
+    for (const contour of contours) {
+      for (const seg of contour.segments) {
+        const dx = seg.x2 - seg.x1;
+        const dy = seg.y2 - seg.y1;
+        totalLength += Math.sqrt(dx * dx + dy * dy);
+      }
+    }
+
+    const majorContours = contours.filter(c => c.isMajor);
+    const minorContours = contours.filter(c => !c.isMajor);
+
+    return {
+      contourCount: contours.length,
+      majorContourCount: majorContours.length,
+      minorContourCount: minorContours.length,
+      totalContourLength: totalLength,
+      elevationRange: maxElev - minElev,
+      interval,
+      densestContourLevel: this.findDensestContourLevel(contours),
+      averageContourSpacing: totalLength / (contours.length || 1)
+    };
+  }
+
+  private findDensestContourLevel(contours: ContourLine[]): number {
+    let maxLength = 0;
+    let densestLevel = 0;
+
+    for (const contour of contours) {
+      let length = 0;
+      for (const seg of contour.segments) {
+        const dx = seg.x2 - seg.x1;
+        const dy = seg.y2 - seg.y1;
+        length += Math.sqrt(dx * dx + dy * dy);
+      }
+
+      if (length > maxLength) {
+        maxLength = length;
+        densestLevel = contour.elevation;
+      }
+    }
+
+    return densestLevel;
+  }
+
+  public findContourCrossings(x1: number, y1: number, x2: number, y2: number, interval: number = 0.5): Array<{ x: number; y: number; elevation: number }> {
+    const crossings: Array<{ x: number; y: number; elevation: number }> = [];
+
+    const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)) * 2;
+    if (steps === 0) return crossings;
+
+    const dx = (x2 - x1) / steps;
+    const dy = (y2 - y1) / steps;
+
+    let prevElev = this.getBilinearElevation(x1, y1);
+    let prevContour = Math.floor(prevElev / interval);
+
+    for (let i = 1; i <= steps; i++) {
+      const x = x1 + dx * i;
+      const y = y1 + dy * i;
+      const elev = this.getBilinearElevation(x, y);
+      const currentContour = Math.floor(elev / interval);
+
+      if (currentContour !== prevContour) {
+        const contourElev = Math.max(prevContour, currentContour) * interval;
+        const t = (contourElev - prevElev) / (elev - prevElev);
+        crossings.push({
+          x: x - dx + dx * t,
+          y: y - dy + dy * t,
+          elevation: contourElev
+        });
+      }
+
+      prevElev = elev;
+      prevContour = currentContour;
+    }
+
+    return crossings;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -13820,6 +14002,23 @@ export interface EdgeAnalysis {
   boundaryCount: number;
   mostCommonTransition: string;
   transitionCount: number;
+}
+
+export interface ContourLine {
+  elevation: number;
+  segments: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+  isMajor: boolean;
+}
+
+export interface ContourAnalysis {
+  contourCount: number;
+  majorContourCount: number;
+  minorContourCount: number;
+  totalContourLength: number;
+  elevationRange: number;
+  interval: number;
+  densestContourLevel: number;
+  averageContourSpacing: number;
 }
 
 export interface LineSampleOptions {
