@@ -9373,6 +9373,206 @@ export class TerrainBuilder {
     return transitions;
   }
 
+  public findRegionsByPredicate(
+    predicate: (x: number, y: number) => boolean
+  ): Array<Array<{ x: number; y: number }>> {
+    const { width, height } = this.courseData;
+    const visited = new Set<string>();
+    const regions: Array<Array<{ x: number; y: number }>> = [];
+
+    const key = (x: number, y: number) => `${x},${y}`;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (visited.has(key(x, y)) || !predicate(x, y)) continue;
+
+        const region: Array<{ x: number; y: number }> = [];
+        const queue: Array<{ x: number; y: number }> = [{ x, y }];
+
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          const k = key(current.x, current.y);
+          if (visited.has(k)) continue;
+          visited.add(k);
+
+          if (!predicate(current.x, current.y)) continue;
+          region.push(current);
+
+          const directions = [
+            { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+          ];
+          for (const dir of directions) {
+            const nx = current.x + dir.dx;
+            const ny = current.y + dir.dy;
+            if (this.isValidGridPosition(nx, ny) && !visited.has(key(nx, ny))) {
+              queue.push({ x: nx, y: ny });
+            }
+          }
+        }
+
+        if (region.length > 0) {
+          regions.push(region);
+        }
+      }
+    }
+
+    return regions.sort((a, b) => b.length - a.length);
+  }
+
+  public findTerrainTypeRegions(terrainType: TerrainType): Array<Array<{ x: number; y: number }>> {
+    return this.findRegionsByPredicate((x, y) => this.getTerrainTypeAt(x, y) === terrainType);
+  }
+
+  public findElevationBandRegions(minElev: number, maxElev: number): Array<Array<{ x: number; y: number }>> {
+    return this.findRegionsByPredicate((x, y) => {
+      const elev = this.getElevationAt(x, y);
+      return elev >= minElev && elev <= maxElev;
+    });
+  }
+
+  public findFlatRegions(maxSlope: number = 5): Array<Array<{ x: number; y: number }>> {
+    return this.findRegionsByPredicate((x, y) => this.getSlopeAngle(x, y) <= maxSlope);
+  }
+
+  public getRegionStatistics(region: Array<{ x: number; y: number }>): RegionStatistics {
+    if (region.length === 0) {
+      return {
+        size: 0,
+        centroid: { x: 0, y: 0 },
+        boundingBox: { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 },
+        avgElevation: 0,
+        minElevation: 0,
+        maxElevation: 0,
+        avgSlope: 0,
+        maxSlope: 0,
+        perimeter: 0,
+        compactness: 0,
+        dominantTerrainType: 'fairway'
+      };
+    }
+
+    let sumX = 0, sumY = 0;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let sumElev = 0, minElev = Infinity, maxElev = -Infinity;
+    let sumSlope = 0, maxSlope = 0;
+    const terrainCounts: { [key: string]: number } = {};
+
+    for (const p of region) {
+      sumX += p.x;
+      sumY += p.y;
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+
+      const elev = this.getElevationAt(p.x, p.y);
+      sumElev += elev;
+      minElev = Math.min(minElev, elev);
+      maxElev = Math.max(maxElev, elev);
+
+      const slope = this.getSlopeAngle(p.x, p.y);
+      sumSlope += slope;
+      maxSlope = Math.max(maxSlope, slope);
+
+      const terrainType = this.getTerrainTypeAt(p.x, p.y);
+      terrainCounts[terrainType] = (terrainCounts[terrainType] || 0) + 1;
+    }
+
+    const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
+    let perimeter = 0;
+    for (const p of region) {
+      const directions = [
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+      ];
+      for (const dir of directions) {
+        const nx = p.x + dir.dx;
+        const ny = p.y + dir.dy;
+        if (!regionSet.has(`${nx},${ny}`)) {
+          perimeter++;
+        }
+      }
+    }
+
+    const area = region.length;
+    const compactness = area > 0 ? (4 * Math.PI * area) / (perimeter * perimeter) : 0;
+
+    let dominantTerrainType: TerrainType = 'fairway';
+    let maxCount = 0;
+    for (const [type, count] of Object.entries(terrainCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        dominantTerrainType = type as TerrainType;
+      }
+    }
+
+    return {
+      size: region.length,
+      centroid: { x: sumX / region.length, y: sumY / region.length },
+      boundingBox: {
+        minX, maxX, minY, maxY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+      },
+      avgElevation: sumElev / region.length,
+      minElevation: minElev,
+      maxElevation: maxElev,
+      avgSlope: sumSlope / region.length,
+      maxSlope,
+      perimeter,
+      compactness,
+      dominantTerrainType
+    };
+  }
+
+  public getConnectivityAnalysis(): ConnectivityAnalysis {
+    const fairwayRegions = this.findTerrainTypeRegions('fairway');
+    const roughRegions = this.findTerrainTypeRegions('rough');
+    const greenRegions = this.findTerrainTypeRegions('green');
+    const bunkerRegions = this.findTerrainTypeRegions('bunker');
+    const waterRegions = this.findTerrainTypeRegions('water');
+    const flatRegions = this.findFlatRegions(10);
+
+    const largestFairway = fairwayRegions.length > 0 ? this.getRegionStatistics(fairwayRegions[0]) : null;
+    const largestGreen = greenRegions.length > 0 ? this.getRegionStatistics(greenRegions[0]) : null;
+
+    const { width, height } = this.courseData;
+    const totalTiles = width * height;
+
+    return {
+      fairwayRegionCount: fairwayRegions.length,
+      roughRegionCount: roughRegions.length,
+      greenRegionCount: greenRegions.length,
+      bunkerRegionCount: bunkerRegions.length,
+      waterRegionCount: waterRegions.length,
+      flatRegionCount: flatRegions.length,
+      largestFairwayRegion: largestFairway,
+      largestGreenRegion: largestGreen,
+      fragmentationIndex: (fairwayRegions.length + greenRegions.length) / totalTiles * 100,
+      totalTiles
+    };
+  }
+
+  public findRegionBoundaries(region: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    const regionSet = new Set(region.map(p => `${p.x},${p.y}`));
+    const boundaries: Array<{ x: number; y: number }> = [];
+
+    for (const p of region) {
+      const directions = [
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+      ];
+      for (const dir of directions) {
+        const nx = p.x + dir.dx;
+        const ny = p.y + dir.dy;
+        if (!regionSet.has(`${nx},${ny}`)) {
+          boundaries.push(p);
+          break;
+        }
+      }
+    }
+
+    return boundaries;
+  }
+
   private rebuildAllTiles(): void {
     for (const mesh of this.tileMeshes) {
       mesh.dispose();
@@ -14604,6 +14804,33 @@ export interface SmoothingAnalysis {
 }
 
 export type TileGeometryType = 'flat' | 'ramp' | 'corner' | 'valley' | 'cliff' | 'complex';
+
+export interface RegionStatistics {
+  size: number;
+  centroid: { x: number; y: number };
+  boundingBox: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number };
+  avgElevation: number;
+  minElevation: number;
+  maxElevation: number;
+  avgSlope: number;
+  maxSlope: number;
+  perimeter: number;
+  compactness: number;
+  dominantTerrainType: TerrainType;
+}
+
+export interface ConnectivityAnalysis {
+  fairwayRegionCount: number;
+  roughRegionCount: number;
+  greenRegionCount: number;
+  bunkerRegionCount: number;
+  waterRegionCount: number;
+  flatRegionCount: number;
+  largestFairwayRegion: RegionStatistics | null;
+  largestGreenRegion: RegionStatistics | null;
+  fragmentationIndex: number;
+  totalTiles: number;
+}
 
 export interface TileStatistics {
   totalTiles: number;
