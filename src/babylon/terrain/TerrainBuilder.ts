@@ -53,6 +53,12 @@ export class TerrainBuilder {
   private lastLODUpdate: number = 0;
   private lodCenterX: number = 0;
   private lodCenterY: number = 0;
+  private chunks: Map<string, TerrainChunk> = new Map();
+  private tileToChunk: Map<string, string> = new Map();
+  private chunkConfig: ChunkConfig = {
+    chunkSize: 8,
+    enabled: true
+  };
 
   constructor(scene: Scene, courseData: CourseData) {
     this.scene = scene;
@@ -69,6 +75,7 @@ export class TerrainBuilder {
     this.buildWaterPlane();
     this.buildObstacles();
     this.buildRefillStation();
+    this.buildChunks();
   }
 
   private initMowedState(): void {
@@ -2450,6 +2457,255 @@ export class TerrainBuilder {
 
     return info;
   }
+
+  private buildChunks(): void {
+    if (!this.chunkConfig.enabled) return;
+
+    this.chunks.clear();
+    this.tileToChunk.clear();
+
+    const { width, height } = this.courseData;
+    const chunkSize = this.chunkConfig.chunkSize;
+
+    const chunksX = Math.ceil(width / chunkSize);
+    const chunksY = Math.ceil(height / chunkSize);
+
+    for (let cy = 0; cy < chunksY; cy++) {
+      for (let cx = 0; cx < chunksX; cx++) {
+        const chunkId = `chunk_${cx}_${cy}`;
+        const minX = cx * chunkSize;
+        const maxX = Math.min((cx + 1) * chunkSize - 1, width - 1);
+        const minY = cy * chunkSize;
+        const maxY = Math.min((cy + 1) * chunkSize - 1, height - 1);
+
+        const tiles: Array<{ x: number; y: number }> = [];
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            tiles.push({ x, y });
+            this.tileToChunk.set(`${x}_${y}`, chunkId);
+          }
+        }
+
+        const chunk: TerrainChunk = {
+          id: chunkId,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          tiles,
+          centerX: (minX + maxX) / 2,
+          centerY: (minY + maxY) / 2
+        };
+
+        this.chunks.set(chunkId, chunk);
+      }
+    }
+  }
+
+  public setChunkSize(size: number): void {
+    this.chunkConfig.chunkSize = Math.max(1, Math.floor(size));
+    if (this.chunkConfig.enabled) {
+      this.buildChunks();
+    }
+  }
+
+  public getChunkSize(): number {
+    return this.chunkConfig.chunkSize;
+  }
+
+  public setChunksEnabled(enabled: boolean): void {
+    this.chunkConfig.enabled = enabled;
+    if (enabled) {
+      this.buildChunks();
+    } else {
+      this.chunks.clear();
+      this.tileToChunk.clear();
+    }
+  }
+
+  public isChunksEnabled(): boolean {
+    return this.chunkConfig.enabled;
+  }
+
+  public getChunkCount(): number {
+    return this.chunks.size;
+  }
+
+  public getChunkAt(gridX: number, gridY: number): TerrainChunk | null {
+    const tileKey = `${gridX}_${gridY}`;
+    const chunkId = this.tileToChunk.get(tileKey);
+    if (!chunkId) return null;
+    return this.chunks.get(chunkId) ?? null;
+  }
+
+  public getChunkById(chunkId: string): TerrainChunk | null {
+    return this.chunks.get(chunkId) ?? null;
+  }
+
+  public getAllChunks(): TerrainChunk[] {
+    return Array.from(this.chunks.values());
+  }
+
+  public getChunksInRadius(centerX: number, centerY: number, radius: number): TerrainChunk[] {
+    const result: TerrainChunk[] = [];
+    const radiusSq = radius * radius;
+
+    for (const chunk of this.chunks.values()) {
+      const dx = chunk.centerX - centerX;
+      const dy = chunk.centerY - centerY;
+      if (dx * dx + dy * dy <= radiusSq) {
+        result.push(chunk);
+      }
+    }
+
+    return result;
+  }
+
+  public getChunksInRect(
+    minGridX: number,
+    minGridY: number,
+    maxGridX: number,
+    maxGridY: number
+  ): TerrainChunk[] {
+    const result: TerrainChunk[] = [];
+
+    for (const chunk of this.chunks.values()) {
+      if (chunk.maxX >= minGridX && chunk.minX <= maxGridX &&
+          chunk.maxY >= minGridY && chunk.minY <= maxGridY) {
+        result.push(chunk);
+      }
+    }
+
+    return result;
+  }
+
+  public getTilesInChunk(chunkId: string): Array<{ x: number; y: number }> {
+    const chunk = this.chunks.get(chunkId);
+    return chunk ? [...chunk.tiles] : [];
+  }
+
+  public getChunkNeighbors(chunkId: string): TerrainChunk[] {
+    const chunk = this.chunks.get(chunkId);
+    if (!chunk) return [];
+
+    const chunkSize = this.chunkConfig.chunkSize;
+    const cx = Math.floor(chunk.minX / chunkSize);
+    const cy = Math.floor(chunk.minY / chunkSize);
+
+    const neighbors: TerrainChunk[] = [];
+    const offsets = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+    for (const [dx, dy] of offsets) {
+      const neighborId = `chunk_${cx + dx}_${cy + dy}`;
+      const neighbor = this.chunks.get(neighborId);
+      if (neighbor) {
+        neighbors.push(neighbor);
+      }
+    }
+
+    return neighbors;
+  }
+
+  public forEachChunk(callback: (chunk: TerrainChunk) => void): void {
+    for (const chunk of this.chunks.values()) {
+      callback(chunk);
+    }
+  }
+
+  public forEachTileInChunk(
+    chunkId: string,
+    callback: (x: number, y: number) => void
+  ): void {
+    const chunk = this.chunks.get(chunkId);
+    if (!chunk) return;
+
+    for (const tile of chunk.tiles) {
+      callback(tile.x, tile.y);
+    }
+  }
+
+  public getChunkStatistics(): {
+    chunkCount: number;
+    chunkSize: number;
+    chunksX: number;
+    chunksY: number;
+    tilesPerChunk: number;
+    enabled: boolean;
+  } {
+    const { width, height } = this.courseData;
+    const chunkSize = this.chunkConfig.chunkSize;
+    const chunksX = Math.ceil(width / chunkSize);
+    const chunksY = Math.ceil(height / chunkSize);
+
+    return {
+      chunkCount: this.chunks.size,
+      chunkSize,
+      chunksX,
+      chunksY,
+      tilesPerChunk: chunkSize * chunkSize,
+      enabled: this.chunkConfig.enabled
+    };
+  }
+
+  public getChunkWorldBounds(chunkId: string): {
+    minWorldX: number;
+    maxWorldX: number;
+    minWorldY: number;
+    maxWorldY: number;
+  } | null {
+    const chunk = this.chunks.get(chunkId);
+    if (!chunk) return null;
+
+    const topLeft = this.gridToWorld(chunk.minX, chunk.minY);
+    const topRight = this.gridToWorld(chunk.maxX, chunk.minY);
+    const bottomLeft = this.gridToWorld(chunk.minX, chunk.maxY);
+    const bottomRight = this.gridToWorld(chunk.maxX, chunk.maxY);
+
+    return {
+      minWorldX: Math.min(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x),
+      maxWorldX: Math.max(topLeft.x, topRight.x, bottomLeft.x, bottomRight.x),
+      minWorldY: Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y),
+      maxWorldY: Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)
+    };
+  }
+
+  public setChunkTilesVisible(chunkId: string, visible: boolean): number {
+    const chunk = this.chunks.get(chunkId);
+    if (!chunk) return 0;
+
+    let count = 0;
+    for (const tile of chunk.tiles) {
+      const key = `${tile.x}_${tile.y}`;
+      const mesh = this.tileMap.get(key);
+      if (mesh && mesh.isEnabled() !== visible) {
+        mesh.setEnabled(visible);
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  public getVisibleChunks(): TerrainChunk[] {
+    const result: TerrainChunk[] = [];
+
+    for (const chunk of this.chunks.values()) {
+      let hasVisibleTile = false;
+      for (const tile of chunk.tiles) {
+        const key = `${tile.x}_${tile.y}`;
+        const mesh = this.tileMap.get(key);
+        if (mesh?.isEnabled()) {
+          hasVisibleTile = true;
+          break;
+        }
+      }
+      if (hasVisibleTile) {
+        result.push(chunk);
+      }
+    }
+
+    return result;
+  }
 }
 
 export interface TerrainStatistics {
@@ -2545,4 +2801,20 @@ export interface TileLODInfo {
   gridY: number;
   currentLOD: number;
   distance: number;
+}
+
+export interface TerrainChunk {
+  id: string;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  tiles: Array<{ x: number; y: number }>;
+  centerX: number;
+  centerY: number;
+}
+
+export interface ChunkConfig {
+  chunkSize: number;
+  enabled: boolean;
 }
