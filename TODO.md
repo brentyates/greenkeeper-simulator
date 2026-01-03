@@ -2,7 +2,7 @@
 
 This file tracks the work needed to integrate all economy/management systems into a fully playable game loop.
 
-## Current Status: Core Integration Complete ✅
+## Current Status: All Core Logic Complete ✅
 
 **What's Working:**
 - Economy system: Cash, transactions, loans integrated
@@ -12,14 +12,14 @@ This file tracks the work needed to integrate all economy/management systems int
 - Scenario system: Progress tracking, objective checking, win/lose detection
 - UI: Economy panel (cash + golfers), Scenario progress panel with bar
 
-**Next Up: Prestige System** (See [Prestige System](#prestige-system) section)
+**Prestige System** ✅ COMPLETE (See [Prestige System](#prestige-system) section)
 - ~~Phase P1: Core prestige score and star rating~~ ✅
 - ~~Phase P2: Historical tracking and streaks~~ ✅
 - ~~Phase P3: Amenities system~~ ✅
 - ~~Phase P4: Reputation and reviews~~ ✅ (core logic complete, UI pending)
 - ~~Phase P5: Exclusivity and advanced features~~ ✅ (core logic complete, UI pending)
 
-**Tee Time System** (See [Tee Time System](#tee-time-system) section)
+**Tee Time System** ✅ COMPLETE (See [Tee Time System](#tee-time-system) section)
 - ~~Phase T1: Core Tee Time Scheduling~~ ✅ (core logic complete, UI pending)
 - ~~Phase T2: Booking System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T3: Spacing & Pace~~ ✅ (core logic complete, UI pending)
@@ -27,6 +27,8 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T5: Revenue Integration~~ ✅ (core logic complete, UI pending)
 - ~~Phase T6: Marketing System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T7: Advanced Features~~ ✅ (core logic complete, UI pending)
+
+**Next Up: UI Integration** (wire core logic into game and build UI panels)
 
 **Other Enhancements (Nice-to-Have):**
 - Employee management UI (hire/fire, view roster)
@@ -40,6 +42,20 @@ This file tracks the work needed to integrate all economy/management systems int
 ## Overview
 
 The core logic modules are complete and tested. This TODO covers wiring them into `BabylonMain` and creating the UI layers.
+
+### Core Logic Summary (1485 tests passing)
+
+| Module | File | Tests | Description |
+|--------|------|-------|-------------|
+| Prestige | `prestige.ts` | 75 | Star rating, conditions, green fee tolerance |
+| Amenities | `amenities.ts` | 49 | Clubhouse, facilities, services scoring |
+| Reputation | `reputation.ts` | 34 | Reviews, word-of-mouth, satisfaction |
+| Exclusivity | `exclusivity.ts` | 41 | Membership, awards, dress code |
+| Tee Times | `tee-times.ts` | 118 | Scheduling, booking, pace of play |
+| Walk-Ons | `walk-ons.ts` | 30 | Queue management, wait tolerance |
+| Revenue | `tee-revenue.ts` | 50 | Green fees, cart fees, add-ons, tips |
+| Marketing | `marketing.ts` | 50 | Campaigns, ROI, demand effects |
+| Advanced | `advanced-tee-time.ts` | 55 | Dynamic pricing, tournaments, groups |
 
 ---
 
