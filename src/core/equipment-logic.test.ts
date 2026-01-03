@@ -11,7 +11,9 @@ import {
   getIsoOffset,
   getDepthOffset,
   EQUIPMENT_CONFIGS,
-  EquipmentState
+  EquipmentState,
+  calculateRefillCost,
+  REFILL_COST_PER_UNIT,
 } from './equipment-logic';
 
 describe('Equipment Configuration', () => {
@@ -171,6 +173,48 @@ describe('Resource Management', () => {
       };
       const refilled = refillEquipment(state);
       expect(refilled.resourceCurrent).toBe(100);
+    });
+  });
+
+  describe('calculateRefillCost', () => {
+    it('returns 0 when equipment is full', () => {
+      const state = createEquipmentState('mower');
+      expect(calculateRefillCost(state)).toBe(0);
+    });
+
+    it('calculates cost based on units needed and equipment type', () => {
+      const state: EquipmentState = {
+        ...createEquipmentState('mower'),
+        resourceCurrent: 0
+      };
+      expect(calculateRefillCost(state)).toBe(100 * REFILL_COST_PER_UNIT.mower);
+    });
+
+    it('calculates partial refill cost', () => {
+      const state: EquipmentState = {
+        ...createEquipmentState('mower'),
+        resourceCurrent: 50
+      };
+      expect(calculateRefillCost(state)).toBe(50 * REFILL_COST_PER_UNIT.mower);
+    });
+
+    it('uses different rates for different equipment', () => {
+      const mowerState: EquipmentState = { ...createEquipmentState('mower'), resourceCurrent: 0 };
+      const sprinklerState: EquipmentState = { ...createEquipmentState('sprinkler'), resourceCurrent: 0 };
+      const spreaderState: EquipmentState = { ...createEquipmentState('spreader'), resourceCurrent: 0 };
+
+      expect(calculateRefillCost(mowerState)).toBe(100 * 0.10);
+      expect(calculateRefillCost(sprinklerState)).toBe(100 * 0.05);
+      expect(calculateRefillCost(spreaderState)).toBe(100 * 0.15);
+    });
+
+    it('rounds to 2 decimal places', () => {
+      const state: EquipmentState = {
+        ...createEquipmentState('mower'),
+        resourceCurrent: 33
+      };
+      const cost = calculateRefillCost(state);
+      expect(cost).toBe(6.7);
     });
   });
 

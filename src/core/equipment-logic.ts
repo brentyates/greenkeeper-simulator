@@ -60,6 +60,19 @@ export function refillEquipment(state: EquipmentState): EquipmentState {
   return { ...state, resourceCurrent: state.resourceMax };
 }
 
+export const REFILL_COST_PER_UNIT: Record<EquipmentType, number> = {
+  mower: 0.10,
+  sprinkler: 0.05,
+  spreader: 0.15,
+};
+
+export function calculateRefillCost(state: EquipmentState): number {
+  const unitsNeeded = state.resourceMax - state.resourceCurrent;
+  if (unitsNeeded <= 0) return 0;
+  const costPerUnit = REFILL_COST_PER_UNIT[state.type] ?? 0.10;
+  return Math.round(unitsNeeded * costPerUnit * 100) / 100;
+}
+
 export function getResourcePercent(state: EquipmentState): number {
   return (state.resourceCurrent / state.resourceMax) * 100;
 }

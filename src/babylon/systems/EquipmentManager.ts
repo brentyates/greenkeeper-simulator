@@ -16,6 +16,7 @@ import {
   canActivate,
   getResourcePercent,
   refillEquipment,
+  calculateRefillCost,
 } from '../../core/equipment-logic';
 
 export class EquipmentManager {
@@ -128,10 +129,13 @@ export class EquipmentManager {
     this.stopParticles();
   }
 
-  public refill(): void {
+  public refill(): number {
+    let totalCost = 0;
     for (const [type, state] of this.equipment) {
+      totalCost += calculateRefillCost(state);
       this.equipment.set(type, refillEquipment(state));
     }
+    return Math.round(totalCost * 100) / 100;
   }
 
   public update(deltaMs: number, playerPosition: Vector3): void {

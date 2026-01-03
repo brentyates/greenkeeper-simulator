@@ -102,7 +102,7 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [x] Employee wages deducted via `processPayroll()`
 - [x] Research funding deducted via `tickResearch()`
 - [x] Tips from departing golfers added as income
-- [ ] Deduct cost when refilling equipment (future)
+- [x] Deduct cost when refilling equipment
 - [ ] Track equipment usage costs per tile (future)
 
 ---

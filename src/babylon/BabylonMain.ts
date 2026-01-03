@@ -976,8 +976,24 @@ export class BabylonMain {
     });
 
     if (nearStation) {
-      this.equipmentManager.refill();
-      this.uiManager.showNotification("Equipment refilled!");
+      const cost = this.equipmentManager.refill();
+      if (cost > 0) {
+        const timestamp = this.gameDay * 1440 + this.gameTime;
+        const expenseResult = addExpense(
+          this.economyState,
+          cost,
+          "supplies",
+          "Equipment refill",
+          timestamp,
+          true
+        );
+        if (expenseResult) {
+          this.economyState = expenseResult;
+        }
+        this.uiManager.showNotification(`Refilled! Cost: $${cost.toFixed(2)}`);
+      } else {
+        this.uiManager.showNotification("Equipment already full!");
+      }
     } else {
       this.uiManager.showNotification("Move closer to refill station");
     }
