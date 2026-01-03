@@ -26,7 +26,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T4: Walk-On System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T5: Revenue Integration~~ ✅ (core logic complete, UI pending)
 - ~~Phase T6: Marketing System~~ ✅ (core logic complete, UI pending)
-- Phase T7: Advanced Features
+- ~~Phase T7: Advanced Features~~ ✅ (core logic complete, UI pending)
 
 **Other Enhancements (Nice-to-Have):**
 - Employee management UI (hire/fire, view roster)
@@ -689,28 +689,33 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T7: Advanced Features
+### Phase T7: Advanced Features ✅
 
-#### T7.1 Dynamic Pricing
-- [ ] Implement demand-based pricing
-- [ ] Configure multiplier range (e.g., 0.8x to 1.3x)
-- [ ] Auto-adjust prices based on booking rate
+#### T7.1 Dynamic Pricing ✅
+- [x] Implement demand-based pricing
+- [x] Configure multiplier range (e.g., 0.8x to 1.3x)
+- [x] Auto-adjust prices based on booking rate
+- [x] Clamp multipliers to configured bounds
 
-#### T7.2 Member Priority Booking
-- [ ] Implement extended booking window for members
-- [ ] Reserve premium slots for members
-- [ ] Member-only tee time blocks
+#### T7.2 Member Priority Booking ✅
+- [x] Implement extended booking window for members (14 days vs 7 days)
+- [x] Reserve premium slots for members
+- [x] Track premium slot hours (7-10 AM)
+- [x] Member-only slot reservation logic
 
-#### T7.3 Tournament Hosting
-- [ ] Integrate with prestige tournament requirements
-- [ ] Course closure for tournament days
-- [ ] Tournament revenue calculation
-- [ ] Prestige boost from hosting
+#### T7.3 Tournament Hosting ✅
+- [x] Define tournament types (club_championship, member_guest, charity_event, corporate_outing, pro_am, qualifier)
+- [x] Course closure for tournament days (full or partial)
+- [x] Tournament revenue calculation (entry fee × participants)
+- [x] Prestige boost calculation based on participation
+- [x] Schedule/cancel tournament management
 
-#### T7.4 Group Booking Management
-- [ ] Corporate outing handling
-- [ ] Group discount application
-- [ ] Block booking for events
+#### T7.4 Group Booking Management ✅
+- [x] Corporate outing handling
+- [x] Group discount application (15% for 8+ golfers)
+- [x] Deposit requirement tracking
+- [x] Group booking lifecycle (inquiry → confirmed → deposit_paid → checked_in → completed)
+- [x] Calculate slots needed for group size
 
 ---
 
@@ -745,6 +750,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 | `src/core/tee-revenue.test.ts` | Unit tests for revenue logic ✅ |
 | `src/core/marketing.ts` | Marketing campaign system ✅ |
 | `src/core/marketing.test.ts` | Unit tests for marketing ✅ |
+| `src/core/advanced-tee-time.ts` | Dynamic pricing, member priority, tournaments, groups ✅ |
+| `src/core/advanced-tee-time.test.ts` | Unit tests for advanced features ✅ |
 | `src/babylon/ui/TeeSheetPanel.ts` | Main tee sheet interface |
 | `src/babylon/ui/SpacingConfigPanel.ts` | Spacing configuration UI |
 | `src/babylon/ui/WalkOnQueuePanel.ts` | Walk-on queue display |
