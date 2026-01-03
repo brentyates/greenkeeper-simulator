@@ -24,7 +24,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T2: Booking System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T3: Spacing & Pace~~ ✅ (core logic complete, UI pending)
 - ~~Phase T4: Walk-On System~~ ✅ (core logic complete, UI pending)
-- Phase T5: Revenue Integration
+- ~~Phase T5: Revenue Integration~~ ✅ (core logic complete, UI pending)
 - Phase T6: Marketing System
 - Phase T7: Advanced Features
 
@@ -619,36 +619,41 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T5: Revenue Integration
+### Phase T5: Revenue Integration ✅
 
-#### T5.1 Green Fee Structure
-- [ ] Define `GreenFeeStructure` interface
-- [ ] Implement weekday/weekend/twilight rates
-- [ ] Add prime morning premium
-- [ ] Implement member/guest pricing
+#### T5.1 Green Fee Structure ✅
+- [x] Define `GreenFeeStructure` interface
+- [x] Implement weekday/weekend/twilight rates
+- [x] Add prime morning premium
+- [x] Implement member/guest pricing
+- [x] Add dynamic pricing with demand multiplier
 
-#### T5.2 Cart Fees
-- [ ] Define `CartFeeStructure` interface
-- [ ] Implement per-person vs per-cart pricing
-- [ ] Add walking discount
-- [ ] Integrate with cart amenity system
+#### T5.2 Cart Fees ✅
+- [x] Define `CartFeeStructure` interface
+- [x] Implement per-person vs per-cart pricing
+- [x] Add walking discount
+- [x] Premium cart option
+- [ ] Integrate with cart amenity system (future: UI wiring)
 
-#### T5.3 Add-On Services
-- [ ] Define `AddOnService` interface
-- [ ] Implement standard add-ons: range balls, caddie, forecaddie, club rental, GPS rental
-- [ ] Calculate uptake rates based on prestige
-- [ ] Track add-on revenue
+#### T5.3 Add-On Services ✅
+- [x] Define `AddOnService` interface
+- [x] Implement standard add-ons: range balls, caddie, forecaddie, club rental, GPS rental
+- [x] Calculate uptake rates based on prestige
+- [x] Track add-on revenue
+- [x] Phase-specific offerings (booking, check-in, during round)
 
-#### T5.4 Tips System
-- [ ] Implement tip calculation based on service and satisfaction
-- [ ] Apply satisfaction modifier (happy golfers tip more)
-- [ ] Track tip revenue by staff category
+#### T5.4 Tips System ✅
+- [x] Implement tip calculation based on service and satisfaction
+- [x] Apply satisfaction modifier (happy golfers tip more)
+- [x] House percentage for tip pooling
+- [ ] Track tip revenue by staff category (future: staff integration)
 
-#### T5.5 Daily Revenue Tracking
-- [ ] Define `DailyRevenue` interface
-- [ ] Track all revenue streams (green fees, carts, add-ons, F&B, tips)
-- [ ] Calculate gross and net revenue
-- [ ] Integrate with economy system
+#### T5.5 Daily Revenue Tracking ✅
+- [x] Define `DailyRevenue` interface
+- [x] Track all revenue streams (green fees, carts, add-ons, F&B, tips, range, lessons, events)
+- [x] Calculate gross and net revenue
+- [x] Revenue history and averages
+- [ ] Integrate with economy system (future: UI wiring)
 
 ---
 
@@ -714,7 +719,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Unit tests for pace of play calculation
 - [x] Unit tests for spacing impact preview
 - [x] Unit tests for walk-on processing
-- [ ] Unit tests for revenue calculations
+- [x] Unit tests for revenue calculations
 - [ ] Unit tests for campaign effectiveness
 - [ ] Integration test: tee time spacing affects satisfaction
 - [ ] Integration test: walk-on queue management
@@ -731,6 +736,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 | `src/core/tee-times.test.ts` | Unit tests for tee time logic ✅ |
 | `src/core/walk-ons.ts` | Walk-on queue management ✅ |
 | `src/core/walk-ons.test.ts` | Unit tests for walk-on logic ✅ |
+| `src/core/tee-revenue.ts` | Revenue integration (fees, add-ons, tips) ✅ |
+| `src/core/tee-revenue.test.ts` | Unit tests for revenue logic ✅ |
 | `src/core/marketing.ts` | Marketing campaign system |
 | `src/core/marketing.test.ts` | Unit tests for marketing |
 | `src/babylon/ui/TeeSheetPanel.ts` | Main tee sheet interface |
