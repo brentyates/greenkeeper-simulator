@@ -43,6 +43,7 @@ import {
   getActiveGolferCount,
   WeatherCondition,
   DEFAULT_GREEN_FEES,
+  resetDailyStats as resetGolferDailyStats,
 } from "../core/golfers";
 import {
   ResearchState,
@@ -59,6 +60,7 @@ import {
   calculateDemandMultiplier,
   takeDailySnapshot,
   updateHistoricalExcellence,
+  resetDailyStats as resetPrestigeDailyStats,
 } from "../core/prestige";
 import {
   TeeTimeSystemState,
@@ -67,6 +69,7 @@ import {
   simulateDailyBookings,
   applyBookingSimulation,
   getAvailableSlots,
+  resetDailyMetrics as resetTeeTimeDailyMetrics,
   type GameTime,
 } from "../core/tee-times";
 import {
@@ -1435,7 +1438,8 @@ export class BabylonMain {
       // End of day processing at 10 PM
       if (hours === 22) {
         this.revenueState = finalizeDailyRevenue(this.revenueState);
-        this.walkOnState = resetDailyWalkOnMetrics(this.walkOnState);
+
+        // Process marketing campaigns
         const marketingResult = processDailyCampaigns(
           this.marketingState,
           this.gameDay,
@@ -1447,7 +1451,7 @@ export class BabylonMain {
           const expenseResult = addExpense(
             this.economyState,
             marketingResult.dailyCost,
-            "other_expense",
+            "marketing",
             "Marketing campaigns",
             timestamp,
             true
@@ -1456,6 +1460,31 @@ export class BabylonMain {
             this.economyState = expenseResult;
           }
         }
+
+        // Daily operating expenses (utilities, maintenance)
+        const dailyUtilitiesCost = 50;
+        const utilitiesResult = addExpense(
+          this.economyState,
+          dailyUtilitiesCost,
+          "utilities",
+          "Daily utilities",
+          timestamp,
+          true
+        );
+        if (utilitiesResult) {
+          this.economyState = utilitiesResult;
+        }
+
+        // Take prestige daily snapshot and update historical tracking
+        const dailySnapshot = takeDailySnapshot(this.prestigeState.currentConditions, this.gameDay);
+        const newHistoricalExcellence = updateHistoricalExcellence(this.prestigeState.historicalExcellence, dailySnapshot);
+        this.prestigeState = { ...this.prestigeState, historicalExcellence: newHistoricalExcellence };
+
+        // Reset all daily counters
+        this.walkOnState = resetDailyWalkOnMetrics(this.walkOnState);
+        this.teeTimeState = resetTeeTimeDailyMetrics(this.teeTimeState);
+        this.prestigeState = resetPrestigeDailyStats(this.prestigeState);
+        this.golferPool = resetGolferDailyStats(this.golferPool);
       }
     }
 

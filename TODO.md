@@ -214,10 +214,10 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 ## Phase 7: Day/Night Cycle Integration
 
 ### 7.1 Day Transition Events
-- [ ] Trigger end-of-day summary at midnight (or configurable hour)
-- [ ] Process daily expenses (utilities, base maintenance)
-- [ ] Reset daily golfer counters
-- [ ] Check scenario day-based objectives
+- [x] Trigger end-of-day summary at midnight (or configurable hour) - runs at 10 PM
+- [x] Process daily expenses (utilities, base maintenance)
+- [x] Reset daily golfer counters (prestige, tee times, walk-ons, golfers)
+- [ ] Check scenario day-based objectives (future: scenarios with day limits)
 
 ### 7.2 Day Summary Popup
 - [ ] Create `src/babylon/ui/DaySummaryPopup.ts`
