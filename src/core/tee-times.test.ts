@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_OPERATING_HOURS,
+  DEFAULT_BOOKING_CONFIG,
+  DAY_OF_WEEK_MULTIPLIERS,
   SPACING_CONFIGS,
   createInitialTeeTimeState,
   getOperatingHoursForSeason,
@@ -22,6 +24,19 @@ import {
   isTwilight,
   formatTeeTime,
   getSpacingLabel,
+  getDayOfWeek,
+  getTimeOfDayMultiplier,
+  getSeasonMultiplier,
+  calculateSlotDemand,
+  selectGroupSize,
+  canBookSlot,
+  isLateCancellation,
+  calculateCancellationPenalty,
+  calculateNoShowPenalty,
+  simulateDailyBookings,
+  applyBookingSimulation,
+  resetDailyMetrics,
+  updateBookingConfig,
 } from './tee-times';
 
 describe('tee-times', () => {
@@ -445,6 +460,390 @@ describe('tee-times', () => {
       expect(SPACING_CONFIGS.packed.reputationModifier).toBeLessThan(0);
       expect(SPACING_CONFIGS.standard.reputationModifier).toBe(0);
       expect(SPACING_CONFIGS.exclusive.reputationModifier).toBeGreaterThan(0);
+    });
+  });
+
+  describe('DEFAULT_BOOKING_CONFIG', () => {
+    it('has correct default values', () => {
+      expect(DEFAULT_BOOKING_CONFIG.publicBookingDays).toBe(7);
+      expect(DEFAULT_BOOKING_CONFIG.memberBookingDays).toBe(14);
+      expect(DEFAULT_BOOKING_CONFIG.freeCancellationHours).toBe(24);
+      expect(DEFAULT_BOOKING_CONFIG.lateCancelPenalty).toBe(0.5);
+      expect(DEFAULT_BOOKING_CONFIG.noShowPenalty).toBe(1.0);
+      expect(DEFAULT_BOOKING_CONFIG.noShowCountForBlacklist).toBe(3);
+    });
+  });
+
+  describe('DAY_OF_WEEK_MULTIPLIERS', () => {
+    it('has weekend days higher than weekdays', () => {
+      expect(DAY_OF_WEEK_MULTIPLIERS[6]).toBeGreaterThan(DAY_OF_WEEK_MULTIPLIERS[1]); // Saturday > Monday
+      expect(DAY_OF_WEEK_MULTIPLIERS[0]).toBeGreaterThan(DAY_OF_WEEK_MULTIPLIERS[2]); // Sunday > Tuesday
+    });
+
+    it('has Saturday as highest demand', () => {
+      expect(DAY_OF_WEEK_MULTIPLIERS[6]).toBe(1.4);
+    });
+
+    it('has Monday as lowest demand', () => {
+      expect(DAY_OF_WEEK_MULTIPLIERS[1]).toBe(0.7);
+    });
+  });
+
+  describe('getDayOfWeek', () => {
+    it('returns correct day of week', () => {
+      expect(getDayOfWeek(0)).toBe(0); // Sunday
+      expect(getDayOfWeek(1)).toBe(1); // Monday
+      expect(getDayOfWeek(6)).toBe(6); // Saturday
+      expect(getDayOfWeek(7)).toBe(0); // Sunday (next week)
+      expect(getDayOfWeek(8)).toBe(1); // Monday (next week)
+    });
+  });
+
+  describe('getTimeOfDayMultiplier', () => {
+    it('returns early bird rate for before 7am', () => {
+      expect(getTimeOfDayMultiplier(5)).toBe(0.6);
+      expect(getTimeOfDayMultiplier(6)).toBe(0.6);
+    });
+
+    it('returns prime morning rate for 7-10am', () => {
+      expect(getTimeOfDayMultiplier(7)).toBe(1.3);
+      expect(getTimeOfDayMultiplier(9)).toBe(1.3);
+    });
+
+    it('returns late morning rate for 10-12', () => {
+      expect(getTimeOfDayMultiplier(10)).toBe(1.1);
+      expect(getTimeOfDayMultiplier(11)).toBe(1.1);
+    });
+
+    it('returns midday rate for 12-14', () => {
+      expect(getTimeOfDayMultiplier(12)).toBe(0.9);
+      expect(getTimeOfDayMultiplier(13)).toBe(0.9);
+    });
+
+    it('returns afternoon rate for 14-16', () => {
+      expect(getTimeOfDayMultiplier(14)).toBe(1.0);
+      expect(getTimeOfDayMultiplier(15)).toBe(1.0);
+    });
+
+    it('returns twilight rate for 16+', () => {
+      expect(getTimeOfDayMultiplier(16)).toBe(0.7);
+      expect(getTimeOfDayMultiplier(18)).toBe(0.7);
+    });
+  });
+
+  describe('getSeasonMultiplier', () => {
+    it('returns high season multiplier for summer', () => {
+      expect(getSeasonMultiplier(100)).toBe(1.2); // April
+      expect(getSeasonMultiplier(200)).toBe(1.2); // July
+    });
+
+    it('returns low season multiplier for winter', () => {
+      expect(getSeasonMultiplier(30)).toBe(0.6);  // January
+      expect(getSeasonMultiplier(350)).toBe(0.6); // December
+    });
+
+    it('returns normal multiplier for spring/fall', () => {
+      expect(getSeasonMultiplier(75)).toBe(1.0);  // Mid-March
+      expect(getSeasonMultiplier(285)).toBe(1.0); // October
+    });
+  });
+
+  describe('calculateSlotDemand', () => {
+    it('calculates demand with default factors', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const demand = calculateSlotDemand(slot, 75);
+      expect(demand.baseDemand).toBe(0.5);
+      expect(demand.bookingProbability).toBeGreaterThan(0);
+      expect(demand.bookingProbability).toBeLessThanOrEqual(1);
+    });
+
+    it('uses prestige to modify demand', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const lowPrestige = calculateSlotDemand(slot, 75, { prestigeScore: 100 });
+      const highPrestige = calculateSlotDemand(slot, 75, { prestigeScore: 900 });
+      expect(highPrestige.bookingProbability).toBeGreaterThan(lowPrestige.bookingProbability);
+    });
+
+    it('uses weather to modify demand', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const perfectWeather = calculateSlotDemand(slot, 75, { weatherCondition: 'perfect' });
+      const badWeather = calculateSlotDemand(slot, 75, { weatherCondition: 'bad' });
+      expect(perfectWeather.bookingProbability).toBeGreaterThan(badWeather.bookingProbability);
+    });
+
+    it('caps booking probability at 1.0', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const demand = calculateSlotDemand(slot, 75, {
+        baseDemand: 5.0,
+        prestigeScore: 1000,
+        weatherCondition: 'perfect',
+        marketingBonus: 0.5,
+      });
+      expect(demand.bookingProbability).toBe(1.0);
+    });
+  });
+
+  describe('selectGroupSize', () => {
+    it('returns singles for low random values', () => {
+      expect(selectGroupSize(0.02)).toBe(1);
+    });
+
+    it('returns twosomes for values between 0.05-0.15', () => {
+      expect(selectGroupSize(0.10)).toBe(2);
+    });
+
+    it('returns threesomes for values between 0.15-0.30', () => {
+      expect(selectGroupSize(0.25)).toBe(3);
+    });
+
+    it('returns foursomes for values above 0.30', () => {
+      expect(selectGroupSize(0.50)).toBe(4);
+      expect(selectGroupSize(0.99)).toBe(4);
+    });
+  });
+
+  describe('canBookSlot', () => {
+    it('allows public to book within 7 days', () => {
+      const state = createInitialTeeTimeState();
+      expect(canBookSlot(state, 5, 0, 'public')).toBe(true);
+      expect(canBookSlot(state, 7, 0, 'public')).toBe(true);
+    });
+
+    it('prevents public from booking beyond 7 days', () => {
+      const state = createInitialTeeTimeState();
+      expect(canBookSlot(state, 8, 0, 'public')).toBe(false);
+      expect(canBookSlot(state, 14, 0, 'public')).toBe(false);
+    });
+
+    it('allows members to book within 14 days', () => {
+      const state = createInitialTeeTimeState();
+      expect(canBookSlot(state, 10, 0, 'member')).toBe(true);
+      expect(canBookSlot(state, 14, 0, 'member')).toBe(true);
+    });
+
+    it('prevents members from booking beyond 14 days', () => {
+      const state = createInitialTeeTimeState();
+      expect(canBookSlot(state, 15, 0, 'member')).toBe(false);
+    });
+
+    it('prevents same-day booking', () => {
+      const state = createInitialTeeTimeState();
+      expect(canBookSlot(state, 5, 5, 'public')).toBe(false);
+      expect(canBookSlot(state, 5, 5, 'member')).toBe(false);
+    });
+  });
+
+  describe('isLateCancellation', () => {
+    it('returns true when cancelling within free cancellation window', () => {
+      const teeTime = {
+        id: 'tt-1-0800',
+        scheduledTime: { day: 1, hour: 8, minute: 0 },
+        groupSize: 4,
+        status: 'reserved' as const,
+        bookingType: 'reservation' as const,
+        golfers: [],
+        pricePerGolfer: 70,
+        totalRevenue: 280,
+        checkedIn: false,
+        roundCompleted: false,
+      };
+      const currentTime = { day: 1, hour: 6, minute: 0 };
+      expect(isLateCancellation(teeTime, currentTime, DEFAULT_BOOKING_CONFIG)).toBe(true);
+    });
+
+    it('returns false when cancelling with plenty of time', () => {
+      const teeTime = {
+        id: 'tt-2-0800',
+        scheduledTime: { day: 2, hour: 8, minute: 0 },
+        groupSize: 4,
+        status: 'reserved' as const,
+        bookingType: 'reservation' as const,
+        golfers: [],
+        pricePerGolfer: 70,
+        totalRevenue: 280,
+        checkedIn: false,
+        roundCompleted: false,
+      };
+      const currentTime = { day: 0, hour: 6, minute: 0 };
+      expect(isLateCancellation(teeTime, currentTime, DEFAULT_BOOKING_CONFIG)).toBe(false);
+    });
+  });
+
+  describe('calculateCancellationPenalty', () => {
+    it('returns 0 for early cancellation', () => {
+      const teeTime = {
+        id: 'tt-2-0800',
+        scheduledTime: { day: 2, hour: 8, minute: 0 },
+        groupSize: 4,
+        status: 'reserved' as const,
+        bookingType: 'reservation' as const,
+        golfers: [],
+        pricePerGolfer: 70,
+        totalRevenue: 280,
+        checkedIn: false,
+        roundCompleted: false,
+      };
+      const currentTime = { day: 0, hour: 6, minute: 0 };
+      expect(calculateCancellationPenalty(teeTime, currentTime, DEFAULT_BOOKING_CONFIG)).toBe(0);
+    });
+
+    it('returns 50% for late cancellation', () => {
+      const teeTime = {
+        id: 'tt-1-0800',
+        scheduledTime: { day: 1, hour: 8, minute: 0 },
+        groupSize: 4,
+        status: 'reserved' as const,
+        bookingType: 'reservation' as const,
+        golfers: [],
+        pricePerGolfer: 70,
+        totalRevenue: 280,
+        checkedIn: false,
+        roundCompleted: false,
+      };
+      const currentTime = { day: 1, hour: 6, minute: 0 };
+      expect(calculateCancellationPenalty(teeTime, currentTime, DEFAULT_BOOKING_CONFIG)).toBe(140);
+    });
+  });
+
+  describe('calculateNoShowPenalty', () => {
+    it('returns full amount for no-show', () => {
+      const teeTime = {
+        id: 'tt-1-0800',
+        scheduledTime: { day: 1, hour: 8, minute: 0 },
+        groupSize: 4,
+        status: 'reserved' as const,
+        bookingType: 'reservation' as const,
+        golfers: [],
+        pricePerGolfer: 70,
+        totalRevenue: 280,
+        checkedIn: false,
+        roundCompleted: false,
+      };
+      expect(calculateNoShowPenalty(teeTime, DEFAULT_BOOKING_CONFIG)).toBe(280);
+    });
+  });
+
+  describe('simulateDailyBookings', () => {
+    it('creates bookings based on demand', () => {
+      const state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const result = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 1.0 },
+        50,
+        20,
+        () => 0.1
+      );
+      expect(result.newBookings.length).toBeGreaterThan(0);
+      expect(result.totalNewRevenue).toBeGreaterThan(0);
+    });
+
+    it('creates no bookings when random is high', () => {
+      const state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const result = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 0.1 },
+        50,
+        20,
+        () => 0.99
+      );
+      expect(result.newBookings.length).toBe(0);
+      expect(result.totalNewRevenue).toBe(0);
+    });
+
+    it('uses correct green and cart fees', () => {
+      const state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const result = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 1.0 },
+        100,
+        30,
+        () => 0.01
+      );
+      expect(result.newBookings.length).toBeGreaterThan(0);
+      const booking = result.newBookings[0];
+      expect(booking.golfers[0].greenFee).toBe(100);
+      expect(booking.golfers[0].cartFee).toBe(30);
+    });
+  });
+
+  describe('applyBookingSimulation', () => {
+    it('updates state with new bookings', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const simulation = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 1.0 },
+        50,
+        20,
+        () => 0.01
+      );
+      state = applyBookingSimulation(state, simulation, 75);
+      const booked = getBookedSlots(state, 75);
+      expect(booked.length).toBeGreaterThan(0);
+    });
+
+    it('updates booking metrics', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const simulation = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 1.0 },
+        50,
+        20,
+        () => 0.01
+      );
+      state = applyBookingSimulation(state, simulation, 75);
+      expect(state.bookingMetrics.totalBookingsToday).toBeGreaterThan(0);
+    });
+  });
+
+  describe('resetDailyMetrics', () => {
+    it('resets all metrics to zero', () => {
+      let state = createInitialTeeTimeState();
+      state = {
+        ...state,
+        bookingMetrics: {
+          totalBookingsToday: 10,
+          cancellationsToday: 2,
+          noShowsToday: 1,
+          lateCancellationsToday: 1,
+        },
+      };
+      state = resetDailyMetrics(state);
+      expect(state.bookingMetrics.totalBookingsToday).toBe(0);
+      expect(state.bookingMetrics.cancellationsToday).toBe(0);
+      expect(state.bookingMetrics.noShowsToday).toBe(0);
+      expect(state.bookingMetrics.lateCancellationsToday).toBe(0);
+    });
+  });
+
+  describe('updateBookingConfig', () => {
+    it('updates booking configuration', () => {
+      let state = createInitialTeeTimeState();
+      state = updateBookingConfig(state, { publicBookingDays: 14 });
+      expect(state.bookingConfig.publicBookingDays).toBe(14);
+      expect(state.bookingConfig.memberBookingDays).toBe(14);
+    });
+
+    it('preserves unmodified config values', () => {
+      let state = createInitialTeeTimeState();
+      state = updateBookingConfig(state, { noShowPenalty: 0.75 });
+      expect(state.bookingConfig.noShowPenalty).toBe(0.75);
+      expect(state.bookingConfig.publicBookingDays).toBe(7);
+      expect(state.bookingConfig.freeCancellationHours).toBe(24);
     });
   });
 });

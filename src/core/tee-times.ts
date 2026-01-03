@@ -11,6 +11,48 @@ export type BookingType = 'reservation' | 'walk_on' | 'member' | 'tournament';
 export type MembershipStatus = 'member' | 'guest' | 'public';
 
 export type TeeTimeSpacing = 'packed' | 'tight' | 'standard' | 'comfortable' | 'relaxed' | 'exclusive';
+export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface BookingWindowConfig {
+  publicBookingDays: number;
+  memberBookingDays: number;
+  freeCancellationHours: number;
+  lateCancelPenalty: number;
+  noShowPenalty: number;
+  noShowCountForBlacklist: number;
+}
+
+export const DEFAULT_BOOKING_CONFIG: BookingWindowConfig = {
+  publicBookingDays: 7,
+  memberBookingDays: 14,
+  freeCancellationHours: 24,
+  lateCancelPenalty: 0.5,
+  noShowPenalty: 1.0,
+  noShowCountForBlacklist: 3,
+} as const;
+
+export interface ReservationDemand {
+  baseDemand: number;
+  dayOfWeekMultiplier: number;
+  timeOfDayMultiplier: number;
+  seasonMultiplier: number;
+  weatherMultiplier: number;
+  prestigeMultiplier: number;
+  pricingMultiplier: number;
+  marketingMultiplier: number;
+  finalDemand: number;
+  bookingProbability: number;
+}
+
+export const DAY_OF_WEEK_MULTIPLIERS: Record<DayOfWeek, number> = {
+  0: 1.3,   // Sunday
+  1: 0.7,   // Monday
+  2: 0.8,   // Tuesday
+  3: 0.9,   // Wednesday
+  4: 0.9,   // Thursday
+  5: 1.1,   // Friday
+  6: 1.4,   // Saturday
+} as const;
 
 export interface GameTime {
   day: number;
@@ -68,11 +110,20 @@ export interface SpacingConfiguration {
   revenueMultiplier: number;
 }
 
+export interface BookingMetrics {
+  totalBookingsToday: number;
+  cancellationsToday: number;
+  noShowsToday: number;
+  lateCancellationsToday: number;
+}
+
 export interface TeeTimeSystemState {
   spacingConfig: SpacingConfiguration;
   operatingHours: CourseOperatingHours;
+  bookingConfig: BookingWindowConfig;
   teeTimes: Map<number, TeeTime[]>;
   currentDay: number;
+  bookingMetrics: BookingMetrics;
 }
 
 export const DEFAULT_OPERATING_HOURS: CourseOperatingHours = {
@@ -147,8 +198,15 @@ export function createInitialTeeTimeState(
   return {
     spacingConfig: { ...SPACING_CONFIGS[spacing] },
     operatingHours: { ...DEFAULT_OPERATING_HOURS },
+    bookingConfig: { ...DEFAULT_BOOKING_CONFIG },
     teeTimes: new Map(),
     currentDay: 0,
+    bookingMetrics: {
+      totalBookingsToday: 0,
+      cancellationsToday: 0,
+      noShowsToday: 0,
+      lateCancellationsToday: 0,
+    },
   };
 }
 
@@ -570,4 +628,254 @@ export function getSpacingLabel(spacing: TeeTimeSpacing): string {
     case 'relaxed': return 'Relaxed (15 min)';
     case 'exclusive': return 'Exclusive (20 min)';
   }
+}
+
+export function getDayOfWeek(day: number): DayOfWeek {
+  return (day % 7) as DayOfWeek;
+}
+
+export function getTimeOfDayMultiplier(hour: number): number {
+  if (hour < 7) return 0.6;      // Early bird
+  if (hour < 10) return 1.3;     // Prime morning
+  if (hour < 12) return 1.1;     // Late morning
+  if (hour < 14) return 0.9;     // Midday
+  if (hour < 16) return 1.0;     // Afternoon
+  return 0.7;                     // Twilight
+}
+
+export function getSeasonMultiplier(day: number): number {
+  const dayOfYear = day % 365;
+  if (dayOfYear >= 91 && dayOfYear <= 273) return 1.2;   // Summer: high season
+  if (dayOfYear <= 60 || dayOfYear >= 305) return 0.6;   // Winter: low season
+  return 1.0;                                             // Spring/Fall: normal
+}
+
+export interface DemandFactors {
+  baseDemand?: number;
+  prestigeScore?: number;
+  weatherCondition?: 'perfect' | 'good' | 'fair' | 'poor' | 'bad';
+  pricingRatio?: number;
+  marketingBonus?: number;
+}
+
+const WEATHER_MULTIPLIERS: Record<string, number> = {
+  perfect: 1.3,
+  good: 1.1,
+  fair: 1.0,
+  poor: 0.7,
+  bad: 0.3,
+};
+
+export function calculateSlotDemand(
+  slot: TeeTime,
+  day: number,
+  factors: DemandFactors = {}
+): ReservationDemand {
+  const {
+    baseDemand = 0.5,
+    prestigeScore = 500,
+    weatherCondition = 'good',
+    pricingRatio = 1.0,
+    marketingBonus = 0,
+  } = factors;
+
+  const dayOfWeek = getDayOfWeek(day);
+  const dayOfWeekMultiplier = DAY_OF_WEEK_MULTIPLIERS[dayOfWeek];
+  const timeOfDayMultiplier = getTimeOfDayMultiplier(slot.scheduledTime.hour);
+  const seasonMultiplier = getSeasonMultiplier(day);
+  const weatherMultiplier = WEATHER_MULTIPLIERS[weatherCondition] ?? 1.0;
+  const prestigeMultiplier = 0.5 + (prestigeScore / 1000);
+  const pricingMultiplier = pricingRatio <= 1.0 ? 1.0 : Math.max(0.3, 1.5 - pricingRatio * 0.5);
+  const marketingMultiplier = 1.0 + marketingBonus;
+
+  const finalDemand = baseDemand
+    * dayOfWeekMultiplier
+    * timeOfDayMultiplier
+    * seasonMultiplier
+    * weatherMultiplier
+    * prestigeMultiplier
+    * pricingMultiplier
+    * marketingMultiplier;
+
+  const bookingProbability = Math.min(1.0, Math.max(0, finalDemand));
+
+  return {
+    baseDemand,
+    dayOfWeekMultiplier,
+    timeOfDayMultiplier,
+    seasonMultiplier,
+    weatherMultiplier,
+    prestigeMultiplier,
+    pricingMultiplier,
+    marketingMultiplier,
+    finalDemand,
+    bookingProbability,
+  };
+}
+
+export function selectGroupSize(random: number = Math.random()): number {
+  if (random < 0.05) return 1;   // 5% singles
+  if (random < 0.15) return 2;   // 10% twosomes
+  if (random < 0.30) return 3;   // 15% threesomes
+  return 4;                       // 70% foursomes
+}
+
+export function canBookSlot(
+  state: TeeTimeSystemState,
+  teeTimeDay: number,
+  currentDay: number,
+  membershipStatus: MembershipStatus
+): boolean {
+  const maxDaysAhead = membershipStatus === 'member'
+    ? state.bookingConfig.memberBookingDays
+    : state.bookingConfig.publicBookingDays;
+
+  const daysAhead = teeTimeDay - currentDay;
+  return daysAhead > 0 && daysAhead <= maxDaysAhead;
+}
+
+export function isLateCancellation(
+  teeTime: TeeTime,
+  currentTime: GameTime,
+  bookingConfig: BookingWindowConfig
+): boolean {
+  const teeTimeMinutes = teeTime.scheduledTime.day * 24 * 60
+    + teeTime.scheduledTime.hour * 60
+    + teeTime.scheduledTime.minute;
+  const currentMinutes = currentTime.day * 24 * 60
+    + currentTime.hour * 60
+    + currentTime.minute;
+  const hoursUntilTeeTime = (teeTimeMinutes - currentMinutes) / 60;
+  return hoursUntilTeeTime < bookingConfig.freeCancellationHours;
+}
+
+export function calculateCancellationPenalty(
+  teeTime: TeeTime,
+  currentTime: GameTime,
+  bookingConfig: BookingWindowConfig
+): number {
+  if (!isLateCancellation(teeTime, currentTime, bookingConfig)) {
+    return 0;
+  }
+  return teeTime.totalRevenue * bookingConfig.lateCancelPenalty;
+}
+
+export function calculateNoShowPenalty(
+  teeTime: TeeTime,
+  bookingConfig: BookingWindowConfig
+): number {
+  return teeTime.totalRevenue * bookingConfig.noShowPenalty;
+}
+
+export interface BookingSimulationResult {
+  newBookings: TeeTime[];
+  cancellations: string[];
+  noShows: string[];
+  totalNewRevenue: number;
+  totalCancellationPenalties: number;
+  totalNoShowPenalties: number;
+}
+
+export function simulateDailyBookings(
+  state: TeeTimeSystemState,
+  targetDay: number,
+  currentDay: number,
+  factors: DemandFactors = {},
+  greenFee: number = 50,
+  cartFee: number = 20,
+  randomFn: () => number = Math.random
+): BookingSimulationResult {
+  const availableSlots = getAvailableSlots(state, targetDay);
+  const newBookings: TeeTime[] = [];
+  let totalNewRevenue = 0;
+
+  for (const slot of availableSlots) {
+    const demand = calculateSlotDemand(slot, targetDay, factors);
+
+    if (randomFn() < demand.bookingProbability) {
+      const groupSize = selectGroupSize(randomFn());
+      const golfers: GolferBooking[] = [];
+
+      for (let i = 0; i < groupSize; i++) {
+        golfers.push({
+          golferId: `golfer-${targetDay}-${slot.id}-${i}`,
+          name: `Golfer ${i + 1}`,
+          membershipStatus: 'public',
+          greenFee,
+          cartFee,
+          addOns: [],
+        });
+      }
+
+      const totalSlotRevenue = groupSize * (greenFee + cartFee);
+      totalNewRevenue += totalSlotRevenue;
+
+      newBookings.push({
+        ...slot,
+        status: 'reserved',
+        bookingType: 'reservation',
+        golfers,
+        groupSize,
+        pricePerGolfer: greenFee + cartFee,
+        totalRevenue: totalSlotRevenue,
+        bookedAt: { day: currentDay, hour: 12, minute: 0 },
+      });
+    }
+  }
+
+  return {
+    newBookings,
+    cancellations: [],
+    noShows: [],
+    totalNewRevenue,
+    totalCancellationPenalties: 0,
+    totalNoShowPenalties: 0,
+  };
+}
+
+export function applyBookingSimulation(
+  state: TeeTimeSystemState,
+  simulation: BookingSimulationResult,
+  targetDay: number
+): TeeTimeSystemState {
+  const newTeeTimes = new Map(state.teeTimes);
+  const existingSlots = getTeeTimes(state, targetDay);
+
+  const updatedSlots = existingSlots.map(slot => {
+    const booking = simulation.newBookings.find(b => b.id === slot.id);
+    return booking ?? slot;
+  });
+
+  newTeeTimes.set(targetDay, updatedSlots);
+
+  return {
+    ...state,
+    teeTimes: newTeeTimes,
+    bookingMetrics: {
+      ...state.bookingMetrics,
+      totalBookingsToday: state.bookingMetrics.totalBookingsToday + simulation.newBookings.length,
+    },
+  };
+}
+
+export function resetDailyMetrics(state: TeeTimeSystemState): TeeTimeSystemState {
+  return {
+    ...state,
+    bookingMetrics: {
+      totalBookingsToday: 0,
+      cancellationsToday: 0,
+      noShowsToday: 0,
+      lateCancellationsToday: 0,
+    },
+  };
+}
+
+export function updateBookingConfig(
+  state: TeeTimeSystemState,
+  config: Partial<BookingWindowConfig>
+): TeeTimeSystemState {
+  return {
+    ...state,
+    bookingConfig: { ...state.bookingConfig, ...config },
+  };
 }
