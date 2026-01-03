@@ -10,6 +10,8 @@ This file tracks the work needed to integrate all economy/management systems int
 - Golfer system: Arrivals, progression, tips, satisfaction running
 - Research system: Ticks, funding costs deducted
 - Scenario system: Progress tracking, objective checking, win/lose detection
+- Tee Time system: Slot generation, booking simulation, walk-ons, revenue tracking
+- Marketing system: Campaign processing, demand multipliers
 - UI: Economy panel (cash + golfers), Scenario progress panel with bar
 
 **Prestige System** ✅ COMPLETE (See [Prestige System](#prestige-system) section)
