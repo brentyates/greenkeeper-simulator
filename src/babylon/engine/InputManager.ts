@@ -2,7 +2,9 @@ import { Scene } from "@babylonjs/core/scene";
 import { KeyboardEventTypes } from "@babylonjs/core/Events/keyboardEvents";
 import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 
-export type Direction = "up" | "down" | "left" | "right";
+import { Direction } from "../../core/movement";
+
+export type { Direction };
 export type EquipmentSlot = 1 | 2 | 3;
 
 export interface InputCallbacks {
@@ -39,6 +41,7 @@ export class InputManager {
   private keysDown: Set<string> = new Set();
   private enabled: boolean = true;
   private isDragging: boolean = false;
+  private wheelHandler: ((event: WheelEvent) => void) | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -124,12 +127,10 @@ export class InputManager {
     } else if (key === "f12") {
       this.callbacks.onDebugScreenshot?.();
     } else if (key === "t") {
-      console.log("[DEBUG] InputManager received 't' key");
       this.callbacks.onEditorToggle?.();
     } else if (key === "q") {
       this.callbacks.onEditorBrushSelect?.("terrain_fairway");
     } else if (key === "r") {
-      this.callbacks.onEditorBrushSelect?.("terrain_bunker");
       this.callbacks.onEditorBrushSelect?.("terrain_bunker");
     } else if (key === "f") {
       this.callbacks.onEditorBrushSelect?.("terrain_water");
@@ -182,7 +183,7 @@ export class InputManager {
       }
     });
 
-    this.scene.getEngine().getRenderingCanvas()?.addEventListener("wheel", (event) => {
+    this.wheelHandler = (event: WheelEvent) => {
       if (!this.enabled) return;
       event.preventDefault();
       if (event.deltaY > 0) {
@@ -190,11 +191,16 @@ export class InputManager {
       } else if (event.deltaY < 0) {
         this.callbacks.onZoomIn?.();
       }
-    }, { passive: false });
+    };
+    this.scene.getEngine().getRenderingCanvas()?.addEventListener("wheel", this.wheelHandler, { passive: false });
   }
 
   public dispose(): void {
     this.keysDown.clear();
     this.callbacks = {};
+    if (this.wheelHandler) {
+      this.scene.getEngine().getRenderingCanvas()?.removeEventListener("wheel", this.wheelHandler);
+      this.wheelHandler = null;
+    }
   }
 }

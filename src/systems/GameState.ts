@@ -1,7 +1,7 @@
-import { TerrainType } from '../core/terrain';
+import { TerrainType, OverlayMode } from '../core/terrain';
 import { EquipmentType, Direction } from '../core/movement';
 
-export type OverlayMode = 'normal' | 'moisture' | 'nutrients' | 'height';
+export type { OverlayMode };
 export type ObjectiveType = 'mow_percentage' | 'maintain_health' | 'water_coverage' | 'complete_hole';
 
 export interface GrassCellState {

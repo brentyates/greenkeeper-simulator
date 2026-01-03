@@ -87,7 +87,8 @@ export function isEmpty(state: EquipmentState): boolean {
   return state.resourceCurrent <= 0;
 }
 
-export type Direction = 'up' | 'down' | 'left' | 'right';
+import type { Direction } from './movement';
+export type { Direction };
 
 export function getIsoOffset(direction: Direction): { x: number; y: number } {
   switch (direction) {

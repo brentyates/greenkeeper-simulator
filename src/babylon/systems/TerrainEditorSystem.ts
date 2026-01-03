@@ -415,19 +415,23 @@ export class TerrainEditorSystem {
     this.lastDragTile = null;
   }
 
-  private applyModificationsToTerrain(modifications: TileModification[]): void {
+  private applyModificationsToTerrain(
+    modifications: TileModification[],
+    revert: boolean = false
+  ): void {
     if (!this.terrainModifier) return;
 
     for (const mod of modifications) {
-      if (mod.newElevation !== mod.oldElevation) {
-        this.terrainModifier.setElevationAt(mod.x, mod.y, mod.newElevation);
+      const elev = revert ? mod.oldElevation : mod.newElevation;
+      const type = revert ? mod.oldType : mod.newType;
+      const prevElev = revert ? mod.newElevation : mod.oldElevation;
+      const prevType = revert ? mod.newType : mod.oldType;
+
+      if (elev !== prevElev) {
+        this.terrainModifier.setElevationAt(mod.x, mod.y, elev);
       }
-      if (mod.newType !== mod.oldType) {
-        this.terrainModifier.setTerrainTypeAt(
-          mod.x,
-          mod.y,
-          getTerrainType(mod.newType)
-        );
+      if (type !== prevType) {
+        this.terrainModifier.setTerrainTypeAt(mod.x, mod.y, getTerrainType(type));
       }
     }
 
@@ -448,7 +452,7 @@ export class TerrainEditorSystem {
     );
     if (action) {
       const affectedTiles = getAffectedTiles(action.modifications);
-      this.revertModificationsOnTerrain(action.modifications);
+      this.applyModificationsToTerrain(action.modifications, true);
       this.notifyUndoRedoChange();
       this.callbacks.onModification?.(affectedTiles);
     }
@@ -468,30 +472,6 @@ export class TerrainEditorSystem {
       this.applyModificationsToTerrain(action.modifications);
       this.notifyUndoRedoChange();
       this.callbacks.onModification?.(affectedTiles);
-    }
-  }
-
-  private revertModificationsOnTerrain(
-    modifications: TileModification[]
-  ): void {
-    if (!this.terrainModifier) return;
-
-    for (const mod of modifications) {
-      if (mod.newElevation !== mod.oldElevation) {
-        this.terrainModifier.setElevationAt(mod.x, mod.y, mod.oldElevation);
-      }
-      if (mod.newType !== mod.oldType) {
-        this.terrainModifier.setTerrainTypeAt(
-          mod.x,
-          mod.y,
-          getTerrainType(mod.oldType)
-        );
-      }
-    }
-
-    const affectedTiles = getAffectedTiles(modifications);
-    for (const tile of affectedTiles) {
-      this.terrainModifier.rebuildTileAndNeighbors(tile.x, tile.y);
     }
   }
 

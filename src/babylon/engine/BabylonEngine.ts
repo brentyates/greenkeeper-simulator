@@ -10,6 +10,10 @@ import { Camera } from "@babylonjs/core/Cameras/camera";
 export const TILE_SIZE = 1;
 export const HEIGHT_UNIT = 0.5;
 
+export function gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
+  return new Vector3(gridX * TILE_SIZE, elevation * HEIGHT_UNIT, gridY * TILE_SIZE);
+}
+
 export class BabylonEngine {
   private canvas: HTMLCanvasElement;
   private engine: Engine;
@@ -20,6 +24,7 @@ export class BabylonEngine {
   private cameraDistance: number = 100;
   private cameraRotationY: number = Math.PI / 4;
   private cameraTarget: Vector3 = Vector3.Zero();
+  private resizeHandler: (() => void) | null = null;
 
   constructor(canvasId: string, mapWidth: number = 50, mapHeight: number = 38) {
     this.mapWidth = mapWidth;
@@ -101,10 +106,11 @@ export class BabylonEngine {
   }
 
   private setupResizeHandler(): void {
-    window.addEventListener("resize", () => {
+    this.resizeHandler = () => {
       this.engine.resize();
       this.updateCameraAspect();
-    });
+    };
+    window.addEventListener("resize", this.resizeHandler);
   }
 
   private updateCameraAspect(): void {
@@ -115,12 +121,8 @@ export class BabylonEngine {
     this.camera.orthoRight = orthoSize * aspectRatio;
   }
 
-  public gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
-    return new Vector3(
-      gridX * TILE_SIZE,
-      elevation * HEIGHT_UNIT,
-      gridY * TILE_SIZE
-    );
+  public gridTo3D(gX: number, gY: number, elev: number): Vector3 {
+    return gridTo3D(gX, gY, elev);
   }
 
   public start(): void {
@@ -181,6 +183,10 @@ export class BabylonEngine {
   }
 
   public dispose(): void {
+    if (this.resizeHandler) {
+      window.removeEventListener("resize", this.resizeHandler);
+      this.resizeHandler = null;
+    }
     this.engine.dispose();
   }
 }

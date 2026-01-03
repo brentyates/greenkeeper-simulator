@@ -1,5 +1,6 @@
 export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water";
 export type ObstacleType = "none" | "tree" | "pine_tree" | "shrub" | "bush";
+export type OverlayMode = "normal" | "moisture" | "nutrients" | "height";
 
 export interface CellState {
   x: number;
@@ -102,8 +103,8 @@ export function getInitialValues(type: TerrainType): {
 export function gridToScreen(
   gridX: number,
   gridY: number,
-  elevation: number,
-  mapWidth: number
+  mapWidth: number,
+  elevation: number = 0
 ): { x: number; y: number } {
   const screenX =
     (gridX - gridY) * (TILE_WIDTH / 2) + (mapWidth * TILE_WIDTH) / 2;
@@ -618,17 +619,9 @@ export function getTerrainSpeedModifier(type: TerrainType): number {
   }
 }
 
-export function getTerrainMowable(type: TerrainType): boolean {
-  return type === "fairway" || type === "rough" || type === "green";
-}
-
-export function getTerrainWaterable(type: TerrainType): boolean {
-  return type === "fairway" || type === "rough" || type === "green";
-}
-
-export function getTerrainFertilizable(type: TerrainType): boolean {
-  return type === "fairway" || type === "rough" || type === "green";
-}
+export const getTerrainMowable = isGrassTerrain;
+export const getTerrainWaterable = isGrassTerrain;
+export const getTerrainFertilizable = isGrassTerrain;
 
 export function clampToGrid(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max - 1, Math.floor(value)));
@@ -833,87 +826,6 @@ export function getTerrainCode(type: TerrainType): number {
   }
 }
 
-export function getTerrainColor(type: TerrainType): {
-  r: number;
-  g: number;
-  b: number;
-} {
-  switch (type) {
-    case "fairway":
-      return { r: 0.4, g: 0.7, b: 0.3 };
-    case "rough":
-      return { r: 0.35, g: 0.55, b: 0.25 };
-    case "green":
-      return { r: 0.3, g: 0.8, b: 0.35 };
-    case "bunker":
-      return { r: 0.85, g: 0.75, b: 0.5 };
-    case "water":
-      return { r: 0.2, g: 0.4, b: 0.65 };
-    default:
-      return { r: 0.4, g: 0.6, b: 0.3 };
-  }
-}
-
-export function lerpTerrainColor(
-  type1: TerrainType,
-  type2: TerrainType,
-  t: number
-): { r: number; g: number; b: number } {
-  const c1 = getTerrainColor(type1);
-  const c2 = getTerrainColor(type2);
-  const clampedT = Math.max(0, Math.min(1, t));
-  return {
-    r: c1.r + (c2.r - c1.r) * clampedT,
-    g: c1.g + (c2.g - c1.g) * clampedT,
-    b: c1.b + (c2.b - c1.b) * clampedT,
-  };
-}
-
-export function getManhattanDistance(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): number {
-  return Math.abs(x2 - x1) + Math.abs(y2 - y1);
-}
-
-export function getEuclideanDistance(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-export function getChebyshevDistance(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): number {
-  return Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
-}
-
-export function isAdjacent(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  includeDiagonals: boolean = false
-): boolean {
-  const dx = Math.abs(x2 - x1);
-  const dy = Math.abs(y2 - y1);
-
-  if (includeDiagonals) {
-    return dx <= 1 && dy <= 1 && dx + dy > 0;
-  }
-  return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
-}
-
 export function getAdjacentPositions(
   x: number,
   y: number,
@@ -936,35 +848,4 @@ export function getAdjacentPositions(
   }
 
   return positions;
-}
-
-export function getDirectionFromTo(
-  fromX: number,
-  fromY: number,
-  toX: number,
-  toY: number
-): number {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  return Math.atan2(dy, dx) * (180 / Math.PI);
-}
-
-export function normalizeAngle(angle: number): number {
-  let normalized = angle % 360;
-  if (normalized < 0) normalized += 360;
-  return normalized;
-}
-
-export function getCardinalDirection(
-  angle: number
-): "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw" {
-  const normalized = normalizeAngle(angle);
-  if (normalized >= 337.5 || normalized < 22.5) return "e";
-  if (normalized < 67.5) return "se";
-  if (normalized < 112.5) return "s";
-  if (normalized < 157.5) return "sw";
-  if (normalized < 202.5) return "w";
-  if (normalized < 247.5) return "nw";
-  if (normalized < 292.5) return "n";
-  return "ne";
 }

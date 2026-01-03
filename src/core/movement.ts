@@ -1,11 +1,20 @@
+import {
+  gridToScreen,
+  screenToGrid,
+  TILE_WIDTH,
+  TILE_HEIGHT,
+  ELEVATION_HEIGHT,
+} from './terrain';
+
 export type Direction = 'up' | 'down' | 'left' | 'right';
-export type EquipmentType = 'mower' | 'sprinkler' | 'spreader' | null;
+export type MovementEquipmentType = 'mower' | 'sprinkler' | 'spreader' | null;
+export type EquipmentType = MovementEquipmentType;
 
 export interface PlayerState {
   gridX: number;
   gridY: number;
   stamina: number;
-  currentEquipment: EquipmentType;
+  currentEquipment: MovementEquipmentType;
   isEquipmentActive: boolean;
   direction: Direction;
   isMoving: boolean;
@@ -16,10 +25,9 @@ export interface MapBounds {
   height: number;
 }
 
-export const TILE_WIDTH = 64;
-export const TILE_HEIGHT = 32;
-export const ELEVATION_HEIGHT = 16;
 export const MOVE_SPEED = 150;
+
+export { gridToScreen, screenToGrid, TILE_WIDTH, TILE_HEIGHT, ELEVATION_HEIGHT };
 
 export function createInitialPlayerState(gridX: number = 0, gridY: number = 0): PlayerState {
   return {
@@ -31,28 +39,6 @@ export function createInitialPlayerState(gridX: number = 0, gridY: number = 0): 
     direction: 'down',
     isMoving: false
   };
-}
-
-export function gridToScreen(
-  gridX: number,
-  gridY: number,
-  mapWidth: number,
-  elevation: number = 0
-): { x: number; y: number } {
-  const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + (mapWidth * TILE_WIDTH / 2);
-  const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) - elevation * ELEVATION_HEIGHT;
-  return { x: screenX, y: screenY };
-}
-
-export function screenToGrid(
-  screenX: number,
-  screenY: number,
-  mapWidth: number
-): { x: number; y: number } {
-  const offsetX = screenX - (mapWidth * TILE_WIDTH / 2);
-  const isoX = (offsetX / (TILE_WIDTH / 2) + screenY / (TILE_HEIGHT / 2)) / 2;
-  const isoY = (screenY / (TILE_HEIGHT / 2) - offsetX / (TILE_WIDTH / 2)) / 2;
-  return { x: Math.round(isoX), y: Math.round(isoY) };
 }
 
 export function isWithinBounds(x: number, y: number, bounds: MapBounds): boolean {
@@ -133,7 +119,7 @@ export function setStamina(state: PlayerState, stamina: number): PlayerState {
   };
 }
 
-export function setEquipment(state: PlayerState, equipment: EquipmentType): PlayerState {
+export function setEquipment(state: PlayerState, equipment: MovementEquipmentType): PlayerState {
   return {
     ...state,
     currentEquipment: equipment

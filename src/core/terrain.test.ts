@@ -151,35 +151,35 @@ describe('Coordinate Conversion', () => {
 
   describe('gridToScreen', () => {
     it('converts origin (0,0) to center-top of screen', () => {
-      const screen = gridToScreen(0, 0, 0, mapWidth);
+      const screen = gridToScreen(0, 0, mapWidth);
       expect(screen.x).toBe(mapWidth * TILE_WIDTH / 2);
       expect(screen.y).toBe(0);
     });
 
     it('moving right in grid moves right-down on screen', () => {
-      const origin = gridToScreen(0, 0, 0, mapWidth);
-      const moved = gridToScreen(1, 0, 0, mapWidth);
+      const origin = gridToScreen(0, 0, mapWidth);
+      const moved = gridToScreen(1, 0, mapWidth);
       expect(moved.x).toBeGreaterThan(origin.x);
       expect(moved.y).toBeGreaterThan(origin.y);
     });
 
     it('moving down in grid moves left-down on screen', () => {
-      const origin = gridToScreen(0, 0, 0, mapWidth);
-      const moved = gridToScreen(0, 1, 0, mapWidth);
+      const origin = gridToScreen(0, 0, mapWidth);
+      const moved = gridToScreen(0, 1, mapWidth);
       expect(moved.x).toBeLessThan(origin.x);
       expect(moved.y).toBeGreaterThan(origin.y);
     });
 
     it('applies elevation offset to Y position', () => {
-      const flat = gridToScreen(5, 5, 0, mapWidth);
-      const elevated = gridToScreen(5, 5, 1, mapWidth);
+      const flat = gridToScreen(5, 5, mapWidth, 0);
+      const elevated = gridToScreen(5, 5, mapWidth, 1);
       expect(elevated.x).toBe(flat.x);
       expect(elevated.y).toBe(flat.y - ELEVATION_HEIGHT);
     });
 
     it('higher elevation moves sprite higher on screen', () => {
-      const low = gridToScreen(5, 5, 0, mapWidth);
-      const high = gridToScreen(5, 5, 2, mapWidth);
+      const low = gridToScreen(5, 5, mapWidth, 0);
+      const high = gridToScreen(5, 5, mapWidth, 2);
       expect(high.y).toBeLessThan(low.y);
       expect(high.y).toBe(low.y - 2 * ELEVATION_HEIGHT);
     });
@@ -195,7 +195,7 @@ describe('Coordinate Conversion', () => {
     it('is approximately inverse of gridToScreen (without elevation)', () => {
       for (let x = 0; x < 10; x++) {
         for (let y = 0; y < 10; y++) {
-          const screen = gridToScreen(x, y, 0, mapWidth);
+          const screen = gridToScreen(x, y, mapWidth);
           const back = screenToGrid(screen.x, screen.y, mapWidth);
           expect(back.x).toBe(x);
           expect(back.y).toBe(y);

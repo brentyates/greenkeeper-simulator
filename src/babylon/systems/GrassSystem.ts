@@ -21,13 +21,15 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import {
   CellState,
   getTerrainType,
+  getTerrainCode,
   getInitialValues,
   calculateHealth,
   getCellsInRadius,
   TERRAIN_CODES,
+  OverlayMode,
 } from "../../core/terrain";
 
-import { TILE_SIZE, HEIGHT_UNIT } from "../engine/BabylonEngine";
+import { gridTo3D } from "../engine/BabylonEngine";
 
 import {
   simulateGrowth,
@@ -39,7 +41,9 @@ import {
 
 import { CourseData } from "../../data/courseData";
 
-export type OverlayMode = "normal" | "moisture" | "nutrients" | "height";
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+export type { OverlayMode };
 
 export class GrassSystem {
   private scene: Scene;
@@ -180,8 +184,8 @@ export class GrassSystem {
         const x = width - 1;
         const cell = this.cells[y][x];
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const ne = this.gridTo3D(x + 1, y, corners.ne);
-        const se = this.gridTo3D(x + 1, y + 1, corners.se);
+        const ne = gridTo3D(x + 1, y, corners.ne);
+        const se = gridTo3D(x + 1, y + 1, corners.se);
 
         const baseIdx = positions.length / 3;
         positions.push(ne.x, ne.y, ne.z);
@@ -202,8 +206,8 @@ export class GrassSystem {
         const y = height - 1;
         const cell = this.cells[y][x];
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const sw = this.gridTo3D(x, y + 1, corners.sw);
-        const se = this.gridTo3D(x + 1, y + 1, corners.se);
+        const sw = gridTo3D(x, y + 1, corners.sw);
+        const se = gridTo3D(x + 1, y + 1, corners.se);
 
         const baseIdx = positions.length / 3;
         positions.push(sw.x, sw.y, sw.z);
@@ -242,9 +246,9 @@ export class GrassSystem {
     const cell = this.cells[y][x];
     const corners = this.getCornerHeights(x, y, cell.elevation);
 
-    const ne = this.gridTo3D(x + 1, y, corners.ne);
-    const se = this.gridTo3D(x + 1, y + 1, corners.se);
-    const sw = this.gridTo3D(x, y + 1, corners.sw);
+    const ne = gridTo3D(x + 1, y, corners.ne);
+    const se = gridTo3D(x + 1, y + 1, corners.se);
+    const sw = gridTo3D(x, y + 1, corners.sw);
 
     const rightNeighbor = this.cells[y]?.[x + 1];
     const bottomNeighbor = this.cells[y + 1]?.[x];
@@ -255,8 +259,8 @@ export class GrassSystem {
         y,
         rightNeighbor.elevation
       );
-      const neighborNw = this.gridTo3D(x + 1, y, neighborCorners.nw);
-      const neighborSw = this.gridTo3D(x + 1, y + 1, neighborCorners.sw);
+      const neighborNw = gridTo3D(x + 1, y, neighborCorners.nw);
+      const neighborSw = gridTo3D(x + 1, y + 1, neighborCorners.sw);
 
       const heightDiff1 = ne.y - neighborNw.y;
       const heightDiff2 = se.y - neighborSw.y;
@@ -280,8 +284,8 @@ export class GrassSystem {
         y + 1,
         bottomNeighbor.elevation
       );
-      const neighborNe = this.gridTo3D(x + 1, y + 1, neighborCorners.ne);
-      const neighborNw = this.gridTo3D(x, y + 1, neighborCorners.nw);
+      const neighborNe = gridTo3D(x + 1, y + 1, neighborCorners.ne);
+      const neighborNw = gridTo3D(x, y + 1, neighborCorners.nw);
 
       const heightDiff1 = se.y - neighborNe.y;
       const heightDiff2 = sw.y - neighborNw.y;
@@ -368,10 +372,10 @@ export class GrassSystem {
         const lineColor = isHidden ? hiddenColor : startColor;
 
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const nw = this.gridTo3D(x, y, corners.nw);
-        const ne = this.gridTo3D(x + 1, y, corners.ne);
-        const se = this.gridTo3D(x + 1, y + 1, corners.se);
-        const sw = this.gridTo3D(x, y + 1, corners.sw);
+        const nw = gridTo3D(x, y, corners.nw);
+        const ne = gridTo3D(x + 1, y, corners.ne);
+        const se = gridTo3D(x + 1, y + 1, corners.se);
+        const sw = gridTo3D(x, y + 1, corners.sw);
 
         nw.y += yOffset;
         ne.y += yOffset;
@@ -419,12 +423,11 @@ export class GrassSystem {
     }
   }
 
-  private gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
-    return new Vector3(
-      gridX * TILE_SIZE,
-      elevation * HEIGHT_UNIT,
-      gridY * TILE_SIZE
-    );
+
+  private cellHash(cellX: number, cellY: number, n: number): number {
+    const seed = cellX * 12345 + cellY * 67890;
+    const x = Math.sin(seed + n * 9999) * 10000;
+    return x - Math.floor(x);
   }
 
   public getElevationAt(
@@ -493,10 +496,10 @@ export class GrassSystem {
     const normals: number[] = [];
     const colors: number[] = [];
 
-    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
-    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
-    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
-    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
+    const nw = gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = gridTo3D(cell.x, cell.y + 1, corners.sw);
 
     positions.push(nw.x, nw.y, nw.z);
     positions.push(ne.x, ne.y, ne.z);
@@ -548,10 +551,10 @@ export class GrassSystem {
     const normals: number[] = [];
     const colors: number[] = [];
 
-    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
-    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
-    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
-    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
+    const nw = gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = gridTo3D(cell.x, cell.y + 1, corners.sw);
 
     positions.push(nw.x, nw.y, nw.z);
     positions.push(ne.x, ne.y, ne.z);
@@ -561,21 +564,15 @@ export class GrassSystem {
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
 
-    const seed = cell.x * 12345 + cell.y * 67890;
-    const hash = (n: number) => {
-      const x = Math.sin(seed + n * 9999) * 10000;
-      return x - Math.floor(x);
-    };
-
     const wavePhase = this.waterTime * 2 + cell.x * 0.3 + cell.y * 0.5;
     const waveIntensity = Math.sin(wavePhase) * 0.03;
 
     for (let i = 0; i < 4; i++) {
-      const variance = (hash(i) - 0.5) * 0.06;
+      const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.06;
       const cornerWave = Math.sin(wavePhase + i * 0.7) * 0.02;
-      const r = Math.max(0, Math.min(1, baseColor.r + variance + waveIntensity + cornerWave));
-      const g = Math.max(0, Math.min(1, baseColor.g + variance * 0.8 + waveIntensity * 0.6 + cornerWave));
-      const b = Math.max(0, Math.min(1, baseColor.b + variance * 0.5 + cornerWave * 0.3));
+      const r = clamp01(baseColor.r + variance + waveIntensity + cornerWave);
+      const g = clamp01(baseColor.g + variance * 0.8 + waveIntensity * 0.6 + cornerWave);
+      const b = clamp01(baseColor.b + variance * 0.5 + cornerWave * 0.3);
       colors.push(r, g, b, 0.7);
     }
 
@@ -612,10 +609,10 @@ export class GrassSystem {
     corners: { nw: number; ne: number; se: number; sw: number },
     existingMesh?: Mesh
   ): Mesh {
-    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
-    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
-    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
-    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
+    const nw = gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = gridTo3D(cell.x, cell.y + 1, corners.sw);
 
     const positions: number[] = [];
     const indices: number[] = [];
@@ -632,12 +629,6 @@ export class GrassSystem {
       Math.max(0, baseColor.g - 0.04),
       Math.max(0, baseColor.b - 0.06)
     );
-
-    const seed = cell.x * 12345 + cell.y * 67890;
-    const hash = (n: number) => {
-      const x = Math.sin(seed + n * 9999) * 10000;
-      return x - Math.floor(x);
-    };
 
     const stripeCount = 4;
     let vertexIndex = 0;
@@ -661,11 +652,11 @@ export class GrassSystem {
 
       const stripeColor = i % 2 === 0 ? lightColor : darkColor;
       for (let j = 0; j < 4; j++) {
-        const variance = (hash(i * 4 + j) - 0.5) * 0.06;
+        const variance = (this.cellHash(cell.x, cell.y, i * 4 + j) - 0.5) * 0.06;
         colors.push(
-          Math.max(0, Math.min(1, stripeColor.r + variance)),
-          Math.max(0, Math.min(1, stripeColor.g + variance * 1.2)),
-          Math.max(0, Math.min(1, stripeColor.b + variance * 0.5)),
+          clamp01(stripeColor.r + variance),
+          clamp01(stripeColor.g + variance * 1.2),
+          clamp01(stripeColor.b + variance * 0.5),
           1
         );
       }
@@ -740,9 +731,9 @@ export class GrassSystem {
     const variation = ((cell.x * 7 + cell.y * 13) % 10) / 100 - 0.05;
 
     return new Color3(
-      Math.max(0, Math.min(1, baseColor.r + variation + tintR)),
-      Math.max(0, Math.min(1, baseColor.g + variation * 1.2 + tintG)),
-      Math.max(0, Math.min(1, baseColor.b + variation * 0.8 + tintB))
+      clamp01(baseColor.r + variation + tintR),
+      clamp01(baseColor.g + variation * 1.2 + tintG),
+      clamp01(baseColor.b + variation * 0.8 + tintB)
     );
   }
 
@@ -754,26 +745,17 @@ export class GrassSystem {
       return [baseColor, baseColor, baseColor, baseColor];
     }
 
-    const seed = cell.x * 12345 + cell.y * 67890;
-    const hash = (n: number) => {
-      const x = Math.sin(seed + n * 9999) * 10000;
-      return x - Math.floor(x);
-    };
-
     const variations: Color3[] = [];
 
     if (cell.type === "bunker") {
       for (let i = 0; i < 4; i++) {
-        const lumVariance = (hash(i) - 0.5) * 0.15;
-        const warmVariance = (hash(i + 5) - 0.5) * 0.08;
+        const lumVariance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.15;
+        const warmVariance = (this.cellHash(cell.x, cell.y, i + 5) - 0.5) * 0.08;
         variations.push(
           new Color3(
-            Math.max(0, Math.min(1, baseColor.r + lumVariance + warmVariance)),
-            Math.max(0, Math.min(1, baseColor.g + lumVariance * 0.9)),
-            Math.max(
-              0,
-              Math.min(1, baseColor.b + lumVariance * 0.6 - warmVariance * 0.5)
-            )
+            clamp01(baseColor.r + lumVariance + warmVariance),
+            clamp01(baseColor.g + lumVariance * 0.9),
+            clamp01(baseColor.b + lumVariance * 0.6 - warmVariance * 0.5)
           )
         );
       }
@@ -781,14 +763,14 @@ export class GrassSystem {
     }
 
     for (let i = 0; i < 4; i++) {
-      const variance = (hash(i) - 0.5) * 0.12;
-      const lumVariance = (hash(i + 10) - 0.5) * 0.08;
+      const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.12;
+      const lumVariance = (this.cellHash(cell.x, cell.y, i + 10) - 0.5) * 0.08;
 
       variations.push(
         new Color3(
-          Math.max(0, Math.min(1, baseColor.r + variance + lumVariance)),
-          Math.max(0, Math.min(1, baseColor.g + variance * 1.3 + lumVariance)),
-          Math.max(0, Math.min(1, baseColor.b + variance * 0.6 + lumVariance))
+          clamp01(baseColor.r + variance + lumVariance),
+          clamp01(baseColor.g + variance * 1.3 + lumVariance),
+          clamp01(baseColor.b + variance * 0.6 + lumVariance)
         )
       );
     }
@@ -1031,7 +1013,7 @@ export class GrassSystem {
   public gridToWorld(gridX: number, gridY: number): Vector3 {
     const cell = this.getCell(gridX, gridY);
     const avgElev = cell ? cell.elevation : 0;
-    return this.gridTo3D(gridX + 0.5, gridY + 0.5, avgElev);
+    return gridTo3D(gridX + 0.5, gridY + 0.5, avgElev);
   }
 
   public setTerrainTypeAt(
@@ -1098,24 +1080,7 @@ export class GrassSystem {
   }
 
   public getLayoutGrid(): number[][] {
-    return this.cells.map((row) =>
-      row.map((cell) => {
-        switch (cell.type) {
-          case "fairway":
-            return TERRAIN_CODES.FAIRWAY;
-          case "rough":
-            return TERRAIN_CODES.ROUGH;
-          case "green":
-            return TERRAIN_CODES.GREEN;
-          case "bunker":
-            return TERRAIN_CODES.BUNKER;
-          case "water":
-            return TERRAIN_CODES.WATER;
-          default:
-            return TERRAIN_CODES.ROUGH;
-        }
-      })
-    );
+    return this.cells.map((row) => row.map((cell) => getTerrainCode(cell.type)));
   }
 
   public getElevationGrid(): number[][] {

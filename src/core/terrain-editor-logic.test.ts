@@ -80,10 +80,10 @@ describe('Raise Validation', () => {
     expect(canRaiseAt(2, 2, elevation)).toBe(true);
   });
 
-  it('prevents raising when neighbors would exceed max slope', () => {
+  it('allows raising even when neighbors differ (RCT-style cliffs)', () => {
     const elevation = createTestElevation(5, 5, 0);
     elevation[2][2] = 2;
-    expect(canRaiseAt(2, 2, elevation)).toBe(false);
+    expect(canRaiseAt(2, 2, elevation)).toBe(true);
   });
 
   it('allows raising when within slope constraint', () => {
@@ -117,10 +117,10 @@ describe('Lower Validation', () => {
     expect(canLowerAt(2, 2, elevation)).toBe(true);
   });
 
-  it('prevents lowering when neighbors would exceed max slope', () => {
+  it('allows lowering even when neighbors differ (RCT-style cliffs)', () => {
     const elevation = createTestElevation(5, 5, 2);
     elevation[2][2] = 0;
-    expect(canLowerAt(2, 2, elevation)).toBe(false);
+    expect(canLowerAt(2, 2, elevation)).toBe(true);
   });
 
   it('prevents lowering below minimum elevation', () => {
@@ -149,13 +149,15 @@ describe('Apply Raise', () => {
     expect(mod!.newType).toBe(TERRAIN_CODES.FAIRWAY);
   });
 
-  it('returns null for invalid raise', () => {
+  it('allows raising any tile (RCT-style cliffs)', () => {
     const elevation = createTestElevation(5, 5, 0);
     elevation[2][2] = 2;
     const layout = createTestLayout(5, 5);
     const mod = applyRaise(2, 2, elevation, layout);
 
-    expect(mod).toBeNull();
+    expect(mod).not.toBeNull();
+    expect(mod!.oldElevation).toBe(2);
+    expect(mod!.newElevation).toBe(3);
   });
 });
 
@@ -170,14 +172,16 @@ describe('Apply Lower', () => {
     expect(mod!.newElevation).toBe(0);
   });
 
-  it('returns null for invalid lower', () => {
+  it('allows lowering any tile (RCT-style cliffs)', () => {
     const elevation = createTestElevation(5, 5, 0);
     elevation[1][2] = 2;
     elevation[3][2] = 2;
     const layout = createTestLayout(5, 5);
     const mod = applyLower(2, 2, elevation, layout);
 
-    expect(mod).toBeNull();
+    expect(mod).not.toBeNull();
+    expect(mod!.oldElevation).toBe(0);
+    expect(mod!.newElevation).toBe(-1);
   });
 });
 

@@ -6,6 +6,7 @@ import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -32,7 +33,7 @@ export class BabylonMain {
 
   private playerX: number = 25;
   private playerY: number = 19;
-  private playerMesh: any = null;
+  private playerMesh: Mesh | null = null;
   private cameraFollowPlayer: boolean = true;
   private isMoving: boolean = false;
   private moveStartPos: { x: number; y: number; z: number } | null = null;
@@ -43,7 +44,7 @@ export class BabylonMain {
   private pendingDirection: Direction | null = null;
 
   private score: number = 0;
-  private obstacleMeshes: any[] = [];
+  private obstacleMeshes: Mesh[] = [];
 
   private terrainEditorSystem: TerrainEditorSystem | null = null;
   private terrainEditorUI: TerrainEditorUI | null = null;
@@ -662,15 +663,17 @@ export class BabylonMain {
     endX: number,
     endY: number
   ): { x: number; y: number }[] {
-    const course = COURSE_HOLE_1;
-    const openSet: {
+    interface PathNode {
       x: number;
       y: number;
       g: number;
       h: number;
       f: number;
-      parent: any;
-    }[] = [];
+      parent: PathNode | null;
+    }
+
+    const course = COURSE_HOLE_1;
+    const openSet: PathNode[] = [];
     const closedSet = new Set<string>();
 
     const heuristic = (x: number, y: number) =>
@@ -1109,6 +1112,9 @@ export class BabylonMain {
     this.grassSystem.dispose();
     this.equipmentManager.dispose();
     this.uiManager.dispose();
+    this.terrainEditorSystem?.dispose();
+    this.terrainEditorUI?.dispose();
+    this.editorUITexture?.dispose();
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
     }

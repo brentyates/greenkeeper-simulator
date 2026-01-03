@@ -3,9 +3,8 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-
-import { TILE_SIZE, HEIGHT_UNIT } from "../engine/BabylonEngine";
+import { gridTo3D } from "../engine/BabylonEngine";
+import { getCellsInBrush } from "../../core/terrain-editor-logic";
 
 export interface CornerHeightsProvider {
   getCornerHeights(
@@ -139,7 +138,7 @@ export class TileHighlightSystem {
         this.currentY
       );
     } else {
-      const positions = this.getCellsInBrush(
+      const positions = getCellsInBrush(
         this.currentX,
         this.currentY,
         this.brushSize
@@ -153,13 +152,6 @@ export class TileHighlightSystem {
     }
   }
 
-  private gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
-    return new Vector3(
-      gridX * TILE_SIZE,
-      elevation * HEIGHT_UNIT,
-      gridY * TILE_SIZE
-    );
-  }
 
   private createHighlightCornerMesh(
     gridX: number,
@@ -191,7 +183,7 @@ export class TileHighlightSystem {
         break;
     }
 
-    const center = this.gridTo3D(cornerX, cornerZ, cornerElev);
+    const center = gridTo3D(cornerX, cornerZ, cornerElev);
     const size = 0.15;
     const yOffset = 0.02;
 
@@ -226,31 +218,14 @@ export class TileHighlightSystem {
     return mesh;
   }
 
-  private getCellsInBrush(
-    centerX: number,
-    centerY: number,
-    radius: number
-  ): Array<{ x: number; y: number }> {
-    const cells: Array<{ x: number; y: number }> = [];
-    const r = radius - 1;
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy <= r * r) {
-          cells.push({ x: centerX + dx, y: centerY + dy });
-        }
-      }
-    }
-    return cells;
-  }
-
   private createHighlightMeshAt(gridX: number, gridY: number): Mesh | null {
     const corners = this.cornerProvider.getCornerHeights(gridX, gridY);
     const yOffset = 0.02;
 
-    const nw = this.gridTo3D(gridX, gridY, corners.nw);
-    const ne = this.gridTo3D(gridX + 1, gridY, corners.ne);
-    const se = this.gridTo3D(gridX + 1, gridY + 1, corners.se);
-    const sw = this.gridTo3D(gridX, gridY + 1, corners.sw);
+    const nw = gridTo3D(gridX, gridY, corners.nw);
+    const ne = gridTo3D(gridX + 1, gridY, corners.ne);
+    const se = gridTo3D(gridX + 1, gridY + 1, corners.se);
+    const sw = gridTo3D(gridX, gridY + 1, corners.sw);
 
     const positions: number[] = [];
     const indices: number[] = [];
