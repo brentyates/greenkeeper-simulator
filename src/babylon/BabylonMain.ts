@@ -1064,7 +1064,7 @@ export class BabylonMain {
   }
 
   private handleTimeSpeed(delta: number): void {
-    const speeds = [0.5, 1, 2, 4];
+    const speeds = [0.5, 1, 2, 4, 8];
     const currentIndex = speeds.indexOf(this.timeScale);
     const newIndex = Math.max(
       0,

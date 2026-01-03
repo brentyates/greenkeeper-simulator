@@ -244,9 +244,9 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [ ] Add "Objectives" tab showing scenario details
 
 ### 8.2 Game Speed Controls
-- [ ] Pause should fully stop all simulation
+- [x] Pause should fully stop all simulation
 - [ ] Allow speed changes from pause menu
-- [ ] Add fast-forward (4x, 8x) for longer scenarios
+- [x] Add fast-forward (4x, 8x) for longer scenarios - speeds: 0.5x, 1x, 2x, 4x, 8x
 
 ---
 
