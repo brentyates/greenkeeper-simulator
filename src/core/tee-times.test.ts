@@ -37,6 +37,17 @@ import {
   applyBookingSimulation,
   resetDailyMetrics,
   updateBookingConfig,
+  PACE_RATING_THRESHOLDS,
+  PACE_SATISFACTION_PENALTIES,
+  SKILL_TIME_PENALTIES,
+  getPaceRating,
+  calculateSkillPenalty,
+  calculateWaitTime,
+  calculatePaceOfPlay,
+  calculatePaceOfPlayDeterministic,
+  previewSpacingImpact,
+  getPaceRatingLabel,
+  formatRoundTime,
 } from './tee-times';
 
 describe('tee-times', () => {
@@ -844,6 +855,210 @@ describe('tee-times', () => {
       expect(state.bookingConfig.noShowPenalty).toBe(0.75);
       expect(state.bookingConfig.publicBookingDays).toBe(7);
       expect(state.bookingConfig.freeCancellationHours).toBe(24);
+    });
+  });
+
+  describe('PACE_RATING_THRESHOLDS', () => {
+    it('has correct threshold values', () => {
+      expect(PACE_RATING_THRESHOLDS.excellent).toBe(3.75);
+      expect(PACE_RATING_THRESHOLDS.good).toBe(4.25);
+      expect(PACE_RATING_THRESHOLDS.acceptable).toBe(4.75);
+      expect(PACE_RATING_THRESHOLDS.slow).toBe(5.5);
+    });
+  });
+
+  describe('PACE_SATISFACTION_PENALTIES', () => {
+    it('has no penalty for good pace', () => {
+      expect(PACE_SATISFACTION_PENALTIES.excellent).toBe(0);
+      expect(PACE_SATISFACTION_PENALTIES.good).toBe(0);
+    });
+
+    it('has increasing penalties for slow pace', () => {
+      expect(PACE_SATISFACTION_PENALTIES.acceptable).toBeLessThan(0);
+      expect(PACE_SATISFACTION_PENALTIES.slow).toBeLessThan(PACE_SATISFACTION_PENALTIES.acceptable);
+      expect(PACE_SATISFACTION_PENALTIES.terrible).toBeLessThan(PACE_SATISFACTION_PENALTIES.slow);
+    });
+  });
+
+  describe('SKILL_TIME_PENALTIES', () => {
+    it('has positive penalty for beginners', () => {
+      expect(SKILL_TIME_PENALTIES.beginner).toBeGreaterThan(0);
+    });
+
+    it('has no penalty for advanced', () => {
+      expect(SKILL_TIME_PENALTIES.advanced).toBe(0);
+    });
+
+    it('has negative penalty for experts', () => {
+      expect(SKILL_TIME_PENALTIES.expert).toBeLessThan(0);
+    });
+  });
+
+  describe('getPaceRating', () => {
+    it('returns excellent for fast rounds', () => {
+      expect(getPaceRating(3.5)).toBe('excellent');
+      expect(getPaceRating(3.75)).toBe('excellent');
+    });
+
+    it('returns good for normal rounds', () => {
+      expect(getPaceRating(4.0)).toBe('good');
+      expect(getPaceRating(4.25)).toBe('good');
+    });
+
+    it('returns acceptable for slightly slow rounds', () => {
+      expect(getPaceRating(4.5)).toBe('acceptable');
+      expect(getPaceRating(4.75)).toBe('acceptable');
+    });
+
+    it('returns slow for slow rounds', () => {
+      expect(getPaceRating(5.0)).toBe('slow');
+      expect(getPaceRating(5.5)).toBe('slow');
+    });
+
+    it('returns terrible for very slow rounds', () => {
+      expect(getPaceRating(6.0)).toBe('terrible');
+      expect(getPaceRating(7.0)).toBe('terrible');
+    });
+  });
+
+  describe('calculateSkillPenalty', () => {
+    it('returns 0 for empty distribution', () => {
+      expect(calculateSkillPenalty({ beginner: 0, intermediate: 0, advanced: 0, expert: 0 })).toBe(0);
+    });
+
+    it('returns high penalty for all beginners', () => {
+      const penalty = calculateSkillPenalty({ beginner: 100, intermediate: 0, advanced: 0, expert: 0 });
+      expect(penalty).toBe(0.5);
+    });
+
+    it('returns negative penalty for all experts', () => {
+      const penalty = calculateSkillPenalty({ beginner: 0, intermediate: 0, advanced: 0, expert: 100 });
+      expect(penalty).toBe(-0.1);
+    });
+
+    it('returns weighted average for mixed skill', () => {
+      const penalty = calculateSkillPenalty({ beginner: 25, intermediate: 25, advanced: 25, expert: 25 });
+      expect(penalty).toBeCloseTo((0.5 + 0.15 + 0 + -0.1) / 4, 5);
+    });
+  });
+
+  describe('calculateWaitTime', () => {
+    it('returns 0 for good pace', () => {
+      expect(calculateWaitTime(4.0, SPACING_CONFIGS.standard)).toBe(0);
+      expect(calculateWaitTime(3.5, SPACING_CONFIGS.standard)).toBe(0);
+    });
+
+    it('returns wait time for slow pace', () => {
+      const wait = calculateWaitTime(5.0, SPACING_CONFIGS.standard);
+      expect(wait).toBeGreaterThan(0);
+    });
+
+    it('returns higher wait time for packed spacing', () => {
+      const standardWait = calculateWaitTime(5.0, SPACING_CONFIGS.standard);
+      const packedWait = calculateWaitTime(5.0, SPACING_CONFIGS.packed);
+      expect(packedWait).toBeGreaterThan(standardWait);
+    });
+  });
+
+  describe('calculatePaceOfPlayDeterministic', () => {
+    it('calculates base round time with standard spacing', () => {
+      const pace = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
+      expect(pace.targetRoundTime).toBe(4.0);
+      expect(pace.averageRoundTime).toBeGreaterThan(4.0); // skill mix adds time
+    });
+
+    it('packed spacing adds significant time', () => {
+      const standard = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
+      const packed = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.packed, 0.5, 80);
+      expect(packed.averageRoundTime).toBeGreaterThan(standard.averageRoundTime);
+    });
+
+    it('exclusive spacing reduces time', () => {
+      const standard = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
+      const exclusive = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.exclusive, 0.5, 80);
+      expect(exclusive.averageRoundTime).toBeLessThan(standard.averageRoundTime);
+    });
+
+    it('high capacity adds time', () => {
+      const lowCapacity = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
+      const highCapacity = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.95, 80);
+      expect(highCapacity.averageRoundTime).toBeGreaterThan(lowCapacity.averageRoundTime);
+    });
+
+    it('poor conditions add time', () => {
+      const goodConditions = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
+      const poorConditions = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 30);
+      expect(poorConditions.averageRoundTime).toBeGreaterThan(goodConditions.averageRoundTime);
+    });
+
+    it('includes satisfaction penalty for slow pace', () => {
+      const pace = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.packed, 0.95, 30);
+      expect(pace.paceRating).toBe('slow');
+      expect(pace.satisfactionPenalty).toBeLessThan(0);
+    });
+  });
+
+  describe('calculatePaceOfPlay', () => {
+    it('returns full pace state including backup locations', () => {
+      const pace = calculatePaceOfPlay(SPACING_CONFIGS.standard, 0.5, 80);
+      expect(pace.targetRoundTime).toBe(4.0);
+      expect(pace.averageRoundTime).toBeGreaterThan(0);
+      expect(Array.isArray(pace.backupLocations)).toBe(true);
+      expect(typeof pace.waitTimeMinutes).toBe('number');
+      expect(pace.paceRating).toBeDefined();
+      expect(typeof pace.satisfactionPenalty).toBe('number');
+    });
+  });
+
+  describe('previewSpacingImpact', () => {
+    it('returns preview for standard spacing', () => {
+      const preview = previewSpacingImpact('standard');
+      expect(preview.maxDailyTeeTimes).toBe(60);
+      expect(preview.revenueMultiplier).toBe(1.0);
+      expect(preview.reputationImpact).toBe(0);
+      expect(preview.backupRisk).toBe('medium');
+    });
+
+    it('returns higher revenue for packed spacing', () => {
+      const preview = previewSpacingImpact('packed');
+      expect(preview.revenueMultiplier).toBeGreaterThan(1.0);
+      expect(preview.backupRisk).toBe('very_high');
+      expect(preview.reputationImpact).toBeLessThan(0);
+    });
+
+    it('returns better reputation for exclusive spacing', () => {
+      const preview = previewSpacingImpact('exclusive');
+      expect(preview.revenueMultiplier).toBeLessThan(1.0);
+      expect(preview.backupRisk).toBe('low');
+      expect(preview.reputationImpact).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getPaceRatingLabel', () => {
+    it('returns correct labels', () => {
+      expect(getPaceRatingLabel('excellent')).toContain('Excellent');
+      expect(getPaceRatingLabel('good')).toContain('Good');
+      expect(getPaceRatingLabel('acceptable')).toContain('Acceptable');
+      expect(getPaceRatingLabel('slow')).toContain('Slow');
+      expect(getPaceRatingLabel('terrible')).toContain('Very Slow');
+    });
+  });
+
+  describe('formatRoundTime', () => {
+    it('formats 4 hours correctly', () => {
+      expect(formatRoundTime(4.0)).toBe('4:00');
+    });
+
+    it('formats 4.5 hours correctly', () => {
+      expect(formatRoundTime(4.5)).toBe('4:30');
+    });
+
+    it('formats 5.25 hours correctly', () => {
+      expect(formatRoundTime(5.25)).toBe('5:15');
+    });
+
+    it('formats short rounds correctly', () => {
+      expect(formatRoundTime(3.75)).toBe('3:45');
     });
   });
 });

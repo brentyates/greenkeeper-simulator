@@ -879,3 +879,207 @@ export function updateBookingConfig(
     bookingConfig: { ...state.bookingConfig, ...config },
   };
 }
+
+export type PaceRating = 'excellent' | 'good' | 'acceptable' | 'slow' | 'terrible';
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+
+export interface SkillDistribution {
+  beginner: number;
+  intermediate: number;
+  advanced: number;
+  expert: number;
+}
+
+export interface PaceOfPlayState {
+  targetRoundTime: number;
+  averageRoundTime: number;
+  backupLocations: number[];
+  waitTimeMinutes: number;
+  paceRating: PaceRating;
+  satisfactionPenalty: number;
+}
+
+export const SKILL_TIME_PENALTIES: Record<SkillLevel, number> = {
+  beginner: 0.5,
+  intermediate: 0.15,
+  advanced: 0,
+  expert: -0.1,
+} as const;
+
+export const PACE_RATING_THRESHOLDS = {
+  excellent: 3.75,
+  good: 4.25,
+  acceptable: 4.75,
+  slow: 5.5,
+} as const;
+
+export const PACE_SATISFACTION_PENALTIES: Record<PaceRating, number> = {
+  excellent: 0,
+  good: 0,
+  acceptable: -5,
+  slow: -15,
+  terrible: -30,
+} as const;
+
+export function getPaceRating(roundTime: number): PaceRating {
+  if (roundTime <= PACE_RATING_THRESHOLDS.excellent) return 'excellent';
+  if (roundTime <= PACE_RATING_THRESHOLDS.good) return 'good';
+  if (roundTime <= PACE_RATING_THRESHOLDS.acceptable) return 'acceptable';
+  if (roundTime <= PACE_RATING_THRESHOLDS.slow) return 'slow';
+  return 'terrible';
+}
+
+export function calculateSkillPenalty(skillMix: SkillDistribution): number {
+  const total = skillMix.beginner + skillMix.intermediate + skillMix.advanced + skillMix.expert;
+  if (total === 0) return 0;
+
+  return (
+    (skillMix.beginner / total) * SKILL_TIME_PENALTIES.beginner +
+    (skillMix.intermediate / total) * SKILL_TIME_PENALTIES.intermediate +
+    (skillMix.advanced / total) * SKILL_TIME_PENALTIES.advanced +
+    (skillMix.expert / total) * SKILL_TIME_PENALTIES.expert
+  );
+}
+
+export function identifyBackupLocations(roundTime: number, spacing: SpacingConfiguration): number[] {
+  const backups: number[] = [];
+  if (roundTime <= 4.0) return backups;
+
+  const excessTime = roundTime - 4.0;
+  const backupProbability = Math.min(0.8, excessTime * spacing.backupRiskMultiplier * 0.3);
+
+  const typicalBackupHoles = [4, 8, 12, 15, 17];
+  for (const hole of typicalBackupHoles) {
+    if (Math.random() < backupProbability) {
+      backups.push(hole);
+    }
+  }
+  return backups;
+}
+
+export function calculateWaitTime(roundTime: number, spacing: SpacingConfiguration): number {
+  if (roundTime <= 4.0) return 0;
+  const excessMinutes = (roundTime - 4.0) * 60;
+  const waitPerHole = (excessMinutes / 18) * spacing.backupRiskMultiplier;
+  return Math.round(waitPerHole * 10) / 10;
+}
+
+export function calculatePaceOfPlay(
+  spacing: SpacingConfiguration,
+  currentCapacity: number,
+  courseConditions: number,
+  skillMix: SkillDistribution = { beginner: 10, intermediate: 50, advanced: 30, expert: 10 }
+): PaceOfPlayState {
+  let roundTime = 4.0;
+
+  roundTime += spacing.paceOfPlayPenalty;
+
+  if (currentCapacity > 0.8) {
+    roundTime += (currentCapacity - 0.8) * 1.5;
+  }
+
+  if (courseConditions < 50) {
+    roundTime += (50 - courseConditions) * 0.02;
+  }
+
+  roundTime += calculateSkillPenalty(skillMix);
+
+  const paceRating = getPaceRating(roundTime);
+  const satisfactionPenalty = PACE_SATISFACTION_PENALTIES[paceRating];
+  const backupLocations = identifyBackupLocations(roundTime, spacing);
+  const waitTimeMinutes = calculateWaitTime(roundTime, spacing);
+
+  return {
+    targetRoundTime: 4.0,
+    averageRoundTime: Math.round(roundTime * 100) / 100,
+    backupLocations,
+    waitTimeMinutes,
+    paceRating,
+    satisfactionPenalty,
+  };
+}
+
+export function calculatePaceOfPlayDeterministic(
+  spacing: SpacingConfiguration,
+  currentCapacity: number,
+  courseConditions: number,
+  skillMix: SkillDistribution = { beginner: 10, intermediate: 50, advanced: 30, expert: 10 }
+): Omit<PaceOfPlayState, 'backupLocations'> {
+  let roundTime = 4.0;
+
+  roundTime += spacing.paceOfPlayPenalty;
+
+  if (currentCapacity > 0.8) {
+    roundTime += (currentCapacity - 0.8) * 1.5;
+  }
+
+  if (courseConditions < 50) {
+    roundTime += (50 - courseConditions) * 0.02;
+  }
+
+  roundTime += calculateSkillPenalty(skillMix);
+
+  const paceRating = getPaceRating(roundTime);
+  const satisfactionPenalty = PACE_SATISFACTION_PENALTIES[paceRating];
+  const waitTimeMinutes = calculateWaitTime(roundTime, spacing);
+
+  return {
+    targetRoundTime: 4.0,
+    averageRoundTime: Math.round(roundTime * 100) / 100,
+    waitTimeMinutes,
+    paceRating,
+    satisfactionPenalty,
+  };
+}
+
+export interface SpacingImpactPreview {
+  maxDailyTeeTimes: number;
+  estimatedRoundTime: number;
+  paceRating: PaceRating;
+  backupRisk: 'low' | 'medium' | 'high' | 'very_high';
+  revenueMultiplier: number;
+  reputationImpact: number;
+  satisfactionPenalty: number;
+}
+
+export function previewSpacingImpact(
+  spacing: TeeTimeSpacing,
+  currentCapacity: number = 0.7,
+  courseConditions: number = 80
+): SpacingImpactPreview {
+  const config = SPACING_CONFIGS[spacing];
+  const pace = calculatePaceOfPlayDeterministic(config, currentCapacity, courseConditions);
+
+  let backupRisk: SpacingImpactPreview['backupRisk'];
+  if (config.backupRiskMultiplier <= 0.5) backupRisk = 'low';
+  else if (config.backupRiskMultiplier <= 1.0) backupRisk = 'medium';
+  else if (config.backupRiskMultiplier <= 2.0) backupRisk = 'high';
+  else backupRisk = 'very_high';
+
+  return {
+    maxDailyTeeTimes: config.maxDailyTeeTimes,
+    estimatedRoundTime: pace.averageRoundTime,
+    paceRating: pace.paceRating,
+    backupRisk,
+    revenueMultiplier: config.revenueMultiplier,
+    reputationImpact: config.reputationModifier,
+    satisfactionPenalty: pace.satisfactionPenalty,
+  };
+}
+
+export function getPaceRatingLabel(rating: PaceRating): string {
+  switch (rating) {
+    case 'excellent': return 'Excellent (≤3:45)';
+    case 'good': return 'Good (≤4:15)';
+    case 'acceptable': return 'Acceptable (≤4:45)';
+    case 'slow': return 'Slow (≤5:30)';
+    case 'terrible': return 'Very Slow (>5:30)';
+  }
+}
+
+export function formatRoundTime(hours: number): string {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}:${m.toString().padStart(2, '0')}`;
+}
