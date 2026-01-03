@@ -1,8 +1,8 @@
-import { Scene } from '@babylonjs/core/scene';
-import { KeyboardEventTypes } from '@babylonjs/core/Events/keyboardEvents';
-import { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents';
+import { Scene } from "@babylonjs/core/scene";
+import { KeyboardEventTypes } from "@babylonjs/core/Events/keyboardEvents";
+import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 
-export type Direction = 'up' | 'down' | 'left' | 'right';
+export type Direction = "up" | "down" | "left" | "right";
 export type EquipmentSlot = 1 | 2 | 3;
 
 export interface InputCallbacks {
@@ -21,6 +21,16 @@ export interface InputCallbacks {
   onDebugExport?: () => void;
   onDebugScreenshot?: () => void;
   onClick?: (screenX: number, screenY: number) => void;
+  onEditorToggle?: () => void;
+  onEditorToolSelect?: (tool: number) => void;
+  onEditorBrushSelect?: (brush: string) => void;
+  onEditorBrushSizeChange?: (delta: number) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onMouseMove?: (screenX: number, screenY: number) => void;
+  onDragStart?: (screenX: number, screenY: number) => void;
+  onDrag?: (screenX: number, screenY: number) => void;
+  onDragEnd?: () => void;
 }
 
 export class InputManager {
@@ -28,6 +38,7 @@ export class InputManager {
   private callbacks: InputCallbacks = {};
   private keysDown: Set<string> = new Set();
   private enabled: boolean = true;
+  private isDragging: boolean = false;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -54,6 +65,7 @@ export class InputManager {
       const key = kbInfo.event.key.toLowerCase();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+        this.handleKeyDownWithModifiers(kbInfo.event as KeyboardEvent);
         if (this.keysDown.has(key)) return;
         this.keysDown.add(key);
         this.handleKeyDown(kbInfo.event);
@@ -63,59 +75,86 @@ export class InputManager {
     });
   }
 
-  private handleKeyDown(event: { key: string; preventDefault?: () => void }): void {
+  private handleKeyDown(event: {
+    key: string;
+    preventDefault?: () => void;
+  }): void {
     const key = event.key.toLowerCase();
 
-    if (key === 'arrowup' || key === 'w') {
-      this.callbacks.onMove?.('up');
-    } else if (key === 'arrowdown' || key === 's') {
-      this.callbacks.onMove?.('down');
-    } else if (key === 'arrowleft' || key === 'a') {
-      this.callbacks.onMove?.('left');
-    } else if (key === 'arrowright' || key === 'd') {
-      this.callbacks.onMove?.('right');
-    }
-
-    else if (key === '1') {
+    if (key === "arrowup" || key === "w") {
+      this.callbacks.onMove?.("up");
+    } else if (key === "arrowdown" || key === "s") {
+      this.callbacks.onMove?.("down");
+    } else if (key === "arrowleft" || key === "a") {
+      this.callbacks.onMove?.("left");
+    } else if (key === "arrowright" || key === "d") {
+      this.callbacks.onMove?.("right");
+    } else if (key === "1") {
       this.callbacks.onEquipmentSelect?.(1);
-    } else if (key === '2') {
+    } else if (key === "2") {
       this.callbacks.onEquipmentSelect?.(2);
-    } else if (key === '3') {
+    } else if (key === "3") {
       this.callbacks.onEquipmentSelect?.(3);
-    }
-
-    else if (key === ' ') {
+    } else if (key === " ") {
       event.preventDefault?.();
       this.callbacks.onEquipmentToggle?.();
-    } else if (key === 'e') {
+    } else if (key === "e") {
       this.callbacks.onRefill?.();
-    } else if (key === 'tab') {
+    } else if (key === "tab") {
       event.preventDefault?.();
       this.callbacks.onOverlayCycle?.();
-    } else if (key === 'p' || key === 'escape') {
+    } else if (key === "p" || key === "escape") {
       this.callbacks.onPause?.();
-    } else if (key === 'm') {
+    } else if (key === "m") {
       this.callbacks.onMute?.();
-    } else if (key === '+' || key === '=') {
+    } else if (key === "+" || key === "=") {
       this.callbacks.onTimeSpeedUp?.();
-    } else if (key === '-' || key === '_') {
+    } else if (key === "-" || key === "_") {
       this.callbacks.onTimeSlowDown?.();
-    }
-
-    else if (key === '[') {
+    } else if (key === "[") {
       this.callbacks.onZoomOut?.();
-    } else if (key === ']') {
+    } else if (key === "]") {
       this.callbacks.onZoomIn?.();
-    }
-
-    else if (key === 'f5') {
+    } else if (key === "f5") {
       event.preventDefault?.();
       this.callbacks.onDebugReload?.();
-    } else if (key === 'f6') {
+    } else if (key === "f6") {
       event.preventDefault?.();
       this.callbacks.onDebugExport?.();
-    } else if (key === 'f12') {
+    } else if (key === "f12") {
       this.callbacks.onDebugScreenshot?.();
+    } else if (key === "t") {
+      console.log("[DEBUG] InputManager received 't' key");
+      this.callbacks.onEditorToggle?.();
+    } else if (key === "q") {
+      this.callbacks.onEditorBrushSelect?.("terrain_fairway");
+    } else if (key === "r") {
+      this.callbacks.onEditorBrushSelect?.("terrain_bunker");
+      this.callbacks.onEditorBrushSelect?.("terrain_bunker");
+    } else if (key === "f") {
+      this.callbacks.onEditorBrushSelect?.("terrain_water");
+    } else if (key === ",") {
+      this.callbacks.onEditorBrushSizeChange?.(-1);
+    } else if (key === ".") {
+      this.callbacks.onEditorBrushSizeChange?.(1);
+    }
+  }
+
+  private handleKeyDownWithModifiers(event: KeyboardEvent): void {
+    const key = event.key.toLowerCase();
+
+    if (event.ctrlKey || event.metaKey) {
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          this.callbacks.onRedo?.();
+        } else {
+          this.callbacks.onUndo?.();
+        }
+      } else if (key === "y") {
+        event.preventDefault();
+        this.callbacks.onRedo?.();
+      }
     }
   }
 
@@ -123,16 +162,35 @@ export class InputManager {
     this.scene.onPointerObservable.add((pointerInfo) => {
       if (!this.enabled) return;
 
+      const x = pointerInfo.event.clientX;
+      const y = pointerInfo.event.clientY;
+
       if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
-        const pickResult = pointerInfo.pickInfo;
-        if (pickResult && pickResult.hit) {
-          this.callbacks.onClick?.(
-            pointerInfo.event.clientX,
-            pointerInfo.event.clientY
-          );
+        this.isDragging = true;
+        this.callbacks.onClick?.(x, y);
+        this.callbacks.onDragStart?.(x, y);
+      } else if (pointerInfo.type === PointerEventTypes.POINTERUP) {
+        if (this.isDragging) {
+          this.isDragging = false;
+          this.callbacks.onDragEnd?.();
+        }
+      } else if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
+        this.callbacks.onMouseMove?.(x, y);
+        if (this.isDragging) {
+          this.callbacks.onDrag?.(x, y);
         }
       }
     });
+
+    this.scene.getEngine().getRenderingCanvas()?.addEventListener("wheel", (event) => {
+      if (!this.enabled) return;
+      event.preventDefault();
+      if (event.deltaY > 0) {
+        this.callbacks.onZoomOut?.();
+      } else if (event.deltaY < 0) {
+        this.callbacks.onZoomIn?.();
+      }
+    }, { passive: false });
   }
 
   public dispose(): void {

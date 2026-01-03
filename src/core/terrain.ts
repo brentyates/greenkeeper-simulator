@@ -1,5 +1,5 @@
-export type TerrainType = 'fairway' | 'rough' | 'green' | 'bunker' | 'water';
-export type ObstacleType = 'none' | 'tree' | 'pine_tree' | 'shrub' | 'bush';
+export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water";
+export type ObstacleType = "none" | "tree" | "pine_tree" | "shrub" | "bush";
 
 export interface CellState {
   x: number;
@@ -46,78 +46,113 @@ export const OBSTACLE_CODES = {
 
 export function getTerrainType(code: number): TerrainType {
   switch (code) {
-    case 0: return 'fairway';
-    case 1: return 'rough';
-    case 2: return 'green';
-    case 3: return 'bunker';
-    case 4: return 'water';
-    default: return 'rough';
+    case 0:
+      return "fairway";
+    case 1:
+      return "rough";
+    case 2:
+      return "green";
+    case 3:
+      return "bunker";
+    case 4:
+      return "water";
+    default:
+      return "rough";
   }
 }
 
 export function getObstacleType(code: number): ObstacleType {
   switch (code) {
-    case 0: return 'none';
-    case 1: return 'tree';
-    case 2: return 'pine_tree';
-    case 3: return 'shrub';
-    case 4: return 'bush';
-    default: return 'none';
+    case 0:
+      return "none";
+    case 1:
+      return "tree";
+    case 2:
+      return "pine_tree";
+    case 3:
+      return "shrub";
+    case 4:
+      return "bush";
+    default:
+      return "none";
   }
 }
 
-export function getInitialValues(type: TerrainType): { height: number; moisture: number; nutrients: number } {
+export function getInitialValues(type: TerrainType): {
+  height: number;
+  moisture: number;
+  nutrients: number;
+} {
   switch (type) {
-    case 'fairway':
+    case "fairway":
       return { height: 30, moisture: 60, nutrients: 70 };
-    case 'rough':
+    case "rough":
       return { height: 70, moisture: 50, nutrients: 50 };
-    case 'green':
+    case "green":
       return { height: 10, moisture: 70, nutrients: 80 };
-    case 'bunker':
+    case "bunker":
       return { height: 0, moisture: 20, nutrients: 0 };
-    case 'water':
+    case "water":
       return { height: 0, moisture: 100, nutrients: 0 };
     default:
       return { height: 50, moisture: 50, nutrients: 50 };
   }
 }
 
-export function gridToScreen(gridX: number, gridY: number, elevation: number, mapWidth: number): { x: number; y: number } {
-  const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + (mapWidth * TILE_WIDTH / 2);
-  const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) - elevation * ELEVATION_HEIGHT;
+export function gridToScreen(
+  gridX: number,
+  gridY: number,
+  elevation: number,
+  mapWidth: number
+): { x: number; y: number } {
+  const screenX =
+    (gridX - gridY) * (TILE_WIDTH / 2) + (mapWidth * TILE_WIDTH) / 2;
+  const screenY =
+    (gridX + gridY) * (TILE_HEIGHT / 2) - elevation * ELEVATION_HEIGHT;
   return { x: screenX, y: screenY };
 }
 
-export function screenToGrid(screenX: number, screenY: number, mapWidth: number): { x: number; y: number } {
-  const offsetX = screenX - (mapWidth * TILE_WIDTH / 2);
+export function screenToGrid(
+  screenX: number,
+  screenY: number,
+  mapWidth: number
+): { x: number; y: number } {
+  const offsetX = screenX - (mapWidth * TILE_WIDTH) / 2;
   const isoX = (offsetX / (TILE_WIDTH / 2) + screenY / (TILE_HEIGHT / 2)) / 2;
   const isoY = (screenY / (TILE_HEIGHT / 2) - offsetX / (TILE_WIDTH / 2)) / 2;
   return { x: Math.floor(isoX), y: Math.floor(isoY) };
 }
 
 export function isGrassTerrain(type: TerrainType): boolean {
-  return type === 'fairway' || type === 'rough' || type === 'green';
+  return type === "fairway" || type === "rough" || type === "green";
 }
 
-export function calculateHealth(cell: Pick<CellState, 'type' | 'moisture' | 'nutrients' | 'height'>): number {
+export function calculateHealth(
+  cell: Pick<CellState, "type" | "moisture" | "nutrients" | "height">
+): number {
   if (!isGrassTerrain(cell.type)) {
     return 100;
   }
   const moistureScore = cell.moisture * 0.3;
   const nutrientScore = cell.nutrients * 0.3;
   const heightScore = (100 - Math.min(cell.height, 100)) * 0.4;
-  return Math.max(0, Math.min(100, moistureScore + nutrientScore + heightScore));
+  return Math.max(
+    0,
+    Math.min(100, moistureScore + nutrientScore + heightScore)
+  );
 }
 
 export function isWalkable(cell: CellState | null): boolean {
   if (!cell) return false;
-  if (cell.type === 'water') return false;
-  if (cell.obstacle !== 'none') return false;
+  if (cell.type === "water") return false;
+  if (cell.obstacle !== "none") return false;
   return true;
 }
 
-export function canMoveFromTo(fromCell: CellState | null, toCell: CellState | null): boolean {
+export function canMoveFromTo(
+  fromCell: CellState | null,
+  toCell: CellState | null
+): boolean {
   if (!fromCell || !toCell) return false;
   if (!isWalkable(toCell)) return false;
 
@@ -133,50 +168,58 @@ export function getRampDirection(
   southElev: number | null,
   eastElev: number | null,
   westElev: number | null
-): 'north' | 'south' | 'east' | 'west' | null {
+): "north" | "south" | "east" | "west" | null {
   const n = northElev ?? elevation;
   const s = southElev ?? elevation;
   const e = eastElev ?? elevation;
   const w = westElev ?? elevation;
 
   if (n > elevation && n - elevation === 1 && s <= elevation) {
-    return 'north';
+    return "north";
   }
   if (s > elevation && s - elevation === 1 && n <= elevation) {
-    return 'south';
+    return "south";
   }
   if (e > elevation && e - elevation === 1 && w <= elevation) {
-    return 'east';
+    return "east";
   }
   if (w > elevation && w - elevation === 1 && e <= elevation) {
-    return 'west';
+    return "west";
   }
 
   return null;
 }
 
-export function getTextureForCell(cell: CellState, rampDir: 'north' | 'south' | 'east' | 'west' | null): string {
+export function getTextureForCell(
+  cell: CellState,
+  rampDir: "north" | "south" | "east" | "west" | null
+): string {
   if (rampDir && isGrassTerrain(cell.type)) {
     return `iso_ramp_${rampDir}`;
   }
 
-  if (cell.type === 'bunker') return 'iso_bunker';
-  if (cell.type === 'water') return 'iso_water';
+  if (cell.type === "bunker") return "iso_bunker";
+  if (cell.type === "water") return "iso_water";
 
   if (isGrassTerrain(cell.type)) {
-    if (cell.health < 20) return 'iso_grass_dead';
-    if (cell.health < 40) return 'iso_grass_dry';
+    if (cell.health < 20) return "iso_grass_dead";
+    if (cell.health < 40) return "iso_grass_dry";
 
     const thresholds = getTerrainThresholds(cell.type);
     if (cell.height <= thresholds.mownHeight) return `iso_${cell.type}_mown`;
-    if (cell.height <= thresholds.growingHeight) return `iso_${cell.type}_growing`;
+    if (cell.height <= thresholds.growingHeight)
+      return `iso_${cell.type}_growing`;
     return `iso_${cell.type}_unmown`;
   }
 
-  return 'iso_rough_unmown';
+  return "iso_rough_unmown";
 }
 
-export function getCellsInRadius(centerX: number, centerY: number, radius: number): Array<{ x: number; y: number }> {
+export function getCellsInRadius(
+  centerX: number,
+  centerY: number,
+  radius: number
+): Array<{ x: number; y: number }> {
   const cells: Array<{ x: number; y: number }> = [];
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -196,21 +239,21 @@ export interface CornerHeights {
 }
 
 export type SlopeType =
-  | 'flat'
-  | 'slope_n'      // N vertex raised (slopes up to north)
-  | 'slope_e'      // E vertex raised
-  | 'slope_s'      // S vertex raised
-  | 'slope_w'      // W vertex raised
-  | 'slope_ne'     // NE edge raised (N and E vertices high)
-  | 'slope_se'     // SE edge raised
-  | 'slope_sw'     // SW edge raised
-  | 'slope_nw'     // NW edge raised
-  | 'valley_n'     // N vertex lowered (all others high)
-  | 'valley_e'     // E vertex lowered
-  | 'valley_s'     // S vertex lowered
-  | 'valley_w'     // W vertex lowered
-  | 'saddle_ns'    // N and S high, E and W low
-  | 'saddle_ew';   // E and W high, N and S low
+  | "flat"
+  | "slope_n" // N vertex raised (slopes up to north)
+  | "slope_e" // E vertex raised
+  | "slope_s" // S vertex raised
+  | "slope_w" // W vertex raised
+  | "slope_ne" // NE edge raised (N and E vertices high)
+  | "slope_se" // SE edge raised
+  | "slope_sw" // SW edge raised
+  | "slope_nw" // NW edge raised
+  | "valley_n" // N vertex lowered (all others high)
+  | "valley_e" // E vertex lowered
+  | "valley_s" // S vertex lowered
+  | "valley_w" // W vertex lowered
+  | "saddle_ns" // N and S high, E and W low
+  | "saddle_ew"; // E and W high, N and S low
 
 export function getCornerHeights(
   elevation: number,
@@ -223,16 +266,17 @@ export function getCornerHeights(
   _swElev: number | null,
   _nwElev: number | null
 ): CornerHeights {
-  const n = nElev ?? elevation;
-  const e = eElev ?? elevation;
-  const s = sElev ?? elevation;
-  const w = wElev ?? elevation;
+  const limit = 1;
+  const nVal = nElev ?? elevation;
+  const eVal = eElev ?? elevation;
+  const sVal = sElev ?? elevation;
+  const wVal = wElev ?? elevation;
 
   return {
-    n: n > elevation ? 1 : 0,
-    e: e > elevation ? 1 : 0,
-    s: s > elevation ? 1 : 0,
-    w: w > elevation ? 1 : 0
+    n: Math.max(0, Math.min(limit, nVal - elevation)),
+    e: Math.max(0, Math.min(limit, eVal - elevation)),
+    s: Math.max(0, Math.min(limit, sVal - elevation)),
+    w: Math.max(0, Math.min(limit, wVal - elevation)),
   };
 }
 
@@ -240,36 +284,36 @@ export function getSlopeType(corners: CornerHeights): SlopeType {
   const { n, e, s, w } = corners;
   const highCount = n + e + s + w;
 
-  if (highCount === 0) return 'flat';
+  if (highCount === 0) return "flat";
 
   if (highCount === 1) {
-    if (n === 1) return 'slope_n';
-    if (e === 1) return 'slope_e';
-    if (s === 1) return 'slope_s';
-    return 'slope_w';
+    if (n === 1) return "slope_n";
+    if (e === 1) return "slope_e";
+    if (s === 1) return "slope_s";
+    return "slope_w";
   }
 
   if (highCount === 3) {
-    if (n === 0) return 'valley_n';
-    if (e === 0) return 'valley_e';
-    if (s === 0) return 'valley_s';
-    return 'valley_w';
+    if (n === 0) return "valley_n";
+    if (e === 0) return "valley_e";
+    if (s === 0) return "valley_s";
+    return "valley_w";
   }
 
   if (highCount === 2) {
-    if (n === 1 && e === 1) return 'slope_ne';
-    if (e === 1 && s === 1) return 'slope_se';
-    if (s === 1 && w === 1) return 'slope_sw';
-    if (w === 1 && n === 1) return 'slope_nw';
-    if (n === 1 && s === 1) return 'saddle_ns';
-    return 'saddle_ew';
+    if (n === 1 && e === 1) return "slope_ne";
+    if (e === 1 && s === 1) return "slope_se";
+    if (s === 1 && w === 1) return "slope_sw";
+    if (w === 1 && n === 1) return "slope_nw";
+    if (n === 1 && s === 1) return "saddle_ns";
+    return "saddle_ew";
   }
 
-  return 'flat';
+  return "flat";
 }
 
 export function getSlopeTexture(slopeType: SlopeType): string {
-  if (slopeType === 'flat') return '';
+  if (slopeType === "flat") return "";
   return `iso_${slopeType}`;
 }
 
@@ -284,13 +328,16 @@ export interface RCTCornerHeights {
   sw: number;
 }
 
-export function getOptimalDiagonal(corners: RCTCornerHeights): 'nwse' | 'nesw' {
+export function getOptimalDiagonal(corners: RCTCornerHeights): "nwse" | "nesw" {
   const diagNWSE = Math.abs(corners.nw - corners.se);
   const diagNESW = Math.abs(corners.ne - corners.sw);
-  return diagNWSE <= diagNESW ? 'nwse' : 'nesw';
+  return diagNWSE <= diagNESW ? "nwse" : "nesw";
 }
 
-export function validateSlopeConstraint(corners: RCTCornerHeights, maxDelta: number = 2): boolean {
+export function validateSlopeConstraint(
+  corners: RCTCornerHeights,
+  maxDelta: number = 2
+): boolean {
   const heights = [corners.nw, corners.ne, corners.se, corners.sw];
   for (let i = 0; i < heights.length; i++) {
     for (let j = i + 1; j < heights.length; j++) {
@@ -310,15 +357,15 @@ export interface SurfacePhysics {
 
 export function getSurfacePhysics(type: TerrainType): SurfacePhysics {
   switch (type) {
-    case 'fairway':
+    case "fairway":
       return { friction: 0.4, bounciness: 0.3, rollResistance: 0.02 };
-    case 'green':
+    case "green":
       return { friction: 0.3, bounciness: 0.25, rollResistance: 0.01 };
-    case 'rough':
+    case "rough":
       return { friction: 0.7, bounciness: 0.2, rollResistance: 0.08 };
-    case 'bunker':
+    case "bunker":
       return { friction: 0.9, bounciness: 0.1, rollResistance: 0.15 };
-    case 'water':
+    case "water":
       return { friction: 0.1, bounciness: 0.0, rollResistance: 1.0 };
     default:
       return { friction: 0.5, bounciness: 0.2, rollResistance: 0.05 };
@@ -330,7 +377,10 @@ export function getSlopeFrictionModifier(slopeAngle: number): number {
   return 1.0 + normalizedAngle * 0.3;
 }
 
-export function calculateSlopeAngle(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): number {
+export function calculateSlopeAngle(
+  corners: RCTCornerHeights,
+  heightStep: number = ELEVATION_HEIGHT
+): number {
   const avgNorth = (corners.nw + corners.ne) / 2;
   const avgSouth = (corners.sw + corners.se) / 2;
   const avgEast = (corners.ne + corners.se) / 2;
@@ -349,7 +399,10 @@ export interface SlopeVector {
   magnitude: number;
 }
 
-export function getSlopeVector(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): SlopeVector {
+export function getSlopeVector(
+  corners: RCTCornerHeights,
+  heightStep: number = ELEVATION_HEIGHT
+): SlopeVector {
   const avgNorth = (corners.nw + corners.ne) / 2;
   const avgSouth = (corners.sw + corners.se) / 2;
   const avgEast = (corners.ne + corners.se) / 2;
@@ -365,14 +418,21 @@ export function getSlopeVector(corners: RCTCornerHeights, heightStep: number = E
   return { angle, direction, magnitude };
 }
 
-export function getTileNormal(corners: RCTCornerHeights, heightStep: number = ELEVATION_HEIGHT): { x: number; y: number; z: number } {
+export function getTileNormal(
+  corners: RCTCornerHeights,
+  heightStep: number = ELEVATION_HEIGHT
+): { x: number; y: number; z: number } {
   const v1x = TILE_WIDTH;
   const v1y = 0;
-  const v1z = ((corners.ne + corners.se) / 2 - (corners.nw + corners.sw) / 2) * heightStep;
+  const v1z =
+    ((corners.ne + corners.se) / 2 - (corners.nw + corners.sw) / 2) *
+    heightStep;
 
   const v2x = 0;
   const v2y = TILE_HEIGHT;
-  const v2z = ((corners.sw + corners.se) / 2 - (corners.nw + corners.ne) / 2) * heightStep;
+  const v2z =
+    ((corners.sw + corners.se) / 2 - (corners.nw + corners.ne) / 2) *
+    heightStep;
 
   const nx = v1y * v2z - v1z * v2y;
   const ny = v1z * v2x - v1x * v2z;
@@ -386,17 +446,32 @@ export function getTileNormal(corners: RCTCornerHeights, heightStep: number = EL
 
 export const DEFAULT_WATER_LEVEL = 0;
 
-export function isSubmerged(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): boolean {
-  return corners.nw < waterLevel && corners.ne < waterLevel &&
-         corners.se < waterLevel && corners.sw < waterLevel;
+export function isSubmerged(
+  corners: RCTCornerHeights,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): boolean {
+  return (
+    corners.nw < waterLevel &&
+    corners.ne < waterLevel &&
+    corners.se < waterLevel &&
+    corners.sw < waterLevel
+  );
 }
 
-export function isPartiallySubmerged(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): boolean {
-  const below = [corners.nw, corners.ne, corners.se, corners.sw].filter(h => h < waterLevel).length;
+export function isPartiallySubmerged(
+  corners: RCTCornerHeights,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): boolean {
+  const below = [corners.nw, corners.ne, corners.se, corners.sw].filter(
+    (h) => h < waterLevel
+  ).length;
   return below > 0 && below < 4;
 }
 
-export function getWaterDepth(corners: RCTCornerHeights, waterLevel: number = DEFAULT_WATER_LEVEL): number {
+export function getWaterDepth(
+  corners: RCTCornerHeights,
+  waterLevel: number = DEFAULT_WATER_LEVEL
+): number {
   const minHeight = Math.min(corners.nw, corners.ne, corners.se, corners.sw);
   return Math.max(0, waterLevel - minHeight);
 }
@@ -407,7 +482,7 @@ export function getEffectiveTerrainType(
   waterLevel: number = DEFAULT_WATER_LEVEL
 ): TerrainType {
   if (isSubmerged(corners, waterLevel)) {
-    return 'water';
+    return "water";
   }
   return type;
 }
@@ -428,7 +503,10 @@ export function getMaxCornerDelta(corners: RCTCornerHeights): number {
   return maxDelta;
 }
 
-export function isValidSlopeConstraint(corners: RCTCornerHeights, maxDelta: number = MAX_SLOPE_DELTA): boolean {
+export function isValidSlopeConstraint(
+  corners: RCTCornerHeights,
+  maxDelta: number = MAX_SLOPE_DELTA
+): boolean {
   return getMaxCornerDelta(corners) <= maxDelta;
 }
 
@@ -440,7 +518,7 @@ export interface TerrainValidationResult {
 export interface TerrainValidationError {
   x: number;
   y: number;
-  type: 'slope_too_steep' | 'invalid_terrain_code' | 'invalid_elevation';
+  type: "slope_too_steep" | "invalid_terrain_code" | "invalid_elevation";
   message: string;
 }
 
@@ -460,20 +538,26 @@ export function validateTerrainData(
         errors.push({
           x,
           y,
-          type: 'invalid_terrain_code',
-          message: `Invalid terrain code ${code} at (${x}, ${y})`
+          type: "invalid_terrain_code",
+          message: `Invalid terrain code ${code} at (${x}, ${y})`,
         });
       }
 
       if (elevation) {
-        const corners = getCornerHeightsFromElevation(x, y, elevation, width, height);
+        const corners = getCornerHeightsFromElevation(
+          x,
+          y,
+          elevation,
+          width,
+          height
+        );
         if (!isValidSlopeConstraint(corners, maxSlopeDelta)) {
           const delta = getMaxCornerDelta(corners);
           errors.push({
             x,
             y,
-            type: 'slope_too_steep',
-            message: `Slope too steep at (${x}, ${y}): max delta ${delta} exceeds limit ${maxSlopeDelta}`
+            type: "slope_too_steep",
+            message: `Slope too steep at (${x}, ${y}): max delta ${delta} exceeds limit ${maxSlopeDelta}`,
           });
         }
       }
@@ -482,7 +566,7 @@ export function validateTerrainData(
 
   return {
     valid: errors.length === 0,
-    errors
+    errors,
   };
 }
 
@@ -513,31 +597,37 @@ function getCornerHeightsFromElevation(
     nw: Math.max(baseElev, nElev, wElev, nwElev),
     ne: Math.max(baseElev, nElev, eElev, neElev),
     se: Math.max(baseElev, sElev, eElev, seElev),
-    sw: Math.max(baseElev, sElev, wElev, swElev)
+    sw: Math.max(baseElev, sElev, wElev, swElev),
   };
 }
 
 export function getTerrainSpeedModifier(type: TerrainType): number {
   switch (type) {
-    case 'fairway': return 1.0;
-    case 'green': return 1.0;
-    case 'rough': return 0.7;
-    case 'bunker': return 0.5;
-    case 'water': return 0.0;
-    default: return 1.0;
+    case "fairway":
+      return 1.0;
+    case "green":
+      return 1.0;
+    case "rough":
+      return 0.7;
+    case "bunker":
+      return 0.5;
+    case "water":
+      return 0.0;
+    default:
+      return 1.0;
   }
 }
 
 export function getTerrainMowable(type: TerrainType): boolean {
-  return type === 'fairway' || type === 'rough' || type === 'green';
+  return type === "fairway" || type === "rough" || type === "green";
 }
 
 export function getTerrainWaterable(type: TerrainType): boolean {
-  return type === 'fairway' || type === 'rough' || type === 'green';
+  return type === "fairway" || type === "rough" || type === "green";
 }
 
 export function getTerrainFertilizable(type: TerrainType): boolean {
-  return type === 'fairway' || type === 'rough' || type === 'green';
+  return type === "fairway" || type === "rough" || type === "green";
 }
 
 export function clampToGrid(value: number, min: number, max: number): number {
@@ -546,23 +636,35 @@ export function clampToGrid(value: number, min: number, max: number): number {
 
 export function getTerrainDisplayName(type: TerrainType): string {
   switch (type) {
-    case 'fairway': return 'Fairway';
-    case 'rough': return 'Rough';
-    case 'green': return 'Green';
-    case 'bunker': return 'Bunker';
-    case 'water': return 'Water';
-    default: return 'Unknown';
+    case "fairway":
+      return "Fairway";
+    case "rough":
+      return "Rough";
+    case "green":
+      return "Green";
+    case "bunker":
+      return "Bunker";
+    case "water":
+      return "Water";
+    default:
+      return "Unknown";
   }
 }
 
 export function getObstacleDisplayName(type: ObstacleType): string {
   switch (type) {
-    case 'none': return 'None';
-    case 'tree': return 'Tree';
-    case 'pine_tree': return 'Pine Tree';
-    case 'shrub': return 'Shrub';
-    case 'bush': return 'Bush';
-    default: return 'Unknown';
+    case "none":
+      return "None";
+    case "tree":
+      return "Tree";
+    case "pine_tree":
+      return "Pine Tree";
+    case "shrub":
+      return "Shrub";
+    case "bush":
+      return "Bush";
+    default:
+      return "Unknown";
   }
 }
 
@@ -573,21 +675,25 @@ export interface TerrainThresholds {
 
 export function getTerrainThresholds(type: TerrainType): TerrainThresholds {
   switch (type) {
-    case 'fairway': return { mownHeight: 20, growingHeight: 45 };
-    case 'rough': return { mownHeight: 30, growingHeight: 60 };
-    case 'green': return { mownHeight: 10, growingHeight: 22 };
-    default: return { mownHeight: 30, growingHeight: 60 };
+    case "fairway":
+      return { mownHeight: 20, growingHeight: 45 };
+    case "rough":
+      return { mownHeight: 30, growingHeight: 60 };
+    case "green":
+      return { mownHeight: 10, growingHeight: 22 };
+    default:
+      return { mownHeight: 30, growingHeight: 60 };
   }
 }
 
-export function getGrassState(cell: CellState): 'mown' | 'growing' | 'unmown' {
+export function getGrassState(cell: CellState): "mown" | "growing" | "unmown" {
   if (!isGrassTerrain(cell.type)) {
-    return 'mown';
+    return "mown";
   }
   const thresholds = getTerrainThresholds(cell.type);
-  if (cell.height <= thresholds.mownHeight) return 'mown';
-  if (cell.height <= thresholds.growingHeight) return 'growing';
-  return 'unmown';
+  if (cell.height <= thresholds.mownHeight) return "mown";
+  if (cell.height <= thresholds.growingHeight) return "growing";
+  return "unmown";
 }
 
 export interface RCTTileFlags {
@@ -621,17 +727,19 @@ export function createRCTTileData(
     type,
     flags: {
       water: isSubmerged(corners, waterLevel),
-      protected: type === 'green'
-    }
+      protected: type === "green",
+    },
   };
 }
 
-export function parseRCTTileHeights(heights: [number, number, number, number]): RCTCornerHeights {
+export function parseRCTTileHeights(
+  heights: [number, number, number, number]
+): RCTCornerHeights {
   return {
     nw: heights[0],
     ne: heights[1],
     se: heights[2],
-    sw: heights[3]
+    sw: heights[3],
   };
 }
 
@@ -664,7 +772,7 @@ export function exportToRCTFormat(
         nw: Math.max(baseElev, nElev, wElev, nwElev),
         ne: Math.max(baseElev, nElev, eElev, neElev),
         se: Math.max(baseElev, sElev, eElev, seElev),
-        sw: Math.max(baseElev, sElev, wElev, swElev)
+        sw: Math.max(baseElev, sElev, wElev, swElev),
       };
 
       tiles.push(createRCTTileData(x, y, corners, type, waterLevel));
@@ -674,7 +782,7 @@ export function exportToRCTFormat(
   return {
     gridSize: [width, height],
     heightStep,
-    tiles
+    tiles,
   };
 }
 
@@ -696,7 +804,9 @@ export function importFromRCTFormat(data: RCTTerrainData): CourseLayout {
     const [x, y] = tile.pos;
     if (x >= 0 && x < width && y >= 0 && y < height) {
       const corners = parseRCTTileHeights(tile.heights);
-      const avgElev = Math.round((corners.nw + corners.ne + corners.se + corners.sw) / 4);
+      const avgElev = Math.round(
+        (corners.nw + corners.ne + corners.se + corners.sw) / 4
+      );
 
       layout[y][x] = getTerrainCode(tile.type);
       elevation[y][x] = avgElev;
@@ -708,23 +818,39 @@ export function importFromRCTFormat(data: RCTTerrainData): CourseLayout {
 
 export function getTerrainCode(type: TerrainType): number {
   switch (type) {
-    case 'fairway': return TERRAIN_CODES.FAIRWAY;
-    case 'rough': return TERRAIN_CODES.ROUGH;
-    case 'green': return TERRAIN_CODES.GREEN;
-    case 'bunker': return TERRAIN_CODES.BUNKER;
-    case 'water': return TERRAIN_CODES.WATER;
-    default: return TERRAIN_CODES.ROUGH;
+    case "fairway":
+      return TERRAIN_CODES.FAIRWAY;
+    case "rough":
+      return TERRAIN_CODES.ROUGH;
+    case "green":
+      return TERRAIN_CODES.GREEN;
+    case "bunker":
+      return TERRAIN_CODES.BUNKER;
+    case "water":
+      return TERRAIN_CODES.WATER;
+    default:
+      return TERRAIN_CODES.ROUGH;
   }
 }
 
-export function getTerrainColor(type: TerrainType): { r: number; g: number; b: number } {
+export function getTerrainColor(type: TerrainType): {
+  r: number;
+  g: number;
+  b: number;
+} {
   switch (type) {
-    case 'fairway': return { r: 0.4, g: 0.7, b: 0.3 };
-    case 'rough': return { r: 0.35, g: 0.55, b: 0.25 };
-    case 'green': return { r: 0.3, g: 0.8, b: 0.35 };
-    case 'bunker': return { r: 0.85, g: 0.75, b: 0.5 };
-    case 'water': return { r: 0.2, g: 0.4, b: 0.65 };
-    default: return { r: 0.4, g: 0.6, b: 0.3 };
+    case "fairway":
+      return { r: 0.4, g: 0.7, b: 0.3 };
+    case "rough":
+      return { r: 0.35, g: 0.55, b: 0.25 };
+    case "green":
+      return { r: 0.3, g: 0.8, b: 0.35 };
+    case "bunker":
+      return { r: 0.85, g: 0.75, b: 0.5 };
+    case "water":
+      return { r: 0.2, g: 0.4, b: 0.65 };
+    default:
+      return { r: 0.4, g: 0.6, b: 0.3 };
   }
 }
 
@@ -739,40 +865,65 @@ export function lerpTerrainColor(
   return {
     r: c1.r + (c2.r - c1.r) * clampedT,
     g: c1.g + (c2.g - c1.g) * clampedT,
-    b: c1.b + (c2.b - c1.b) * clampedT
+    b: c1.b + (c2.b - c1.b) * clampedT,
   };
 }
 
-export function getManhattanDistance(x1: number, y1: number, x2: number, y2: number): number {
+export function getManhattanDistance(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
   return Math.abs(x2 - x1) + Math.abs(y2 - y1);
 }
 
-export function getEuclideanDistance(x1: number, y1: number, x2: number, y2: number): number {
+export function getEuclideanDistance(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
   const dx = x2 - x1;
   const dy = y2 - y1;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function getChebyshevDistance(x1: number, y1: number, x2: number, y2: number): number {
+export function getChebyshevDistance(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
   return Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
 }
 
-export function isAdjacent(x1: number, y1: number, x2: number, y2: number, includeDiagonals: boolean = false): boolean {
+export function isAdjacent(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  includeDiagonals: boolean = false
+): boolean {
   const dx = Math.abs(x2 - x1);
   const dy = Math.abs(y2 - y1);
 
   if (includeDiagonals) {
-    return dx <= 1 && dy <= 1 && (dx + dy > 0);
+    return dx <= 1 && dy <= 1 && dx + dy > 0;
   }
   return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
 }
 
-export function getAdjacentPositions(x: number, y: number, includeDiagonals: boolean = false): Array<{ x: number; y: number }> {
+export function getAdjacentPositions(
+  x: number,
+  y: number,
+  includeDiagonals: boolean = false
+): Array<{ x: number; y: number }> {
   const positions: Array<{ x: number; y: number }> = [
     { x: x, y: y - 1 },
     { x: x + 1, y: y },
     { x: x, y: y + 1 },
-    { x: x - 1, y: y }
+    { x: x - 1, y: y },
   ];
 
   if (includeDiagonals) {
@@ -787,7 +938,12 @@ export function getAdjacentPositions(x: number, y: number, includeDiagonals: boo
   return positions;
 }
 
-export function getDirectionFromTo(fromX: number, fromY: number, toX: number, toY: number): number {
+export function getDirectionFromTo(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number
+): number {
   const dx = toX - fromX;
   const dy = toY - fromY;
   return Math.atan2(dy, dx) * (180 / Math.PI);
@@ -799,14 +955,16 @@ export function normalizeAngle(angle: number): number {
   return normalized;
 }
 
-export function getCardinalDirection(angle: number): 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw' {
+export function getCardinalDirection(
+  angle: number
+): "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw" {
   const normalized = normalizeAngle(angle);
-  if (normalized >= 337.5 || normalized < 22.5) return 'e';
-  if (normalized < 67.5) return 'se';
-  if (normalized < 112.5) return 's';
-  if (normalized < 157.5) return 'sw';
-  if (normalized < 202.5) return 'w';
-  if (normalized < 247.5) return 'nw';
-  if (normalized < 292.5) return 'n';
-  return 'ne';
+  if (normalized >= 337.5 || normalized < 22.5) return "e";
+  if (normalized < 67.5) return "se";
+  if (normalized < 112.5) return "s";
+  if (normalized < 157.5) return "sw";
+  if (normalized < 202.5) return "w";
+  if (normalized < 247.5) return "nw";
+  if (normalized < 292.5) return "n";
+  return "ne";
 }

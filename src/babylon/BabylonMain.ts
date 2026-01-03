@@ -10,6 +10,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
+import "@babylonjs/core/Culling/ray";
 
 import { COURSE_HOLE_1, REFILL_STATIONS } from "../data/courseData";
 import { canMoveFromTo } from "../core/terrain";
@@ -21,7 +22,7 @@ export class BabylonMain {
   private grassSystem: GrassSystem;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
-  private zoomLevel: number = 1.5;
+  private zoomLevel: "close" | "far" = "close";
   private lastTime: number = 0;
   private gameTime: number = 6 * 60;
   private gameDay: number = 1;
@@ -171,7 +172,7 @@ export class BabylonMain {
     this.buildObstacles();
     this.buildRefillStations();
     this.createPlayer();
-    this.babylonEngine.setZoom(this.zoomLevel);
+    this.babylonEngine.setZoomLevel(this.zoomLevel);
     this.updatePlayerPosition();
   }
 
@@ -190,15 +191,16 @@ export class BabylonMain {
 
   private createTree(x: number, y: number, z: number, isPine: boolean): void {
     const scene = this.babylonEngine.getScene();
-    const trunkHeight = isPine ? 35 : 25;
-    const foliageSize = isPine ? 18 : 28;
+    const trunkHeight = isPine ? 1.5 : 1.0;
+    const trunkDiameter = 0.15;
+    const foliageSize = isPine ? 0.6 : 1.0;
 
     const trunk = MeshBuilder.CreateCylinder(
       "trunk",
-      { height: trunkHeight, diameter: 4 },
+      { height: trunkHeight, diameter: trunkDiameter },
       scene
     );
-    trunk.position = new Vector3(x, y + trunkHeight / 2, z - 0.2);
+    trunk.position = new Vector3(x, y + trunkHeight / 2, z);
     const trunkMat = new StandardMaterial("trunkMat", scene);
     trunkMat.diffuseColor = new Color3(0.35, 0.22, 0.1);
     trunkMat.emissiveColor = new Color3(0.18, 0.11, 0.05);
@@ -207,16 +209,21 @@ export class BabylonMain {
 
     if (isPine) {
       for (let layer = 0; layer < 3; layer++) {
+        const layerSize = foliageSize - layer * 0.15;
         const cone = MeshBuilder.CreateCylinder(
           "foliage",
           {
-            height: foliageSize - layer * 5,
+            height: layerSize,
             diameterTop: 0,
-            diameterBottom: foliageSize - layer * 5,
+            diameterBottom: layerSize,
           },
           scene
         );
-        cone.position = new Vector3(x, y + trunkHeight + layer * 12, z - 0.3);
+        cone.position = new Vector3(
+          x,
+          y + trunkHeight + layer * 0.4 + layerSize / 2,
+          z
+        );
         const foliageMat = new StandardMaterial("foliageMat", scene);
         foliageMat.diffuseColor = new Color3(0.15, 0.45, 0.15);
         foliageMat.emissiveColor = new Color3(0.08, 0.23, 0.08);
@@ -229,7 +236,7 @@ export class BabylonMain {
         { diameter: foliageSize },
         scene
       );
-      sphere.position = new Vector3(x, y + trunkHeight + 5, z - 0.3);
+      sphere.position = new Vector3(x, y + trunkHeight + foliageSize / 2, z);
       const foliageMat = new StandardMaterial("foliageMat", scene);
       foliageMat.diffuseColor = new Color3(0.2, 0.5, 0.2);
       foliageMat.emissiveColor = new Color3(0.1, 0.25, 0.1);
@@ -246,10 +253,10 @@ export class BabylonMain {
 
       const base = MeshBuilder.CreateBox(
         "refillBase",
-        { width: 40, height: 20, depth: 0.1 },
+        { width: 0.8, height: 0.4, depth: 0.6 },
         scene
       );
-      base.position = new Vector3(pos.x, pos.y - 10, pos.z - 0.3);
+      base.position = new Vector3(pos.x, pos.y + 0.2, pos.z);
       const baseMat = new StandardMaterial("baseMat", scene);
       baseMat.diffuseColor = new Color3(0.55, 0.27, 0.07);
       baseMat.emissiveColor = new Color3(0.28, 0.14, 0.04);
@@ -258,10 +265,10 @@ export class BabylonMain {
 
       const roof = MeshBuilder.CreateBox(
         "refillRoof",
-        { width: 50, height: 12, depth: 0.1 },
+        { width: 1.0, height: 0.1, depth: 0.8 },
         scene
       );
-      roof.position = new Vector3(pos.x, pos.y - 26, pos.z - 0.35);
+      roof.position = new Vector3(pos.x, pos.y + 0.7, pos.z);
       const roofMat = new StandardMaterial("roofMat", scene);
       roofMat.diffuseColor = new Color3(0.61, 0.33, 0.12);
       roofMat.emissiveColor = new Color3(0.31, 0.17, 0.06);
@@ -270,10 +277,10 @@ export class BabylonMain {
 
       const pump = MeshBuilder.CreateBox(
         "pump",
-        { width: 12, height: 25, depth: 0.1 },
+        { width: 0.25, height: 0.5, depth: 0.2 },
         scene
       );
-      pump.position = new Vector3(pos.x, pos.y - 32, pos.z - 0.4);
+      pump.position = new Vector3(pos.x, pos.y + 0.25, pos.z + 0.15);
       const pumpMat = new StandardMaterial("pumpMat", scene);
       pumpMat.diffuseColor = new Color3(0.4, 0.4, 0.45);
       pumpMat.emissiveColor = new Color3(0.2, 0.2, 0.23);
@@ -282,18 +289,22 @@ export class BabylonMain {
 
       const blueDot = MeshBuilder.CreateSphere(
         "blueDot",
-        { diameter: 6 },
+        { diameter: 0.12 },
         scene
       );
-      blueDot.position = new Vector3(pos.x - 4, pos.y - 34, pos.z - 0.45);
+      blueDot.position = new Vector3(pos.x - 0.08, pos.y + 0.35, pos.z + 0.26);
       const blueMat = new StandardMaterial("blueMat", scene);
       blueMat.diffuseColor = new Color3(0.2, 0.4, 0.8);
       blueMat.emissiveColor = new Color3(0.1, 0.2, 0.4);
       blueDot.material = blueMat;
       this.obstacleMeshes.push(blueDot);
 
-      const redDot = MeshBuilder.CreateSphere("redDot", { diameter: 6 }, scene);
-      redDot.position = new Vector3(pos.x + 4, pos.y - 34, pos.z - 0.45);
+      const redDot = MeshBuilder.CreateSphere(
+        "redDot",
+        { diameter: 0.12 },
+        scene
+      );
+      redDot.position = new Vector3(pos.x + 0.08, pos.y + 0.35, pos.z + 0.26);
       const redMat = new StandardMaterial("redMat", scene);
       redMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
       redMat.emissiveColor = new Color3(0.4, 0.1, 0.1);
@@ -307,19 +318,18 @@ export class BabylonMain {
 
     this.playerMesh = MeshBuilder.CreateBox(
       "playerContainer",
-      { size: 1 },
+      { size: 0.01 },
       scene
     );
     this.playerMesh.isVisible = false;
 
     const shadow = MeshBuilder.CreateDisc(
       "shadow",
-      { radius: 10, tessellation: 16 },
+      { radius: 0.2, tessellation: 16 },
       scene
     );
     shadow.rotation.x = Math.PI / 2;
-    shadow.position.y = -18;
-    shadow.position.z = 0.5;
+    shadow.position.y = 0.01;
     const shadowMat = new StandardMaterial("shadowMat", scene);
     shadowMat.diffuseColor = new Color3(0, 0, 0);
     shadowMat.alpha = 0.3;
@@ -329,18 +339,18 @@ export class BabylonMain {
 
     const body = MeshBuilder.CreateCylinder(
       "body",
-      { height: 20, diameterTop: 8, diameterBottom: 10 },
+      { height: 0.4, diameterTop: 0.16, diameterBottom: 0.2 },
       scene
     );
-    body.position.y = -8;
+    body.position.y = 0.2;
     const bodyMat = new StandardMaterial("bodyMat", scene);
     bodyMat.diffuseColor = new Color3(0.11, 0.48, 0.24);
     bodyMat.emissiveColor = new Color3(0.06, 0.24, 0.12);
     body.material = bodyMat;
     body.parent = this.playerMesh;
 
-    const head = MeshBuilder.CreateSphere("head", { diameter: 10 }, scene);
-    head.position.y = 6;
+    const head = MeshBuilder.CreateSphere("head", { diameter: 0.2 }, scene);
+    head.position.y = 0.5;
     const headMat = new StandardMaterial("headMat", scene);
     headMat.diffuseColor = new Color3(0.94, 0.82, 0.69);
     headMat.emissiveColor = new Color3(0.47, 0.41, 0.35);
@@ -349,10 +359,10 @@ export class BabylonMain {
 
     const hat = MeshBuilder.CreateCylinder(
       "hat",
-      { height: 5, diameterTop: 8, diameterBottom: 12 },
+      { height: 0.1, diameterTop: 0.16, diameterBottom: 0.24 },
       scene
     );
-    hat.position.y = 12;
+    hat.position.y = 0.65;
     const hatMat = new StandardMaterial("hatMat", scene);
     hatMat.diffuseColor = new Color3(0.9, 0.9, 0.85);
     hatMat.emissiveColor = new Color3(0.45, 0.45, 0.42);
@@ -361,11 +371,11 @@ export class BabylonMain {
 
     const hatBrim = MeshBuilder.CreateDisc(
       "hatBrim",
-      { radius: 8, tessellation: 16 },
+      { radius: 0.16, tessellation: 16 },
       scene
     );
     hatBrim.rotation.x = Math.PI / 2;
-    hatBrim.position.y = 10;
+    hatBrim.position.y = 0.6;
     hatBrim.material = hatMat;
     hatBrim.parent = this.playerMesh;
   }
@@ -393,17 +403,10 @@ export class BabylonMain {
     if (!this.playerMesh) return;
 
     const worldPos = this.grassSystem.gridToWorld(this.playerX, this.playerY);
-    this.playerMesh.position = new Vector3(
-      worldPos.x,
-      worldPos.y + 8,
-      worldPos.z - 1
-    );
+    this.playerMesh.position = worldPos.clone();
 
     if (this.cameraFollowPlayer) {
-      const camera = this.babylonEngine.getCamera();
-      camera.position.x = worldPos.x;
-      camera.position.y = worldPos.y;
-      camera.setTarget(new Vector3(worldPos.x, worldPos.y, 0));
+      this.babylonEngine.setCameraTarget(worldPos);
     }
   }
 
@@ -431,13 +434,10 @@ export class BabylonMain {
     const z =
       this.moveStartPos.z + (this.moveEndPos.z - this.moveStartPos.z) * easeT;
 
-    this.playerMesh.position = new Vector3(x, y + 8, z - 1);
+    this.playerMesh.position = new Vector3(x, y, z);
 
     if (this.cameraFollowPlayer) {
-      const camera = this.babylonEngine.getCamera();
-      camera.position.x = x;
-      camera.position.y = y;
-      camera.setTarget(new Vector3(x, y, 0));
+      this.babylonEngine.setCameraTarget(new Vector3(x, y, z));
     }
 
     if (t >= 1) {
@@ -560,7 +560,7 @@ export class BabylonMain {
     if (!gridPos) return;
 
     if (this.terrainEditorSystem?.isEnabled()) {
-      this.terrainEditorSystem.handleClick(gridPos.x, gridPos.y);
+      this.terrainEditorSystem.handleClick();
       return;
     }
 
@@ -600,10 +600,8 @@ export class BabylonMain {
     screenX: number,
     screenY: number
   ): { x: number; y: number } | null {
-    const canvas = this.babylonEngine
-      .getScene()
-      .getEngine()
-      .getRenderingCanvas();
+    const scene = this.babylonEngine.getScene();
+    const canvas = scene.getEngine().getRenderingCanvas();
     if (!canvas) return null;
 
     const rect = canvas.getBoundingClientRect();
@@ -612,116 +610,50 @@ export class BabylonMain {
     const canvasX = (screenX - rect.left) * scaleX;
     const canvasY = (screenY - rect.top) * scaleY;
 
-    const camera = this.babylonEngine.getCamera();
-    const orthoWidth = (camera.orthoRight ?? 0) - (camera.orthoLeft ?? 0);
-    const orthoHeight = (camera.orthoTop ?? 0) - (camera.orthoBottom ?? 0);
+    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
+      return mesh.name.startsWith("tile_");
+    });
 
-    const normalizedX = canvasX / canvas.width - 0.5;
-    const normalizedY = canvasY / canvas.height - 0.5;
-
-    const worldX = camera.position.x + normalizedX * orthoWidth;
-    const worldY = camera.position.y - normalizedY * orthoHeight;
-
-    return this.screenToGrid(worldX, worldY);
-  }
-
-  private screenToGrid(
-    worldX: number,
-    worldY: number
-  ): { x: number; y: number } | null {
-    const hw = 32;
-    const hh = 16;
-    const elevHeight = 16;
-
-    const baseGridX = Math.round((worldX / hw - worldY / hh) / 2);
-    const baseGridY = Math.round((-worldX / hw - worldY / hh) / 2);
-
-    const course = COURSE_HOLE_1;
-    const searchRadius = 5;
-    let bestMatch: { x: number; y: number; priority: number } | null = null;
-
-    for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-      for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-        const gx = baseGridX + dx;
-        const gy = baseGridY + dy;
-
-        if (gx < 0 || gx >= course.width || gy < 0 || gy >= course.height) {
-          continue;
-        }
-
-        const corners = this.grassSystem.getCornerHeightsPublic(gx, gy);
-        const baseElev = Math.min(
-          corners.nw,
-          corners.ne,
-          corners.se,
-          corners.sw
-        );
-        const centerY = -((gx + gy) * hh) + baseElev * elevHeight;
-
-        const nwY = centerY + hh + (corners.nw - baseElev) * elevHeight;
-        const neY = centerY + (corners.ne - baseElev) * elevHeight;
-        const seY = centerY - hh + (corners.se - baseElev) * elevHeight;
-        const swY = centerY + (corners.sw - baseElev) * elevHeight;
-
-        const centerX = (gx - gy) * hw;
-        const nwX = centerX;
-        const neX = centerX + hw;
-        const seX = centerX;
-        const swX = centerX - hw;
-
-        if (
-          this.isPointInQuad(
-            worldX,
-            worldY,
-            nwX,
-            nwY,
-            neX,
-            neY,
-            seX,
-            seY,
-            swX,
-            swY
-          )
-        ) {
-          const priority = baseElev * 1000 - gy * 10 - gx;
-          if (!bestMatch || priority > bestMatch.priority) {
-            bestMatch = { x: gx, y: gy, priority };
-          }
-        }
+    if (pickResult?.hit && pickResult.pickedMesh) {
+      const match = pickResult.pickedMesh.name.match(/^tile_(\d+)_(\d+)/);
+      if (match) {
+        return { x: parseInt(match[1]), y: parseInt(match[2]) };
       }
     }
 
-    if (bestMatch) {
-      return { x: bestMatch.x, y: bestMatch.y };
-    }
-
-    return { x: baseGridX, y: baseGridY };
+    return this.raycastToGround(canvasX, canvasY);
   }
 
-  private isPointInQuad(
-    px: number,
-    py: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    x3: number,
-    y3: number,
-    x4: number,
-    y4: number
-  ): boolean {
-    const cross = (ax: number, ay: number, bx: number, by: number) =>
-      ax * by - ay * bx;
+  private raycastToGround(
+    canvasX: number,
+    canvasY: number
+  ): { x: number; y: number } | null {
+    const scene = this.babylonEngine.getScene();
+    const camera = this.babylonEngine.getCamera();
+    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
 
-    const d1 = cross(x2 - x1, y2 - y1, px - x1, py - y1);
-    const d2 = cross(x3 - x2, y3 - y2, px - x2, py - y2);
-    const d3 = cross(x4 - x3, y4 - y3, px - x3, py - y3);
-    const d4 = cross(x1 - x4, y1 - y4, px - x4, py - y4);
+    if (ray.direction.y === 0) return null;
 
-    const hasNeg = d1 < 0 || d2 < 0 || d3 < 0 || d4 < 0;
-    const hasPos = d1 > 0 || d2 > 0 || d3 > 0 || d4 > 0;
+    const t = -ray.origin.y / ray.direction.y;
+    if (t < 0) return null;
 
-    return !(hasNeg && hasPos);
+    const groundX = ray.origin.x + ray.direction.x * t;
+    const groundZ = ray.origin.z + ray.direction.z * t;
+
+    const gridX = Math.floor(groundX);
+    const gridY = Math.floor(groundZ);
+
+    const course = COURSE_HOLE_1;
+    if (
+      gridX < 0 ||
+      gridX >= course.width ||
+      gridY < 0 ||
+      gridY >= course.height
+    ) {
+      return null;
+    }
+
+    return { x: gridX, y: gridY };
   }
 
   private findPath(
@@ -939,9 +871,9 @@ export class BabylonMain {
     this.uiManager.showNotification(`Speed: ${this.timeScale}x`);
   }
 
-  private handleZoom(delta: number): void {
-    this.zoomLevel = Math.max(0.5, Math.min(3, this.zoomLevel + delta * 0.25));
-    this.babylonEngine.setZoom(this.zoomLevel);
+  private handleZoom(_delta: number): void {
+    this.zoomLevel = this.zoomLevel === "close" ? "far" : "close";
+    this.babylonEngine.setZoomLevel(this.zoomLevel);
   }
 
   private handleEditorToggle(): void {

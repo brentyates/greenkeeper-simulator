@@ -24,11 +24,10 @@ import {
   getInitialValues,
   calculateHealth,
   getCellsInRadius,
-  TILE_WIDTH,
-  TILE_HEIGHT,
-  ELEVATION_HEIGHT,
   TERRAIN_CODES,
 } from "../../core/terrain";
+
+import { TILE_SIZE, HEIGHT_UNIT } from "../engine/BabylonEngine";
 
 import {
   simulateGrowth,
@@ -48,12 +47,14 @@ export class GrassSystem {
   private cells: CellState[][] = [];
   private tileMeshes: Map<string, Mesh> = new Map();
   private cliffMeshes: Map<string, Mesh> = new Map();
+  private waterTiles: Set<string> = new Set();
   private gridLinesMesh: LinesMesh | null = null;
   private overlayMode: OverlayMode = "normal";
   private tileMaterial: StandardMaterial | null = null;
+  private waterMaterial: StandardMaterial | null = null;
   private gameTime: number = 0;
+  private waterTime: number = 0;
   private dirtyTiles: Set<string> = new Set();
-  private static readonly CLIFF_HEIGHT = 48;
   private static readonly VISUAL_UPDATE_THRESHOLD = 0.5;
 
   constructor(scene: Scene, courseData: CourseData) {
@@ -113,6 +114,16 @@ export class GrassSystem {
     this.tileMaterial.emissiveColor = new Color3(1, 1, 1);
     this.tileMaterial.disableLighting = true;
     this.tileMaterial.backFaceCulling = false;
+
+    this.waterMaterial = new StandardMaterial("waterMat", this.scene);
+    this.waterMaterial.diffuseColor = new Color3(1, 1, 1);
+    this.waterMaterial.specularColor = new Color3(0.15, 0.15, 0.2);
+    this.waterMaterial.emissiveColor = new Color3(0.85, 0.85, 0.9);
+    this.waterMaterial.disableLighting = true;
+    this.waterMaterial.backFaceCulling = false;
+    this.waterMaterial.alpha = 1;
+    this.waterMaterial.needAlphaBlending = () => true;
+    this.waterMaterial.needAlphaTesting = () => false;
   }
 
   public build(): void {
@@ -123,6 +134,9 @@ export class GrassSystem {
         const cell = this.cells[y][x];
         const mesh = this.createTileMesh(cell);
         this.tileMeshes.set(`${x}_${y}`, mesh);
+        if (cell.type === "water") {
+          this.waterTiles.add(`${x}_${y}`);
+        }
       }
     }
     this.createGridLines();
@@ -147,11 +161,10 @@ export class GrassSystem {
     width: number,
     height: number
   ): void {
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
     const positions: number[] = [];
     const indices: number[] = [];
     const colors: number[] = [];
+    const cliffDepth = 1.5;
 
     const topColor =
       side === "right"
@@ -162,58 +175,50 @@ export class GrassSystem {
         ? new Color3(0.52, 0.42, 0.3)
         : new Color3(0.42, 0.35, 0.26);
 
-    const edgePoints: { x: number; y: number }[] = [];
-
     if (side === "right") {
       for (let y = 0; y < height; y++) {
         const x = width - 1;
         const cell = this.cells[y][x];
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const center = this.gridToScreen(x, y, 0);
+        const ne = this.gridTo3D(x + 1, y, corners.ne);
+        const se = this.gridTo3D(x + 1, y + 1, corners.se);
 
-        edgePoints.push({
-          x: center.x + hw,
-          y: center.y + corners.ne * ELEVATION_HEIGHT,
-        });
-        edgePoints.push({
-          x: center.x,
-          y: center.y - hh + corners.se * ELEVATION_HEIGHT,
-        });
+        const baseIdx = positions.length / 3;
+        positions.push(ne.x, ne.y, ne.z);
+        positions.push(se.x, se.y, se.z);
+        positions.push(se.x, se.y - cliffDepth, se.z);
+        positions.push(ne.x, ne.y - cliffDepth, ne.z);
+
+        for (let i = 0; i < 2; i++)
+          colors.push(topColor.r, topColor.g, topColor.b, 1);
+        for (let i = 0; i < 2; i++)
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
+
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
       }
     } else {
       for (let x = 0; x < width; x++) {
         const y = height - 1;
         const cell = this.cells[y][x];
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const center = this.gridToScreen(x, y, 0);
+        const sw = this.gridTo3D(x, y + 1, corners.sw);
+        const se = this.gridTo3D(x + 1, y + 1, corners.se);
 
-        edgePoints.push({
-          x: center.x,
-          y: center.y - hh + corners.se * ELEVATION_HEIGHT,
-        });
-        edgePoints.push({
-          x: center.x - hw,
-          y: center.y + corners.sw * ELEVATION_HEIGHT,
-        });
+        const baseIdx = positions.length / 3;
+        positions.push(sw.x, sw.y, sw.z);
+        positions.push(se.x, se.y, se.z);
+        positions.push(se.x, se.y - cliffDepth, se.z);
+        positions.push(sw.x, sw.y - cliffDepth, sw.z);
+
+        for (let i = 0; i < 2; i++)
+          colors.push(topColor.r, topColor.g, topColor.b, 1);
+        for (let i = 0; i < 2; i++)
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
+
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
       }
-    }
-
-    for (let i = 0; i < edgePoints.length; i++) {
-      const pt = edgePoints[i];
-      positions.push(pt.x, pt.y, -0.1);
-      colors.push(topColor.r, topColor.g, topColor.b, 1);
-      positions.push(pt.x, pt.y - GrassSystem.CLIFF_HEIGHT, -0.1);
-      colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
-    }
-
-    for (let i = 0; i < edgePoints.length - 1; i++) {
-      const topLeft = i * 2;
-      const bottomLeft = i * 2 + 1;
-      const topRight = (i + 1) * 2;
-      const bottomRight = (i + 1) * 2 + 1;
-
-      indices.push(topLeft, topRight, bottomRight);
-      indices.push(topLeft, bottomRight, bottomLeft);
     }
 
     const normals: number[] = [];
@@ -234,14 +239,12 @@ export class GrassSystem {
   }
 
   private createCliffFacesForCell(x: number, y: number): void {
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
     const cell = this.cells[y][x];
     const corners = this.getCornerHeights(x, y, cell.elevation);
 
-    const nePos = this.gridToScreen(x, y, corners.ne);
-    const sePos = this.gridToScreen(x, y, corners.se);
-    const swPos = this.gridToScreen(x, y, corners.sw);
+    const ne = this.gridTo3D(x + 1, y, corners.ne);
+    const se = this.gridTo3D(x + 1, y + 1, corners.se);
+    const sw = this.gridTo3D(x, y + 1, corners.sw);
 
     const rightNeighbor = this.cells[y]?.[x + 1];
     const bottomNeighbor = this.cells[y + 1]?.[x];
@@ -252,34 +255,21 @@ export class GrassSystem {
         y,
         rightNeighbor.elevation
       );
-      const neighborNwPos = this.gridToScreen(x + 1, y, neighborCorners.nw);
-      const neighborSwPos = this.gridToScreen(x + 1, y, neighborCorners.sw);
+      const neighborNw = this.gridTo3D(x + 1, y, neighborCorners.nw);
+      const neighborSw = this.gridTo3D(x + 1, y + 1, neighborCorners.sw);
 
-      const myNeY = nePos.y;
-      const mySeY = sePos.y - hh;
-      const neighborNwY = neighborNwPos.y + hh;
-      const neighborSwY = neighborSwPos.y;
+      const heightDiff1 = ne.y - neighborNw.y;
+      const heightDiff2 = se.y - neighborSw.y;
 
-      const diff1 = neighborNwY - myNeY;
-      const diff2 = neighborSwY - mySeY;
-
-      if (Math.abs(diff1) > 0.5 || Math.abs(diff2) > 0.5) {
-        const top1 = Math.max(myNeY, neighborNwY);
-        const top2 = Math.max(mySeY, neighborSwY);
-        const bot1 = Math.min(myNeY, neighborNwY);
-        const bot2 = Math.min(mySeY, neighborSwY);
-
-        const mesh = this.createCliffFaceWithCorners(
-          nePos.x + hw,
-          top1,
-          sePos.x,
-          top2,
-          top1 - bot1,
-          top2 - bot2,
-          `cliff_right_${x}_${y}`,
+      if (Math.abs(heightDiff1) > 0.01 || Math.abs(heightDiff2) > 0.01) {
+        const mesh = this.createCliffFace3D(
+          ne,
+          se,
+          neighborNw,
+          neighborSw,
+          `cliff_${x}_${y}_e`,
           "right"
         );
-        mesh.position.z = Math.min(nePos.z, neighborNwPos.z) + 0.1; // Behind tile
         this.cliffMeshes.set(`cliff_${x}_${y}_e`, mesh);
       }
     }
@@ -290,46 +280,31 @@ export class GrassSystem {
         y + 1,
         bottomNeighbor.elevation
       );
-      const neighborNePos = this.gridToScreen(x, y + 1, neighborCorners.ne);
-      const neighborNwPos = this.gridToScreen(x, y + 1, neighborCorners.nw);
+      const neighborNe = this.gridTo3D(x + 1, y + 1, neighborCorners.ne);
+      const neighborNw = this.gridTo3D(x, y + 1, neighborCorners.nw);
 
-      const mySeY = sePos.y - hh;
-      const mySwY = swPos.y;
-      const neighborNeY = neighborNePos.y;
-      const neighborNwY = neighborNwPos.y + hh;
+      const heightDiff1 = se.y - neighborNe.y;
+      const heightDiff2 = sw.y - neighborNw.y;
 
-      const diff1 = neighborNeY - mySeY;
-      const diff2 = neighborNwY - mySwY;
-
-      if (Math.abs(diff1) > 0.5 || Math.abs(diff2) > 0.5) {
-        const top1 = Math.max(mySeY, neighborNeY);
-        const top2 = Math.max(mySwY, neighborNwY);
-        const bot1 = Math.min(mySeY, neighborNeY);
-        const bot2 = Math.min(mySwY, neighborNwY);
-
-        const mesh = this.createCliffFaceWithCorners(
-          sePos.x,
-          top1,
-          swPos.x - hw,
-          top2,
-          top1 - bot1,
-          top2 - bot2,
-          `cliff_bottom_${x}_${y}`,
+      if (Math.abs(heightDiff1) > 0.01 || Math.abs(heightDiff2) > 0.01) {
+        const mesh = this.createCliffFace3D(
+          se,
+          sw,
+          neighborNe,
+          neighborNw,
+          `cliff_${x}_${y}_s`,
           "bottom"
         );
-        mesh.position.z = Math.min(sePos.z, neighborNePos.z) + 0.1; // Behind tile
         this.cliffMeshes.set(`cliff_${x}_${y}_s`, mesh);
       }
     }
   }
 
-  private createCliffFaceWithCorners(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    drop1: number,
-    drop2: number,
+  private createCliffFace3D(
+    top1: Vector3,
+    top2: Vector3,
+    bot1: Vector3,
+    bot2: Vector3,
     name: string,
     side: "right" | "bottom"
   ): Mesh {
@@ -347,13 +322,11 @@ export class GrassSystem {
         ? new Color3(0.52, 0.42, 0.3)
         : new Color3(0.42, 0.35, 0.26);
 
-    // Top-left, top-right, bottom-right, bottom-left
-    positions.push(x1, y1, 0);
-    positions.push(x2, y2, 0);
-    positions.push(x2, y2 - drop2, 0);
-    positions.push(x1, y1 - drop1, 0);
+    positions.push(top1.x, top1.y, top1.z);
+    positions.push(top2.x, top2.y, top2.z);
+    positions.push(bot2.x, bot2.y, bot2.z);
+    positions.push(bot1.x, bot1.y, bot1.z);
 
-    // Use (0, 1, 2) and (0, 2, 3) for CW winding in XY plane
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
 
@@ -385,48 +358,39 @@ export class GrassSystem {
     const colors: Color4[][] = [];
 
     const startColor = new Color4(0.15, 0.25, 0.15, 1);
-    const hiddenColor = new Color4(0, 0, 0, 0); // Transparent
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
+    const hiddenColor = new Color4(0, 0, 0, 0);
+    const yOffset = 0.01;
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const cell = this.cells[y][x];
-        // Always generate lines to keep topology constant for instance updates
         const isHidden = cell.type === "water" || cell.type === "bunker";
         const lineColor = isHidden ? hiddenColor : startColor;
 
         const corners = this.getCornerHeights(x, y, cell.elevation);
-        const nwPos = this.gridToScreen(x, y, corners.nw);
-        const nePos = this.gridToScreen(x, y, corners.ne);
-        const sePos = this.gridToScreen(x, y, corners.se);
-        const swPos = this.gridToScreen(x, y, corners.sw);
+        const nw = this.gridTo3D(x, y, corners.nw);
+        const ne = this.gridTo3D(x + 1, y, corners.ne);
+        const se = this.gridTo3D(x + 1, y + 1, corners.se);
+        const sw = this.gridTo3D(x, y + 1, corners.sw);
 
-        // Calculate offsets from center
-        const zLayer = Math.min(nwPos.z, nePos.z, sePos.z, swPos.z) - 0.2; // Grid is furthest back in its stack
+        nw.y += yOffset;
+        ne.y += yOffset;
+        se.y += yOffset;
+        sw.y += yOffset;
 
-        const top = new Vector3(nwPos.x, nwPos.y + hh, zLayer);
-        const right = new Vector3(nePos.x + hw, nePos.y, zLayer);
-        const bottom = new Vector3(sePos.x, sePos.y - hh, zLayer);
-        const left = new Vector3(swPos.x - hw, swPos.y, zLayer);
-
-        // 1. Draw Left->Top edge (NW facing)
-        points.push([left, top]);
+        points.push([nw, ne]);
         colors.push([lineColor, lineColor]);
 
-        // 2. Draw Top->Right edge (NE facing)
-        points.push([top, right]);
+        points.push([nw, sw]);
         colors.push([lineColor, lineColor]);
 
-        // 3. Draw Right->Bottom edge (SE facing) ONLY if at the East map boundary
         if (x === width - 1) {
-          points.push([right, bottom]);
+          points.push([ne, se]);
           colors.push([lineColor, lineColor]);
         }
 
-        // 4. Draw Bottom->Left edge (SW facing) ONLY if at the South map boundary
         if (y === height - 1) {
-          points.push([bottom, left]);
+          points.push([sw, se]);
           colors.push([lineColor, lineColor]);
         }
       }
@@ -451,22 +415,16 @@ export class GrassSystem {
           this.scene
         );
         this.gridLinesMesh.isPickable = false;
-        // Ensure picking is disabled to prevent interference
-        // acts as valid separation
       }
     }
   }
 
-  private gridToScreen(
-    gridX: number,
-    gridY: number,
-    elevation: number
-  ): { x: number; y: number; z: number } {
-    const screenX = (gridX - gridY) * (TILE_WIDTH / 2);
-    const screenY =
-      -((gridX + gridY) * (TILE_HEIGHT / 2)) + elevation * ELEVATION_HEIGHT;
-    const screenZ = -(gridX + gridY) * 5 - elevation * 20;
-    return { x: screenX, y: screenY, z: screenZ };
+  private gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
+    return new Vector3(
+      gridX * TILE_SIZE,
+      elevation * HEIGHT_UNIT,
+      gridY * TILE_SIZE
+    );
   }
 
   public getElevationAt(
@@ -518,14 +476,16 @@ export class GrassSystem {
 
   private createTileMesh(cell: CellState, existingMesh?: Mesh): Mesh {
     const corners = this.getCornerHeights(cell.x, cell.y, cell.elevation);
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
 
     const color = this.getCellColor(cell);
     const shouldStripe = this.shouldShowStripes(cell);
 
     if (shouldStripe) {
-      return this.createStripedTile(cell, hw, hh, color, corners, existingMesh);
+      return this.createStripedTile(cell, color, corners, existingMesh);
+    }
+
+    if (cell.type === "water") {
+      return this.createWaterTile(cell, color, corners, existingMesh);
     }
 
     const positions: number[] = [];
@@ -533,18 +493,16 @@ export class GrassSystem {
     const normals: number[] = [];
     const colors: number[] = [];
 
-    const nwPos = this.gridToScreen(cell.x, cell.y, corners.nw);
-    const nePos = this.gridToScreen(cell.x, cell.y, corners.ne);
-    const sePos = this.gridToScreen(cell.x, cell.y, corners.se);
-    const swPos = this.gridToScreen(cell.x, cell.y, corners.sw);
+    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
 
-    // Apply half-tile diamond offsets in absolute screen space
-    positions.push(nwPos.x, nwPos.y + hh, nwPos.z);
-    positions.push(nePos.x + hw, nePos.y, nePos.z);
-    positions.push(sePos.x, sePos.y - hh, sePos.z);
-    positions.push(swPos.x - hw, swPos.y, swPos.z);
+    positions.push(nw.x, nw.y, nw.z);
+    positions.push(ne.x, ne.y, ne.z);
+    positions.push(se.x, se.y, se.z);
+    positions.push(sw.x, sw.y, sw.z);
 
-    // Indices (0, 1, 2) and (0, 2, 3) for CW winding in LH system
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
 
@@ -562,8 +520,6 @@ export class GrassSystem {
     vertexData.colors = colors;
 
     if (existingMesh) {
-      // Check if we can reuse: vertex count must match
-      // Simple tile has 4 vertices
       if (existingMesh.getTotalVertices() === 4) {
         vertexData.applyToMesh(existingMesh, true);
         return existingMesh;
@@ -581,23 +537,85 @@ export class GrassSystem {
     return mesh;
   }
 
-  private createStripedTile(
+  private createWaterTile(
     cell: CellState,
-    hw: number,
-    hh: number,
     baseColor: Color3,
     corners: { nw: number; ne: number; se: number; sw: number },
     existingMesh?: Mesh
   ): Mesh {
-    const swCornerPos = this.gridToScreen(cell.x, cell.y, corners.sw);
-    const nwCornerPos = this.gridToScreen(cell.x, cell.y, corners.nw);
-    const seCornerPos = this.gridToScreen(cell.x, cell.y, corners.se);
-    const neCornerPos = this.gridToScreen(cell.x, cell.y, corners.ne);
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const normals: number[] = [];
+    const colors: number[] = [];
 
-    const sw_a = { x: swCornerPos.x - hw, y: swCornerPos.y, z: swCornerPos.z };
-    const nw_a = { x: nwCornerPos.x, y: nwCornerPos.y + hh, z: nwCornerPos.z };
-    const se_a = { x: seCornerPos.x, y: seCornerPos.y - hh, z: seCornerPos.z };
-    const ne_a = { x: neCornerPos.x + hw, y: neCornerPos.y, z: neCornerPos.z };
+    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
+
+    positions.push(nw.x, nw.y, nw.z);
+    positions.push(ne.x, ne.y, ne.z);
+    positions.push(se.x, se.y, se.z);
+    positions.push(sw.x, sw.y, sw.z);
+
+    indices.push(0, 1, 2);
+    indices.push(0, 2, 3);
+
+    const seed = cell.x * 12345 + cell.y * 67890;
+    const hash = (n: number) => {
+      const x = Math.sin(seed + n * 9999) * 10000;
+      return x - Math.floor(x);
+    };
+
+    const wavePhase = this.waterTime * 2 + cell.x * 0.3 + cell.y * 0.5;
+    const waveIntensity = Math.sin(wavePhase) * 0.03;
+
+    for (let i = 0; i < 4; i++) {
+      const variance = (hash(i) - 0.5) * 0.06;
+      const cornerWave = Math.sin(wavePhase + i * 0.7) * 0.02;
+      const r = Math.max(0, Math.min(1, baseColor.r + variance + waveIntensity + cornerWave));
+      const g = Math.max(0, Math.min(1, baseColor.g + variance * 0.8 + waveIntensity * 0.6 + cornerWave));
+      const b = Math.max(0, Math.min(1, baseColor.b + variance * 0.5 + cornerWave * 0.3));
+      colors.push(r, g, b, 0.7);
+    }
+
+    VertexData.ComputeNormals(positions, indices, normals);
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.normals = normals;
+    vertexData.colors = colors;
+
+    if (existingMesh) {
+      if (existingMesh.getTotalVertices() === 4) {
+        vertexData.applyToMesh(existingMesh, true);
+        return existingMesh;
+      } else {
+        existingMesh.dispose();
+      }
+    }
+
+    const mesh = new Mesh(`tile_${cell.x}_${cell.y}`, this.scene);
+    vertexData.applyToMesh(mesh, true);
+    mesh.material = this.waterMaterial;
+    mesh.useVertexColors = true;
+    mesh.hasVertexAlpha = true;
+    mesh.alwaysSelectAsActiveMesh = true;
+
+    return mesh;
+  }
+
+  private createStripedTile(
+    cell: CellState,
+    baseColor: Color3,
+    corners: { nw: number; ne: number; se: number; sw: number },
+    existingMesh?: Mesh
+  ): Mesh {
+    const nw = this.gridTo3D(cell.x, cell.y, corners.nw);
+    const ne = this.gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se = this.gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw = this.gridTo3D(cell.x, cell.y + 1, corners.sw);
 
     const positions: number[] = [];
     const indices: number[] = [];
@@ -628,10 +646,10 @@ export class GrassSystem {
       const t0 = i / stripeCount;
       const t1 = (i + 1) / stripeCount;
 
-      const leftTop = this.lerpPoint3D(sw_a, nw_a, t0);
-      const leftBot = this.lerpPoint3D(sw_a, nw_a, t1);
-      const rightTop = this.lerpPoint3D(se_a, ne_a, t0);
-      const rightBot = this.lerpPoint3D(se_a, ne_a, t1);
+      const leftTop = Vector3.Lerp(nw, sw, t0);
+      const leftBot = Vector3.Lerp(nw, sw, t1);
+      const rightTop = Vector3.Lerp(ne, se, t0);
+      const rightBot = Vector3.Lerp(ne, se, t1);
 
       positions.push(leftTop.x, leftTop.y, leftTop.z);
       positions.push(rightTop.x, rightTop.y, rightTop.z);
@@ -664,7 +682,6 @@ export class GrassSystem {
     vertexData.colors = colors;
 
     if (existingMesh) {
-      // Striped tile has stripeCount * 4 vertices = 16
       if (existingMesh.getTotalVertices() === 16) {
         vertexData.applyToMesh(existingMesh, true);
         return existingMesh;
@@ -680,18 +697,6 @@ export class GrassSystem {
     mesh.alwaysSelectAsActiveMesh = true;
 
     return mesh;
-  }
-
-  private lerpPoint3D(
-    a: { x: number; y: number; z: number },
-    b: { x: number; y: number; z: number },
-    t: number
-  ): { x: number; y: number; z: number } {
-    return {
-      x: a.x + (b.x - a.x) * t,
-      y: a.y + (b.y - a.y) * t,
-      z: a.z + (b.z - a.z) * t,
-    };
   }
 
   private shouldShowStripes(cell: CellState): boolean {
@@ -741,8 +746,11 @@ export class GrassSystem {
     );
   }
 
-  private getCornerColorVariations(cell: CellState, baseColor: Color3): Color3[] {
-    if (cell.type === "bunker" || cell.type === "water") {
+  private getCornerColorVariations(
+    cell: CellState,
+    baseColor: Color3
+  ): Color3[] {
+    if (cell.type === "water") {
       return [baseColor, baseColor, baseColor, baseColor];
     }
 
@@ -753,6 +761,25 @@ export class GrassSystem {
     };
 
     const variations: Color3[] = [];
+
+    if (cell.type === "bunker") {
+      for (let i = 0; i < 4; i++) {
+        const lumVariance = (hash(i) - 0.5) * 0.15;
+        const warmVariance = (hash(i + 5) - 0.5) * 0.08;
+        variations.push(
+          new Color3(
+            Math.max(0, Math.min(1, baseColor.r + lumVariance + warmVariance)),
+            Math.max(0, Math.min(1, baseColor.g + lumVariance * 0.9)),
+            Math.max(
+              0,
+              Math.min(1, baseColor.b + lumVariance * 0.6 - warmVariance * 0.5)
+            )
+          )
+        );
+      }
+      return variations;
+    }
+
     for (let i = 0; i < 4; i++) {
       const variance = (hash(i) - 0.5) * 0.12;
       const lumVariance = (hash(i + 10) - 0.5) * 0.08;
@@ -768,7 +795,6 @@ export class GrassSystem {
 
     return variations;
   }
-
   private getTerrainBaseColor(cell: CellState): Color3 {
     switch (cell.type) {
       case "fairway":
@@ -818,6 +844,7 @@ export class GrassSystem {
 
   public update(deltaMs: number, gameTimeMinutes: number): void {
     this.gameTime = gameTimeMinutes;
+    this.waterTime += deltaMs / 1000;
 
     const deltaMinutes = (deltaMs / 1000) * 2;
     const { width, height } = this.courseData;
@@ -857,6 +884,23 @@ export class GrassSystem {
     }
 
     this.updateDirtyTileVisuals();
+    this.updateWaterAnimation();
+  }
+
+  private updateWaterAnimation(): void {
+    for (const key of this.waterTiles) {
+      const [xStr, yStr] = key.split("_");
+      const x = parseInt(xStr, 10);
+      const y = parseInt(yStr, 10);
+      const cell = this.cells[y]?.[x];
+      if (!cell) continue;
+
+      const mesh = this.tileMeshes.get(key);
+      if (mesh) {
+        const corners = this.getCornerHeights(x, y, cell.elevation);
+        this.createWaterTile(cell, this.getCellColor(cell), corners, mesh);
+      }
+    }
   }
 
   private updateDirtyTileVisuals(): void {
@@ -984,13 +1028,10 @@ export class GrassSystem {
     this.updateAllTileVisuals();
   }
 
-  public gridToWorld(
-    gridX: number,
-    gridY: number
-  ): { x: number; y: number; z: number } {
+  public gridToWorld(gridX: number, gridY: number): Vector3 {
     const cell = this.getCell(gridX, gridY);
-    const avgElev = cell ? cell.elevation : 0; // Use cell's elevation if available, otherwise 0
-    return this.gridToScreen(gridX, gridY, avgElev);
+    const avgElev = cell ? cell.elevation : 0;
+    return this.gridTo3D(gridX + 0.5, gridY + 0.5, avgElev);
   }
 
   public setTerrainTypeAt(

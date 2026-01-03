@@ -24,32 +24,32 @@ npx playwright test tests/mowing.spec.ts         # Single E2E test
 ## Architecture
 
 ### Core Game Loop
-Built on **Phaser 3** with isometric 2:1 diamond perspective (64x32 tiles). The game uses **grid-based movement** where the Player moves tile-by-tile via tweens, not velocity-based physics.
+Built on **Babylon.js** with 3D isometric rendering. The game uses **grid-based movement** where the Player moves tile-by-tile.
 
-### Scene Flow
-`BootScene` → `MenuScene` → `GameScene` (with `UIScene` overlay)
-- `TestHarnessScene`: Accessible for debugging/state manipulation
+### Key Systems (in `src/babylon/`)
 
-### Key Systems (in `src/systems/`)
-
-| System | Responsibility |
-|--------|----------------|
-| `GrassSystem` | Manages all terrain cells (fairway, rough, green, bunker, water), handles mowing/watering/fertilizing, overlay modes, and elevation-aware rendering |
-| `EquipmentManager` | Coordinates Mower, Sprinkler, Spreader equipment with resource depletion |
-| `TimeSystem` | Day/night cycle, time progression with configurable scale |
-| `GameState*` | Serialization/deserialization for save/load and testing |
+| Component | Responsibility |
+|-----------|----------------|
+| `BabylonMain.ts` | Central controller orchestrating all game logic |
+| `engine/BabylonEngine.ts` | 3D rendering and camera setup |
+| `engine/InputManager.ts` | Keyboard/mouse input handling |
+| `systems/GrassSystem.ts` | Terrain tile rendering and state |
+| `systems/EquipmentManager.ts` | Equipment activation and effects |
+| `systems/TerrainEditorSystem.ts` | Terrain editing |
+| `systems/TileHighlightSystem.ts` | Grid highlighting |
+| `ui/UIManager.ts` | HUD and UI overlays |
+| `ui/TerrainEditorUI.ts` | Terrain editor UI |
 
 ### Core Logic (in `src/core/`)
-Pure, Phaser-independent modules for TDD:
+Pure, engine-independent modules for TDD:
 
 | Module | Purpose |
 |--------|---------|
 | `terrain.ts` | Coordinate conversion, walkability, health calculation, ramps |
 | `grass-simulation.ts` | Growth, mowing/watering/fertilizing effects, course stats |
 | `equipment-logic.ts` | Resource management, activation, consumption |
-| `time-logic.ts` | Time progression, day/night cycle, formatting |
 | `movement.ts` | Grid movement, bounds checking, collision validation |
-| `scoring.ts` | Objectives, score calculation, day transitions |
+| `terrain-editor-logic.ts` | Terrain editor operations and undo/redo |
 
 ### Coordinate Systems
 - **Grid coordinates**: `(gridX, gridY)` - logical tile positions
@@ -57,12 +57,8 @@ Pure, Phaser-independent modules for TDD:
 - Conversion: `GrassSystem.gridToScreen()` / `screenToGrid()`
 - Elevation affects Y position: `screenY = (gridX + gridY) * 16 - elevation * 16`
 
-### Sprite Generation
-All sprites are procedurally generated at runtime in `SpriteGenerator.ts` - no image assets. This includes terrain tiles, player, equipment, particles, trees, and ramps.
-
-### Equipment Hierarchy
-`Equipment` (abstract) → `Mower`, `Sprinkler`, `Spreader`
-Each has: resource pool, depletion rate, effect radius, particle emitter
+### Equipment
+Mower, Sprinkler, Spreader - each has resource pool, depletion rate, and effect radius.
 
 ### Terrain & Obstacles
 - Course layouts defined in `src/data/courseData.ts` as 2D arrays
@@ -74,13 +70,11 @@ Each has: resource pool, depletion rate, effect radius, particle emitter
 
 ### Unit Tests (Vitest)
 Located in `src/core/*.test.ts`. Pure logic tests for TDD:
-- `terrain.test.ts` - 76 tests for coordinates, walkability, health
-- `grass-simulation.test.ts` - 53 tests for growth and equipment effects
-- `equipment-logic.test.ts` - 49 tests for resource management
-- `time-logic.test.ts` - 68 tests for time system
-- `movement.test.ts` - 65 tests for player movement
-- `scoring.test.ts` - 54 tests for objectives and scoring
-- `integration.test.ts` - 32 tests for system interactions
+- `terrain.test.ts` - Coordinates, walkability, health
+- `grass-simulation.test.ts` - Growth and equipment effects
+- `equipment-logic.test.ts` - Resource management
+- `movement.test.ts` - Player movement
+- `terrain-editor-logic.test.ts` - Terrain editing operations
 
 ### E2E Tests (Playwright)
 **State-based testing** is the primary pattern. Load specific game states via URL:
