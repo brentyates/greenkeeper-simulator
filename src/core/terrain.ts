@@ -1,4 +1,4 @@
-export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water";
+export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water" | "tee";
 export type ObstacleType = "none" | "tree" | "pine_tree" | "shrub" | "bush";
 export type OverlayMode = "normal" | "moisture" | "nutrients" | "height";
 
@@ -35,6 +35,7 @@ export const TERRAIN_CODES = {
   GREEN: 2,
   BUNKER: 3,
   WATER: 4,
+  TEE: 5,
 } as const;
 
 export const OBSTACLE_CODES = {
@@ -57,6 +58,8 @@ export function getTerrainType(code: number): TerrainType {
       return "bunker";
     case 4:
       return "water";
+    case 5:
+      return "tee";
     default:
       return "rough";
   }
@@ -95,6 +98,8 @@ export function getInitialValues(type: TerrainType): {
       return { height: 0, moisture: 20, nutrients: 0 };
     case "water":
       return { height: 0, moisture: 100, nutrients: 0 };
+    case "tee":
+      return { height: 15, moisture: 65, nutrients: 75 };
     default:
       return { height: 50, moisture: 50, nutrients: 50 };
   }
@@ -125,7 +130,7 @@ export function screenToGrid(
 }
 
 export function isGrassTerrain(type: TerrainType): boolean {
-  return type === "fairway" || type === "rough" || type === "green";
+  return type === "fairway" || type === "rough" || type === "green" || type === "tee";
 }
 
 export function calculateHealth(
@@ -368,6 +373,8 @@ export function getSurfacePhysics(type: TerrainType): SurfacePhysics {
       return { friction: 0.9, bounciness: 0.1, rollResistance: 0.15 };
     case "water":
       return { friction: 0.1, bounciness: 0.0, rollResistance: 1.0 };
+    case "tee":
+      return { friction: 0.35, bounciness: 0.3, rollResistance: 0.015 };
     default:
       return { friction: 0.5, bounciness: 0.2, rollResistance: 0.05 };
   }
@@ -535,7 +542,7 @@ export function validateTerrainData(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const code = layout[y]?.[x];
-      if (code === undefined || code < 0 || code > 4) {
+      if (code === undefined || code < 0 || code > 5) {
         errors.push({
           x,
           y,
@@ -614,6 +621,8 @@ export function getTerrainSpeedModifier(type: TerrainType): number {
       return 0.5;
     case "water":
       return 0.0;
+    case "tee":
+      return 1.0;
     default:
       return 1.0;
   }
@@ -639,6 +648,8 @@ export function getTerrainDisplayName(type: TerrainType): string {
       return "Bunker";
     case "water":
       return "Water";
+    case "tee":
+      return "Tee Box";
     default:
       return "Unknown";
   }
@@ -674,6 +685,8 @@ export function getTerrainThresholds(type: TerrainType): TerrainThresholds {
       return { mownHeight: 30, growingHeight: 60 };
     case "green":
       return { mownHeight: 10, growingHeight: 22 };
+    case "tee":
+      return { mownHeight: 12, growingHeight: 25 };
     default:
       return { mownHeight: 30, growingHeight: 60 };
   }
@@ -821,6 +834,8 @@ export function getTerrainCode(type: TerrainType): number {
       return TERRAIN_CODES.BUNKER;
     case "water":
       return TERRAIN_CODES.WATER;
+    case "tee":
+      return TERRAIN_CODES.TEE;
     default:
       return TERRAIN_CODES.ROUGH;
   }

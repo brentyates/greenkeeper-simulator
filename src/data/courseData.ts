@@ -1,4 +1,5 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
+import { HoleData } from '../core/golf-logic';
 
 export type { TerrainType, ObstacleType };
 
@@ -16,6 +17,8 @@ export interface CourseData {
   layout: number[][];
   elevation: number[][];
   obstacles?: ObstacleData[];
+  holeData?: HoleData;
+  yardsPerGrid?: number;
 }
 
 const F = 0; // Fairway
@@ -23,6 +26,7 @@ const R = 1; // Rough
 const G = 2; // Green
 const B = 3; // Bunker
 const W = 4; // Water
+const T = 5; // Tee
 
 export const COURSE_HOLE_1: CourseData = {
   name: 'Sunrise Valley - Hole 1',
@@ -71,9 +75,9 @@ export const COURSE_HOLE_1: CourseData = {
     [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
     [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
     // Row 33-37: Tee box area
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
+    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,T,T,T,T,T,T,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
+    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
+    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,T,T,T,T,T,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
     [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
     [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
   ],
@@ -153,7 +157,112 @@ export const COURSE_HOLE_1: CourseData = {
     { x: 7, y: 29, type: 2 },
     { x: 6, y: 30, type: 1 },
     { x: 7, y: 31, type: 2 },
-  ]
+  ],
+  yardsPerGrid: 2,
+  holeData: {
+    holeNumber: 1,
+    par: 4,
+    teeBoxes: [
+      {
+        name: 'Championship',
+        x: 25,
+        y: 34,
+        elevation: -1,
+        yardage: 410,
+        par: 4,
+      },
+      {
+        name: 'Back',
+        x: 24,
+        y: 34,
+        elevation: -1,
+        yardage: 385,
+        par: 4,
+      },
+      {
+        name: 'Middle',
+        x: 25,
+        y: 35,
+        elevation: -1,
+        yardage: 350,
+        par: 4,
+      },
+      {
+        name: 'Forward',
+        x: 24,
+        y: 35,
+        elevation: 0,
+        yardage: 310,
+        par: 4,
+      },
+    ],
+    pinPosition: {
+      x: 25,
+      y: 3,
+      elevation: 1,
+    },
+    green: {
+      frontEdge: { x: 25, y: 5 },
+      center: { x: 25, y: 3 },
+      backEdge: { x: 25, y: 1 },
+    },
+    idealPath: [
+      { x: 25, y: 34, description: 'Tee shot' },
+      { x: 24, y: 25, description: 'Landing zone - avoid water left' },
+      { x: 24, y: 15, description: 'Lay-up position' },
+      { x: 25, y: 6, description: 'Approach to green' },
+      { x: 25, y: 3, description: 'Pin position' },
+    ],
+    hazards: [
+      {
+        type: 'water',
+        name: 'Left pond',
+        positions: [
+          { x: 13, y: 9 },
+          { x: 14, y: 9 },
+          { x: 15, y: 9 },
+          { x: 12, y: 10 },
+          { x: 13, y: 10 },
+          { x: 14, y: 10 },
+          { x: 15, y: 10 },
+          { x: 16, y: 10 },
+          { x: 12, y: 11 },
+          { x: 13, y: 11 },
+          { x: 14, y: 11 },
+          { x: 15, y: 11 },
+          { x: 16, y: 11 },
+          { x: 12, y: 12 },
+          { x: 13, y: 12 },
+          { x: 14, y: 12 },
+          { x: 15, y: 12 },
+          { x: 16, y: 12 },
+          { x: 13, y: 13 },
+          { x: 14, y: 13 },
+          { x: 15, y: 13 },
+        ],
+      },
+      {
+        type: 'bunker',
+        name: 'Green side bunkers',
+        positions: [
+          { x: 18, y: 3 },
+          { x: 18, y: 4 },
+          { x: 31, y: 3 },
+          { x: 31, y: 4 },
+        ],
+      },
+      {
+        type: 'bunker',
+        name: 'Fairway bunkers right',
+        positions: [
+          { x: 32, y: 10 },
+          { x: 33, y: 10 },
+          { x: 32, y: 11 },
+          { x: 33, y: 11 },
+        ],
+      },
+    ],
+  },
 };
 
 
