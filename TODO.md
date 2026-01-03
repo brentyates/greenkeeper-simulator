@@ -16,8 +16,17 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase P1: Core prestige score and star rating~~ ✅
 - ~~Phase P2: Historical tracking and streaks~~ ✅
 - ~~Phase P3: Amenities system~~ ✅
-- Phase P4: Reputation and reviews
+- ~~Phase P4: Reputation and reviews~~ ✅ (core logic complete, UI pending)
 - Phase P5: Exclusivity and advanced features
+
+**Tee Time System** (See [Tee Time System](#tee-time-system) section)
+- Phase T1: Core Tee Time Scheduling
+- Phase T2: Booking System
+- Phase T3: Spacing & Pace
+- Phase T4: Walk-On System
+- Phase T5: Revenue Integration
+- Phase T6: Marketing System
+- Phase T7: Advanced Features
 
 **Other Enhancements (Nice-to-Have):**
 - Employee management UI (hire/fire, view roster)
@@ -372,30 +381,30 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 
 ---
 
-### Phase P4: Reputation System
+### Phase P4: Reputation System ✅
 
-#### P4.1 Golfer Reviews
-- [ ] Define `GolferReview` interface (overall rating, category ratings, would recommend/return)
-- [ ] Generate reviews when golfers depart based on satisfaction
-- [ ] Category ratings: conditions, pace, value, service, amenities
-- [ ] Store and aggregate reviews
+#### P4.1 Golfer Reviews ✅
+- [x] Define `GolferReview` interface (overall rating, category ratings, would recommend/return)
+- [x] Generate reviews when golfers depart based on satisfaction
+- [x] Category ratings: conditions, pace, value, service, amenities
+- [x] Store and aggregate reviews
 
-#### P4.2 Reputation State
-- [ ] Define `ReputationState` interface
-- [ ] Track total reviews, average rating (1-5), recent rating (30 days)
-- [ ] Calculate rating trend: rising/stable/falling
-- [ ] Track return golfer percentage
+#### P4.2 Reputation State ✅
+- [x] Define `ReputationState` interface
+- [x] Track total reviews, average rating (1-5), recent rating (30 days)
+- [x] Calculate rating trend: rising/stable/falling
+- [x] Track return golfer percentage
 
-#### P4.3 Word-of-Mouth Effect
-- [ ] Implement reputation multiplier based on golfer count
-- [ ] < 100 golfers/month: 0.8x (unknown course)
-- [ ] 100-500: 1.0x (establishing)
-- [ ] 500-1000: 1.1x (growing buzz)
-- [ ] 1000+: 1.2x (well-known)
+#### P4.3 Word-of-Mouth Effect ✅
+- [x] Implement reputation multiplier based on golfer count
+- [x] < 100 golfers/month: 0.8x (unknown course)
+- [x] 100-500: 1.0x (establishing)
+- [x] 500-1000: 1.1x (growing buzz)
+- [x] 1000+: 1.2x (well-known)
 
-#### P4.4 Reputation Score (20% of total)
-- [ ] Implement `calculateReputationScore()` function
-- [ ] Combine: satisfaction (35%), return rate (25%), review score (20%), tournament history (10%), awards (10%)
+#### P4.4 Reputation Score (20% of total) ✅
+- [x] Implement `calculateReputationScore()` function
+- [x] Combine: satisfaction (35%), return rate (25%), review score (20%), tournament history (10%), awards (10%)
 
 #### P4.5 Turn-Away Animation
 - [ ] Create golfer rejection visual feedback
@@ -457,7 +466,7 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 - [x] Unit tests for historical excellence calculations
 - [x] Unit tests for streak bonuses and recovery penalties
 - [x] Unit tests for amenity score calculation
-- [ ] Unit tests for reputation score calculation
+- [x] Unit tests for reputation score calculation
 - [ ] Integration test: prestige affects golfer demand
 - [ ] Integration test: overpricing causes visible rejections
 - [ ] E2E test: improve course to reach 3-star rating
@@ -469,13 +478,259 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 
 | New File to Create | Purpose |
 |--------------------|---------|
-| `src/core/prestige.ts` | Core prestige calculation logic |
-| `src/core/prestige.test.ts` | Unit tests for prestige logic |
-| `src/core/amenities.ts` | Amenity state and scoring |
-| `src/core/reputation.ts` | Reputation and review system |
+| `src/core/prestige.ts` | Core prestige calculation logic ✅ |
+| `src/core/prestige.test.ts` | Unit tests for prestige logic ✅ |
+| `src/core/amenities.ts` | Amenity state and scoring ✅ |
+| `src/core/amenities.test.ts` | Unit tests for amenities ✅ |
+| `src/core/reputation.ts` | Reputation and review system ✅ |
+| `src/core/reputation.test.ts` | Unit tests for reputation ✅ |
 | `src/babylon/ui/PrestigePanel.ts` | Star rating and breakdown display |
 | `src/babylon/ui/AmenityPanel.ts` | Amenity management interface |
 | `src/babylon/ui/GreenFeeAdvisor.ts` | Pricing recommendations |
+
+---
+
+## Tee Time System
+
+> Design spec: `docs/design/TEE_TIME_SYSTEM_SPEC.md`
+
+The Tee Time System is the primary revenue driver and scheduling backbone. Golfers must book tee times in advance, creating a structured flow the player must actively manage. The core tension is balancing revenue maximization vs reputation preservation.
+
+### Phase T1: Core Tee Time Scheduling
+
+#### T1.1 Tee Time Data Structures
+- [ ] Create `src/core/tee-times.ts` with core types
+- [ ] Define `TeeTime` interface (id, scheduledTime, groupSize, status, golfers, pricing)
+- [ ] Define `TeeTimeStatus` type ('available', 'reserved', 'checked_in', 'in_progress', 'completed', 'no_show', 'cancelled')
+- [ ] Define `GolferBooking` interface (golferId, membershipStatus, fees, add-ons)
+- [ ] Implement `createInitialTeeTimeState()` factory function
+
+#### T1.2 Operating Hours Configuration
+- [ ] Define `CourseOperatingHours` interface
+- [ ] Implement seasonal hour adjustments (summer/winter)
+- [ ] Configure twilight start time
+- [ ] Calculate last tee time based on expected round duration
+
+#### T1.3 Slot Generation
+- [ ] Implement `generateDailySlots()` function
+- [ ] Calculate slots based on spacing configuration
+- [ ] Track slot availability and booking status
+
+#### T1.4 Basic Tee Sheet UI
+- [ ] Create `src/babylon/ui/TeeSheetPanel.ts`
+- [ ] Display daily tee times in time-ordered list
+- [ ] Show booking status icons (available, reserved, checked-in)
+- [ ] Display player count and revenue per slot
+- [ ] Add day navigation (previous/next day)
+
+---
+
+### Phase T2: Booking System
+
+#### T2.1 Booking Window Configuration
+- [ ] Define `BookingWindowConfig` interface
+- [ ] Implement public vs member booking windows (7 vs 14 days)
+- [ ] Configure cancellation policy (free cancel hours, late cancel penalty)
+- [ ] Configure no-show policy (penalty, blacklist threshold)
+
+#### T2.2 Reservation Demand Calculation
+- [ ] Define `ReservationDemand` interface
+- [ ] Implement day-of-week multipliers (weekends higher)
+- [ ] Implement time-of-day multipliers (prime morning premium)
+- [ ] Apply prestige multiplier from prestige system
+- [ ] Apply weather multiplier
+- [ ] Calculate final booking probability
+
+#### T2.3 Booking Simulation
+- [ ] Implement `simulateDailyBookings()` function
+- [ ] Generate group sizes (70% foursomes, 15% threesomes, 10% twosomes, 5% singles)
+- [ ] Create bookings based on demand probability
+- [ ] Process cancellations and no-shows
+
+#### T2.4 Booking Integration
+- [ ] Wire booking simulation to game day loop
+- [ ] Generate bookings for upcoming days during daily tick
+- [ ] Track booking metrics (booking rate, cancellations, no-shows)
+
+---
+
+### Phase T3: Spacing & Pace
+
+#### T3.1 Spacing Configuration
+- [ ] Define `TeeTimeSpacing` type ('packed' 6min, 'tight' 8min, 'standard' 10min, 'comfortable' 12min, 'relaxed' 15min, 'exclusive' 20min)
+- [ ] Define `SpacingConfiguration` interface with impact modifiers
+- [ ] Implement spacing presets with revenue/reputation trade-offs
+
+#### T3.2 Pace of Play Calculation
+- [ ] Define `PaceOfPlayState` interface
+- [ ] Implement `calculatePaceOfPlay()` function
+- [ ] Calculate round time based on spacing, capacity, conditions, skill mix
+- [ ] Calculate wait time per hole
+- [ ] Identify backup locations (holes with waiting groups)
+
+#### T3.3 Pace Rating System
+- [ ] Implement pace rating tiers: 'excellent' (≤3.75h), 'good' (≤4.25h), 'acceptable' (≤4.75h), 'slow' (≤5.5h), 'terrible' (>5.5h)
+- [ ] Calculate satisfaction penalty based on pace
+- [ ] Track backup incidents
+
+#### T3.4 Spacing Configuration UI
+- [ ] Create spacing configuration panel
+- [ ] Add slider or selector for spacing presets
+- [ ] Show impact preview (max tee times, revenue potential, pace risk, reputation impact)
+- [ ] Display backup probability warning
+
+#### T3.5 Visual Feedback
+- [ ] Show groups bunching on holes when backed up
+- [ ] Display frustration indicators (thought bubbles with clocks)
+- [ ] Show slow play warnings in UI
+- [ ] Display starter queue when groups waiting
+
+---
+
+### Phase T4: Walk-On System
+
+#### T4.1 Walk-On State
+- [ ] Define `WalkOnState` interface (queue, policy, metrics)
+- [ ] Define `WalkOnPolicy` interface (allow walk-ons, reserved slots, pricing, queue limits)
+- [ ] Define `WalkOnGolfer` interface (arrival time, desired group size, wait tolerance)
+
+#### T4.2 Walk-On Processing
+- [ ] Implement `processWalkOns()` function
+- [ ] Check wait tolerance and remove golfers who give up
+- [ ] Record negative experience for excessive waits
+- [ ] Assign walk-ons to available slots
+- [ ] Apply walk-on premium/discount pricing
+
+#### T4.3 Walk-On Queue UI
+- [ ] Create walk-on queue display panel
+- [ ] Show waiting golfers with wait times
+- [ ] Add assign/turn away buttons
+- [ ] Display next available slot and estimated wait
+- [ ] Show daily walk-on metrics (served, turned away)
+
+#### T4.4 Walk-On Visual Feedback
+- [ ] Show NPCs waiting at pro shop
+- [ ] Add impatience animations (checking watches, pacing)
+- [ ] Show departure animations for frustrated golfers
+- [ ] Track reputation hit from turn-aways
+
+---
+
+### Phase T5: Revenue Integration
+
+#### T5.1 Green Fee Structure
+- [ ] Define `GreenFeeStructure` interface
+- [ ] Implement weekday/weekend/twilight rates
+- [ ] Add prime morning premium
+- [ ] Implement member/guest pricing
+
+#### T5.2 Cart Fees
+- [ ] Define `CartFeeStructure` interface
+- [ ] Implement per-person vs per-cart pricing
+- [ ] Add walking discount
+- [ ] Integrate with cart amenity system
+
+#### T5.3 Add-On Services
+- [ ] Define `AddOnService` interface
+- [ ] Implement standard add-ons: range balls, caddie, forecaddie, club rental, GPS rental
+- [ ] Calculate uptake rates based on prestige
+- [ ] Track add-on revenue
+
+#### T5.4 Tips System
+- [ ] Implement tip calculation based on service and satisfaction
+- [ ] Apply satisfaction modifier (happy golfers tip more)
+- [ ] Track tip revenue by staff category
+
+#### T5.5 Daily Revenue Tracking
+- [ ] Define `DailyRevenue` interface
+- [ ] Track all revenue streams (green fees, carts, add-ons, F&B, tips)
+- [ ] Calculate gross and net revenue
+- [ ] Integrate with economy system
+
+---
+
+### Phase T6: Marketing System
+
+#### T6.1 Campaign Definitions
+- [ ] Define `MarketingCampaign` interface
+- [ ] Implement campaign types: local_advertising, radio_campaign, social_media, golf_magazine, free_round_voucher, group_discount, twilight_special, tournament_hosting, celebrity_appearance
+- [ ] Configure costs, durations, effects, cooldowns
+
+#### T6.2 Campaign Activation
+- [ ] Create marketing dashboard UI
+- [ ] Show active campaigns with progress
+- [ ] List available campaigns with costs and expected impact
+- [ ] Add start/stop campaign controls
+
+#### T6.3 Campaign Effects
+- [ ] Apply demand multipliers during active campaigns
+- [ ] Apply price elasticity effects
+- [ ] Target specific golfer audiences
+
+#### T6.4 Campaign Effectiveness Tracking
+- [ ] Define `CampaignEffectiveness` interface
+- [ ] Track additional bookings vs baseline
+- [ ] Calculate ROI
+- [ ] Generate recommendations (highly effective, effective, marginal, ineffective)
+- [ ] Show campaign history with results
+
+---
+
+### Phase T7: Advanced Features
+
+#### T7.1 Dynamic Pricing
+- [ ] Implement demand-based pricing
+- [ ] Configure multiplier range (e.g., 0.8x to 1.3x)
+- [ ] Auto-adjust prices based on booking rate
+
+#### T7.2 Member Priority Booking
+- [ ] Implement extended booking window for members
+- [ ] Reserve premium slots for members
+- [ ] Member-only tee time blocks
+
+#### T7.3 Tournament Hosting
+- [ ] Integrate with prestige tournament requirements
+- [ ] Course closure for tournament days
+- [ ] Tournament revenue calculation
+- [ ] Prestige boost from hosting
+
+#### T7.4 Group Booking Management
+- [ ] Corporate outing handling
+- [ ] Group discount application
+- [ ] Block booking for events
+
+---
+
+### Tee Time System Testing
+
+- [ ] Unit tests for tee time slot generation
+- [ ] Unit tests for booking demand calculation
+- [ ] Unit tests for pace of play calculation
+- [ ] Unit tests for walk-on processing
+- [ ] Unit tests for revenue calculations
+- [ ] Unit tests for campaign effectiveness
+- [ ] Integration test: tee time spacing affects satisfaction
+- [ ] Integration test: walk-on queue management
+- [ ] E2E test: complete day of tee time bookings
+- [ ] E2E test: marketing campaign ROI
+
+---
+
+### Tee Time File Reference
+
+| New File to Create | Purpose |
+|--------------------|---------|
+| `src/core/tee-times.ts` | Core tee time scheduling logic |
+| `src/core/tee-times.test.ts` | Unit tests for tee time logic |
+| `src/core/walk-ons.ts` | Walk-on queue management |
+| `src/core/walk-ons.test.ts` | Unit tests for walk-on logic |
+| `src/core/marketing.ts` | Marketing campaign system |
+| `src/core/marketing.test.ts` | Unit tests for marketing |
+| `src/babylon/ui/TeeSheetPanel.ts` | Main tee sheet interface |
+| `src/babylon/ui/SpacingConfigPanel.ts` | Spacing configuration UI |
+| `src/babylon/ui/WalkOnQueuePanel.ts` | Walk-on queue display |
+| `src/babylon/ui/MarketingDashboard.ts` | Campaign management UI |
+| `src/babylon/ui/PaceOfPlayAlert.ts` | Pace warning notifications |
 
 ---
 
