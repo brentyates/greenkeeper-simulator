@@ -151,7 +151,7 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [x] Show current golfer count on course (in economy panel)
 - [ ] Display average satisfaction rating (optional enhancement)
 - [ ] Show golfers as small markers on minimap (optional)
-- [ ] Add notification when golfers arrive/depart (optional)
+- [x] Add notification when golfers arrive/depart - shows count and revenue/tips
 
 ### 4.4 Course Rating Updates
 - [x] Calculate course condition from grass health

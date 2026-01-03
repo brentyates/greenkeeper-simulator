@@ -1531,8 +1531,10 @@ export class BabylonMain {
           isWeekend,
           isTwilight
         );
+        let totalFees = 0;
         for (const golfer of arrivals) {
           this.golferPool = addGolfer(this.golferPool, golfer);
+          totalFees += golfer.paidAmount;
           this.economyState = addIncome(
             this.economyState,
             golfer.paidAmount,
@@ -1545,6 +1547,9 @@ export class BabylonMain {
             this.scenarioManager.addGolfers(1);
           }
         }
+        this.uiManager.showNotification(
+          `${arrivalCount} golfer${arrivalCount > 1 ? 's' : ''} arrived (+$${totalFees.toFixed(0)})`
+        );
       }
     }
 
@@ -1561,21 +1566,27 @@ export class BabylonMain {
     this.golferPool = tickResult.state;
 
     // Process departures - tips become income
-    if (tickResult.tips > 0) {
-      this.economyState = addIncome(
-        this.economyState,
-        tickResult.tips,
-        "other_income",
-        "Golfer tips",
-        timestamp
-      );
-      if (this.scenarioManager) {
-        this.scenarioManager.addRevenue(tickResult.tips);
+    const departureCount = tickResult.departures.length;
+    if (departureCount > 0) {
+      if (tickResult.tips > 0) {
+        this.economyState = addIncome(
+          this.economyState,
+          tickResult.tips,
+          "other_income",
+          "Golfer tips",
+          timestamp
+        );
+        if (this.scenarioManager) {
+          this.scenarioManager.addRevenue(tickResult.tips);
+        }
+        this.uiManager.showNotification(
+          `${departureCount} golfer${departureCount > 1 ? 's' : ''} finished (+$${tickResult.tips.toFixed(0)} tips)`
+        );
       }
-    }
-    for (const _departure of tickResult.departures) {
-      if (this.scenarioManager) {
-        this.scenarioManager.addRound();
+      for (const _departure of tickResult.departures) {
+        if (this.scenarioManager) {
+          this.scenarioManager.addRound();
+        }
       }
     }
 
