@@ -1,15 +1,19 @@
-import { BabylonEngine } from './engine/BabylonEngine';
-import { InputManager, Direction, EquipmentSlot } from './engine/InputManager';
-import { GrassSystem, OverlayMode } from './systems/GrassSystem';
-import { EquipmentManager } from './systems/EquipmentManager';
-import { UIManager } from './ui/UIManager';
-import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { BabylonEngine } from "./engine/BabylonEngine";
+import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
+import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
+import { EquipmentManager } from "./systems/EquipmentManager";
+import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
+import { UIManager } from "./ui/UIManager";
+import { TerrainEditorUI } from "./ui/TerrainEditorUI";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 
-import { COURSE_HOLE_1, REFILL_STATIONS } from '../data/courseData';
-import { canMoveFromTo } from '../core/terrain';
+import { COURSE_HOLE_1, REFILL_STATIONS } from "../data/courseData";
+import { canMoveFromTo } from "../core/terrain";
+import { EditorTool } from "../core/terrain-editor-logic";
 
 export class BabylonMain {
   private babylonEngine: BabylonEngine;
@@ -29,13 +33,28 @@ export class BabylonMain {
   private playerY: number = 19;
   private playerMesh: any = null;
   private cameraFollowPlayer: boolean = true;
+  private isMoving: boolean = false;
+  private moveStartPos: { x: number; y: number; z: number } | null = null;
+  private moveEndPos: { x: number; y: number; z: number } | null = null;
+  private moveProgress: number = 0;
+  private readonly MOVE_DURATION: number = 150;
+  private movePath: { x: number; y: number }[] = [];
+  private pendingDirection: Direction | null = null;
 
   private score: number = 0;
   private obstacleMeshes: any[] = [];
 
+  private terrainEditorSystem: TerrainEditorSystem | null = null;
+  private terrainEditorUI: TerrainEditorUI | null = null;
+  private editorUITexture: AdvancedDynamicTexture | null = null;
+
   constructor(canvasId: string) {
     const course = COURSE_HOLE_1;
-    this.babylonEngine = new BabylonEngine(canvasId, course.width, course.height);
+    this.babylonEngine = new BabylonEngine(
+      canvasId,
+      course.width,
+      course.height
+    );
     this.inputManager = new InputManager(this.babylonEngine.getScene());
     this.grassSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
@@ -43,13 +62,79 @@ export class BabylonMain {
 
     this.setupInputCallbacks();
     this.buildScene();
+    this.setupTerrainEditor();
     this.setupUpdateLoop();
+  }
+
+  private setupTerrainEditor(): void {
+    const scene = this.babylonEngine.getScene();
+
+    const cornerProvider = {
+      getCornerHeights: (gridX: number, gridY: number) =>
+        this.grassSystem.getCornerHeightsPublic(gridX, gridY),
+      getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
+        this.grassSystem.getElevationAt(gridX, gridY, defaultValue),
+    };
+
+    this.terrainEditorSystem = new TerrainEditorSystem(scene, cornerProvider);
+    this.terrainEditorSystem.setTerrainModifier({
+      setElevationAt: (x, y, elev) =>
+        this.grassSystem.setElevationAt(x, y, elev),
+      setTerrainTypeAt: (x, y, type) =>
+        this.grassSystem.setTerrainTypeAt(x, y, type),
+      rebuildTileAndNeighbors: (x, y) =>
+        this.grassSystem.rebuildTileAndNeighbors(x, y),
+    });
+
+    this.terrainEditorSystem.initialize(
+      this.grassSystem.getLayoutGrid(),
+      this.grassSystem.getElevationGrid()
+    );
+
+    this.editorUITexture = AdvancedDynamicTexture.CreateFullscreenUI(
+      "EditorUI",
+      true,
+      scene
+    );
+    this.terrainEditorUI = new TerrainEditorUI(this.editorUITexture, {
+      onToolSelect: (tool: EditorTool) => this.handleEditorToolSelect(tool),
+      onClose: () => this.handleEditorToggle(),
+      onExport: () => this.handleEditorExport(),
+      onUndo: () => this.handleEditorUndo(),
+      onRedo: () => this.handleEditorRedo(),
+      onBrushSizeChange: (delta: number) => this.handleEditorBrushSize(delta),
+    });
+
+    this.terrainEditorSystem.setCallbacks({
+      onEnable: () => {
+        this.terrainEditorUI?.show();
+        this.terrainEditorUI?.setActiveTool(
+          this.terrainEditorSystem!.getTool()
+        );
+        this.uiManager.showNotification("Terrain Editor ON");
+      },
+      onDisable: () => {
+        this.terrainEditorUI?.hide();
+        this.uiManager.showNotification("Terrain Editor OFF");
+      },
+      onToolChange: (tool: EditorTool) => {
+        this.terrainEditorUI?.setActiveTool(tool);
+      },
+      onBrushSizeChange: (size: number) => {
+        this.terrainEditorUI?.setBrushSize(size);
+      },
+      onUndoRedoChange: (canUndo: boolean, canRedo: boolean) => {
+        this.terrainEditorUI?.setUndoEnabled(canUndo);
+        this.terrainEditorUI?.setRedoEnabled(canRedo);
+      },
+    });
   }
 
   private setupInputCallbacks(): void {
     this.inputManager.setCallbacks({
       onMove: (direction: Direction) => this.handleMove(direction),
-      onEquipmentSelect: (slot: EquipmentSlot) => this.handleEquipmentSelect(slot),
+      onEquipmentSelect: (slot: EquipmentSlot) =>
+        this.handleEquipmentSelect(slot),
       onEquipmentToggle: () => this.handleEquipmentToggle(),
       onRefill: () => this.handleRefill(),
       onOverlayCycle: () => this.handleOverlayCycle(),
@@ -61,6 +146,23 @@ export class BabylonMain {
       onZoomOut: () => this.handleZoom(-1),
       onDebugReload: () => this.handleDebugReload(),
       onDebugExport: () => this.handleDebugExport(),
+      onClick: (screenX: number, screenY: number) =>
+        this.handleClick(screenX, screenY),
+      onEditorToggle: () => this.handleEditorToggle(),
+      onEditorToolSelect: (tool: number) => this.handleEditorToolNumber(tool),
+      onEditorBrushSelect: (brush: string) =>
+        this.handleEditorBrushSelect(brush),
+      onEditorBrushSizeChange: (delta: number) =>
+        this.handleEditorBrushSize(delta),
+      onUndo: () => this.handleEditorUndo(),
+      onRedo: () => this.handleEditorRedo(),
+      onMouseMove: (screenX: number, screenY: number) =>
+        this.handleMouseMove(screenX, screenY),
+      onDragStart: (screenX: number, screenY: number) =>
+        this.handleDragStart(screenX, screenY),
+      onDrag: (screenX: number, screenY: number) =>
+        this.handleDrag(screenX, screenY),
+      onDragEnd: () => this.handleDragEnd(),
     });
   }
 
@@ -91,9 +193,13 @@ export class BabylonMain {
     const trunkHeight = isPine ? 35 : 25;
     const foliageSize = isPine ? 18 : 28;
 
-    const trunk = MeshBuilder.CreateCylinder('trunk', { height: trunkHeight, diameter: 4 }, scene);
+    const trunk = MeshBuilder.CreateCylinder(
+      "trunk",
+      { height: trunkHeight, diameter: 4 },
+      scene
+    );
     trunk.position = new Vector3(x, y + trunkHeight / 2, z - 0.2);
-    const trunkMat = new StandardMaterial('trunkMat', scene);
+    const trunkMat = new StandardMaterial("trunkMat", scene);
     trunkMat.diffuseColor = new Color3(0.35, 0.22, 0.1);
     trunkMat.emissiveColor = new Color3(0.18, 0.11, 0.05);
     trunk.material = trunkMat;
@@ -101,22 +207,30 @@ export class BabylonMain {
 
     if (isPine) {
       for (let layer = 0; layer < 3; layer++) {
-        const cone = MeshBuilder.CreateCylinder('foliage', {
-          height: foliageSize - layer * 5,
-          diameterTop: 0,
-          diameterBottom: foliageSize - layer * 5
-        }, scene);
+        const cone = MeshBuilder.CreateCylinder(
+          "foliage",
+          {
+            height: foliageSize - layer * 5,
+            diameterTop: 0,
+            diameterBottom: foliageSize - layer * 5,
+          },
+          scene
+        );
         cone.position = new Vector3(x, y + trunkHeight + layer * 12, z - 0.3);
-        const foliageMat = new StandardMaterial('foliageMat', scene);
+        const foliageMat = new StandardMaterial("foliageMat", scene);
         foliageMat.diffuseColor = new Color3(0.15, 0.45, 0.15);
         foliageMat.emissiveColor = new Color3(0.08, 0.23, 0.08);
         cone.material = foliageMat;
         this.obstacleMeshes.push(cone);
       }
     } else {
-      const sphere = MeshBuilder.CreateSphere('foliage', { diameter: foliageSize }, scene);
+      const sphere = MeshBuilder.CreateSphere(
+        "foliage",
+        { diameter: foliageSize },
+        scene
+      );
       sphere.position = new Vector3(x, y + trunkHeight + 5, z - 0.3);
-      const foliageMat = new StandardMaterial('foliageMat', scene);
+      const foliageMat = new StandardMaterial("foliageMat", scene);
       foliageMat.diffuseColor = new Color3(0.2, 0.5, 0.2);
       foliageMat.emissiveColor = new Color3(0.1, 0.25, 0.1);
       sphere.material = foliageMat;
@@ -130,41 +244,57 @@ export class BabylonMain {
     for (const station of REFILL_STATIONS) {
       const pos = this.grassSystem.gridToWorld(station.x, station.y);
 
-      const base = MeshBuilder.CreateBox('refillBase', { width: 40, height: 20, depth: 0.1 }, scene);
+      const base = MeshBuilder.CreateBox(
+        "refillBase",
+        { width: 40, height: 20, depth: 0.1 },
+        scene
+      );
       base.position = new Vector3(pos.x, pos.y - 10, pos.z - 0.3);
-      const baseMat = new StandardMaterial('baseMat', scene);
+      const baseMat = new StandardMaterial("baseMat", scene);
       baseMat.diffuseColor = new Color3(0.55, 0.27, 0.07);
       baseMat.emissiveColor = new Color3(0.28, 0.14, 0.04);
       base.material = baseMat;
       this.obstacleMeshes.push(base);
 
-      const roof = MeshBuilder.CreateBox('refillRoof', { width: 50, height: 12, depth: 0.1 }, scene);
+      const roof = MeshBuilder.CreateBox(
+        "refillRoof",
+        { width: 50, height: 12, depth: 0.1 },
+        scene
+      );
       roof.position = new Vector3(pos.x, pos.y - 26, pos.z - 0.35);
-      const roofMat = new StandardMaterial('roofMat', scene);
+      const roofMat = new StandardMaterial("roofMat", scene);
       roofMat.diffuseColor = new Color3(0.61, 0.33, 0.12);
       roofMat.emissiveColor = new Color3(0.31, 0.17, 0.06);
       roof.material = roofMat;
       this.obstacleMeshes.push(roof);
 
-      const pump = MeshBuilder.CreateBox('pump', { width: 12, height: 25, depth: 0.1 }, scene);
+      const pump = MeshBuilder.CreateBox(
+        "pump",
+        { width: 12, height: 25, depth: 0.1 },
+        scene
+      );
       pump.position = new Vector3(pos.x, pos.y - 32, pos.z - 0.4);
-      const pumpMat = new StandardMaterial('pumpMat', scene);
+      const pumpMat = new StandardMaterial("pumpMat", scene);
       pumpMat.diffuseColor = new Color3(0.4, 0.4, 0.45);
       pumpMat.emissiveColor = new Color3(0.2, 0.2, 0.23);
       pump.material = pumpMat;
       this.obstacleMeshes.push(pump);
 
-      const blueDot = MeshBuilder.CreateSphere('blueDot', { diameter: 6 }, scene);
+      const blueDot = MeshBuilder.CreateSphere(
+        "blueDot",
+        { diameter: 6 },
+        scene
+      );
       blueDot.position = new Vector3(pos.x - 4, pos.y - 34, pos.z - 0.45);
-      const blueMat = new StandardMaterial('blueMat', scene);
+      const blueMat = new StandardMaterial("blueMat", scene);
       blueMat.diffuseColor = new Color3(0.2, 0.4, 0.8);
       blueMat.emissiveColor = new Color3(0.1, 0.2, 0.4);
       blueDot.material = blueMat;
       this.obstacleMeshes.push(blueDot);
 
-      const redDot = MeshBuilder.CreateSphere('redDot', { diameter: 6 }, scene);
+      const redDot = MeshBuilder.CreateSphere("redDot", { diameter: 6 }, scene);
       redDot.position = new Vector3(pos.x + 4, pos.y - 34, pos.z - 0.45);
-      const redMat = new StandardMaterial('redMat', scene);
+      const redMat = new StandardMaterial("redMat", scene);
       redMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
       redMat.emissiveColor = new Color3(0.4, 0.1, 0.1);
       redDot.material = redMat;
@@ -175,56 +305,99 @@ export class BabylonMain {
   private createPlayer(): void {
     const scene = this.babylonEngine.getScene();
 
-    this.playerMesh = MeshBuilder.CreateBox('playerContainer', { size: 1 }, scene);
+    this.playerMesh = MeshBuilder.CreateBox(
+      "playerContainer",
+      { size: 1 },
+      scene
+    );
     this.playerMesh.isVisible = false;
 
-    const shadow = MeshBuilder.CreateDisc('shadow', { radius: 10, tessellation: 16 }, scene);
+    const shadow = MeshBuilder.CreateDisc(
+      "shadow",
+      { radius: 10, tessellation: 16 },
+      scene
+    );
     shadow.rotation.x = Math.PI / 2;
     shadow.position.y = -18;
     shadow.position.z = 0.5;
-    const shadowMat = new StandardMaterial('shadowMat', scene);
+    const shadowMat = new StandardMaterial("shadowMat", scene);
     shadowMat.diffuseColor = new Color3(0, 0, 0);
     shadowMat.alpha = 0.3;
     shadowMat.disableLighting = true;
     shadow.material = shadowMat;
     shadow.parent = this.playerMesh;
 
-    const body = MeshBuilder.CreateCylinder('body', { height: 20, diameterTop: 8, diameterBottom: 10 }, scene);
+    const body = MeshBuilder.CreateCylinder(
+      "body",
+      { height: 20, diameterTop: 8, diameterBottom: 10 },
+      scene
+    );
     body.position.y = -8;
-    const bodyMat = new StandardMaterial('bodyMat', scene);
+    const bodyMat = new StandardMaterial("bodyMat", scene);
     bodyMat.diffuseColor = new Color3(0.11, 0.48, 0.24);
     bodyMat.emissiveColor = new Color3(0.06, 0.24, 0.12);
     body.material = bodyMat;
     body.parent = this.playerMesh;
 
-    const head = MeshBuilder.CreateSphere('head', { diameter: 10 }, scene);
+    const head = MeshBuilder.CreateSphere("head", { diameter: 10 }, scene);
     head.position.y = 6;
-    const headMat = new StandardMaterial('headMat', scene);
+    const headMat = new StandardMaterial("headMat", scene);
     headMat.diffuseColor = new Color3(0.94, 0.82, 0.69);
     headMat.emissiveColor = new Color3(0.47, 0.41, 0.35);
     head.material = headMat;
     head.parent = this.playerMesh;
 
-    const hat = MeshBuilder.CreateCylinder('hat', { height: 5, diameterTop: 8, diameterBottom: 12 }, scene);
+    const hat = MeshBuilder.CreateCylinder(
+      "hat",
+      { height: 5, diameterTop: 8, diameterBottom: 12 },
+      scene
+    );
     hat.position.y = 12;
-    const hatMat = new StandardMaterial('hatMat', scene);
+    const hatMat = new StandardMaterial("hatMat", scene);
     hatMat.diffuseColor = new Color3(0.9, 0.9, 0.85);
     hatMat.emissiveColor = new Color3(0.45, 0.45, 0.42);
     hat.material = hatMat;
     hat.parent = this.playerMesh;
 
-    const hatBrim = MeshBuilder.CreateDisc('hatBrim', { radius: 8, tessellation: 16 }, scene);
+    const hatBrim = MeshBuilder.CreateDisc(
+      "hatBrim",
+      { radius: 8, tessellation: 16 },
+      scene
+    );
     hatBrim.rotation.x = Math.PI / 2;
     hatBrim.position.y = 10;
     hatBrim.material = hatMat;
     hatBrim.parent = this.playerMesh;
   }
 
+  public teleport(x: number, y: number): void {
+    const course = COURSE_HOLE_1;
+    if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
+      console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
+      return;
+    }
+
+    this.playerX = x;
+    this.playerY = y;
+    this.isMoving = false;
+    this.moveStartPos = null;
+    this.moveEndPos = null;
+    this.movePath = [];
+    this.pendingDirection = null;
+
+    this.updatePlayerPosition();
+    this.uiManager.showNotification(`Teleported to (${x}, ${y})`);
+  }
+
   private updatePlayerPosition(): void {
     if (!this.playerMesh) return;
 
     const worldPos = this.grassSystem.gridToWorld(this.playerX, this.playerY);
-    this.playerMesh.position = new Vector3(worldPos.x, worldPos.y + 8, worldPos.z - 1);
+    this.playerMesh.position = new Vector3(
+      worldPos.x,
+      worldPos.y + 8,
+      worldPos.z - 1
+    );
 
     if (this.cameraFollowPlayer) {
       const camera = this.babylonEngine.getCamera();
@@ -234,38 +407,416 @@ export class BabylonMain {
     }
   }
 
+  private updateMovement(deltaMs: number): void {
+    if (
+      !this.isMoving ||
+      !this.moveStartPos ||
+      !this.moveEndPos ||
+      !this.playerMesh
+    ) {
+      if (!this.isMoving) {
+        this.checkContinuousMovement();
+      }
+      return;
+    }
+
+    this.moveProgress += deltaMs;
+    const t = Math.min(1, this.moveProgress / this.MOVE_DURATION);
+    const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    const x =
+      this.moveStartPos.x + (this.moveEndPos.x - this.moveStartPos.x) * easeT;
+    const y =
+      this.moveStartPos.y + (this.moveEndPos.y - this.moveStartPos.y) * easeT;
+    const z =
+      this.moveStartPos.z + (this.moveEndPos.z - this.moveStartPos.z) * easeT;
+
+    this.playerMesh.position = new Vector3(x, y + 8, z - 1);
+
+    if (this.cameraFollowPlayer) {
+      const camera = this.babylonEngine.getCamera();
+      camera.position.x = x;
+      camera.position.y = y;
+      camera.setTarget(new Vector3(x, y, 0));
+    }
+
+    if (t >= 1) {
+      this.isMoving = false;
+      this.moveStartPos = null;
+      this.moveEndPos = null;
+      this.checkContinuousMovement();
+    }
+  }
+
+  private checkContinuousMovement(): void {
+    if (this.movePath.length > 0) {
+      const next = this.movePath.shift()!;
+      this.startMoveTo(next.x, next.y);
+      return;
+    }
+
+    if (
+      this.pendingDirection &&
+      this.isDirectionKeyHeld(this.pendingDirection)
+    ) {
+      this.tryMove(this.pendingDirection);
+    } else {
+      this.pendingDirection = null;
+    }
+  }
+
+  private isDirectionKeyHeld(direction: Direction): boolean {
+    switch (direction) {
+      case "up":
+        return (
+          this.inputManager.isKeyDown("arrowup") ||
+          this.inputManager.isKeyDown("w")
+        );
+      case "down":
+        return (
+          this.inputManager.isKeyDown("arrowdown") ||
+          this.inputManager.isKeyDown("s")
+        );
+      case "left":
+        return (
+          this.inputManager.isKeyDown("arrowleft") ||
+          this.inputManager.isKeyDown("a")
+        );
+      case "right":
+        return (
+          this.inputManager.isKeyDown("arrowright") ||
+          this.inputManager.isKeyDown("d")
+        );
+    }
+  }
+
   private handleMove(direction: Direction): void {
     if (this.isPaused) return;
 
+    this.pendingDirection = direction;
+    this.movePath = [];
+
+    if (!this.isMoving) {
+      this.tryMove(direction);
+    }
+  }
+
+  private tryMove(direction: Direction): boolean {
     const course = COURSE_HOLE_1;
     let newX = this.playerX;
     let newY = this.playerY;
 
     switch (direction) {
-      case 'up': newX--; newY--; break;
-      case 'down': newX++; newY++; break;
-      case 'left': newX--; newY++; break;
-      case 'right': newX++; newY--; break;
+      case "up":
+        newY--;
+        break;
+      case "down":
+        newY++;
+        break;
+      case "left":
+        newX--;
+        break;
+      case "right":
+        newX++;
+        break;
     }
 
     if (newX < 0 || newX >= course.width || newY < 0 || newY >= course.height) {
-      return;
+      return false;
     }
 
     const fromCell = this.grassSystem.getCell(this.playerX, this.playerY);
     const toCell = this.grassSystem.getCell(newX, newY);
 
     if (!canMoveFromTo(fromCell, toCell)) {
-      return;
+      return false;
     }
+
+    this.startMoveTo(newX, newY);
+    return true;
+  }
+
+  private startMoveTo(newX: number, newY: number): void {
+    this.moveStartPos = this.grassSystem.gridToWorld(
+      this.playerX,
+      this.playerY
+    );
+    this.moveEndPos = this.grassSystem.gridToWorld(newX, newY);
+    this.moveProgress = 0;
+    this.isMoving = true;
 
     this.playerX = newX;
     this.playerY = newY;
-    this.updatePlayerPosition();
 
     if (this.equipmentManager.isActive()) {
       this.applyEquipmentEffect(newX, newY);
     }
+  }
+
+  private handleClick(screenX: number, screenY: number): void {
+    if (this.isPaused) return;
+
+    const gridPos = this.screenToGridFromScreen(screenX, screenY);
+    if (!gridPos) return;
+
+    if (this.terrainEditorSystem?.isEnabled()) {
+      this.terrainEditorSystem.handleClick(gridPos.x, gridPos.y);
+      return;
+    }
+
+    const course = COURSE_HOLE_1;
+    if (
+      gridPos.x < 0 ||
+      gridPos.x >= course.width ||
+      gridPos.y < 0 ||
+      gridPos.y >= course.height
+    ) {
+      return;
+    }
+
+    const targetCell = this.grassSystem.getCell(gridPos.x, gridPos.y);
+    if (!targetCell || targetCell.type === "water") return;
+
+    if (gridPos.x === this.playerX && gridPos.y === this.playerY) {
+      return;
+    }
+
+    const path = this.findPath(
+      this.playerX,
+      this.playerY,
+      gridPos.x,
+      gridPos.y
+    );
+    if (path.length > 0) {
+      this.movePath = path;
+      this.pendingDirection = null;
+      if (!this.isMoving) {
+        this.checkContinuousMovement();
+      }
+    }
+  }
+
+  private screenToGridFromScreen(
+    screenX: number,
+    screenY: number
+  ): { x: number; y: number } | null {
+    const canvas = this.babylonEngine
+      .getScene()
+      .getEngine()
+      .getRenderingCanvas();
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const canvasX = (screenX - rect.left) * scaleX;
+    const canvasY = (screenY - rect.top) * scaleY;
+
+    const camera = this.babylonEngine.getCamera();
+    const orthoWidth = (camera.orthoRight ?? 0) - (camera.orthoLeft ?? 0);
+    const orthoHeight = (camera.orthoTop ?? 0) - (camera.orthoBottom ?? 0);
+
+    const normalizedX = canvasX / canvas.width - 0.5;
+    const normalizedY = canvasY / canvas.height - 0.5;
+
+    const worldX = camera.position.x + normalizedX * orthoWidth;
+    const worldY = camera.position.y - normalizedY * orthoHeight;
+
+    return this.screenToGrid(worldX, worldY);
+  }
+
+  private screenToGrid(
+    worldX: number,
+    worldY: number
+  ): { x: number; y: number } | null {
+    const hw = 32;
+    const hh = 16;
+    const elevHeight = 16;
+
+    const baseGridX = Math.round((worldX / hw - worldY / hh) / 2);
+    const baseGridY = Math.round((-worldX / hw - worldY / hh) / 2);
+
+    const course = COURSE_HOLE_1;
+    const searchRadius = 5;
+    let bestMatch: { x: number; y: number; priority: number } | null = null;
+
+    for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+      for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+        const gx = baseGridX + dx;
+        const gy = baseGridY + dy;
+
+        if (gx < 0 || gx >= course.width || gy < 0 || gy >= course.height) {
+          continue;
+        }
+
+        const corners = this.grassSystem.getCornerHeightsPublic(gx, gy);
+        const baseElev = Math.min(
+          corners.nw,
+          corners.ne,
+          corners.se,
+          corners.sw
+        );
+        const centerY = -((gx + gy) * hh) + baseElev * elevHeight;
+
+        const nwY = centerY + hh + (corners.nw - baseElev) * elevHeight;
+        const neY = centerY + (corners.ne - baseElev) * elevHeight;
+        const seY = centerY - hh + (corners.se - baseElev) * elevHeight;
+        const swY = centerY + (corners.sw - baseElev) * elevHeight;
+
+        const centerX = (gx - gy) * hw;
+        const nwX = centerX;
+        const neX = centerX + hw;
+        const seX = centerX;
+        const swX = centerX - hw;
+
+        if (
+          this.isPointInQuad(
+            worldX,
+            worldY,
+            nwX,
+            nwY,
+            neX,
+            neY,
+            seX,
+            seY,
+            swX,
+            swY
+          )
+        ) {
+          const priority = baseElev * 1000 - gy * 10 - gx;
+          if (!bestMatch || priority > bestMatch.priority) {
+            bestMatch = { x: gx, y: gy, priority };
+          }
+        }
+      }
+    }
+
+    if (bestMatch) {
+      return { x: bestMatch.x, y: bestMatch.y };
+    }
+
+    return { x: baseGridX, y: baseGridY };
+  }
+
+  private isPointInQuad(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    x3: number,
+    y3: number,
+    x4: number,
+    y4: number
+  ): boolean {
+    const cross = (ax: number, ay: number, bx: number, by: number) =>
+      ax * by - ay * bx;
+
+    const d1 = cross(x2 - x1, y2 - y1, px - x1, py - y1);
+    const d2 = cross(x3 - x2, y3 - y2, px - x2, py - y2);
+    const d3 = cross(x4 - x3, y4 - y3, px - x3, py - y3);
+    const d4 = cross(x1 - x4, y1 - y4, px - x4, py - y4);
+
+    const hasNeg = d1 < 0 || d2 < 0 || d3 < 0 || d4 < 0;
+    const hasPos = d1 > 0 || d2 > 0 || d3 > 0 || d4 > 0;
+
+    return !(hasNeg && hasPos);
+  }
+
+  private findPath(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): { x: number; y: number }[] {
+    const course = COURSE_HOLE_1;
+    const openSet: {
+      x: number;
+      y: number;
+      g: number;
+      h: number;
+      f: number;
+      parent: any;
+    }[] = [];
+    const closedSet = new Set<string>();
+
+    const heuristic = (x: number, y: number) =>
+      Math.abs(x - endX) + Math.abs(y - endY);
+
+    openSet.push({
+      x: startX,
+      y: startY,
+      g: 0,
+      h: heuristic(startX, startY),
+      f: heuristic(startX, startY),
+      parent: null,
+    });
+
+    while (openSet.length > 0) {
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+
+      if (current.x === endX && current.y === endY) {
+        const path: { x: number; y: number }[] = [];
+        let node = current;
+        while (node.parent) {
+          path.unshift({ x: node.x, y: node.y });
+          node = node.parent;
+        }
+        return path;
+      }
+
+      closedSet.add(`${current.x},${current.y}`);
+
+      const neighbors = [
+        { x: current.x, y: current.y - 1 },
+        { x: current.x, y: current.y + 1 },
+        { x: current.x - 1, y: current.y },
+        { x: current.x + 1, y: current.y },
+      ];
+
+      for (const neighbor of neighbors) {
+        if (
+          neighbor.x < 0 ||
+          neighbor.x >= course.width ||
+          neighbor.y < 0 ||
+          neighbor.y >= course.height
+        )
+          continue;
+        if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+        const fromCell = this.grassSystem.getCell(current.x, current.y);
+        const toCell = this.grassSystem.getCell(neighbor.x, neighbor.y);
+        if (!canMoveFromTo(fromCell, toCell)) continue;
+
+        const g = current.g + 1;
+        const h = heuristic(neighbor.x, neighbor.y);
+        const f = g + h;
+
+        const existing = openSet.find(
+          (n) => n.x === neighbor.x && n.y === neighbor.y
+        );
+        if (existing) {
+          if (g < existing.g) {
+            existing.g = g;
+            existing.f = f;
+            existing.parent = current;
+          }
+        } else {
+          openSet.push({
+            x: neighbor.x,
+            y: neighbor.y,
+            g,
+            h,
+            f,
+            parent: current,
+          });
+        }
+      }
+    }
+
+    return [];
   }
 
   private applyEquipmentEffect(x: number, y: number): void {
@@ -274,13 +825,13 @@ export class BabylonMain {
     if (!state) return;
 
     switch (type) {
-      case 'mower':
+      case "mower":
         this.grassSystem.mowAt(x, y);
         break;
-      case 'sprinkler':
+      case "sprinkler":
         this.grassSystem.waterArea(x, y, state.effectRadius, 15);
         break;
-      case 'spreader':
+      case "spreader":
         this.grassSystem.fertilizeArea(x, y, state.effectRadius, 10);
         break;
     }
@@ -288,7 +839,7 @@ export class BabylonMain {
 
   private handleEquipmentSelect(slot: EquipmentSlot): void {
     this.equipmentManager.selectBySlot(slot);
-    const names = ['Mower', 'Sprinkler', 'Spreader'];
+    const names = ["Mower", "Sprinkler", "Spreader"];
     this.uiManager.showNotification(`${names[slot - 1]} selected`);
   }
 
@@ -296,12 +847,18 @@ export class BabylonMain {
     this.equipmentManager.toggle();
     const isActive = this.equipmentManager.isActive();
     const type = this.equipmentManager.getCurrentType();
-    const names = { mower: 'Mower', sprinkler: 'Sprinkler', spreader: 'Spreader' };
-    this.uiManager.showNotification(`${names[type]} ${isActive ? 'ON' : 'OFF'}`);
+    const names = {
+      mower: "Mower",
+      sprinkler: "Sprinkler",
+      spreader: "Spreader",
+    };
+    this.uiManager.showNotification(
+      `${names[type]} ${isActive ? "ON" : "OFF"}`
+    );
   }
 
   private handleRefill(): void {
-    const nearStation = REFILL_STATIONS.some(station => {
+    const nearStation = REFILL_STATIONS.some((station) => {
       const dx = Math.abs(station.x - this.playerX);
       const dy = Math.abs(station.y - this.playerY);
       return dx <= 2 && dy <= 2;
@@ -309,19 +866,19 @@ export class BabylonMain {
 
     if (nearStation) {
       this.equipmentManager.refill();
-      this.uiManager.showNotification('Equipment refilled!');
+      this.uiManager.showNotification("Equipment refilled!");
     } else {
-      this.uiManager.showNotification('Move closer to refill station');
+      this.uiManager.showNotification("Move closer to refill station");
     }
   }
 
   private handleOverlayCycle(): void {
     const mode = this.grassSystem.cycleOverlayMode();
     const modeNames: Record<OverlayMode, string> = {
-      'normal': 'Normal View',
-      'moisture': 'Moisture View',
-      'nutrients': 'Nutrients View',
-      'height': 'Height View',
+      normal: "Normal View",
+      moisture: "Moisture View",
+      nutrients: "Nutrients View",
+      height: "Height View",
     };
     this.uiManager.showNotification(modeNames[mode]);
   }
@@ -356,22 +913,28 @@ export class BabylonMain {
     this.timeScale = 1;
     this.equipmentManager.refill();
     this.grassSystem.dispose();
-    this.grassSystem = new GrassSystem(this.babylonEngine.getScene(), COURSE_HOLE_1);
+    this.grassSystem = new GrassSystem(
+      this.babylonEngine.getScene(),
+      COURSE_HOLE_1
+    );
     this.grassSystem.build();
     this.updatePlayerPosition();
     this.resumeGame();
-    this.uiManager.showNotification('Game Restarted');
+    this.uiManager.showNotification("Game Restarted");
   }
 
   private handleMute(): void {
     this.isMuted = !this.isMuted;
-    this.uiManager.showNotification(this.isMuted ? 'Sound OFF' : 'Sound ON');
+    this.uiManager.showNotification(this.isMuted ? "Sound OFF" : "Sound ON");
   }
 
   private handleTimeSpeed(delta: number): void {
     const speeds = [0.5, 1, 2, 4];
     const currentIndex = speeds.indexOf(this.timeScale);
-    const newIndex = Math.max(0, Math.min(speeds.length - 1, currentIndex + delta));
+    const newIndex = Math.max(
+      0,
+      Math.min(speeds.length - 1, currentIndex + delta)
+    );
     this.timeScale = speeds[newIndex];
     this.uiManager.showNotification(`Speed: ${this.timeScale}x`);
   }
@@ -379,6 +942,105 @@ export class BabylonMain {
   private handleZoom(delta: number): void {
     this.zoomLevel = Math.max(0.5, Math.min(3, this.zoomLevel + delta * 0.25));
     this.babylonEngine.setZoom(this.zoomLevel);
+  }
+
+  private handleEditorToggle(): void {
+    this.terrainEditorSystem?.toggle();
+  }
+
+  private handleEditorToolSelect(tool: EditorTool): void {
+    this.terrainEditorSystem?.setTool(tool);
+  }
+
+  private handleEditorToolNumber(toolNumber: number): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    const tools: EditorTool[] = ["raise", "lower", "flatten", "smooth"];
+    if (toolNumber >= 1 && toolNumber <= tools.length) {
+      this.terrainEditorSystem.setTool(tools[toolNumber - 1]);
+    }
+  }
+
+  private handleEditorBrushSelect(brush: string): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    if (brush.startsWith("terrain_")) {
+      this.terrainEditorSystem.setTool(brush as EditorTool);
+    }
+  }
+
+  private handleEditorBrushSize(delta: number): void {
+    this.terrainEditorSystem?.changeBrushSize(delta);
+  }
+
+  private handleEditorUndo(): void {
+    this.terrainEditorSystem?.undo();
+  }
+
+  private handleEditorRedo(): void {
+    this.terrainEditorSystem?.redo();
+  }
+
+  private handleEditorExport(): void {
+    if (!this.terrainEditorSystem) return;
+
+    const json = this.terrainEditorSystem.exportToJSON();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "terrain_export.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    this.uiManager.showNotification("Terrain exported!");
+  }
+
+  private handleMouseMove(screenX: number, screenY: number): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    const gridPos = this.screenToGridFromScreen(screenX, screenY);
+    if (gridPos) {
+      this.terrainEditorSystem.handleMouseMove(gridPos.x, gridPos.y);
+
+      const hoverInfo = this.terrainEditorSystem.getHoverInfo();
+      if (hoverInfo) {
+        this.terrainEditorUI?.updateCoordinates(
+          hoverInfo.x,
+          hoverInfo.y,
+          hoverInfo.elevation,
+          hoverInfo.type
+        );
+      } else {
+        this.terrainEditorUI?.clearCoordinates();
+      }
+    }
+  }
+
+  private handleDragStart(screenX: number, screenY: number): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    const gridPos = this.screenToGridFromScreen(screenX, screenY);
+    if (gridPos) {
+      this.terrainEditorSystem.handleDragStart(gridPos.x, gridPos.y);
+    }
+  }
+
+  private handleDrag(screenX: number, screenY: number): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    const gridPos = this.screenToGridFromScreen(screenX, screenY);
+    if (gridPos) {
+      this.terrainEditorSystem.handleDrag(gridPos.x, gridPos.y);
+    }
+  }
+
+  private handleDragEnd(): void {
+    if (!this.terrainEditorSystem?.isEnabled()) return;
+    this.terrainEditorSystem.handleDragEnd();
   }
 
   private handleDebugReload(): void {
@@ -393,8 +1055,8 @@ export class BabylonMain {
       gameDay: this.gameDay,
       score: this.score,
     };
-    console.log('Game State:', JSON.stringify(state, null, 2));
-    console.log('Base64:', btoa(JSON.stringify(state)));
+    console.log("Game State:", JSON.stringify(state, null, 2));
+    console.log("Base64:", btoa(JSON.stringify(state)));
   }
 
   private setupUpdateLoop(): void {
@@ -402,9 +1064,18 @@ export class BabylonMain {
     const course = COURSE_HOLE_1;
 
     const stats = this.grassSystem.getCourseStats();
-    this.uiManager.updateCourseStatus(stats.health, stats.moisture, stats.nutrients);
-    this.uiManager.updateMinimapPlayerPosition(this.playerX, this.playerY, course.width, course.height);
-    this.uiManager.showNotification('Welcome to Greenkeeper Simulator!');
+    this.uiManager.updateCourseStatus(
+      stats.health,
+      stats.moisture,
+      stats.nutrients
+    );
+    this.uiManager.updateMinimapPlayerPosition(
+      this.playerX,
+      this.playerY,
+      course.width,
+      course.height
+    );
+    this.uiManager.showNotification("Welcome to Greenkeeper Simulator!");
 
     this.babylonEngine.getScene().onBeforeRenderObservable.add(() => {
       const now = performance.now();
@@ -412,6 +1083,8 @@ export class BabylonMain {
       this.lastTime = now;
 
       if (this.isPaused) return;
+
+      this.updateMovement(deltaMs);
 
       if (this.playerMesh) {
         this.equipmentManager.update(deltaMs, this.playerMesh.position);
@@ -435,19 +1108,34 @@ export class BabylonMain {
         this.equipmentManager.isActive()
       );
 
-      const mowerState = this.equipmentManager.getState('mower');
-      const sprinklerState = this.equipmentManager.getState('sprinkler');
-      const spreaderState = this.equipmentManager.getState('spreader');
+      const mowerState = this.equipmentManager.getState("mower");
+      const sprinklerState = this.equipmentManager.getState("sprinkler");
+      const spreaderState = this.equipmentManager.getState("spreader");
       this.uiManager.updateResources(
-        mowerState ? (mowerState.resourceCurrent / mowerState.resourceMax) * 100 : 100,
-        sprinklerState ? (sprinklerState.resourceCurrent / sprinklerState.resourceMax) * 100 : 100,
-        spreaderState ? (spreaderState.resourceCurrent / spreaderState.resourceMax) * 100 : 100
+        mowerState
+          ? (mowerState.resourceCurrent / mowerState.resourceMax) * 100
+          : 100,
+        sprinklerState
+          ? (sprinklerState.resourceCurrent / sprinklerState.resourceMax) * 100
+          : 100,
+        spreaderState
+          ? (spreaderState.resourceCurrent / spreaderState.resourceMax) * 100
+          : 100
       );
 
       const courseStats = this.grassSystem.getCourseStats();
-      this.uiManager.updateCourseStatus(courseStats.health, courseStats.moisture, courseStats.nutrients);
+      this.uiManager.updateCourseStatus(
+        courseStats.health,
+        courseStats.moisture,
+        courseStats.nutrients
+      );
       this.uiManager.updateScore(this.score);
-      this.uiManager.updateMinimapPlayerPosition(this.playerX, this.playerY, course.width, course.height);
+      this.uiManager.updateMinimapPlayerPosition(
+        this.playerX,
+        this.playerY,
+        course.width,
+        course.height
+      );
     });
   }
 
