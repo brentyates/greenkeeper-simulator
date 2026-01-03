@@ -43,6 +43,7 @@ export class UIManager {
   private pauseOverlay!: Rectangle;
   private onResume?: () => void;
   private onRestart?: () => void;
+  private onMainMenu?: () => void;
 
   constructor(scene: Scene) {
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI', true, scene);
@@ -563,7 +564,7 @@ export class UIManager {
 
     const panel = new Rectangle('pausePanel');
     panel.width = '300px';
-    panel.height = '250px';
+    panel.height = '300px';
     panel.cornerRadius = 10;
     panel.background = 'rgba(26, 58, 42, 0.95)';
     panel.color = '#4a8a5a';
@@ -588,13 +589,16 @@ export class UIManager {
     const restartBtn = this.createMenuButton('🔄 Restart', () => this.onRestart?.());
     stack.addControl(restartBtn);
 
+    const mainMenuBtn = this.createMenuButton('🏠 Main Menu', () => this.onMainMenu?.());
+    stack.addControl(mainMenuBtn);
+
     const hint = new TextBlock('pauseHint');
     hint.text = 'Press P or ESC to resume';
     hint.color = '#888888';
     hint.fontSize = 12;
     hint.fontFamily = 'Arial, sans-serif';
     hint.height = '30px';
-    hint.paddingTop = '20px';
+    hint.paddingTop = '10px';
     stack.addControl(hint);
   }
 
@@ -630,9 +634,10 @@ export class UIManager {
     return btn;
   }
 
-  public showPauseMenu(onResume: () => void, onRestart: () => void): void {
+  public showPauseMenu(onResume: () => void, onRestart: () => void, onMainMenu?: () => void): void {
     this.onResume = onResume;
     this.onRestart = onRestart;
+    this.onMainMenu = onMainMenu;
     this.pauseOverlay.isVisible = true;
   }
 
