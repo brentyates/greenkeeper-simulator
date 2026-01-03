@@ -12,6 +12,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - Scenario system: Progress tracking, objective checking, win/lose detection
 - Tee Time system: Slot generation, booking simulation, walk-ons, revenue tracking
 - Marketing system: Campaign processing, demand multipliers
+- Day transition: Daily expenses, prestige snapshots, all counter resets
 - UI: Economy panel (cash + golfers), Scenario progress panel with bar
 
 **Prestige System** ✅ COMPLETE (See [Prestige System](#prestige-system) section)
@@ -228,8 +229,8 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [ ] Show golfer statistics (count, satisfaction, return rate)
 
 ### 7.3 Time-Based Events
-- [ ] Peak golfer hours (7-10am, 1-4pm)
-- [ ] Twilight pricing after 4pm
+- [x] Peak golfer hours (7-10am, 1-4pm) - arrival rates vary by hour
+- [x] Twilight pricing after 4pm - integrated in green fee calculation
 - [ ] Employee shift scheduling (future feature)
 
 ---
