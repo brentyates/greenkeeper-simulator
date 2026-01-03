@@ -1,6 +1,7 @@
 import { CellState, TerrainType } from './terrain';
 import { AmenityState, AmenityUpgrade, createInitialAmenityState, calculateAmenityScore, applyUpgrade as applyAmenityUpgrade } from './amenities';
 import { ReputationState, createInitialReputationState, calculateReputationScore } from './reputation';
+import { ExclusivityState, createInitialExclusivityState, calculateExclusivityScore, MembershipModel, DressCode, setMembershipModel, setWaitlistLength, setAdvanceBookingDays, setDressCode, earnAward as earnExclusivityAward, removeAward as removeExclusivityAward } from './exclusivity';
 
 export type PrestigeTier = 'municipal' | 'public' | 'semi_private' | 'private_club' | 'championship';
 
@@ -55,6 +56,8 @@ export interface PrestigeState {
   amenityScore: number;
   reputation: ReputationState;
   reputationScore: number;
+  exclusivity: ExclusivityState;
+  exclusivityScore: number;
 
   greenFee: number;
   tolerance: GreenFeeTolerance;
@@ -150,6 +153,7 @@ export function createInitialHistoricalState(): HistoricalExcellenceState {
 export function createInitialPrestigeState(startingScore: number = 100): PrestigeState {
   const tier = getPrestigeTier(startingScore);
   const initialAmenities = createInitialAmenityState();
+  const initialExclusivity = createInitialExclusivityState();
   return {
     currentScore: startingScore,
     targetScore: startingScore,
@@ -171,6 +175,8 @@ export function createInitialPrestigeState(startingScore: number = 100): Prestig
     amenityScore: calculateAmenityScore(initialAmenities),
     reputation: createInitialReputationState(),
     reputationScore: 500,
+    exclusivity: initialExclusivity,
+    exclusivityScore: calculateExclusivityScore(initialExclusivity),
 
     greenFee: TIER_TOLERANCES[tier].sweetSpot,
     tolerance: TIER_TOLERANCES[tier],
@@ -301,12 +307,14 @@ export function updatePrestigeScore(
 ): PrestigeState {
   const amenityScore = calculateAmenityScore(state.amenities);
   const reputationScore = calculateReputationScore(state.reputation);
+  const exclusivityScore = calculateExclusivityScore(state.exclusivity);
 
   const targetScore = calculateMasterPrestigeScore(
     conditionsScore.composite,
     state.historicalExcellence.composite,
     amenityScore,
-    reputationScore
+    reputationScore,
+    exclusivityScore
   );
 
   let newScore = state.currentScore;
@@ -329,6 +337,7 @@ export function updatePrestigeScore(
     currentConditions: conditionsScore,
     amenityScore,
     reputationScore,
+    exclusivityScore,
     tolerance: TIER_TOLERANCES[newTier],
   };
 }
@@ -541,4 +550,63 @@ export function upgradeAmenity(state: PrestigeState, upgrade: AmenityUpgrade): P
   };
 }
 
+export function updateMembership(
+  state: PrestigeState,
+  model: MembershipModel,
+  cost: number = 0
+): PrestigeState {
+  const newExclusivity = setMembershipModel(state.exclusivity, model, cost);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
+export function updateWaitlist(state: PrestigeState, months: number): PrestigeState {
+  const newExclusivity = setWaitlistLength(state.exclusivity, months);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
+export function updateBookingWindow(state: PrestigeState, days: number): PrestigeState {
+  const newExclusivity = setAdvanceBookingDays(state.exclusivity, days);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
+export function updateDressCode(state: PrestigeState, dressCode: DressCode): PrestigeState {
+  const newExclusivity = setDressCode(state.exclusivity, dressCode);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
+export function awardPrestige(state: PrestigeState, awardId: string, day: number): PrestigeState {
+  const newExclusivity = earnExclusivityAward(state.exclusivity, awardId, day);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
+export function revokeAward(state: PrestigeState, awardId: string): PrestigeState {
+  const newExclusivity = removeExclusivityAward(state.exclusivity, awardId);
+  return {
+    ...state,
+    exclusivity: newExclusivity,
+    exclusivityScore: newExclusivity.composite,
+  };
+}
+
 export type { AmenityUpgrade };
+export type { MembershipModel, DressCode, ExclusivityState };

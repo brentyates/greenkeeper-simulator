@@ -17,7 +17,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase P2: Historical tracking and streaks~~ ✅
 - ~~Phase P3: Amenities system~~ ✅
 - ~~Phase P4: Reputation and reviews~~ ✅ (core logic complete, UI pending)
-- Phase P5: Exclusivity and advanced features
+- ~~Phase P5: Exclusivity and advanced features~~ ✅ (core logic complete, UI pending)
 
 **Tee Time System** (See [Tee Time System](#tee-time-system) section)
 - Phase T1: Core Tee Time Scheduling
@@ -425,36 +425,36 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 
 ---
 
-### Phase P5: Exclusivity & Advanced Features
+### Phase P5: Exclusivity & Advanced Features ✅
 
-#### P5.1 Exclusivity State
-- [ ] Define `ExclusivityState` interface
-- [ ] Membership model: public, semi_private, private, exclusive
-- [ ] Membership cost, waitlist length, advance booking days
-- [ ] Dress code: none, casual, smart_casual, formal
+#### P5.1 Exclusivity State ✅
+- [x] Define `ExclusivityState` interface
+- [x] Membership model: public, semi_private, private, exclusive
+- [x] Membership cost, waitlist length, advance booking days
+- [x] Dress code: none, casual, smart_casual, formal
 
-#### P5.2 Exclusivity Score (10% of total)
-- [ ] Implement `calculateExclusivityScore()` function
-- [ ] Base scores: public (0), semi-private (200), private (500), exclusive (800)
-- [ ] Modifiers: high membership cost (+100), long waitlist (+100), formal dress (+50)
+#### P5.2 Exclusivity Score (10% of total) ✅
+- [x] Implement `calculateExclusivityScore()` function
+- [x] Base scores: public (0), semi-private (200), private (500), exclusive (800)
+- [x] Modifiers: high membership cost (+100), long waitlist (+100), formal dress (+50)
 
-#### P5.3 Awards System
-- [ ] Define `Award` interface (id, name, date earned, prestige bonus)
-- [ ] Example awards: Best Municipal (+30), Top 100 Public (+100), PGA Tour Venue (+200), Major Championship Host (+300)
-- [ ] Trigger awards based on achievements (prestige thresholds, golfer counts, etc.)
-- [ ] Display earned awards in UI
+#### P5.3 Awards System ✅
+- [x] Define `Award` interface (id, name, date earned, prestige bonus)
+- [x] Example awards: Best Municipal (+30), Top 100 Public (+100), PGA Tour Venue (+200), Major Championship Host (+300)
+- [ ] Trigger awards based on achievements (prestige thresholds, golfer counts, etc.) - future: game logic integration
+- [ ] Display earned awards in UI - future: UI work
 
 #### P5.4 Tournament Hosting
-- [ ] Define tournament types with prestige requirements
+- [ ] Define tournament types with prestige requirements - future: integration with tee time system
 - [ ] Tournament preparation period (course must be pristine)
 - [ ] Tournament hosting prestige bonus
 - [ ] Media coverage → reputation boost
 
-#### P5.5 Prestige Change Dynamics
-- [ ] Implement gradual prestige change (target vs current)
-- [ ] Max daily increase: +5 points
-- [ ] Max daily decrease: -15 points (faster fall than rise)
-- [ ] Handle prestige events (injuries, viral reviews, celebrity visits)
+#### P5.5 Prestige Change Dynamics ✅
+- [x] Implement gradual prestige change (target vs current)
+- [x] Max daily increase: +5 points
+- [x] Max daily decrease: -15 points (faster fall than rise)
+- [ ] Handle prestige events (injuries, viral reviews, celebrity visits) - future: event system
 
 ---
 
@@ -467,6 +467,7 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 - [x] Unit tests for streak bonuses and recovery penalties
 - [x] Unit tests for amenity score calculation
 - [x] Unit tests for reputation score calculation
+- [x] Unit tests for exclusivity score calculation
 - [ ] Integration test: prestige affects golfer demand
 - [ ] Integration test: overpricing causes visible rejections
 - [ ] E2E test: improve course to reach 3-star rating
@@ -484,6 +485,8 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 | `src/core/amenities.test.ts` | Unit tests for amenities ✅ |
 | `src/core/reputation.ts` | Reputation and review system ✅ |
 | `src/core/reputation.test.ts` | Unit tests for reputation ✅ |
+| `src/core/exclusivity.ts` | Exclusivity and awards system ✅ |
+| `src/core/exclusivity.test.ts` | Unit tests for exclusivity ✅ |
 | `src/babylon/ui/PrestigePanel.ts` | Star rating and breakdown display |
 | `src/babylon/ui/AmenityPanel.ts` | Amenity management interface |
 | `src/babylon/ui/GreenFeeAdvisor.ts` | Pricing recommendations |
