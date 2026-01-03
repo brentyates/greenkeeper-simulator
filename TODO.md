@@ -201,7 +201,7 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 ### 6.3 Research Simulation
 - [x] Call `tickResearch()` in update loop
 - [x] Deduct research funding cost from economy
-- [ ] Notify when research completes (optional)
+- [x] Notify when research completes
 - [ ] Unlock equipment/fertilizers when research completes
 
 ### 6.4 Apply Research Unlocks

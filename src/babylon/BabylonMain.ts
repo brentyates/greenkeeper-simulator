@@ -1614,6 +1614,9 @@ export class BabylonMain {
         }
         const researchResult = tickResearch(this.researchState, researchMinutes, timestamp);
         this.researchState = researchResult.state;
+        if (researchResult.completed) {
+          this.uiManager.showNotification(`Research complete: ${researchResult.completed.name}!`);
+        }
       }
     }
 
