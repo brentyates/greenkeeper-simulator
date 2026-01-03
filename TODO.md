@@ -22,7 +22,7 @@ This file tracks the work needed to integrate all economy/management systems int
 **Tee Time System** (See [Tee Time System](#tee-time-system) section)
 - ~~Phase T1: Core Tee Time Scheduling~~ ✅ (core logic complete, UI pending)
 - ~~Phase T2: Booking System~~ ✅ (core logic complete, UI pending)
-- Phase T3: Spacing & Pace
+- ~~Phase T3: Spacing & Pace~~ ✅ (core logic complete, UI pending)
 - Phase T4: Walk-On System
 - Phase T5: Revenue Integration
 - Phase T6: Marketing System
@@ -557,24 +557,24 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T3: Spacing & Pace
+### Phase T3: Spacing & Pace ✅
 
-#### T3.1 Spacing Configuration
-- [ ] Define `TeeTimeSpacing` type ('packed' 6min, 'tight' 8min, 'standard' 10min, 'comfortable' 12min, 'relaxed' 15min, 'exclusive' 20min)
-- [ ] Define `SpacingConfiguration` interface with impact modifiers
-- [ ] Implement spacing presets with revenue/reputation trade-offs
+#### T3.1 Spacing Configuration ✅
+- [x] Define `TeeTimeSpacing` type ('packed' 6min, 'tight' 8min, 'standard' 10min, 'comfortable' 12min, 'relaxed' 15min, 'exclusive' 20min)
+- [x] Define `SpacingConfiguration` interface with impact modifiers
+- [x] Implement spacing presets with revenue/reputation trade-offs
 
-#### T3.2 Pace of Play Calculation
-- [ ] Define `PaceOfPlayState` interface
-- [ ] Implement `calculatePaceOfPlay()` function
-- [ ] Calculate round time based on spacing, capacity, conditions, skill mix
-- [ ] Calculate wait time per hole
-- [ ] Identify backup locations (holes with waiting groups)
+#### T3.2 Pace of Play Calculation ✅
+- [x] Define `PaceOfPlayState` interface
+- [x] Implement `calculatePaceOfPlay()` function
+- [x] Calculate round time based on spacing, capacity, conditions, skill mix
+- [x] Calculate wait time per hole
+- [x] Identify backup locations (holes with waiting groups)
 
-#### T3.3 Pace Rating System
-- [ ] Implement pace rating tiers: 'excellent' (≤3.75h), 'good' (≤4.25h), 'acceptable' (≤4.75h), 'slow' (≤5.5h), 'terrible' (>5.5h)
-- [ ] Calculate satisfaction penalty based on pace
-- [ ] Track backup incidents
+#### T3.3 Pace Rating System ✅
+- [x] Implement pace rating tiers: 'excellent' (≤3.75h), 'good' (≤4.25h), 'acceptable' (≤4.75h), 'slow' (≤5.5h), 'terrible' (>5.5h)
+- [x] Calculate satisfaction penalty based on pace
+- [x] Track backup incidents
 
 #### T3.4 Spacing Configuration UI
 - [ ] Create spacing configuration panel
@@ -711,7 +711,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Unit tests for booking demand calculation
 - [x] Unit tests for booking simulation
 - [x] Unit tests for cancellation/no-show penalties
-- [ ] Unit tests for pace of play calculation
+- [x] Unit tests for pace of play calculation
+- [x] Unit tests for spacing impact preview
 - [ ] Unit tests for walk-on processing
 - [ ] Unit tests for revenue calculations
 - [ ] Unit tests for campaign effectiveness
