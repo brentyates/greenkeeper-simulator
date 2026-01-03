@@ -3,8 +3,6 @@ import {
   // Types
   Employee,
   EmployeeRole,
-  SkillLevel,
-  EmployeeStatus,
   EmployeeRoster,
   EmployeeSkills,
 

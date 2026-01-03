@@ -8,6 +8,7 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Ellipse } from '@babylonjs/gui/2D/controls/ellipse';
 
 import { EquipmentType } from '../../core/equipment-logic';
+import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
 
 export class UIManager {
   private advancedTexture: AdvancedDynamicTexture;
@@ -35,6 +36,22 @@ export class UIManager {
   private scoreText!: TextBlock;
   private objectiveText!: TextBlock;
 
+  private cashText!: TextBlock;
+  private golfersText!: TextBlock;
+  private economyPanel!: Rectangle;
+
+  private scenarioPanel!: Rectangle;
+  private scenarioTitleText!: TextBlock;
+  private scenarioProgressBar!: Rectangle;
+  private scenarioProgressFill!: Rectangle;
+  private scenarioProgressText!: TextBlock;
+  private daysRemainingText!: TextBlock;
+
+  private prestigePanel!: Rectangle;
+  private prestigeStarsText!: TextBlock;
+  private prestigeTierText!: TextBlock;
+  private prestigeScoreText!: TextBlock;
+
   private minimapContainer!: Rectangle;
   private minimapPlayerDot!: Ellipse;
 
@@ -51,6 +68,9 @@ export class UIManager {
     this.createCourseStatusPanel();
     this.createEquipmentSelector();
     this.createTimePanel();
+    this.createEconomyPanel();
+    this.createPrestigePanel();
+    this.createScenarioPanel();
     this.createResourcesPanel();
     this.createScorePanel();
     this.createMinimap();
@@ -316,6 +336,182 @@ export class UIManager {
     speedText.color = '#88ff88';
     speedText.fontSize = 11;
     speedBg.addControl(speedText);
+  }
+
+  private createEconomyPanel(): void {
+    this.economyPanel = new Rectangle('economyPanel');
+    this.economyPanel.width = '140px';
+    this.economyPanel.height = '65px';
+    this.economyPanel.cornerRadius = 5;
+    this.economyPanel.color = '#4a8a5a';
+    this.economyPanel.thickness = 2;
+    this.economyPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.economyPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.economyPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    this.economyPanel.left = '-10px';
+    this.economyPanel.top = '90px';
+    this.advancedTexture.addControl(this.economyPanel);
+
+    const stack = new StackPanel();
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    this.economyPanel.addControl(stack);
+
+    const cashRow = new StackPanel();
+    cashRow.isVertical = false;
+    cashRow.height = '22px';
+    stack.addControl(cashRow);
+
+    const cashIcon = new TextBlock();
+    cashIcon.text = '💵';
+    cashIcon.fontSize = 14;
+    cashIcon.width = '24px';
+    cashRow.addControl(cashIcon);
+
+    this.cashText = new TextBlock('cashText');
+    this.cashText.text = '$10,000';
+    this.cashText.color = '#44ff44';
+    this.cashText.fontSize = 14;
+    this.cashText.fontFamily = 'Arial Black, sans-serif';
+    this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    cashRow.addControl(this.cashText);
+
+    const golfersRow = new StackPanel();
+    golfersRow.isVertical = false;
+    golfersRow.height = '20px';
+    stack.addControl(golfersRow);
+
+    const golferIcon = new TextBlock();
+    golferIcon.text = '🏌️';
+    golferIcon.fontSize = 13;
+    golferIcon.width = '24px';
+    golfersRow.addControl(golferIcon);
+
+    this.golfersText = new TextBlock('golfersText');
+    this.golfersText.text = '0 golfers';
+    this.golfersText.color = '#aaaaaa';
+    this.golfersText.fontSize = 11;
+    this.golfersText.fontFamily = 'Arial, sans-serif';
+    this.golfersText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    golfersRow.addControl(this.golfersText);
+  }
+
+  private createPrestigePanel(): void {
+    this.prestigePanel = new Rectangle('prestigePanel');
+    this.prestigePanel.width = '140px';
+    this.prestigePanel.height = '70px';
+    this.prestigePanel.cornerRadius = 5;
+    this.prestigePanel.color = '#4a8a5a';
+    this.prestigePanel.thickness = 2;
+    this.prestigePanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.prestigePanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.prestigePanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    this.prestigePanel.left = '-10px';
+    this.prestigePanel.top = '165px';
+    this.advancedTexture.addControl(this.prestigePanel);
+
+    const stack = new StackPanel();
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    this.prestigePanel.addControl(stack);
+
+    const titleRow = new StackPanel();
+    titleRow.isVertical = false;
+    titleRow.height = '14px';
+    stack.addControl(titleRow);
+
+    const titleLabel = new TextBlock();
+    titleLabel.text = 'PRESTIGE';
+    titleLabel.color = '#7a9a7a';
+    titleLabel.fontSize = 9;
+    titleLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    titleRow.addControl(titleLabel);
+
+    this.prestigeStarsText = new TextBlock('prestigeStars');
+    this.prestigeStarsText.text = '★☆☆☆☆';
+    this.prestigeStarsText.color = '#ffcc00';
+    this.prestigeStarsText.fontSize = 14;
+    this.prestigeStarsText.height = '20px';
+    this.prestigeStarsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.prestigeStarsText);
+
+    this.prestigeTierText = new TextBlock('prestigeTier');
+    this.prestigeTierText.text = 'Municipal';
+    this.prestigeTierText.color = '#aaaaaa';
+    this.prestigeTierText.fontSize = 11;
+    this.prestigeTierText.height = '16px';
+    this.prestigeTierText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.prestigeTierText);
+
+    this.prestigeScoreText = new TextBlock('prestigeScore');
+    this.prestigeScoreText.text = '100 / 1000';
+    this.prestigeScoreText.color = '#888888';
+    this.prestigeScoreText.fontSize = 9;
+    this.prestigeScoreText.height = '14px';
+    this.prestigeScoreText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.prestigeScoreText);
+  }
+
+  private createScenarioPanel(): void {
+    this.scenarioPanel = new Rectangle('scenarioPanel');
+    this.scenarioPanel.width = '200px';
+    this.scenarioPanel.height = '75px';
+    this.scenarioPanel.cornerRadius = 5;
+    this.scenarioPanel.color = '#4a8a5a';
+    this.scenarioPanel.thickness = 2;
+    this.scenarioPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.scenarioPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.scenarioPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    this.scenarioPanel.left = '-10px';
+    this.scenarioPanel.top = '245px';
+    this.scenarioPanel.isVisible = false;
+    this.advancedTexture.addControl(this.scenarioPanel);
+
+    const stack = new StackPanel();
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    stack.paddingRight = '8px';
+    this.scenarioPanel.addControl(stack);
+
+    this.scenarioTitleText = new TextBlock('scenarioTitle');
+    this.scenarioTitleText.text = 'OBJECTIVE';
+    this.scenarioTitleText.color = '#7a9a7a';
+    this.scenarioTitleText.fontSize = 9;
+    this.scenarioTitleText.height = '14px';
+    this.scenarioTitleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.scenarioTitleText);
+
+    this.scenarioProgressText = new TextBlock('scenarioProgress');
+    this.scenarioProgressText.text = 'Earn $50,000';
+    this.scenarioProgressText.color = '#ffffff';
+    this.scenarioProgressText.fontSize = 11;
+    this.scenarioProgressText.height = '18px';
+    this.scenarioProgressText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.scenarioProgressText);
+
+    this.scenarioProgressBar = new Rectangle('scenarioProgressBar');
+    this.scenarioProgressBar.width = '180px';
+    this.scenarioProgressBar.height = '12px';
+    this.scenarioProgressBar.cornerRadius = 2;
+    this.scenarioProgressBar.color = '#3a5a4a';
+    this.scenarioProgressBar.thickness = 1;
+    this.scenarioProgressBar.background = '#1a3a2a';
+    stack.addControl(this.scenarioProgressBar);
+
+    this.scenarioProgressFill = new Rectangle('scenarioProgressFill');
+    this.scenarioProgressFill.width = '0%';
+    this.scenarioProgressFill.height = '100%';
+    this.scenarioProgressFill.background = '#44aa44';
+    this.scenarioProgressFill.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.scenarioProgressBar.addControl(this.scenarioProgressFill);
+
+    this.daysRemainingText = new TextBlock('daysRemaining');
+    this.daysRemainingText.text = '';
+    this.daysRemainingText.color = '#aaaaaa';
+    this.daysRemainingText.fontSize = 10;
+    this.daysRemainingText.height = '16px';
+    this.daysRemainingText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.daysRemainingText);
   }
 
   private createResourcesPanel(): void {
@@ -737,10 +933,76 @@ export class UIManager {
     this.scoreText.text = score.toLocaleString();
   }
 
+  public updateEconomy(cash: number, golferCount: number): void {
+    const formattedCash = cash >= 0
+      ? `$${cash.toLocaleString()}`
+      : `-$${Math.abs(cash).toLocaleString()}`;
+    this.cashText.text = formattedCash;
+    this.cashText.color = cash >= 0 ? '#44ff44' : '#ff4444';
+    this.golfersText.text = `${golferCount} golfer${golferCount !== 1 ? 's' : ''}`;
+  }
+
+  public updatePrestige(state: PrestigeState): void {
+    this.prestigeStarsText.text = getStarDisplay(state.starRating);
+    this.prestigeTierText.text = TIER_LABELS[state.tier];
+    this.prestigeScoreText.text = `${Math.round(state.currentScore)} / 1000`;
+
+    if (state.currentScore < state.targetScore) {
+      this.prestigeScoreText.color = '#44aa44';
+    } else if (state.currentScore > state.targetScore) {
+      this.prestigeScoreText.color = '#aa4444';
+    } else {
+      this.prestigeScoreText.color = '#888888';
+    }
+  }
+
   public updateObjective(text: string, completed: boolean = false): void {
     this.objectiveText.text = `🎯 ${text}${completed ? ' ✅' : ''}`;
     this.objectiveText.color = completed ? '#00ff00' : '#ffcc00';
     this.objectiveText.isVisible = true;
+  }
+
+  public updateScenarioProgress(
+    objectiveText: string,
+    currentValue: number,
+    targetValue: number,
+    daysElapsed: number,
+    dayLimit?: number,
+    completed: boolean = false
+  ): void {
+    this.scenarioPanel.isVisible = true;
+
+    const progress = Math.min(100, Math.max(0, (currentValue / targetValue) * 100));
+    this.scenarioProgressFill.width = `${progress}%`;
+
+    if (completed) {
+      this.scenarioProgressText.text = `✅ ${objectiveText}`;
+      this.scenarioProgressText.color = '#00ff00';
+      this.scenarioProgressFill.background = '#00ff00';
+    } else {
+      this.scenarioProgressText.text = objectiveText;
+      this.scenarioProgressText.color = '#ffffff';
+      this.scenarioProgressFill.background = progress >= 75 ? '#44aa44' : progress >= 50 ? '#aaaa44' : '#aa6644';
+    }
+
+    if (dayLimit) {
+      const daysRemaining = dayLimit - daysElapsed;
+      if (daysRemaining <= 7) {
+        this.daysRemainingText.color = '#ff6666';
+      } else if (daysRemaining <= 14) {
+        this.daysRemainingText.color = '#ffaa44';
+      } else {
+        this.daysRemainingText.color = '#aaaaaa';
+      }
+      this.daysRemainingText.text = `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`;
+    } else {
+      this.daysRemainingText.text = `Day ${daysElapsed}`;
+      this.daysRemainingText.color = '#aaaaaa';
+    }
+  }
+
+  public hideScenarioPanel(): void {
+    this.scenarioPanel.isVisible = false;
   }
 
   public updateMinimapPlayerPosition(x: number, y: number, mapWidth: number, mapHeight: number): void {

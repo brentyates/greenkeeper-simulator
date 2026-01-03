@@ -5,8 +5,6 @@ import {
   Transaction,
   Loan,
   LoanTerms,
-  TransactionCategory,
-  FinancialSummary,
 
   // Constants
   INCOME_CATEGORIES,

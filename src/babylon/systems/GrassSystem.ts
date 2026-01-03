@@ -984,6 +984,10 @@ export class GrassSystem {
     return this.cells[y]?.[x] ?? null;
   }
 
+  public getAllCells(): CellState[][] {
+    return this.cells;
+  }
+
   public getCourseStats(): {
     health: number;
     moisture: number;

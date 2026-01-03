@@ -51,6 +51,32 @@ Pure, engine-independent modules for TDD:
 | `movement.ts` | Grid movement, bounds checking, collision validation |
 | `terrain-editor-logic.ts` | Terrain editor operations and undo/redo |
 
+### Economy & Management Systems (in `src/core/`)
+
+| Module | Purpose |
+|--------|---------|
+| `economy.ts` | Cash, loans, transactions, financial tracking (RCT-style) |
+| `employees.ts` | Staff hiring/firing, wages, skills, productivity, promotions |
+| `golfers.ts` | Guest arrivals, satisfaction, green fees, tips, course rating |
+| `research.ts` | Tech tree with 30+ items, equipment unlocks, robotics tier |
+| `scenario.ts` | Scenario objectives (economic/attendance/satisfaction/restoration) |
+| `golf-logic.ts` | Tee boxes, pins, yardage calculations, hole validation |
+
+### Game Flow & UI (in `src/babylon/ui/` and `src/systems/`)
+
+| Component | Purpose |
+|-----------|---------|
+| `LaunchScreen.ts` | Scenario selection menu with progress indicators |
+| `ProgressManager.ts` | Persists completed scenarios and best scores to localStorage |
+
+### Data (in `src/data/`)
+
+| File | Purpose |
+|------|---------|
+| `courseData.ts` | Course layouts (3/9/18/27 holes), refill stations, obstacles |
+| `scenarioData.ts` | 10 scenarios with objectives, conditions, progression |
+| `testPresets.ts` | Test state presets for E2E testing |
+
 ### Coordinate Systems
 - **Grid coordinates**: `(gridX, gridY)` - logical tile positions
 - **Screen coordinates**: `(screenX, screenY)` - pixel positions
@@ -130,3 +156,41 @@ Defined in `src/data/testPresets.ts`. Common ones:
 | Tab | Cycle overlay modes (normal/moisture/nutrients/height) |
 | P | Pause game |
 | `[` / `]` | Zoom out/in |
+
+## Economy & Management Integration Status
+
+The economy/management systems are **integrated and running**. See `SCENARIOS.md` and `TODO.md` for detailed documentation.
+
+### What's Working ✅
+- All core logic modules with comprehensive unit tests
+- Launch screen with scenario selection
+- Progress persistence (localStorage)
+- Course layouts for all 5 courses
+- 10 scenarios with objectives and conditions
+- **Economy HUD** - Shows cash and active golfer count
+- **Scenario HUD** - Shows objective progress with progress bar and days remaining
+- **Golfer simulation** - Arrivals, progression, tips, satisfaction running
+- **Employee simulation** - Payroll processing, ticks, manager bonuses
+- **Research simulation** - Ticks with funding cost deduction
+- **Scenario tracking** - Win/lose detection with notifications
+
+### Remaining UI Enhancements (Nice-to-Have)
+| UI Component | Core Module | Priority |
+|--------------|-------------|----------|
+| Employee Panel | `employees.ts` | Medium - hiring, view roster |
+| Research Panel | `research.ts` | Medium - tech tree, funding controls |
+| Day Summary Popup | All | Medium - end-of-day stats |
+| Golfer Satisfaction | `golfers.ts` | Low - detailed satisfaction display |
+
+### Key Integration Points in BabylonMain
+
+`updateEconomySystems(deltaMs)` runs each frame and:
+- Processes hourly payroll
+- Generates golfer arrivals during golf hours (6am-7pm)
+- Ticks golfers through their rounds
+- Processes tips from departing golfers
+- Ticks employee energy/breaks
+- Ticks research progress
+- Updates scenario progress
+
+`checkScenarioCompletion()` checks win/lose conditions and triggers callbacks.

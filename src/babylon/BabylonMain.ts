@@ -18,6 +18,49 @@ import { canMoveFromTo } from "../core/terrain";
 import { EditorTool } from "../core/terrain-editor-logic";
 import { ScenarioDefinition } from "../data/scenarioData";
 
+import {
+  EconomyState,
+  createInitialEconomyState,
+  addIncome,
+  addExpense,
+} from "../core/economy";
+import {
+  EmployeeRoster,
+  createInitialRoster,
+  tickEmployees,
+  processPayroll,
+  getManagerBonus,
+} from "../core/employees";
+import {
+  GolferPoolState,
+  GreenFeeStructure,
+  createInitialPoolState,
+  tickGolfers,
+  generateArrivals,
+  calculateArrivalRate,
+  updateCourseRating,
+  addGolfer,
+  getActiveGolferCount,
+  WeatherCondition,
+  DEFAULT_GREEN_FEES,
+} from "../core/golfers";
+import {
+  ResearchState,
+  createInitialResearchState,
+  tickResearch,
+  getFundingCostPerMinute,
+} from "../core/research";
+import { ScenarioManager } from "../core/scenario";
+import {
+  PrestigeState,
+  createInitialPrestigeState,
+  calculateCurrentConditions,
+  updatePrestigeScore,
+  calculateDemandMultiplier,
+  takeDailySnapshot,
+  updateHistoricalExcellence,
+} from "../core/prestige";
+
 export interface GameOptions {
   scenario?: ScenarioDefinition;
   onReturnToMenu?: () => void;
@@ -61,6 +104,19 @@ export class BabylonMain {
   private currentCourse: CourseData;
   private currentScenario: ScenarioDefinition | null = null;
 
+  private economyState: EconomyState;
+  private employeeRoster: EmployeeRoster;
+  private golferPool: GolferPoolState;
+  private researchState: ResearchState;
+  private scenarioManager: ScenarioManager | null = null;
+  private weather: WeatherCondition = { type: "sunny", temperature: 72, windSpeed: 5 };
+  private greenFees: GreenFeeStructure = { ...DEFAULT_GREEN_FEES };
+  private lastPayrollHour: number = -1;
+  private lastArrivalHour: number = -1;
+  private accumulatedResearchTime: number = 0;
+  private prestigeState: PrestigeState;
+  private lastPrestigeUpdateHour: number = -1;
+
   constructor(canvasId: string, options: GameOptions = {}) {
     this.gameOptions = options;
     this.currentScenario = options.scenario || null;
@@ -74,6 +130,38 @@ export class BabylonMain {
     }
 
     const course = this.currentCourse;
+
+    // Initialize economy and management systems
+    const startingCash = options.scenario?.conditions.startingCash ?? 10000;
+    this.economyState = createInitialEconomyState(startingCash);
+    this.employeeRoster = createInitialRoster();
+    this.golferPool = createInitialPoolState();
+    this.researchState = createInitialResearchState();
+    this.prestigeState = createInitialPrestigeState(100);
+
+    // Set green fees based on course size
+    const courseHoles = course.par ? Math.round(course.par / 4) : 9;
+    if (courseHoles <= 3) {
+      this.greenFees = {
+        weekday9Holes: 15, weekday18Holes: 25,
+        weekend9Holes: 20, weekend18Holes: 30,
+        twilight9Holes: 10, twilight18Holes: 15
+      };
+    } else if (courseHoles <= 9) {
+      this.greenFees = {
+        weekday9Holes: 25, weekday18Holes: 45,
+        weekend9Holes: 35, weekend18Holes: 55,
+        twilight9Holes: 18, twilight18Holes: 30
+      };
+    }
+
+    // Initialize scenario manager if we have a scenario
+    if (options.scenario) {
+      this.scenarioManager = new ScenarioManager(
+        options.scenario.objective,
+        options.scenario.conditions
+      );
+    }
 
     // Set starting position based on course size
     this.playerX = Math.floor(course.width / 2);
@@ -1086,10 +1174,29 @@ export class BabylonMain {
       this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
       if (this.gameTime >= 24 * 60) {
         this.gameTime -= 24 * 60;
+
+        // Take daily snapshot for historical tracking
+        const snapshot = takeDailySnapshot(this.prestigeState.currentConditions, this.gameDay);
+        this.prestigeState = {
+          ...this.prestigeState,
+          historicalExcellence: updateHistoricalExcellence(
+            this.prestigeState.historicalExcellence,
+            snapshot
+          ),
+        };
+
         this.gameDay++;
       }
 
       this.grassSystem.update(deltaMs * this.timeScale, this.gameTime);
+
+      // Update economy and management systems
+      this.updateEconomySystems(deltaMs);
+
+      // Check scenario objectives periodically
+      if (this.scenarioManager && Math.random() < 0.01) {
+        this.checkScenarioCompletion();
+      }
 
       this.updateDayNightCycle();
 
@@ -1123,6 +1230,61 @@ export class BabylonMain {
         courseStats.nutrients
       );
       this.uiManager.updateScore(this.score);
+      this.uiManager.updateEconomy(
+        this.economyState.cash,
+        getActiveGolferCount(this.golferPool)
+      );
+
+      // Update scenario progress HUD
+      if (this.scenarioManager && this.currentScenario) {
+        const progress = this.scenarioManager.getProgress();
+        const objective = this.currentScenario.objective;
+        const conditions = this.currentScenario.conditions;
+
+        let currentValue = 0;
+        let targetValue = 1;
+        let objectiveText = '';
+
+        switch (objective.type) {
+          case 'economic':
+            if (objective.targetProfit) {
+              currentValue = progress.totalRevenue - progress.totalExpenses;
+              targetValue = objective.targetProfit;
+              objectiveText = `Profit: $${currentValue.toLocaleString()} / $${targetValue.toLocaleString()}`;
+            } else if (objective.targetRevenue) {
+              currentValue = progress.totalRevenue;
+              targetValue = objective.targetRevenue;
+              objectiveText = `Revenue: $${currentValue.toLocaleString()} / $${targetValue.toLocaleString()}`;
+            }
+            break;
+          case 'restoration':
+            currentValue = progress.currentHealth;
+            targetValue = objective.targetHealth || 80;
+            objectiveText = `Health: ${Math.round(currentValue)}% / ${targetValue}%`;
+            break;
+          case 'attendance':
+            currentValue = progress.totalRounds;
+            targetValue = objective.targetRounds || 100;
+            objectiveText = `Rounds: ${currentValue} / ${targetValue}`;
+            break;
+          case 'satisfaction':
+            currentValue = progress.daysAtTargetRating;
+            targetValue = objective.maintainForDays || 30;
+            objectiveText = `Days at rating: ${currentValue} / ${targetValue}`;
+            break;
+        }
+
+        const result = this.scenarioManager.checkObjective();
+        this.uiManager.updateScenarioProgress(
+          objectiveText,
+          currentValue,
+          targetValue,
+          progress.daysElapsed,
+          conditions.timeLimitDays,
+          result.completed
+        );
+      }
+
       this.uiManager.updateMinimapPlayerPosition(
         this.playerX,
         this.playerY,
@@ -1155,6 +1317,171 @@ export class BabylonMain {
       0.1 * brightness,
       1
     );
+  }
+
+  private updateEconomySystems(deltaMs: number): void {
+    const hours = Math.floor(this.gameTime / 60);
+    const gameMinutes = deltaMs / 1000 * 2 * this.timeScale;
+    const isWeekend = this.gameDay % 7 >= 5;
+    const isTwilight = hours >= 16;
+    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+
+    // Hourly payroll processing
+    if (hours !== this.lastPayrollHour && this.employeeRoster.employees.length > 0) {
+      this.lastPayrollHour = hours;
+      const payrollResult = processPayroll(this.employeeRoster, timestamp);
+      this.employeeRoster = payrollResult.roster;
+      if (payrollResult.totalPaid > 0) {
+        const expenseResult = addExpense(
+          this.economyState,
+          payrollResult.totalPaid,
+          "employee_wages",
+          "Hourly wages",
+          timestamp,
+          true
+        );
+        if (expenseResult) {
+          this.economyState = expenseResult;
+        }
+      }
+    }
+
+    // Hourly prestige update
+    if (hours !== this.lastPrestigeUpdateHour) {
+      this.lastPrestigeUpdateHour = hours;
+      const cells = this.grassSystem.getAllCells();
+      const conditionsScore = calculateCurrentConditions(cells);
+      this.prestigeState = updatePrestigeScore(this.prestigeState, conditionsScore);
+      this.uiManager.updatePrestige(this.prestigeState);
+    }
+
+    // Golfer arrivals (hourly during golf hours: 6am - 7pm)
+    if (hours !== this.lastArrivalHour && hours >= 6 && hours <= 19) {
+      this.lastArrivalHour = hours;
+      const courseStats = this.grassSystem.getCourseStats();
+      this.golferPool = updateCourseRating(this.golferPool, { condition: courseStats.health });
+
+      const baseArrivalRate = calculateArrivalRate(
+        this.golferPool,
+        this.weather,
+        isWeekend,
+        hours
+      );
+
+      // Apply prestige demand multiplier
+      const demandMultiplier = calculateDemandMultiplier(this.greenFees.weekday18Holes, this.prestigeState.tolerance);
+      const arrivalRate = baseArrivalRate * demandMultiplier;
+      const arrivalCount = Math.floor(arrivalRate + (Math.random() < (arrivalRate % 1) ? 1 : 0));
+
+      if (arrivalCount > 0) {
+        const arrivals = generateArrivals(
+          this.golferPool,
+          arrivalCount,
+          this.gameTime,
+          this.greenFees,
+          isWeekend,
+          isTwilight
+        );
+        for (const golfer of arrivals) {
+          this.golferPool = addGolfer(this.golferPool, golfer);
+          this.economyState = addIncome(
+            this.economyState,
+            golfer.paidAmount,
+            "green_fees",
+            `Green fee: ${golfer.type}`,
+            timestamp
+          );
+          if (this.scenarioManager) {
+            this.scenarioManager.addRevenue(golfer.paidAmount);
+            this.scenarioManager.addGolfers(1);
+          }
+        }
+      }
+    }
+
+    // Tick golfers (progress through their round)
+    const courseStats = this.grassSystem.getCourseStats();
+    const staffQuality = getManagerBonus(this.employeeRoster) * 10 + 50;
+    const tickResult = tickGolfers(
+      this.golferPool,
+      gameMinutes,
+      courseStats.health,
+      staffQuality,
+      this.weather
+    );
+    this.golferPool = tickResult.state;
+
+    // Process departures - tips become income
+    if (tickResult.tips > 0) {
+      this.economyState = addIncome(
+        this.economyState,
+        tickResult.tips,
+        "other_income",
+        "Golfer tips",
+        timestamp
+      );
+      if (this.scenarioManager) {
+        this.scenarioManager.addRevenue(tickResult.tips);
+      }
+    }
+    for (const _departure of tickResult.departures) {
+      if (this.scenarioManager) {
+        this.scenarioManager.addRound();
+      }
+    }
+
+    // Tick employees (energy, breaks)
+    const tickEmployeesResult = tickEmployees(this.employeeRoster, gameMinutes);
+    this.employeeRoster = tickEmployeesResult.roster;
+
+    // Tick research
+    this.accumulatedResearchTime += gameMinutes;
+    if (this.accumulatedResearchTime >= 1) {
+      const researchMinutes = Math.floor(this.accumulatedResearchTime);
+      this.accumulatedResearchTime -= researchMinutes;
+      const fundingCost = getFundingCostPerMinute(this.researchState) * researchMinutes;
+      if (fundingCost > 0 && this.economyState.cash >= fundingCost) {
+        const expenseResult = addExpense(
+          this.economyState,
+          fundingCost,
+          "research",
+          "Research funding",
+          timestamp,
+          true
+        );
+        if (expenseResult) {
+          this.economyState = expenseResult;
+        }
+        const researchResult = tickResearch(this.researchState, researchMinutes, timestamp);
+        this.researchState = researchResult.state;
+      }
+    }
+
+    // Update scenario manager with current course state
+    if (this.scenarioManager) {
+      this.scenarioManager.updateProgress({
+        currentCash: this.economyState.cash,
+        currentHealth: courseStats.health,
+      });
+    }
+  }
+
+  private checkScenarioCompletion(): void {
+    if (!this.scenarioManager) return;
+
+    const result = this.scenarioManager.checkObjective();
+
+    if (result.completed) {
+      const score = Math.round(
+        this.economyState.cash +
+        this.golferPool.totalVisitorsToday * 10 +
+        this.grassSystem.getCourseStats().health * 100
+      );
+      this.gameOptions.onScenarioComplete?.(score);
+      this.uiManager.showNotification(`Scenario Complete! Score: ${score}`);
+    } else if (result.failed) {
+      this.uiManager.showNotification(`Scenario Failed: ${result.message || "Objective not met"}`);
+    }
   }
 
   public start(): void {

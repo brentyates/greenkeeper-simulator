@@ -525,7 +525,7 @@ export function calculateArrivalRate(
 }
 
 export function generateArrivals(
-  state: GolferPoolState,
+  _state: GolferPoolState,
   count: number,
   currentTime: number,
   fees: GreenFeeStructure,

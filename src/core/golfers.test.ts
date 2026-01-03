@@ -3,13 +3,9 @@ import {
   // Types
   Golfer,
   GolferType,
-  GolferStatus,
   GolferPoolState,
   GolferPreferences,
-  GreenFeeStructure,
-  CourseRating,
   WeatherCondition,
-  SatisfactionFactor,
 
   // Constants
   GOLFER_TYPE_WEIGHTS,
@@ -17,8 +13,6 @@ import {
   DEFAULT_GREEN_FEES,
   SATISFACTION_WEIGHTS,
   WEATHER_SATISFACTION_MODIFIERS,
-  BASE_ARRIVAL_RATE,
-  HOLES_PER_HOUR,
 
   // Factory functions
   createInitialPoolState,
@@ -644,17 +638,8 @@ describe("Golfer System", () => {
         type: "regular",
         satisfactionFactors: { price_value: 80 }
       });
-      const poorValue = makeGolfer({
-        satisfaction: 75,
-        type: "regular",
-        satisfactionFactors: { price_value: 30 }
-      });
-
       // Good value should return
       expect(calculateWillReturn(goodValue)).toBe(true);
-      // Poor value with penalty = 0.7 * 1.0 * 1.2 = 0.84 base * 0.7 = 0.588
-      // Actually let's check: satisfaction 75/100 * 1.2 (regular) * 0.7 (poor value) = 0.63
-      // Still > 0.5, so true. Let's use lower satisfaction.
     });
   });
 

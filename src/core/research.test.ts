@@ -2,11 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   // Types
   ResearchState,
-  ResearchItem,
   ResearchProgress,
-  ResearchCategory,
-  FundingLevel,
-  ResearchStatus,
   EquipmentStats,
 
   // Constants
