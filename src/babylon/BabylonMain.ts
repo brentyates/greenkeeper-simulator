@@ -13,9 +13,16 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import "@babylonjs/core/Culling/ray";
 
-import { COURSE_HOLE_1, REFILL_STATIONS } from "../data/courseData";
+import { COURSE_HOLE_1, REFILL_STATIONS, CourseData, getCourseById } from "../data/courseData";
 import { canMoveFromTo } from "../core/terrain";
 import { EditorTool } from "../core/terrain-editor-logic";
+import { ScenarioDefinition } from "../data/scenarioData";
+
+export interface GameOptions {
+  scenario?: ScenarioDefinition;
+  onReturnToMenu?: () => void;
+  onScenarioComplete?: (score: number) => void;
+}
 
 export class BabylonMain {
   private babylonEngine: BabylonEngine;
@@ -50,8 +57,27 @@ export class BabylonMain {
   private terrainEditorUI: TerrainEditorUI | null = null;
   private editorUITexture: AdvancedDynamicTexture | null = null;
 
-  constructor(canvasId: string) {
-    const course = COURSE_HOLE_1;
+  private gameOptions: GameOptions;
+  private currentCourse: CourseData;
+  private currentScenario: ScenarioDefinition | null = null;
+
+  constructor(canvasId: string, options: GameOptions = {}) {
+    this.gameOptions = options;
+    this.currentScenario = options.scenario || null;
+
+    // Determine which course to load
+    if (options.scenario) {
+      const scenarioCourse = getCourseById(options.scenario.courseId);
+      this.currentCourse = scenarioCourse || COURSE_HOLE_1;
+    } else {
+      this.currentCourse = COURSE_HOLE_1;
+    }
+
+    const course = this.currentCourse;
+
+    // Set starting position based on course size
+    this.playerX = Math.floor(course.width / 2);
+    this.playerY = Math.floor(course.height * 0.75);
     this.babylonEngine = new BabylonEngine(
       canvasId,
       course.width,
@@ -66,6 +92,30 @@ export class BabylonMain {
     this.buildScene();
     this.setupTerrainEditor();
     this.setupUpdateLoop();
+
+    // Show scenario objective if we have one
+    if (this.currentScenario) {
+      this.uiManager.updateObjective(this.getObjectiveText());
+    }
+  }
+
+  private getObjectiveText(): string {
+    if (!this.currentScenario) return '';
+    const obj = this.currentScenario.objective;
+    switch (obj.type) {
+      case 'economic':
+        if (obj.targetProfit) return `Earn $${obj.targetProfit.toLocaleString()} profit`;
+        if (obj.targetRevenue) return `Generate $${obj.targetRevenue.toLocaleString()} revenue`;
+        return 'Complete economic goal';
+      case 'restoration':
+        return `Restore course to ${obj.targetHealth}% health`;
+      case 'attendance':
+        return `Host ${obj.targetRounds} rounds of golf`;
+      case 'satisfaction':
+        return `Maintain ${obj.targetRating}% rating for ${obj.maintainForDays} days`;
+      default:
+        return 'Complete scenario objective';
+    }
   }
 
   private setupTerrainEditor(): void {
@@ -178,7 +228,7 @@ export class BabylonMain {
   }
 
   private buildObstacles(): void {
-    const { obstacles } = COURSE_HOLE_1;
+    const { obstacles } = this.currentCourse;
     if (!obstacles) return;
 
     for (const obs of obstacles) {
@@ -382,7 +432,7 @@ export class BabylonMain {
   }
 
   public teleport(x: number, y: number): void {
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
     if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
       console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
       return;
@@ -503,7 +553,7 @@ export class BabylonMain {
   }
 
   private tryMove(direction: Direction): boolean {
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
     let newX = this.playerX;
     let newY = this.playerY;
 
@@ -565,7 +615,7 @@ export class BabylonMain {
       return;
     }
 
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
     if (
       gridPos.x < 0 ||
       gridPos.x >= course.width ||
@@ -644,7 +694,7 @@ export class BabylonMain {
     const gridX = Math.floor(groundX);
     const gridY = Math.floor(groundZ);
 
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
     if (
       gridX < 0 ||
       gridX >= course.width ||
@@ -672,7 +722,7 @@ export class BabylonMain {
       parent: PathNode | null;
     }
 
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
     const openSet: PathNode[] = [];
     const closedSet = new Set<string>();
 
@@ -830,7 +880,8 @@ export class BabylonMain {
     this.isPaused = true;
     this.uiManager.showPauseMenu(
       () => this.resumeGame(),
-      () => this.restartGame()
+      () => this.restartGame(),
+      this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined
     );
   }
 
@@ -840,8 +891,9 @@ export class BabylonMain {
   }
 
   private restartGame(): void {
-    this.playerX = 25;
-    this.playerY = 19;
+    const course = this.currentCourse;
+    this.playerX = Math.floor(course.width / 2);
+    this.playerY = Math.floor(course.height * 0.75);
     this.gameTime = 6 * 60;
     this.gameDay = 1;
     this.score = 0;
@@ -850,12 +902,18 @@ export class BabylonMain {
     this.grassSystem.dispose();
     this.grassSystem = new GrassSystem(
       this.babylonEngine.getScene(),
-      COURSE_HOLE_1
+      course
     );
     this.grassSystem.build();
     this.updatePlayerPosition();
     this.resumeGame();
     this.uiManager.showNotification("Game Restarted");
+  }
+
+  private returnToMenu(): void {
+    if (this.gameOptions.onReturnToMenu) {
+      this.gameOptions.onReturnToMenu();
+    }
   }
 
   private handleMute(): void {
@@ -996,7 +1054,7 @@ export class BabylonMain {
 
   private setupUpdateLoop(): void {
     this.lastTime = performance.now();
-    const course = COURSE_HOLE_1;
+    const course = this.currentCourse;
 
     const stats = this.grassSystem.getCourseStats();
     this.uiManager.updateCourseStatus(
@@ -1122,8 +1180,8 @@ export class BabylonMain {
   }
 }
 
-export function startBabylonGame(canvasId: string): BabylonMain {
-  const game = new BabylonMain(canvasId);
+export function startBabylonGame(canvasId: string, options: GameOptions = {}): BabylonMain {
+  const game = new BabylonMain(canvasId, options);
   game.start();
   return game;
 }

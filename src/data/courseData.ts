@@ -393,3 +393,7 @@ export const ALL_COURSES = {
 } as const;
 
 export type CourseId = keyof typeof ALL_COURSES;
+
+export function getCourseById(courseId: CourseId): CourseData | undefined {
+  return ALL_COURSES[courseId];
+}
