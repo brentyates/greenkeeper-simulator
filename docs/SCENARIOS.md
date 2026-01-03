@@ -51,6 +51,12 @@ Focus on improving neglected courses:
 - **Target Health:** Restore course health to a specific level
 - **Target Condition:** Achieve "Excellent", "Good", "Fair", or "Poor" rating
 
+### Tournament Scenarios
+Focus on hosting professional events (see [Tournament System Spec](TOURNAMENT_SYSTEM_SPEC.md)):
+- **Prestige Requirement:** Maintain 5-star prestige for a duration
+- **Event Hosting:** Successfully host and manage the tournament
+- **Course Preparation:** Meet strict condition standards during event
+
 ## Scenario Progression Path
 
 ### Level 1: Tutorial
@@ -133,16 +139,32 @@ Focus purely on revenue generation without profit constraints.
 
 ---
 
-### Level 7: Tournament Hosting
-**Scenario:** Sunrise Valley Tournament
+### Level 7: Tournament Preparation
+**Scenario:** Sunrise Valley State Championship Bid
 **Course:** Sunrise Valley (18-hole)
-**Type:** Attendance
-**Objective:** Attract 500 golfers, host 125 rounds
-**Time Limit:** 90 days
-**Starting Cash:** $15,000
+**Type:** Satisfaction + Tournament
+**Objective:**
+- Achieve and maintain 5-star prestige for 30 consecutive days
+- Successfully host a State Championship tournament
+**Time Limit:** 120 days
+**Starting Cash:** $20,000
+**Starting Prestige:** 4.0 stars
 **Difficulty:** Advanced
 
-Host a major tournament with significant attendance goals.
+The State Golf Association is considering your course for their championship. First, prove your excellence by maintaining 5-star prestige for a full month, then successfully host the tournament when the offer arrives.
+
+**Tournament Details:**
+- Event Duration: 3 days
+- Expected Spectators: 2,000
+- Required Facilities: Clubhouse Tier 3, Driving Range, Media Center
+- Preparation Period: 14 days before event
+- Success Criteria: Maintain 95%+ course health, no major issues during play
+
+**Special Mechanics:**
+- Regular tee times suspended during tournament
+- Revenue from sponsorships, concessions, and merchandise instead
+- Course inspections occur daily during preparation and event
+- Potential profit: $50,000+ if successful
 
 ---
 
