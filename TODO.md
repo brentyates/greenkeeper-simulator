@@ -25,7 +25,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T3: Spacing & Pace~~ ✅ (core logic complete, UI pending)
 - ~~Phase T4: Walk-On System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T5: Revenue Integration~~ ✅ (core logic complete, UI pending)
-- Phase T6: Marketing System
+- ~~Phase T6: Marketing System~~ ✅ (core logic complete, UI pending)
 - Phase T7: Advanced Features
 
 **Other Enhancements (Nice-to-Have):**
@@ -657,30 +657,35 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T6: Marketing System
+### Phase T6: Marketing System ✅
 
-#### T6.1 Campaign Definitions
-- [ ] Define `MarketingCampaign` interface
-- [ ] Implement campaign types: local_advertising, radio_campaign, social_media, golf_magazine, free_round_voucher, group_discount, twilight_special, tournament_hosting, celebrity_appearance
-- [ ] Configure costs, durations, effects, cooldowns
+#### T6.1 Campaign Definitions ✅
+- [x] Define `MarketingCampaign` interface
+- [x] Implement campaign types: local_advertising, radio_campaign, social_media, golf_magazine, free_round_voucher, group_discount, twilight_special, tournament_hosting, celebrity_appearance
+- [x] Configure costs, durations, effects, cooldowns
+- [x] Define `GolferTargetType` for audience targeting
 
-#### T6.2 Campaign Activation
-- [ ] Create marketing dashboard UI
-- [ ] Show active campaigns with progress
-- [ ] List available campaigns with costs and expected impact
-- [ ] Add start/stop campaign controls
+#### T6.2 Campaign Activation ✅
+- [x] Implement `canStartCampaign()` validation
+- [x] Implement `startCampaign()` with duration clamping
+- [x] Implement `stopCampaign()` early termination
+- [x] Track cooldowns between campaigns
+- [ ] Create marketing dashboard UI (future: UI work)
 
-#### T6.3 Campaign Effects
-- [ ] Apply demand multipliers during active campaigns
-- [ ] Apply price elasticity effects
-- [ ] Target specific golfer audiences
+#### T6.3 Campaign Effects ✅
+- [x] Calculate combined demand multipliers
+- [x] Calculate combined price elasticity effects
+- [x] Track targeted golfer audiences
+- [x] Support twilight-only campaigns
+- [x] Support event campaigns (tournament, celebrity)
 
-#### T6.4 Campaign Effectiveness Tracking
-- [ ] Define `CampaignEffectiveness` interface
-- [ ] Track additional bookings vs baseline
-- [ ] Calculate ROI
-- [ ] Generate recommendations (highly effective, effective, marginal, ineffective)
-- [ ] Show campaign history with results
+#### T6.4 Campaign Effectiveness Tracking ✅
+- [x] Define `CampaignEffectiveness` interface
+- [x] Track additional bookings vs baseline
+- [x] Calculate ROI
+- [x] Generate recommendations (highly effective, effective, marginal, ineffective)
+- [x] Calculate prestige impact per campaign type
+- [x] Track aggregate marketing metrics
 
 ---
 
@@ -720,7 +725,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Unit tests for spacing impact preview
 - [x] Unit tests for walk-on processing
 - [x] Unit tests for revenue calculations
-- [ ] Unit tests for campaign effectiveness
+- [x] Unit tests for campaign effectiveness
 - [ ] Integration test: tee time spacing affects satisfaction
 - [ ] Integration test: walk-on queue management
 - [ ] E2E test: complete day of tee time bookings
@@ -738,8 +743,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 | `src/core/walk-ons.test.ts` | Unit tests for walk-on logic ✅ |
 | `src/core/tee-revenue.ts` | Revenue integration (fees, add-ons, tips) ✅ |
 | `src/core/tee-revenue.test.ts` | Unit tests for revenue logic ✅ |
-| `src/core/marketing.ts` | Marketing campaign system |
-| `src/core/marketing.test.ts` | Unit tests for marketing |
+| `src/core/marketing.ts` | Marketing campaign system ✅ |
+| `src/core/marketing.test.ts` | Unit tests for marketing ✅ |
 | `src/babylon/ui/TeeSheetPanel.ts` | Main tee sheet interface |
 | `src/babylon/ui/SpacingConfigPanel.ts` | Spacing configuration UI |
 | `src/babylon/ui/WalkOnQueuePanel.ts` | Walk-on queue display |
