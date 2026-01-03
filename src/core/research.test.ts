@@ -7,6 +7,7 @@ import {
   ResearchCategory,
   FundingLevel,
   ResearchStatus,
+  EquipmentStats,
 
   // Constants
   FUNDING_POINTS_PER_MINUTE,
@@ -34,6 +35,11 @@ import {
   getUnlockedEquipment,
   getUnlockedFertilizers,
   getActiveUpgrades,
+  getUnlockedAutonomousEquipment,
+  isAutonomousEquipment,
+  getAutonomousEquipmentStats,
+  calculateRobotOperatingCost,
+  calculateBreakdownProbability,
   getPrerequisiteChain,
   getDependentResearch,
 
@@ -873,6 +879,280 @@ describe("Research System", () => {
       expect(getResearchCategoryName("landscaping")).toBe("Landscaping");
       expect(getResearchCategoryName("facilities")).toBe("Facilities");
       expect(getResearchCategoryName("management")).toBe("Management");
+      expect(getResearchCategoryName("robotics")).toBe("Robotics");
+    });
+  });
+
+  // ==========================================================================
+  // Robotics & Autonomous Equipment Tests
+  // ==========================================================================
+
+  describe("Robotics Category", () => {
+    it("has robotics research items", () => {
+      const roboticsItems = getResearchItemsByCategory("robotics");
+      expect(roboticsItems.length).toBeGreaterThan(0);
+    });
+
+    it("robotics items are tier 5", () => {
+      const roboticsItems = getResearchItemsByCategory("robotics");
+      expect(roboticsItems.every(item => item.tier === 5)).toBe(true);
+    });
+
+    it("has robot mower for fairways", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
+    it("has robot mower for greens", () => {
+      const item = getResearchItem("robot_mower_greens");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
+    it("has robot sprayer", () => {
+      const item = getResearchItem("robot_sprayer");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
+    it("has robot fertilizer spreader", () => {
+      const item = getResearchItem("robot_fertilizer");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
+    it("has robot bunker rake", () => {
+      const item = getResearchItem("robot_bunker_rake");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
+    it("has fleet management AI upgrade", () => {
+      const item = getResearchItem("robot_fleet_manager");
+      expect(item).not.toBeNull();
+      expect(item?.unlocks.type).toBe("upgrade");
+    });
+  });
+
+  describe("Autonomous Equipment Stats", () => {
+    it("robot equipment has isAutonomous flag", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      if (item?.unlocks.type === "equipment") {
+        expect(item.unlocks.stats.isAutonomous).toBe(true);
+      }
+    });
+
+    it("robot equipment has purchase cost", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      if (item?.unlocks.type === "equipment") {
+        expect(item.unlocks.stats.purchaseCost).toBeGreaterThan(0);
+        expect(item.unlocks.stats.purchaseCost).toBe(45000);
+      }
+    });
+
+    it("robot equipment has low operating cost", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      if (item?.unlocks.type === "equipment") {
+        // $2.50/hour is much less than employee wages (~$12-25/hour)
+        expect(item.unlocks.stats.operatingCostPerHour).toBeLessThan(5);
+      }
+    });
+
+    it("robot equipment has breakdown rate", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      if (item?.unlocks.type === "equipment") {
+        expect(item.unlocks.stats.breakdownRate).toBeGreaterThan(0);
+        expect(item.unlocks.stats.breakdownRate).toBeLessThan(0.1);
+      }
+    });
+
+    it("robot equipment has repair time", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      if (item?.unlocks.type === "equipment") {
+        expect(item.unlocks.stats.repairTime).toBeGreaterThan(0);
+      }
+    });
+
+    it("bunker rake has higher breakdown rate due to sand", () => {
+      const bunkerBot = getResearchItem("robot_bunker_rake");
+      const fairwayBot = getResearchItem("robot_mower_fairway");
+
+      if (bunkerBot?.unlocks.type === "equipment" && fairwayBot?.unlocks.type === "equipment") {
+        expect(bunkerBot.unlocks.stats.breakdownRate).toBeGreaterThan(
+          fairwayBot.unlocks.stats.breakdownRate!
+        );
+      }
+    });
+  });
+
+  describe("isAutonomousEquipment", () => {
+    it("returns true for robot equipment", () => {
+      expect(isAutonomousEquipment("robot_mower_fairway")).toBe(true);
+      expect(isAutonomousEquipment("robot_sprayer")).toBe(true);
+      expect(isAutonomousEquipment("robot_fertilizer")).toBe(true);
+    });
+
+    it("returns false for regular equipment", () => {
+      expect(isAutonomousEquipment("push_mower_1")).toBe(false);
+      expect(isAutonomousEquipment("riding_mower_1")).toBe(false);
+    });
+
+    it("returns false for nonexistent equipment", () => {
+      expect(isAutonomousEquipment("fake_equipment")).toBe(false);
+    });
+  });
+
+  describe("getAutonomousEquipmentStats", () => {
+    it("returns stats for valid equipment", () => {
+      const stats = getAutonomousEquipmentStats("robot_mower_fairway");
+      expect(stats).not.toBeNull();
+      expect(stats?.isAutonomous).toBe(true);
+      expect(stats?.purchaseCost).toBe(45000);
+    });
+
+    it("returns null for nonexistent equipment", () => {
+      const stats = getAutonomousEquipmentStats("fake_equipment");
+      expect(stats).toBeNull();
+    });
+  });
+
+  describe("getUnlockedAutonomousEquipment", () => {
+    it("returns empty array with no robot research completed", () => {
+      const state = makeResearchState({ completedResearch: ["basic_push_mower"] });
+      const autonomous = getUnlockedAutonomousEquipment(state);
+      expect(autonomous.length).toBe(0);
+    });
+
+    it("returns autonomous equipment when researched", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "robot_mower_fairway"]
+      });
+      const autonomous = getUnlockedAutonomousEquipment(state);
+
+      expect(autonomous.length).toBe(1);
+      expect(autonomous[0].equipmentId).toBe("robot_mower_fairway");
+      expect(autonomous[0].stats.isAutonomous).toBe(true);
+    });
+
+    it("returns multiple autonomous equipment", () => {
+      const state = makeResearchState({
+        completedResearch: [
+          "basic_push_mower",
+          "robot_mower_fairway",
+          "robot_sprayer",
+          "robot_fertilizer"
+        ]
+      });
+      const autonomous = getUnlockedAutonomousEquipment(state);
+
+      expect(autonomous.length).toBe(3);
+    });
+  });
+
+  describe("calculateRobotOperatingCost", () => {
+    it("calculates cost based on hours", () => {
+      const stats: EquipmentStats = {
+        efficiency: 1,
+        speed: 1,
+        fuelCapacity: 100,
+        fuelEfficiency: 1,
+        durability: 100,
+        isAutonomous: true,
+        operatingCostPerHour: 2.50
+      };
+
+      expect(calculateRobotOperatingCost(stats, 1)).toBe(2.50);
+      expect(calculateRobotOperatingCost(stats, 8)).toBe(20.00);
+      expect(calculateRobotOperatingCost(stats, 24)).toBe(60.00);
+    });
+
+    it("returns 0 for non-autonomous equipment", () => {
+      const stats: EquipmentStats = {
+        efficiency: 1,
+        speed: 1,
+        fuelCapacity: 100,
+        fuelEfficiency: 1,
+        durability: 100
+        // No operatingCostPerHour
+      };
+
+      expect(calculateRobotOperatingCost(stats, 8)).toBe(0);
+    });
+  });
+
+  describe("calculateBreakdownProbability", () => {
+    it("calculates probability over time", () => {
+      const stats: EquipmentStats = {
+        efficiency: 1,
+        speed: 1,
+        fuelCapacity: 100,
+        fuelEfficiency: 1,
+        durability: 100,
+        breakdownRate: 0.02  // 2% per hour
+      };
+
+      // Probability increases with time
+      const prob1h = calculateBreakdownProbability(stats, 1);
+      const prob8h = calculateBreakdownProbability(stats, 8);
+      const prob24h = calculateBreakdownProbability(stats, 24);
+
+      expect(prob1h).toBeCloseTo(0.02, 2);
+      expect(prob8h).toBeGreaterThan(prob1h);
+      expect(prob24h).toBeGreaterThan(prob8h);
+    });
+
+    it("fleet AI reduces breakdown rate by 40%", () => {
+      const stats: EquipmentStats = {
+        efficiency: 1,
+        speed: 1,
+        fuelCapacity: 100,
+        fuelEfficiency: 1,
+        durability: 100,
+        breakdownRate: 0.02
+      };
+
+      const probWithoutAI = calculateBreakdownProbability(stats, 10, false);
+      const probWithAI = calculateBreakdownProbability(stats, 10, true);
+
+      expect(probWithAI).toBeLessThan(probWithoutAI);
+      // With 40% reduction, the rate drops from 0.02 to 0.012
+    });
+
+    it("returns 0 for equipment without breakdown rate", () => {
+      const stats: EquipmentStats = {
+        efficiency: 1,
+        speed: 1,
+        fuelCapacity: 100,
+        fuelEfficiency: 1,
+        durability: 100
+        // No breakdownRate
+      };
+
+      expect(calculateBreakdownProbability(stats, 24)).toBe(0);
+    });
+  });
+
+  describe("Robot Economics", () => {
+    it("robot operating cost is much cheaper than groundskeeper wages", () => {
+      // Groundskeeper: ~$12/hour base, robot: $2.50/hour
+      const stats = getAutonomousEquipmentStats("robot_mower_fairway");
+      expect(stats?.operatingCostPerHour).toBeLessThan(12);
+    });
+
+    it("robot has significant upfront cost", () => {
+      const stats = getAutonomousEquipmentStats("robot_mower_fairway");
+      // $45,000 is a significant investment
+      expect(stats?.purchaseCost).toBeGreaterThan(30000);
+    });
+
+    it("daily robot cost vs employee comparison", () => {
+      const stats = getAutonomousEquipmentStats("robot_mower_fairway");
+      const dailyRobotCost = (stats?.operatingCostPerHour ?? 0) * 8; // 8-hour day
+      const dailyEmployeeCost = 12 * 8; // $12/hr groundskeeper
+
+      expect(dailyRobotCost).toBeLessThan(dailyEmployeeCost);
+      // Robot: $20/day, Employee: $96/day
     });
   });
 

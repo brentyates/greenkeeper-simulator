@@ -18,7 +18,8 @@ export type ResearchCategory =
   | "irrigation"     // Sprinklers, water systems
   | "landscaping"    // Course design features
   | "facilities"     // Buildings, amenities
-  | "management";    // Efficiency improvements
+  | "management"     // Efficiency improvements
+  | "robotics";      // Autonomous equipment
 
 export type ResearchStatus = "locked" | "available" | "researching" | "completed";
 
@@ -45,6 +46,11 @@ export interface EquipmentStats {
   readonly fuelCapacity: number;     // Max fuel
   readonly fuelEfficiency: number;   // Consumption rate multiplier
   readonly durability: number;       // Maintenance interval
+  readonly isAutonomous?: boolean;   // Operates without employee
+  readonly purchaseCost?: number;    // One-time purchase price
+  readonly operatingCostPerHour?: number;  // Hourly cost (lower than employee wages)
+  readonly breakdownRate?: number;   // Chance per hour of breakdown (0-1)
+  readonly repairTime?: number;      // Minutes for mechanic to repair
 }
 
 export interface UpgradeBonus {
@@ -93,7 +99,8 @@ export const CATEGORY_COLORS: Record<ResearchCategory, string> = {
   irrigation: "#29b6f6",
   landscaping: "#8d6e63",
   facilities: "#ab47bc",
-  management: "#ffa726"
+  management: "#ffa726",
+  robotics: "#00bcd4"
 };
 
 // ============================================================================
@@ -307,20 +314,6 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
 
   // === EQUIPMENT TIER 5 ===
   {
-    id: "autonomous_mower",
-    name: "Autonomous Mowing Robot",
-    description: "Self-driving mower for hands-free operation",
-    category: "equipment",
-    baseCost: 5000,
-    prerequisites: ["fairway_mower", "smart_irrigation"],
-    tier: 5,
-    unlocks: {
-      type: "equipment",
-      equipmentId: "auto_mower_1",
-      stats: { efficiency: 2.5, speed: 2.0, fuelCapacity: 200, fuelEfficiency: 0.5, durability: 500 }
-    }
-  },
-  {
     id: "precision_greens_mower",
     name: "Precision Greens Complex",
     description: "GPS-guided greens maintenance system",
@@ -373,6 +366,148 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
       type: "upgrade",
       upgradeId: "clubhouse_premium",
       bonus: { type: "quality", value: 1.3 }
+    }
+  },
+
+  // === ROBOTICS TIER 5 ===
+  // Autonomous robots: expensive to buy, cheap to run, but can break down
+  {
+    id: "robot_mower_fairway",
+    name: "RoboMow Fairway Unit",
+    description: "Autonomous GPS-guided fairway mower. Operates 24/7 without staff. Requires mechanic for repairs.",
+    category: "robotics",
+    baseCost: 6000,
+    prerequisites: ["fairway_mower", "smart_irrigation"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_mower_fairway",
+      stats: {
+        efficiency: 2.8,
+        speed: 1.8,
+        fuelCapacity: 300,
+        fuelEfficiency: 0.4,
+        durability: 400,
+        isAutonomous: true,
+        purchaseCost: 45000,
+        operatingCostPerHour: 2.50,   // Much cheaper than employee wages
+        breakdownRate: 0.02,           // 2% chance per hour
+        repairTime: 60                 // 1 hour to repair
+      }
+    }
+  },
+  {
+    id: "robot_mower_greens",
+    name: "RoboMow Precision Greens",
+    description: "Ultra-precise autonomous greens mower with laser-guided cutting. Whisper quiet for early morning operation.",
+    category: "robotics",
+    baseCost: 7000,
+    prerequisites: ["greens_mower", "precision_greens_mower"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_mower_greens",
+      stats: {
+        efficiency: 3.0,
+        speed: 1.2,
+        fuelCapacity: 150,
+        fuelEfficiency: 0.35,
+        durability: 350,
+        isAutonomous: true,
+        purchaseCost: 65000,
+        operatingCostPerHour: 3.00,
+        breakdownRate: 0.025,          // Slightly higher due to precision components
+        repairTime: 90                 // More complex repairs
+      }
+    }
+  },
+  {
+    id: "robot_sprayer",
+    name: "AutoSpray Irrigation Robot",
+    description: "Mobile autonomous sprayer with soil moisture sensors. Targets dry spots automatically.",
+    category: "robotics",
+    baseCost: 5500,
+    prerequisites: ["smart_irrigation"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_sprayer",
+      stats: {
+        efficiency: 2.5,
+        speed: 2.0,
+        fuelCapacity: 500,
+        fuelEfficiency: 0.3,
+        durability: 450,
+        isAutonomous: true,
+        purchaseCost: 38000,
+        operatingCostPerHour: 2.00,
+        breakdownRate: 0.015,          // Water systems are reliable
+        repairTime: 45
+      }
+    }
+  },
+  {
+    id: "robot_fertilizer",
+    name: "NutriBot Spreader",
+    description: "Autonomous fertilizer spreader with GPS mapping and variable rate application. Maximizes coverage, minimizes waste.",
+    category: "robotics",
+    baseCost: 5000,
+    prerequisites: ["slow_release_fertilizer", "smart_irrigation"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_fertilizer",
+      stats: {
+        efficiency: 2.6,
+        speed: 1.5,
+        fuelCapacity: 400,
+        fuelEfficiency: 0.35,
+        durability: 380,
+        isAutonomous: true,
+        purchaseCost: 35000,
+        operatingCostPerHour: 1.80,
+        breakdownRate: 0.018,
+        repairTime: 50
+      }
+    }
+  },
+  {
+    id: "robot_bunker_rake",
+    name: "SandBot Bunker Groomer",
+    description: "Autonomous bunker maintenance robot. Rakes and edges bunkers overnight while the course is closed.",
+    category: "robotics",
+    baseCost: 4500,
+    prerequisites: ["bunker_rake"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_bunker_rake",
+      stats: {
+        efficiency: 2.2,
+        speed: 1.0,
+        fuelCapacity: 100,
+        fuelEfficiency: 0.5,
+        durability: 300,
+        isAutonomous: true,
+        purchaseCost: 28000,
+        operatingCostPerHour: 1.50,
+        breakdownRate: 0.03,           // Sand is hard on mechanics
+        repairTime: 40
+      }
+    }
+  },
+  {
+    id: "robot_fleet_manager",
+    name: "Fleet Management AI",
+    description: "Central AI system that coordinates all robots, optimizes routes, and predicts maintenance needs. Reduces breakdown rates by 40%.",
+    category: "robotics",
+    baseCost: 8000,
+    prerequisites: ["robot_mower_fairway", "robot_sprayer"],
+    tier: 5,
+    unlocks: {
+      type: "upgrade",
+      upgradeId: "fleet_ai",
+      bonus: { type: "efficiency", value: 1.4 }  // 40% reduction in breakdown rates
     }
   }
 ];
@@ -526,6 +661,61 @@ export function getActiveUpgrades(state: ResearchState): readonly UpgradeBonus[]
     .filter((item): item is ResearchItem => item !== null)
     .filter(item => item.unlocks.type === "upgrade")
     .map(item => (item.unlocks as { type: "upgrade"; upgradeId: string; bonus: UpgradeBonus }).bonus);
+}
+
+export function getUnlockedAutonomousEquipment(state: ResearchState): readonly {
+  equipmentId: string;
+  stats: EquipmentStats;
+}[] {
+  return state.completedResearch
+    .map(id => getResearchItem(id))
+    .filter((item): item is ResearchItem => item !== null)
+    .filter(item => item.unlocks.type === "equipment")
+    .map(item => item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats })
+    .filter(unlock => unlock.stats.isAutonomous === true)
+    .map(unlock => ({ equipmentId: unlock.equipmentId, stats: unlock.stats }));
+}
+
+export function isAutonomousEquipment(equipmentId: string): boolean {
+  for (const item of RESEARCH_ITEMS) {
+    if (item.unlocks.type === "equipment") {
+      const unlock = item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats };
+      if (unlock.equipmentId === equipmentId && unlock.stats.isAutonomous) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function getAutonomousEquipmentStats(equipmentId: string): EquipmentStats | null {
+  for (const item of RESEARCH_ITEMS) {
+    if (item.unlocks.type === "equipment") {
+      const unlock = item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats };
+      if (unlock.equipmentId === equipmentId) {
+        return unlock.stats;
+      }
+    }
+  }
+  return null;
+}
+
+export function calculateRobotOperatingCost(
+  stats: EquipmentStats,
+  hoursOperating: number
+): number {
+  return (stats.operatingCostPerHour ?? 0) * hoursOperating;
+}
+
+export function calculateBreakdownProbability(
+  stats: EquipmentStats,
+  hoursOperating: number,
+  hasFleetAI: boolean = false
+): number {
+  const baseRate = stats.breakdownRate ?? 0;
+  const adjustedRate = hasFleetAI ? baseRate * 0.6 : baseRate; // Fleet AI reduces by 40%
+  // Probability of at least one breakdown = 1 - (1 - rate)^hours
+  return 1 - Math.pow(1 - adjustedRate, hoursOperating);
 }
 
 export function getPrerequisiteChain(itemId: string): readonly string[] {
@@ -797,7 +987,8 @@ export function getResearchCategoryName(category: ResearchCategory): string {
     irrigation: "Irrigation",
     landscaping: "Landscaping",
     facilities: "Facilities",
-    management: "Management"
+    management: "Management",
+    robotics: "Robotics"
   };
   return names[category];
 }
