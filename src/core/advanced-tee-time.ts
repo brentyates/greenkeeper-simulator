@@ -31,8 +31,9 @@ export function calculateDynamicMultiplier(
 }
 
 export function calculateBookingRate(state: TeeTimeSystemState): number {
-  const availableSlots = state.todaySlots.filter(s => s.status === 'available').length;
-  const totalSlots = state.todaySlots.length;
+  const todaySlots = state.teeTimes.get(state.currentDay) ?? [];
+  const availableSlots = todaySlots.filter(s => s.status === 'available').length;
+  const totalSlots = todaySlots.length;
   if (totalSlots === 0) return 0;
 
   const bookedSlots = totalSlots - availableSlots;

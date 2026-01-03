@@ -567,9 +567,9 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Process cancellations and no-shows
 
 #### T2.4 Booking Integration
-- [ ] Wire booking simulation to game day loop
-- [ ] Generate bookings for upcoming days during daily tick
-- [ ] Track booking metrics (booking rate, cancellations, no-shows)
+- [x] Wire booking simulation to game day loop
+- [x] Generate bookings for upcoming days during daily tick
+- [x] Track booking metrics (booking rate, cancellations, no-shows)
 
 ---
 

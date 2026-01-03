@@ -37,9 +37,8 @@ import {
   type MemberPriorityConfig,
   type TournamentConfig,
   type GroupBooking,
-  type TeeTime,
-  type TeeTimeSystemState,
 } from './advanced-tee-time';
+import type { TeeTime, TeeTimeSystemState } from './tee-times';
 import { DEFAULT_GREEN_FEE_STRUCTURE } from './tee-revenue';
 
 describe('advanced-tee-time', () => {
@@ -85,7 +84,9 @@ describe('advanced-tee-time', () => {
 
   describe('calculateBookingRate', () => {
     it('returns 0 for empty slots', () => {
-      const state = { todaySlots: [] } as unknown as TeeTimeSystemState;
+      const teeTimes = new Map<number, TeeTime[]>();
+      teeTimes.set(1, []);
+      const state = { teeTimes, currentDay: 1 } as unknown as TeeTimeSystemState;
       expect(calculateBookingRate(state)).toBe(0);
     });
 
@@ -96,7 +97,9 @@ describe('advanced-tee-time', () => {
         { status: 'checked_in' },
         { status: 'available' },
       ] as TeeTime[];
-      const state = { todaySlots: slots } as TeeTimeSystemState;
+      const teeTimes = new Map<number, TeeTime[]>();
+      teeTimes.set(1, slots);
+      const state = { teeTimes, currentDay: 1 } as TeeTimeSystemState;
       expect(calculateBookingRate(state)).toBe(0.5);
     });
   });

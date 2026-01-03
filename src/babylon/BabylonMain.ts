@@ -60,6 +60,32 @@ import {
   takeDailySnapshot,
   updateHistoricalExcellence,
 } from "../core/prestige";
+import {
+  TeeTimeSystemState,
+  createInitialTeeTimeState,
+  generateDailySlots,
+  simulateDailyBookings,
+  applyBookingSimulation,
+  getAvailableSlots,
+  type GameTime,
+} from "../core/tee-times";
+import {
+  WalkOnState,
+  createInitialWalkOnState,
+  processWalkOns,
+  resetDailyWalkOnMetrics,
+} from "../core/walk-ons";
+import {
+  RevenueState,
+  createInitialRevenueState,
+  finalizeDailyRevenue,
+} from "../core/tee-revenue";
+import {
+  MarketingState,
+  createInitialMarketingState,
+  processDailyCampaigns,
+  calculateCombinedDemandMultiplier,
+} from "../core/marketing";
 
 export interface GameOptions {
   scenario?: ScenarioDefinition;
@@ -116,6 +142,11 @@ export class BabylonMain {
   private accumulatedResearchTime: number = 0;
   private prestigeState: PrestigeState;
   private lastPrestigeUpdateHour: number = -1;
+  private teeTimeState: TeeTimeSystemState;
+  private walkOnState: WalkOnState;
+  private revenueState: RevenueState;
+  private marketingState: MarketingState;
+  private lastTeeTimeUpdateHour: number = -1;
 
   constructor(canvasId: string, options: GameOptions = {}) {
     this.gameOptions = options;
@@ -138,6 +169,10 @@ export class BabylonMain {
     this.golferPool = createInitialPoolState();
     this.researchState = createInitialResearchState();
     this.prestigeState = createInitialPrestigeState(100);
+    this.teeTimeState = createInitialTeeTimeState();
+    this.walkOnState = createInitialWalkOnState();
+    this.revenueState = createInitialRevenueState();
+    this.marketingState = createInitialMarketingState();
 
     // Set green fees based on course size
     const courseHoles = course.par ? Math.round(course.par / 4) : 9;
@@ -1353,6 +1388,75 @@ export class BabylonMain {
       const conditionsScore = calculateCurrentConditions(cells);
       this.prestigeState = updatePrestigeScore(this.prestigeState, conditionsScore);
       this.uiManager.updatePrestige(this.prestigeState);
+    }
+
+    // Hourly tee time processing
+    if (hours !== this.lastTeeTimeUpdateHour) {
+      this.lastTeeTimeUpdateHour = hours;
+      const currentGameTime: GameTime = { day: this.gameDay, hour: hours, minute: 0 };
+
+      // Generate new day's slots at 5 AM
+      if (hours === 5) {
+        const newSlots = generateDailySlots(
+          this.gameDay,
+          this.teeTimeState.spacingConfig,
+          this.teeTimeState.operatingHours
+        );
+        const updatedTeeTimes = new Map(this.teeTimeState.teeTimes);
+        updatedTeeTimes.set(this.gameDay, newSlots);
+        this.teeTimeState = { ...this.teeTimeState, teeTimes: updatedTeeTimes, currentDay: this.gameDay };
+
+        // Simulate bookings with marketing demand boost
+        const marketingMultiplier = calculateCombinedDemandMultiplier(this.marketingState);
+        const bookings = simulateDailyBookings(
+          this.teeTimeState,
+          this.gameDay,
+          this.gameDay,
+          { prestigeScore: this.prestigeState.currentScore / 200, marketingBonus: marketingMultiplier },
+          this.greenFees.weekday18Holes,
+          20
+        );
+        this.teeTimeState = applyBookingSimulation(this.teeTimeState, bookings, this.gameDay);
+      }
+
+      // Process walk-ons during golf hours
+      if (hours >= 6 && hours <= 19) {
+        const availableSlots = getAvailableSlots(this.teeTimeState, this.gameDay);
+        const walkOnResult = processWalkOns(
+          this.walkOnState,
+          currentGameTime,
+          availableSlots,
+          this.greenFees.weekday18Holes,
+          20
+        );
+        this.walkOnState = walkOnResult.state;
+      }
+
+      // End of day processing at 10 PM
+      if (hours === 22) {
+        this.revenueState = finalizeDailyRevenue(this.revenueState);
+        this.walkOnState = resetDailyWalkOnMetrics(this.walkOnState);
+        const marketingResult = processDailyCampaigns(
+          this.marketingState,
+          this.gameDay,
+          this.teeTimeState.bookingMetrics.totalBookingsToday,
+          this.revenueState.todaysRevenue.grossRevenue
+        );
+        this.marketingState = marketingResult.state;
+        if (marketingResult.dailyCost > 0) {
+          const expenseResult = addExpense(
+            this.economyState,
+            marketingResult.dailyCost,
+            "other_expense",
+            "Marketing campaigns",
+            timestamp,
+            true
+          );
+          if (expenseResult) {
+            this.economyState = expenseResult;
+          }
+        }
+      }
     }
 
     // Golfer arrivals (hourly during golf hours: 6am - 7pm)

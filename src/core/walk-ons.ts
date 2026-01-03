@@ -142,10 +142,10 @@ export function addWalkOnToQueue(
 }
 
 export function findSuitableSlot(
-  golfer: WalkOnGolfer,
+  _golfer: WalkOnGolfer,
   availableSlots: TeeTime[],
   currentTime: GameTime,
-  policy: WalkOnPolicy
+  _policy: WalkOnPolicy
 ): TeeTime | undefined {
   const currentMinutes = currentTime.hour * 60 + currentTime.minute;
 
