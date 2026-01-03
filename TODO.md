@@ -20,7 +20,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase P5: Exclusivity and advanced features~~ ✅ (core logic complete, UI pending)
 
 **Tee Time System** (See [Tee Time System](#tee-time-system) section)
-- Phase T1: Core Tee Time Scheduling
+- ~~Phase T1: Core Tee Time Scheduling~~ ✅ (core logic complete, UI pending)
 - Phase T2: Booking System
 - Phase T3: Spacing & Pace
 - Phase T4: Walk-On System
@@ -499,25 +499,25 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 
 The Tee Time System is the primary revenue driver and scheduling backbone. Golfers must book tee times in advance, creating a structured flow the player must actively manage. The core tension is balancing revenue maximization vs reputation preservation.
 
-### Phase T1: Core Tee Time Scheduling
+### Phase T1: Core Tee Time Scheduling ✅
 
-#### T1.1 Tee Time Data Structures
-- [ ] Create `src/core/tee-times.ts` with core types
-- [ ] Define `TeeTime` interface (id, scheduledTime, groupSize, status, golfers, pricing)
-- [ ] Define `TeeTimeStatus` type ('available', 'reserved', 'checked_in', 'in_progress', 'completed', 'no_show', 'cancelled')
-- [ ] Define `GolferBooking` interface (golferId, membershipStatus, fees, add-ons)
-- [ ] Implement `createInitialTeeTimeState()` factory function
+#### T1.1 Tee Time Data Structures ✅
+- [x] Create `src/core/tee-times.ts` with core types
+- [x] Define `TeeTime` interface (id, scheduledTime, groupSize, status, golfers, pricing)
+- [x] Define `TeeTimeStatus` type ('available', 'reserved', 'checked_in', 'in_progress', 'completed', 'no_show', 'cancelled')
+- [x] Define `GolferBooking` interface (golferId, membershipStatus, fees, add-ons)
+- [x] Implement `createInitialTeeTimeState()` factory function
 
-#### T1.2 Operating Hours Configuration
-- [ ] Define `CourseOperatingHours` interface
-- [ ] Implement seasonal hour adjustments (summer/winter)
-- [ ] Configure twilight start time
-- [ ] Calculate last tee time based on expected round duration
+#### T1.2 Operating Hours Configuration ✅
+- [x] Define `CourseOperatingHours` interface
+- [x] Implement seasonal hour adjustments (summer/winter)
+- [x] Configure twilight start time
+- [x] Calculate last tee time based on expected round duration
 
-#### T1.3 Slot Generation
-- [ ] Implement `generateDailySlots()` function
-- [ ] Calculate slots based on spacing configuration
-- [ ] Track slot availability and booking status
+#### T1.3 Slot Generation ✅
+- [x] Implement `generateDailySlots()` function
+- [x] Calculate slots based on spacing configuration
+- [x] Track slot availability and booking status
 
 #### T1.4 Basic Tee Sheet UI
 - [ ] Create `src/babylon/ui/TeeSheetPanel.ts`
@@ -706,7 +706,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ### Tee Time System Testing
 
-- [ ] Unit tests for tee time slot generation
+- [x] Unit tests for tee time slot generation
+- [x] Unit tests for booking lifecycle (reserve, check-in, start, complete, cancel, no-show)
 - [ ] Unit tests for booking demand calculation
 - [ ] Unit tests for pace of play calculation
 - [ ] Unit tests for walk-on processing
@@ -723,8 +724,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 | New File to Create | Purpose |
 |--------------------|---------|
-| `src/core/tee-times.ts` | Core tee time scheduling logic |
-| `src/core/tee-times.test.ts` | Unit tests for tee time logic |
+| `src/core/tee-times.ts` | Core tee time scheduling logic ✅ |
+| `src/core/tee-times.test.ts` | Unit tests for tee time logic ✅ |
 | `src/core/walk-ons.ts` | Walk-on queue management |
 | `src/core/walk-ons.test.ts` | Unit tests for walk-on logic |
 | `src/core/marketing.ts` | Marketing campaign system |
