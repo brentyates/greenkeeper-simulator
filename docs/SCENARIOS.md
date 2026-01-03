@@ -52,7 +52,7 @@ Focus on improving neglected courses:
 - **Target Condition:** Achieve "Excellent", "Good", "Fair", or "Poor" rating
 
 ### Tournament Scenarios
-Focus on hosting professional events (see [Tournament System Spec](design/TOURNAMENT_SYSTEM_SPEC.md)):
+Focus on hosting professional events (see [Tournament System Spec](TOURNAMENT_SYSTEM_SPEC.md)):
 - **Prestige Requirement:** Maintain 5-star prestige for a duration
 - **Event Hosting:** Successfully host and manage the tournament
 - **Course Preparation:** Meet strict condition standards during event
