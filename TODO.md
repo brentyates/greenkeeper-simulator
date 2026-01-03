@@ -21,7 +21,7 @@ This file tracks the work needed to integrate all economy/management systems int
 
 **Tee Time System** (See [Tee Time System](#tee-time-system) section)
 - ~~Phase T1: Core Tee Time Scheduling~~ ✅ (core logic complete, UI pending)
-- Phase T2: Booking System
+- ~~Phase T2: Booking System~~ ✅ (core logic complete, UI pending)
 - Phase T3: Spacing & Pace
 - Phase T4: Walk-On System
 - Phase T5: Revenue Integration
@@ -528,27 +528,27 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T2: Booking System
+### Phase T2: Booking System ✅
 
-#### T2.1 Booking Window Configuration
-- [ ] Define `BookingWindowConfig` interface
-- [ ] Implement public vs member booking windows (7 vs 14 days)
-- [ ] Configure cancellation policy (free cancel hours, late cancel penalty)
-- [ ] Configure no-show policy (penalty, blacklist threshold)
+#### T2.1 Booking Window Configuration ✅
+- [x] Define `BookingWindowConfig` interface
+- [x] Implement public vs member booking windows (7 vs 14 days)
+- [x] Configure cancellation policy (free cancel hours, late cancel penalty)
+- [x] Configure no-show policy (penalty, blacklist threshold)
 
-#### T2.2 Reservation Demand Calculation
-- [ ] Define `ReservationDemand` interface
-- [ ] Implement day-of-week multipliers (weekends higher)
-- [ ] Implement time-of-day multipliers (prime morning premium)
-- [ ] Apply prestige multiplier from prestige system
-- [ ] Apply weather multiplier
-- [ ] Calculate final booking probability
+#### T2.2 Reservation Demand Calculation ✅
+- [x] Define `ReservationDemand` interface
+- [x] Implement day-of-week multipliers (weekends higher)
+- [x] Implement time-of-day multipliers (prime morning premium)
+- [x] Apply prestige multiplier from prestige system
+- [x] Apply weather multiplier
+- [x] Calculate final booking probability
 
-#### T2.3 Booking Simulation
-- [ ] Implement `simulateDailyBookings()` function
-- [ ] Generate group sizes (70% foursomes, 15% threesomes, 10% twosomes, 5% singles)
-- [ ] Create bookings based on demand probability
-- [ ] Process cancellations and no-shows
+#### T2.3 Booking Simulation ✅
+- [x] Implement `simulateDailyBookings()` function
+- [x] Generate group sizes (70% foursomes, 15% threesomes, 10% twosomes, 5% singles)
+- [x] Create bookings based on demand probability
+- [x] Process cancellations and no-shows
 
 #### T2.4 Booking Integration
 - [ ] Wire booking simulation to game day loop
@@ -708,7 +708,9 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 - [x] Unit tests for tee time slot generation
 - [x] Unit tests for booking lifecycle (reserve, check-in, start, complete, cancel, no-show)
-- [ ] Unit tests for booking demand calculation
+- [x] Unit tests for booking demand calculation
+- [x] Unit tests for booking simulation
+- [x] Unit tests for cancellation/no-show penalties
 - [ ] Unit tests for pace of play calculation
 - [ ] Unit tests for walk-on processing
 - [ ] Unit tests for revenue calculations
