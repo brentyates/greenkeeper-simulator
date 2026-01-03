@@ -23,7 +23,7 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T1: Core Tee Time Scheduling~~ ✅ (core logic complete, UI pending)
 - ~~Phase T2: Booking System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T3: Spacing & Pace~~ ✅ (core logic complete, UI pending)
-- Phase T4: Walk-On System
+- ~~Phase T4: Walk-On System~~ ✅ (core logic complete, UI pending)
 - Phase T5: Revenue Integration
 - Phase T6: Marketing System
 - Phase T7: Advanced Features
@@ -590,19 +590,19 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ---
 
-### Phase T4: Walk-On System
+### Phase T4: Walk-On System ✅
 
-#### T4.1 Walk-On State
-- [ ] Define `WalkOnState` interface (queue, policy, metrics)
-- [ ] Define `WalkOnPolicy` interface (allow walk-ons, reserved slots, pricing, queue limits)
-- [ ] Define `WalkOnGolfer` interface (arrival time, desired group size, wait tolerance)
+#### T4.1 Walk-On State ✅
+- [x] Define `WalkOnState` interface (queue, policy, metrics)
+- [x] Define `WalkOnPolicy` interface (allow walk-ons, reserved slots, pricing, queue limits)
+- [x] Define `WalkOnGolfer` interface (arrival time, desired group size, wait tolerance)
 
-#### T4.2 Walk-On Processing
-- [ ] Implement `processWalkOns()` function
-- [ ] Check wait tolerance and remove golfers who give up
-- [ ] Record negative experience for excessive waits
-- [ ] Assign walk-ons to available slots
-- [ ] Apply walk-on premium/discount pricing
+#### T4.2 Walk-On Processing ✅
+- [x] Implement `processWalkOns()` function
+- [x] Check wait tolerance and remove golfers who give up
+- [x] Record negative experience for excessive waits
+- [x] Assign walk-ons to available slots
+- [x] Apply walk-on premium/discount pricing
 
 #### T4.3 Walk-On Queue UI
 - [ ] Create walk-on queue display panel
@@ -713,7 +713,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Unit tests for cancellation/no-show penalties
 - [x] Unit tests for pace of play calculation
 - [x] Unit tests for spacing impact preview
-- [ ] Unit tests for walk-on processing
+- [x] Unit tests for walk-on processing
 - [ ] Unit tests for revenue calculations
 - [ ] Unit tests for campaign effectiveness
 - [ ] Integration test: tee time spacing affects satisfaction
@@ -729,8 +729,8 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 |--------------------|---------|
 | `src/core/tee-times.ts` | Core tee time scheduling logic ✅ |
 | `src/core/tee-times.test.ts` | Unit tests for tee time logic ✅ |
-| `src/core/walk-ons.ts` | Walk-on queue management |
-| `src/core/walk-ons.test.ts` | Unit tests for walk-on logic |
+| `src/core/walk-ons.ts` | Walk-on queue management ✅ |
+| `src/core/walk-ons.test.ts` | Unit tests for walk-on logic ✅ |
 | `src/core/marketing.ts` | Marketing campaign system |
 | `src/core/marketing.test.ts` | Unit tests for marketing |
 | `src/babylon/ui/TeeSheetPanel.ts` | Main tee sheet interface |
