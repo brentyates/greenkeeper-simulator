@@ -879,10 +879,27 @@ export class BabylonMain {
 
   private setupInputCallbacks(): void {
     this.inputManager.setCallbacks({
-      onMove: (direction: Direction) => this.handleMove(direction),
-      onEquipmentSelect: (slot: EquipmentSlot) =>
-        this.handleEquipmentSelect(slot),
-      onEquipmentToggle: () => this.handleEquipmentToggle(),
+      // Core movement - use public API for consistency
+      onMove: (direction: Direction) => {
+        const dirMap: Record<Direction, 'up' | 'down' | 'left' | 'right'> = {
+          up: 'up',
+          down: 'down',
+          left: 'left',
+          right: 'right'
+        };
+        this.movePlayer(dirMap[direction]);
+      },
+
+      // Equipment control - use public API
+      onEquipmentSelect: (slot: EquipmentSlot) => {
+        this.selectEquipment(slot);
+      },
+
+      onEquipmentToggle: () => {
+        this.toggleEquipment();
+      },
+
+      // Other handlers remain private as they're more complex
       onRefill: () => this.handleRefill(),
       onOverlayCycle: () => this.handleOverlayCycle(),
       onPause: () => this.handlePause(),
@@ -895,14 +912,26 @@ export class BabylonMain {
       onDebugExport: () => this.handleDebugExport(),
       onClick: (screenX: number, screenY: number) =>
         this.handleClick(screenX, screenY),
-      onEditorToggle: () => this.handleEditorToggle(),
+
+      // Terrain editor - use public API where available
+      onEditorToggle: () => {
+        this.toggleTerrainEditor();
+      },
+
       onEditorToolSelect: (tool: number) => this.handleEditorToolNumber(tool),
       onEditorBrushSelect: (brush: string) =>
         this.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>
         this.handleEditorBrushSize(delta),
-      onUndo: () => this.handleEditorUndo(),
-      onRedo: () => this.handleEditorRedo(),
+
+      onUndo: () => {
+        this.undoTerrainEdit();
+      },
+
+      onRedo: () => {
+        this.redoTerrainEdit();
+      },
+
       onMouseMove: (screenX: number, screenY: number) =>
         this.handleMouseMove(screenX, screenY),
       onDragStart: (screenX: number, screenY: number) =>
@@ -2600,6 +2629,338 @@ export class BabylonMain {
     }
 
     return true;
+  }
+
+  // ============================================================================
+  // PUBLIC TESTING API
+  // These methods provide a stable interface for automated testing and bots.
+  // They replace flaky canvas click operations with reliable programmatic control.
+  // ============================================================================
+
+  /**
+   * Move player one tile in a direction.
+   * @param direction - 'up', 'down', 'left', 'right', 'w', 'a', 's', 'd'
+   */
+  public movePlayer(direction: 'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd'): void {
+    const dirMap: Record<string, Direction> = {
+      'up': 'up', 'w': 'up',
+      'down': 'down', 's': 'down',
+      'left': 'left', 'a': 'left',
+      'right': 'right', 'd': 'right'
+    };
+    const dir = dirMap[direction];
+    if (dir) {
+      this.handleMove(dir);
+    }
+  }
+
+  /**
+   * Get current player position.
+   */
+  public getPlayerPosition(): { x: number; y: number } {
+    return { x: this.player.gridX, y: this.player.gridY };
+  }
+
+  /**
+   * Select equipment by slot number.
+   * @param slot - 1 (mower), 2 (sprinkler), 3 (spreader)
+   */
+  public selectEquipment(slot: 1 | 2 | 3): void {
+    this.handleEquipmentSelect(slot);
+  }
+
+  /**
+   * Toggle equipment on/off.
+   * @param active - true to turn on, false to turn off, undefined to toggle
+   */
+  public toggleEquipment(active?: boolean): void {
+    const currentType = this.equipmentManager.getCurrentType();
+    const state = this.equipmentManager.getState(currentType);
+    if (!state) return;
+
+    if (active === undefined) {
+      this.equipmentManager.toggle();
+    } else if (active && !state.isActive) {
+      this.equipmentManager.activate();
+    } else if (!active && state.isActive) {
+      this.equipmentManager.deactivate();
+    }
+  }
+
+  /**
+   * Get current equipment state.
+   */
+  public getEquipmentState(): {
+    selectedSlot: number | null;
+    mower: { active: boolean; resource: number; max: number } | null;
+    sprinkler: { active: boolean; resource: number; max: number } | null;
+    spreader: { active: boolean; resource: number; max: number } | null;
+  } {
+    const mowerState = this.equipmentManager.getState('mower');
+    const sprinklerState = this.equipmentManager.getState('sprinkler');
+    const spreaderState = this.equipmentManager.getState('spreader');
+
+    const currentType = this.equipmentManager.getCurrentType();
+    const slotMap: Record<string, number> = { 'mower': 0, 'sprinkler': 1, 'spreader': 2 };
+
+    return {
+      selectedSlot: slotMap[currentType] ?? null,
+      mower: mowerState ? {
+        active: mowerState.isActive,
+        resource: mowerState.resourceCurrent,
+        max: mowerState.resourceMax
+      } : null,
+      sprinkler: sprinklerState ? {
+        active: sprinklerState.isActive,
+        resource: sprinklerState.resourceCurrent,
+        max: sprinklerState.resourceMax
+      } : null,
+      spreader: spreaderState ? {
+        active: spreaderState.isActive,
+        resource: spreaderState.resourceCurrent,
+        max: spreaderState.resourceMax
+      } : null
+    };
+  }
+
+  /**
+   * Enable terrain editor.
+   */
+  public enableTerrainEditor(): void {
+    if (this.terrainEditorSystem && !this.terrainEditorSystem.isEnabled()) {
+      this.terrainEditorSystem.enable();
+    }
+  }
+
+  /**
+   * Disable terrain editor.
+   */
+  public disableTerrainEditor(): void {
+    if (this.terrainEditorSystem && this.terrainEditorSystem.isEnabled()) {
+      this.terrainEditorSystem.disable();
+    }
+  }
+
+  /**
+   * Toggle terrain editor on/off.
+   */
+  public toggleTerrainEditor(): void {
+    if (this.terrainEditorSystem) {
+      this.terrainEditorSystem.toggle();
+    }
+  }
+
+  /**
+   * Check if terrain editor is enabled.
+   */
+  public isTerrainEditorEnabled(): boolean {
+    return this.terrainEditorSystem?.isEnabled() ?? false;
+  }
+
+  /**
+   * Set terrain editor tool.
+   * @param tool - 'raise', 'lower', 'flatten', 'smooth', or terrain brush like 'terrain_fairway'
+   */
+  public setEditorTool(tool: string): void {
+    if (!this.terrainEditorSystem) return;
+
+    const toolMap: Record<string, EditorTool> = {
+      'raise': 'raise',
+      'lower': 'lower',
+      'flatten': 'flatten',
+      'smooth': 'smooth',
+      'terrain_fairway': 'terrain_fairway',
+      'terrain_bunker': 'terrain_bunker',
+      'terrain_water': 'terrain_water'
+    };
+
+    const editorTool = toolMap[tool];
+    if (editorTool) {
+      this.terrainEditorSystem.setTool(editorTool);
+    }
+  }
+
+  /**
+   * Set terrain editor brush size.
+   * @param size - 1, 2, or 3
+   */
+  public setEditorBrushSize(size: number): void {
+    if (this.terrainEditorSystem) {
+      this.terrainEditorSystem.setBrushSize(size);
+    }
+  }
+
+  /**
+   * Edit terrain at a grid position (simulates click).
+   * @param gridX - Grid X coordinate
+   * @param gridY - Grid Y coordinate
+   */
+  public editTerrainAt(gridX: number, gridY: number): void {
+    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
+      return;
+    }
+
+    // Simulate mouse move to the position, then click
+    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    this.terrainEditorSystem.handleClick();
+  }
+
+  /**
+   * Start terrain drag operation.
+   * @param gridX - Grid X coordinate
+   * @param gridY - Grid Y coordinate
+   * @param screenY - Optional screen Y coordinate for vertical drag
+   */
+  public dragTerrainStart(gridX: number, gridY: number, screenY?: number): void {
+    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
+      return;
+    }
+
+    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    this.terrainEditorSystem.handleDragStart(gridX, gridY, screenY);
+  }
+
+  /**
+   * Continue terrain drag operation.
+   * @param gridX - Grid X coordinate
+   * @param gridY - Grid Y coordinate
+   * @param screenY - Optional screen Y coordinate for vertical drag
+   */
+  public dragTerrainMove(gridX: number, gridY: number, screenY?: number): void {
+    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
+      return;
+    }
+
+    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    this.terrainEditorSystem.handleDrag(gridX, gridY, screenY);
+  }
+
+  /**
+   * End terrain drag operation.
+   */
+  public dragTerrainEnd(): void {
+    if (this.terrainEditorSystem) {
+      this.terrainEditorSystem.handleDragEnd();
+    }
+  }
+
+  /**
+   * Undo last terrain edit.
+   */
+  public undoTerrainEdit(): void {
+    if (this.terrainEditorSystem) {
+      this.terrainEditorSystem.undo();
+    }
+  }
+
+  /**
+   * Redo last undone terrain edit.
+   */
+  public redoTerrainEdit(): void {
+    if (this.terrainEditorSystem) {
+      this.terrainEditorSystem.redo();
+    }
+  }
+
+  /**
+   * Get elevation at a grid position.
+   */
+  public getElevationAt(x: number, y: number): number | undefined {
+    return this.grassSystem.getElevationAt(x, y);
+  }
+
+  /**
+   * Set elevation at a grid position (testing only - bypasses normal editing).
+   */
+  public setElevationAt(x: number, y: number, elevation: number): void {
+    this.grassSystem.setElevationAt(x, y, elevation);
+  }
+
+  /**
+   * Get terrain type at a grid position.
+   */
+  public getTerrainTypeAt(x: number, y: number): string | undefined {
+    return this.grassSystem.getTerrainTypeAt(x, y);
+  }
+
+  /**
+   * Set terrain type at a grid position (testing only - bypasses normal editing).
+   */
+  public setTerrainTypeAt(x: number, y: number, type: 'fairway' | 'rough' | 'green' | 'bunker' | 'water' | 'tee'): void {
+    this.grassSystem.setTerrainTypeAt(x, y, type);
+  }
+
+  /**
+   * Simulate a key press.
+   * @param key - Key to press (e.g., 'ArrowUp', '1', ' ', 't', 'p')
+   */
+  public pressKey(key: string): void {
+    // Map key to callback
+    const lowerKey = key.toLowerCase();
+
+    if (lowerKey === 'arrowup' || lowerKey === 'w') this.handleMove('up');
+    else if (lowerKey === 'arrowdown' || lowerKey === 's') this.handleMove('down');
+    else if (lowerKey === 'arrowleft' || lowerKey === 'a') this.handleMove('left');
+    else if (lowerKey === 'arrowright' || lowerKey === 'd') this.handleMove('right');
+    else if (lowerKey === '1') this.handleEquipmentSelect(1);
+    else if (lowerKey === '2') this.handleEquipmentSelect(2);
+    else if (lowerKey === '3') this.handleEquipmentSelect(3);
+    else if (lowerKey === ' ' || lowerKey === 'space') this.handleEquipmentToggle();
+    else if (lowerKey === 'e') this.handleRefill();
+    else if (lowerKey === 'tab') this.handleOverlayCycle();
+    else if (lowerKey === 'p' || lowerKey === 'escape') this.handlePause();
+    else if (lowerKey === 'm') this.handleMute();
+    else if (lowerKey === 't') this.handleEditorToggle();
+  }
+
+  /**
+   * Wait for player movement to complete.
+   * @returns Promise that resolves when player is idle
+   */
+  public async waitForPlayerIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      const checkIdle = () => {
+        if (this.player.path.length === 0 && this.player.moveProgress === 0) {
+          resolve();
+        } else {
+          setTimeout(checkIdle, 16); // Check every frame
+        }
+      };
+      checkIdle();
+    });
+  }
+
+  /**
+   * Get full game state for testing.
+   */
+  public getFullGameState(): {
+    player: { x: number; y: number; isMoving: boolean };
+    equipment: ReturnType<BabylonMain['getEquipmentState']>;
+    time: { day: number; hours: number; minutes: number };
+    economy: ReturnType<BabylonMain['getEconomyState']>;
+    terrain: { width: number; height: number };
+    editorEnabled: boolean;
+  } {
+    const layoutGrid = this.grassSystem.getLayoutGrid();
+    return {
+      player: {
+        x: this.player.gridX,
+        y: this.player.gridY,
+        isMoving: this.player.path.length > 0 || this.player.moveProgress > 0
+      },
+      equipment: this.getEquipmentState(),
+      time: {
+        day: this.gameDay,
+        hours: Math.floor(this.gameTime / 60),
+        minutes: this.gameTime % 60
+      },
+      economy: this.getEconomyState(),
+      terrain: {
+        width: layoutGrid[0]?.length ?? 0,
+        height: layoutGrid.length
+      },
+      editorEnabled: this.isTerrainEditorEnabled()
+    };
   }
 
   public dispose(): void {

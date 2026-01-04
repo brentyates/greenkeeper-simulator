@@ -5,23 +5,26 @@ test.describe("Terrain Editor Cliff vs Ramp", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/?testMode=true&preset=all_grass_unmown");
     await waitForGameReady(page);
-    await page.click("canvas");
-    await page.keyboard.press("t");
+
+    // Enable editor via API
+    await page.evaluate(() => {
+      window.game.enableTerrainEditor();
+    });
     await page.waitForTimeout(100);
   });
 
   test("raising a tile significantly should create a cliff, not a steep ramp", async ({
     page,
   }) => {
-    // Directly manipulate state as requested for "holistic state management"
+    // Directly manipulate state via API
     await page.evaluate(() => {
-      window.game.grassSystem.setElevationAt(25, 19, 5);
+      window.game.setElevationAt(25, 19, 5);
     });
     await page.waitForTimeout(100);
 
     // Verify elevation
     const elevation = await page.evaluate(() =>
-      window.game.grassSystem.getElevationAt(25, 19)
+      window.game.getElevationAt(25, 19)
     );
     expect(elevation).toBe(5);
 

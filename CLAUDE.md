@@ -121,21 +121,119 @@ http://localhost:8080/?state=<base64>
 | `F6` | Export current state to console (JSON + base64) |
 | `F12` | Capture screenshot |
 
-### Browser APIs (for Playwright)
+### Public JavaScript API for Testing
+
+**IMPORTANT**: All E2E tests MUST use the public JavaScript API instead of canvas clicks. Canvas clicks are flaky and unreliable. The game provides a comprehensive API accessible via `window.game` for automated testing and bot control.
+
+#### Player Control
 ```javascript
+// Move player
+window.game.movePlayer('up' | 'down' | 'left' | 'right')  // Move one tile
+window.game.getPlayerPosition()  // Returns { x: number, y: number }
+window.game.teleport(x, y)  // Teleport to grid position
+await window.game.waitForPlayerIdle()  // Wait for movement to complete
+```
+
+#### Equipment Control
+```javascript
+// Select and control equipment
+window.game.selectEquipment(1 | 2 | 3)  // 1=mower, 2=sprinkler, 3=spreader
+window.game.toggleEquipment(true | false)  // true=on, false=off, undefined=toggle
+window.game.getEquipmentState()  // Returns full equipment state
+```
+
+#### Terrain Editor Control
+```javascript
+// Enable/disable editor
+window.game.enableTerrainEditor()
+window.game.disableTerrainEditor()
+window.game.toggleTerrainEditor()
+window.game.isTerrainEditorEnabled()  // Returns boolean
+
+// Configure editor
+window.game.setEditorTool('raise' | 'lower' | 'paint' | 'smooth')
+window.game.setEditorBrushSize(1 | 2 | 3)
+
+// Edit terrain at grid coordinates (NO canvas clicks!)
+window.game.editTerrainAt(gridX, gridY)  // Click to edit
+
+// Drag operations for vertical drag mode
+window.game.dragTerrainStart(gridX, gridY, screenY?)
+window.game.dragTerrainMove(gridX, gridY, screenY?)
+window.game.dragTerrainEnd()
+
+// Undo/redo
+window.game.undoTerrainEdit()
+window.game.redoTerrainEdit()
+```
+
+#### Terrain State Query & Manipulation
+```javascript
+// Read terrain state
+window.game.getElevationAt(x, y)  // Get elevation at grid position
+window.game.getTerrainTypeAt(x, y)  // Get terrain type ('fairway', 'bunker', etc.)
+
+// Direct manipulation (testing only - bypasses normal editing)
+window.game.setElevationAt(x, y, elevation)
+window.game.setTerrainTypeAt(x, y, 'fairway' | 'rough' | 'green' | 'bunker' | 'water')
+```
+
+#### Game State & Control
+```javascript
+// General control
+window.game.pressKey('ArrowUp' | '1' | 'Space' | 't' | 'p' | etc.)  // Simulate key press
+window.game.getFullGameState()  // Get complete game state for testing
+
+// Utility APIs
 window.captureScreenshot()  // PNG data URL + download
 window.exportGameState()    // Log state to console
 window.loadPreset('name')   // Navigate to preset
 window.listPresets()        // Get available presets
 ```
 
-### Playwright Test Pattern
+### Playwright Test Pattern (API-Based - NO Canvas Clicks!)
 ```javascript
-await page.goto('/?preset=equipment_test');
-await page.mouse.click(640, 445);  // Click Continue button
-await page.keyboard.press('F5');    // Ensure state loaded
+// ✅ CORRECT: Use public API
+await page.goto('/?preset=equipment_test&testMode=true');
+await page.evaluate(() => {
+  window.game.movePlayer('right');
+  window.game.selectEquipment(1);
+  window.game.toggleEquipment(true);
+});
 await page.waitForTimeout(500);
 await expect(page).toHaveScreenshot('test.png');
+
+// ✅ CORRECT: Terrain editing via API
+await page.evaluate(() => {
+  window.game.enableTerrainEditor();
+  window.game.setEditorTool('raise');
+  const pos = window.game.getPlayerPosition();
+  window.game.editTerrainAt(pos.x, pos.y);
+});
+
+// ❌ WRONG: Canvas clicks are FLAKY and PROHIBITED
+await page.mouse.click(640, 445);  // DON'T DO THIS!
+await page.click('canvas');  // DON'T DO THIS!
+```
+
+### Example: Complete Test Using API
+```javascript
+test('player can mow grass', async ({ page }) => {
+  await page.goto('/?testMode=true&preset=all_grass_unmown');
+  await waitForGameReady(page);
+
+  // Use API to control game
+  await page.evaluate(() => {
+    window.game.selectEquipment(1);  // Select mower
+    window.game.toggleEquipment(true);  // Turn on
+    window.game.movePlayer('right');
+    window.game.movePlayer('right');
+    window.game.movePlayer('right');
+  });
+
+  await page.waitForTimeout(500);
+  await expect(page).toHaveScreenshot('mowing.png');
+});
 ```
 
 ### Available Presets
@@ -145,6 +243,54 @@ Defined in `src/data/testPresets.ts`. Common ones:
 - `time_morning`, `time_noon`, `time_evening`, `time_night`
 - `elevation_test`, `ramp_test`, `cliff_test`
 - `tree_collision_test`, `water_collision_test`
+
+## Architecture: Single Source of Truth
+
+**CRITICAL**: The game uses a unified control layer where ALL input (keyboard, mouse, and automated tests) flows through the SAME public API methods.
+
+```
+┌────────────────────────────────────────────────────┐
+│   PUBLIC API (Single Source of Truth)             │
+│   movePlayer(), selectEquipment(), etc.           │
+└────────────────────────────────────────────────────┘
+           ▲                           ▲
+           │                           │
+    ┌──────┴──────┐            ┌──────┴──────────┐
+    │ InputManager │            │ Tests/Bots/MCP  │
+    │ (keyboard)   │            │ (automation)    │
+    └──────────────┘            └─────────────────┘
+```
+
+### Why This Matters
+
+1. **Keyboard and tests use THE SAME CODE** - no duplication, no divergence
+2. **Bugs found in tests = bugs in actual gameplay** - perfect test coverage
+3. **Easy to add new features** - implement once, works everywhere
+4. **Bots and automation** work identically to human players
+
+### Implementation
+
+The `InputManager` callbacks now call public API methods:
+
+```typescript
+// src/babylon/BabylonMain.ts
+private setupInputCallbacks(): void {
+  this.inputManager.setCallbacks({
+    onMove: (direction) => {
+      this.movePlayer(direction);  // ✅ Uses public API!
+    },
+    onEquipmentSelect: (slot) => {
+      this.selectEquipment(slot);  // ✅ Uses public API!
+    },
+    // ... etc
+  });
+}
+```
+
+This ensures keyboard → InputManager → Public API → Game Logic
+And tests → Public API → Game Logic
+
+**Both paths converge at the public API layer!**
 
 ## Game Controls
 

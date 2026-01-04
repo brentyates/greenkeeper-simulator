@@ -6,51 +6,50 @@ test.describe("Terrain Editor Vertical Drag", () => {
     await page.goto("/?testMode=true&preset=all_grass_unmown");
     await waitForGameReady(page);
 
-    // Focus canvas
-    await page.click("canvas");
-
-    // Enable editor
-    await page.keyboard.press("t");
+    // Enable editor via API
+    await page.evaluate(() => {
+      window.game.enableTerrainEditor();
+    });
     await page.waitForTimeout(100);
   });
 
   test("vertical drag raises terrain", async ({ page }) => {
-    // Select Raise tool (default, but ensuring)
-    // Note: In vertical drag mode, raise/lower might be unified or behave similarly
-    // For now, let's assume 'raise' tool enables this behavior
-
-    // Current logic uses screen coordinates.
-    // Center of screen is roughly (640, 360) which corresponds to tile (25, 19).
-    const startX = 640;
-    const startY = 360;
+    // Get player position (default is 25, 19)
+    const { x, y } = await page.evaluate(() => {
+      const pos = window.game.getPlayerPosition();
+      return { x: pos.x, y: pos.y };
+    });
 
     // Get initial elevation
-    const startElevation = await page.evaluate(() => {
-      const x = 25;
-      const y = 19;
-      return window.game.grassSystem.getElevationAt(x, y);
-    });
+    const startElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
     console.log("Start Elevation:", startElevation);
 
-    // Perform drag
-    // Move mouse to start
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
+    // Perform drag operation via API
+    // Start drag at player position with screen Y coordinate
+    // Then move up (decrease screen Y) to raise terrain
+    const baseScreenY = 360; // Screen center
+    await page.evaluate(({ x, y, screenY }) => {
+      window.game.dragTerrainStart(x, y, screenY);
+    }, { x, y, screenY: baseScreenY });
 
-    // Drag UP (decrease Y) significantly to trigger raise
-    // Let's say 40 pixels up = +2 units (20px per unit)
-    await page.mouse.move(startX, startY - 40, { steps: 5 });
+    // Drag UP (decrease screenY by 40 pixels = +2 elevation units at 20px per unit)
+    await page.evaluate(({ x, y, screenY }) => {
+      window.game.dragTerrainMove(x, y, screenY - 40);
+    }, { x, y, screenY: baseScreenY });
+
     await page.waitForTimeout(100); // Allow updates
 
-    await page.mouse.up();
+    await page.evaluate(() => {
+      window.game.dragTerrainEnd();
+    });
 
     // Get final elevation
-    const endElevation = await page.evaluate(() => {
-      const x = 25;
-      const y = 19;
-      return window.game.grassSystem.getElevationAt(x, y);
-    });
+    const endElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
     console.log("End Elevation:", endElevation);
 
@@ -59,30 +58,36 @@ test.describe("Terrain Editor Vertical Drag", () => {
   });
 
   test("vertical drag lowers terrain", async ({ page }) => {
-    const startX = 640;
-    const startY = 360;
-
-    const startElevation = await page.evaluate(() => {
-      const x = 25;
-      const y = 19;
-      return window.game.grassSystem.getElevationAt(x, y);
+    // Get player position
+    const { x, y } = await page.evaluate(() => {
+      const pos = window.game.getPlayerPosition();
+      return { x: pos.x, y: pos.y };
     });
 
-    // Move mouse to start
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
+    const startElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
-    // Drag DOWN (increase Y) significantly to trigger lower
-    await page.mouse.move(startX, startY + 40, { steps: 5 });
+    // Perform drag operation via API
+    const baseScreenY = 360;
+    await page.evaluate(({ x, y, screenY }) => {
+      window.game.dragTerrainStart(x, y, screenY);
+    }, { x, y, screenY: baseScreenY });
+
+    // Drag DOWN (increase screenY by 40 pixels = -2 elevation units)
+    await page.evaluate(({ x, y, screenY }) => {
+      window.game.dragTerrainMove(x, y, screenY + 40);
+    }, { x, y, screenY: baseScreenY });
+
     await page.waitForTimeout(100);
 
-    await page.mouse.up();
-
-    const endElevation = await page.evaluate(() => {
-      const x = 25;
-      const y = 19;
-      return window.game.grassSystem.getElevationAt(x, y);
+    await page.evaluate(() => {
+      window.game.dragTerrainEnd();
     });
+
+    const endElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
     expect(endElevation).toBeLessThan(startElevation ?? 0);
   });
