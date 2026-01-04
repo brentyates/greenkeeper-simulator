@@ -36,6 +36,7 @@ export interface InputCallbacks {
   onMarketingPanel?: () => void;
   onEquipmentStore?: () => void;
   onAmenityPanel?: () => void;
+  onWalkOnQueuePanel?: () => void;
   onDragStart?: (screenX: number, screenY: number) => void;
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
@@ -156,6 +157,8 @@ export class InputManager {
       this.callbacks.onEquipmentStore?.();
     } else if (key === "u") {
       this.callbacks.onAmenityPanel?.();
+    } else if (key === "o") {
+      this.callbacks.onWalkOnQueuePanel?.();
     }
   }
 

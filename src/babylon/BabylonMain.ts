@@ -12,6 +12,7 @@ import { TeeSheetPanel } from "./ui/TeeSheetPanel";
 import { MarketingDashboard } from "./ui/MarketingDashboard";
 import { EquipmentStorePanel } from "./ui/EquipmentStorePanel";
 import { AmenityPanel } from "./ui/AmenityPanel";
+import { WalkOnQueuePanel } from "./ui/WalkOnQueuePanel";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -185,6 +186,7 @@ export class BabylonMain {
   private marketingDashboard: MarketingDashboard | null = null;
   private equipmentStorePanel: EquipmentStorePanel | null = null;
   private amenityPanel: AmenityPanel | null = null;
+  private walkOnQueuePanel: WalkOnQueuePanel | null = null;
   private dailyStats = {
     revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
     expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
@@ -296,6 +298,7 @@ export class BabylonMain {
     this.setupMarketingDashboard();
     this.setupEquipmentStorePanel();
     this.setupAmenityPanel();
+    this.setupWalkOnQueuePanel();
     this.setupPriceCallback();
     this.setupUpdateLoop();
 
@@ -629,6 +632,29 @@ export class BabylonMain {
     });
   }
 
+  private setupWalkOnQueuePanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("WalkOnQueueUI", true, this.babylonEngine.getScene());
+
+    this.walkOnQueuePanel = new WalkOnQueuePanel(uiTexture, {
+      onAssignToSlot: (_golferId: string) => {
+        this.uiManager.showNotification(`Assigned golfer to next available slot`);
+        this.walkOnQueuePanel?.update(this.walkOnState);
+      },
+      onTurnAway: (golferId: string) => {
+        const golfer = this.walkOnState.queue.find(g => g.golferId === golferId);
+        if (golfer) {
+          golfer.status = 'turned_away';
+          this.walkOnState.metrics.walkOnsTurnedAwayToday++;
+          this.walkOnQueuePanel?.update(this.walkOnState);
+          this.uiManager.showNotification(`Turned away ${golfer.name}`);
+        }
+      },
+      onClose: () => {
+        this.walkOnQueuePanel?.hide();
+      },
+    });
+  }
+
   private setupPriceCallback(): void {
     this.uiManager.setPriceCallback((delta: number) => {
       const newPrice = Math.max(5, Math.min(500, this.greenFees.weekday18Holes + delta));
@@ -809,6 +835,7 @@ export class BabylonMain {
       onMarketingPanel: () => this.handleMarketingPanel(),
       onEquipmentStore: () => this.handleEquipmentStore(),
       onAmenityPanel: () => this.handleAmenityPanel(),
+      onWalkOnQueuePanel: () => this.handleWalkOnQueuePanel(),
     });
   }
 
@@ -1540,6 +1567,15 @@ export class BabylonMain {
     } else {
       this.amenityPanel?.update(this.prestigeState, this.economyState.cash);
       this.amenityPanel?.show();
+    }
+  }
+
+  private handleWalkOnQueuePanel(): void {
+    if (this.walkOnQueuePanel?.isVisible()) {
+      this.walkOnQueuePanel.hide();
+    } else {
+      this.walkOnQueuePanel?.update(this.walkOnState);
+      this.walkOnQueuePanel?.show();
     }
   }
 
