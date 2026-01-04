@@ -1209,7 +1209,7 @@ export class UIManager {
     }
   }
 
-  public showNotification(message: string, color?: string, duration: number = 2000): void {
+  public showNotification(message: string, color?: string, duration: number = 5000): void {
     const isWarning = color === '#ffaa44' || color === 'warning';
     const bgColor = isWarning ? 'rgba(90, 58, 42, 0.95)' : 'rgba(42, 90, 58, 0.95)';
     const borderColor = color || (isWarning ? '#ffaa44' : '#7FFF7F');

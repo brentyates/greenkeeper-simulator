@@ -14,14 +14,122 @@
 // ============================================================================
 
 export type EmployeeRole =
-  | "groundskeeper"    // Mowing, watering, general maintenance
-  | "mechanic"         // Equipment repair and maintenance
-  | "irrigator"        // Irrigation system management
-  | "pro_shop_staff"   // Customer service, sales
-  | "manager"          // Improves other employee efficiency
-  | "caddy";           // Assists golfers, improves satisfaction
+  | "groundskeeper"
+  | "mechanic"
+  | "irrigator"
+  | "pro_shop_staff"
+  | "manager"
+  | "caddy";
 
 export type SkillLevel = "novice" | "trained" | "experienced" | "expert";
+
+export interface EmployeeRoleInfo {
+  readonly id: EmployeeRole;
+  readonly name: string;
+  readonly icon: string;
+  readonly description: string;
+  readonly duties: readonly string[];
+  readonly benefits: readonly string[];
+}
+
+export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
+  groundskeeper: {
+    id: "groundskeeper",
+    name: "Groundskeeper",
+    icon: "🌿",
+    description: "The backbone of course maintenance. Groundskeepers handle mowing, general upkeep, and ensure the playing surface stays in top condition.",
+    duties: [
+      "Mow fairways, greens, and rough",
+      "Perform general course cleanup",
+      "Assist with equipment as needed"
+    ],
+    benefits: [
+      "Essential for daily maintenance",
+      "Most affordable staff option",
+      "Flexible role - can help everywhere"
+    ]
+  },
+  mechanic: {
+    id: "mechanic",
+    name: "Mechanic",
+    icon: "🔧",
+    description: "Keeps your equipment running smoothly. Mechanics repair broken mowers, maintain vehicles, and reduce equipment downtime.",
+    duties: [
+      "Repair broken equipment",
+      "Perform preventive maintenance",
+      "Manage equipment inventory"
+    ],
+    benefits: [
+      "Reduces equipment repair costs",
+      "Faster equipment turnaround",
+      "Extends equipment lifespan"
+    ]
+  },
+  irrigator: {
+    id: "irrigator",
+    name: "Irrigator",
+    icon: "💧",
+    description: "Specialist in water management. Irrigators optimize watering schedules, maintain sprinkler systems, and ensure proper moisture levels.",
+    duties: [
+      "Manage irrigation schedules",
+      "Repair sprinkler systems",
+      "Monitor soil moisture levels"
+    ],
+    benefits: [
+      "Improved turf health",
+      "Water cost savings",
+      "Automated moisture management"
+    ]
+  },
+  pro_shop_staff: {
+    id: "pro_shop_staff",
+    name: "Pro Shop Staff",
+    icon: "🏌️",
+    description: "The face of your golf course. Pro shop staff handle check-ins, sell merchandise, and provide customer service to golfers.",
+    duties: [
+      "Check in golfers",
+      "Sell merchandise and rentals",
+      "Answer customer inquiries"
+    ],
+    benefits: [
+      "Increased merchandise revenue",
+      "Better customer satisfaction",
+      "Faster check-in times"
+    ]
+  },
+  manager: {
+    id: "manager",
+    name: "Manager",
+    icon: "📋",
+    description: "Leadership that makes a difference. Managers boost the efficiency of all other employees and help coordinate daily operations.",
+    duties: [
+      "Supervise other employees",
+      "Coordinate work schedules",
+      "Handle administrative tasks"
+    ],
+    benefits: [
+      "+15% efficiency for all staff",
+      "Reduced employee fatigue",
+      "Better crew coordination"
+    ]
+  },
+  caddy: {
+    id: "caddy",
+    name: "Caddy",
+    icon: "🎒",
+    description: "Personal assistance for golfers. Caddies carry bags, offer course advice, and enhance the overall golfing experience.",
+    duties: [
+      "Carry golfer equipment",
+      "Provide course knowledge",
+      "Assist with club selection"
+    ],
+    benefits: [
+      "Higher golfer satisfaction",
+      "Increased tips revenue",
+      "Premium service offering"
+    ]
+  }
+};
 
 export type EmployeeStatus = "working" | "idle" | "on_break" | "training";
 
@@ -90,6 +198,12 @@ export interface JobPosting {
   readonly expiresAt: number;
   readonly cost: number;
   readonly targetSkillLevel?: SkillLevel;
+}
+
+export interface ApplicationTickResult {
+  readonly state: ApplicationState;
+  readonly newApplicant: Employee | null;
+  readonly expiredPostings: readonly JobPosting[];
 }
 
 export type PrestigeTier = 'municipal' | 'public' | 'semi_private' | 'private_club' | 'championship';
@@ -184,44 +298,44 @@ export const PRESTIGE_HIRING_CONFIG: Record<PrestigeTier, {
   postingApplicationRate: number;  // Hours between applications when posting is active
 }> = {
   municipal: {
-    applicationRate: 48,  // 2 game days between natural applications
+    applicationRate: 8,   // ~4 real minutes at 1x speed
     maxApplications: 2,
     skillDistribution: { novice: 85, trained: 13, experienced: 2, expert: 0 },
     postingCost: 500,
     postingDuration: 72,  // 3 game days
-    postingApplicationRate: 24  // 1 per day while posted
+    postingApplicationRate: 4   // ~2 real minutes at 1x speed
   },
   public: {
-    applicationRate: 24,  // 1 game day
+    applicationRate: 6,   // ~3 real minutes at 1x speed
     maxApplications: 3,
     skillDistribution: { novice: 60, trained: 28, experienced: 10, expert: 2 },
     postingCost: 350,
     postingDuration: 48,  // 2 game days
-    postingApplicationRate: 12  // 2 per day while posted
+    postingApplicationRate: 2   // ~1 real minute at 1x speed
   },
   semi_private: {
-    applicationRate: 12,  // Half game day
+    applicationRate: 4,   // ~2 real minutes at 1x speed
     maxApplications: 5,
     skillDistribution: { novice: 30, trained: 40, experienced: 23, expert: 7 },
     postingCost: 250,
     postingDuration: 36,  // 1.5 game days
-    postingApplicationRate: 8   // 3 per day while posted
+    postingApplicationRate: 1   // ~30 real seconds at 1x speed
   },
   private_club: {
-    applicationRate: 6,   // Quarter game day
+    applicationRate: 2,   // ~1 real minute at 1x speed
     maxApplications: 7,
     skillDistribution: { novice: 12, trained: 33, experienced: 38, expert: 17 },
     postingCost: 150,
     postingDuration: 24,  // 1 game day
-    postingApplicationRate: 6   // 4 per day while posted
+    postingApplicationRate: 0.5 // ~15 real seconds at 1x speed
   },
   championship: {
-    applicationRate: 3,   // Very frequent
+    applicationRate: 1,   // ~30 real seconds at 1x speed
     maxApplications: 10,
     skillDistribution: { novice: 3, trained: 17, experienced: 42, expert: 38 },
     postingCost: 100,
     postingDuration: 24,  // 1 game day
-    postingApplicationRate: 4   // 6 per day while posted
+    postingApplicationRate: 0.25 // ~7.5 real seconds at 1x speed
   }
 };
 
@@ -855,26 +969,24 @@ export function tickApplications(
   state: ApplicationState,
   currentTime: number,
   prestigeTier: PrestigeTier
-): ApplicationState {
+): ApplicationTickResult {
   const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
   let newState = { ...state };
+  let newApplicant: Employee | null = null;
 
-  // Remove expired job postings
+  const expiredPostings = state.activeJobPostings.filter(p => p.expiresAt <= currentTime);
   newState = {
     ...newState,
     activeJobPostings: state.activeJobPostings.filter(p => p.expiresAt > currentTime)
   };
 
-  // Check if we should generate a new application
   if (currentTime >= state.nextApplicationTime && state.applications.length < config.maxApplications) {
-    // Determine if this application comes from a job posting
     const activePosting = newState.activeJobPostings.length > 0
       ? newState.activeJobPostings[Math.floor(Math.random() * newState.activeJobPostings.length)]
       : undefined;
 
-    const newApplication = generateApplication(currentTime, prestigeTier, activePosting);
+    newApplicant = generateApplication(currentTime, prestigeTier, activePosting);
 
-    // Calculate next application time
     const hasActivePostings = newState.activeJobPostings.length > 0;
     const nextInterval = hasActivePostings
       ? Math.min(config.applicationRate, config.postingApplicationRate)
@@ -882,14 +994,14 @@ export function tickApplications(
 
     newState = {
       ...newState,
-      applications: [...state.applications, newApplication],
+      applications: [...state.applications, newApplicant],
       lastApplicationTime: currentTime,
       nextApplicationTime: currentTime + nextInterval * 60,
       totalApplicationsReceived: state.totalApplicationsReceived + 1
     };
   }
 
-  return newState;
+  return { state: newState, newApplicant, expiredPostings };
 }
 
 export function postJobOpening(

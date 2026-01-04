@@ -58,12 +58,14 @@ export class EmployeeVisualSystem {
       const bodyMat = new StandardMaterial(`workerBody_${task}`, this.scene);
       bodyMat.diffuseColor = colors.body;
       bodyMat.emissiveColor = colors.body.scale(0.5);
+      bodyMat.freeze();
       this.taskMaterials.set(`body_${task}`, bodyMat);
 
       if (colors.equipment) {
         const equipMat = new StandardMaterial(`workerEquip_${task}`, this.scene);
         equipMat.diffuseColor = colors.equipment;
         equipMat.emissiveColor = colors.equipment.scale(0.4);
+        equipMat.freeze();
         this.taskMaterials.set(`equip_${task}`, equipMat);
       }
     }

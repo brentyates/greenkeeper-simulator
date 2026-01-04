@@ -152,15 +152,15 @@ export class EquipmentManager {
     }
 
     if (this.equipmentMesh && state.isActive) {
-      this.equipmentMesh.position = new Vector3(
+      this.equipmentMesh.position.set(
         playerPosition.x + 10,
         playerPosition.y - 5,
         playerPosition.z - 0.5
       );
     }
 
-    if (this.particleSystem) {
-      this.particleSystem.emitter = new Vector3(
+    if (this.particleSystem && this.particleSystem.emitter instanceof Vector3) {
+      (this.particleSystem.emitter as Vector3).set(
         playerPosition.x,
         playerPosition.y - 10,
         playerPosition.z - 0.5

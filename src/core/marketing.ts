@@ -370,9 +370,10 @@ export function processDailyCampaigns(
   currentDay: number,
   dailyBookings: number,
   dailyRevenue: number
-): { state: MarketingState; dailyCost: number } {
+): { state: MarketingState; dailyCost: number; completedCampaignNames: string[] } {
   let totalDailyCost = 0;
   const completedCampaigns: CampaignEffectiveness[] = [];
+  const completedCampaignNames: string[] = [];
   const stillActive: ActiveCampaign[] = [];
   const newCooldowns = { ...state.cooldowns };
 
@@ -401,6 +402,7 @@ export function processDailyCampaigns(
     if (updated.elapsedDays >= updated.plannedDuration) {
       const effectiveness = evaluateCampaign(state, updated, campaign, currentDay);
       completedCampaigns.push(effectiveness);
+      completedCampaignNames.push(campaign.name);
 
       if (campaign.cooldownDays > 0) {
         newCooldowns[campaign.id] = campaign.cooldownDays;
@@ -424,6 +426,7 @@ export function processDailyCampaigns(
       metrics: updatedMetrics,
     },
     dailyCost: totalDailyCost,
+    completedCampaignNames,
   };
 }
 

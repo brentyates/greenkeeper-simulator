@@ -410,11 +410,9 @@ export class BabylonMain {
         this.terrainEditorUI?.setActiveTool(
           this.terrainEditorSystem!.getTool()
         );
-        this.uiManager.showNotification("Terrain Editor ON");
       },
       onDisable: () => {
         this.terrainEditorUI?.hide();
-        this.uiManager.showNotification("Terrain Editor OFF");
       },
       onToolChange: (tool: EditorTool) => {
         this.terrainEditorUI?.setActiveTool(tool);
@@ -1139,7 +1137,6 @@ export class BabylonMain {
     }
 
     this.updatePlayerPosition();
-    this.uiManager.showNotification(`Teleported to (${x}, ${y})`);
   }
 
   private updatePlayerPosition(): void {
@@ -1500,10 +1497,8 @@ export class BabylonMain {
 
   private handleEquipmentSelect(slot: EquipmentSlot): void {
     this.equipmentManager.selectBySlot(slot);
-    const names = ["Mower", "Sprinkler", "Spreader"];
-    this.uiManager.showNotification(`${names[slot - 1]} selected`);
 
-    const overlayMap: Record<EquipmentSlot, import("./systems/GrassSystem").OverlayMode> = {
+    const overlayMap: Record<EquipmentSlot, OverlayMode> = {
       1: "height",
       2: "moisture",
       3: "nutrients",
@@ -1519,15 +1514,6 @@ export class BabylonMain {
   private handleEquipmentToggle(): void {
     this.equipmentManager.toggle();
     const isActive = this.equipmentManager.isActive();
-    const type = this.equipmentManager.getCurrentType();
-    const names = {
-      mower: "Mower",
-      sprinkler: "Sprinkler",
-      spreader: "Spreader",
-    };
-    this.uiManager.showNotification(
-      `${names[type]} ${isActive ? "ON" : "OFF"}`
-    );
 
     if (!isActive && this.overlayAutoSwitched) {
       this.grassSystem.setOverlayMode("normal");
@@ -1570,13 +1556,6 @@ export class BabylonMain {
 
   private handleOverlayCycle(): void {
     const mode = this.grassSystem.cycleOverlayMode();
-    const modeNames: Record<OverlayMode, string> = {
-      normal: "Normal View",
-      moisture: "Moisture View",
-      nutrients: "Nutrients View",
-      height: "Height View",
-    };
-    this.uiManager.showNotification(modeNames[mode]);
     this.uiManager.updateOverlayLegend(mode);
     this.overlayAutoSwitched = false;
   }
@@ -1711,7 +1690,6 @@ export class BabylonMain {
 
   private handleMute(): void {
     this.isMuted = !this.isMuted;
-    this.uiManager.showNotification(this.isMuted ? "Sound OFF" : "Sound ON");
   }
 
   private handleTimeSpeed(delta: number): void {
@@ -1722,7 +1700,6 @@ export class BabylonMain {
       Math.min(speeds.length - 1, currentIndex + delta)
     );
     this.timeScale = speeds[newIndex];
-    this.uiManager.showNotification(`Speed: ${this.timeScale}x`);
   }
 
   private handleZoom(_delta: number): void {
@@ -1861,7 +1838,6 @@ export class BabylonMain {
       course.width,
       course.height
     );
-    this.uiManager.showNotification("Welcome to Greenkeeper Simulator!");
 
     this.babylonEngine.getScene().onBeforeRenderObservable.add(() => {
       const now = performance.now();
@@ -2143,6 +2119,9 @@ export class BabylonMain {
           this.revenueState.todaysRevenue.grossRevenue
         );
         this.marketingState = marketingResult.state;
+        for (const name of marketingResult.completedCampaignNames) {
+          this.uiManager.showNotification(`📢 Campaign completed: ${name}`);
+        }
         if (marketingResult.dailyCost > 0) {
           const expenseResult = addExpense(
             this.economyState,
@@ -2308,11 +2287,19 @@ export class BabylonMain {
 
     // Tick job applications based on prestige tier
     const absoluteTime = this.gameDay * 24 * 60 + this.gameTime;
-    this.applicationState = tickApplications(
+    const appResult = tickApplications(
       this.applicationState,
       absoluteTime,
       this.prestigeState.tier
     );
+    this.applicationState = appResult.state;
+
+    if (appResult.newApplicant) {
+      this.uiManager.showNotification(`📋 New applicant: ${appResult.newApplicant.name} (${appResult.newApplicant.role})`);
+    }
+    for (const posting of appResult.expiredPostings) {
+      this.uiManager.showNotification(`⏰ Job posting expired: ${posting.role}`, '#ffaa44');
+    }
 
     // Tick employee autonomous work
     const cells = this.grassSystem.getAllCells();

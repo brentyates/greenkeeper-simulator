@@ -72,6 +72,7 @@ export class AccessibleButton {
     text.color = this.options.textColor!;
     text.fontSize = this.options.fontSize!;
     text.fontFamily = 'Arial, sans-serif';
+    text.isPointerBlocker = false;
     return text;
   }
 
@@ -85,6 +86,14 @@ export class AccessibleButton {
     this.control.onPointerOutObservable.add(() => {
       this.isHovered = false;
       this.updateAppearance();
+    });
+
+    // Mouse/touch click handler
+    this.control.onPointerUpObservable.add(() => {
+      const isEnabled = this.options.isEnabled?.() !== false;
+      if (isEnabled) {
+        this.options.onClick();
+      }
     });
 
     // Touch-friendly: ensure tap works

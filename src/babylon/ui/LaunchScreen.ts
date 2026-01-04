@@ -18,10 +18,12 @@ import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
   onContinueScenario?: (scenario: ScenarioDefinition) => void;
+  onOpenManual?: () => void;
 }
 
 export class LaunchScreen {
   private advancedTexture: AdvancedDynamicTexture;
+  private ownsTexture: boolean;
   private progressManager: ProgressManager;
   private callbacks: LaunchScreenCallbacks;
   private container: Rectangle;
@@ -30,12 +32,19 @@ export class LaunchScreen {
   private startButton: AccessibleButton | null = null;
   private continueButton: AccessibleButton | null = null;
   private quickPlayButton: AccessibleButton | null = null;
+  private guideButton: AccessibleButton | null = null;
   private focusManager: FocusManager;
 
-  constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks) {
+  constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks, sharedTexture?: AdvancedDynamicTexture) {
     this.callbacks = callbacks;
     this.progressManager = getProgressManager();
-    this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('LaunchScreenUI', true, scene);
+    if (sharedTexture) {
+      this.advancedTexture = sharedTexture;
+      this.ownsTexture = false;
+    } else {
+      this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('LaunchScreenUI', true, scene);
+      this.ownsTexture = true;
+    }
     this.focusManager = new FocusManager(scene);
 
     this.container = new Rectangle('launchContainer');
@@ -43,9 +52,11 @@ export class LaunchScreen {
     this.container.height = '100%';
     this.container.background = '#0d1f15';
     this.container.thickness = 0;
-    this.advancedTexture.addControl(this.container);
 
     this.buildUI();
+
+    // Add container to texture - LaunchScreen shows by default
+    this.advancedTexture.addControl(this.container);
   }
 
   private buildUI(): void {
@@ -143,6 +154,20 @@ export class LaunchScreen {
     scrollViewer.barBackground = '#1a3a2a';
     scrollViewer.thickness = 0;
     scrollContainer.addControl(scrollViewer);
+
+    // Hide horizontal scrollbar area after it's created (it's created lazily on first render)
+    const hideHorizontalBar = () => {
+      // Hide the scrollbar itself
+      if (scrollViewer.horizontalBar) {
+        scrollViewer.horizontalBar.isVisible = false;
+      }
+      // Hide the scrollbar track/container (private property, access via any)
+      const viewer = scrollViewer as unknown as { _horizontalBarSpace?: { isVisible: boolean } };
+      if (viewer._horizontalBarSpace) {
+        viewer._horizontalBarSpace.isVisible = false;
+      }
+    };
+    scrollViewer.onAfterDrawObservable.addOnce(hideHorizontalBar);
 
     // Grid for scenario cards
     const grid = new Grid('scenarioGrid');
@@ -457,6 +482,27 @@ export class LaunchScreen {
       focusGroup: 'launch-buttons'
     }, this.focusManager);
     buttonRow.addControl(this.quickPlayButton.control);
+
+    // Spacer
+    const spacer3 = new Rectangle('spacer3');
+    spacer3.width = '20px';
+    spacer3.height = '1px';
+    spacer3.thickness = 0;
+    spacer3.background = 'transparent';
+    buttonRow.addControl(spacer3);
+
+    // Guide button
+    this.guideButton = createAccessibleButton({
+      label: '📖 GUIDE',
+      backgroundColor: '#5a6a7a',
+      onClick: () => {
+        if (this.callbacks.onOpenManual) {
+          this.callbacks.onOpenManual();
+        }
+      },
+      focusGroup: 'launch-buttons'
+    }, this.focusManager);
+    buttonRow.addControl(this.guideButton.control);
   }
 
 
@@ -499,6 +545,7 @@ export class LaunchScreen {
   }
 
   public show(): void {
+    this.advancedTexture.addControl(this.container);
     this.container.isVisible = true;
     this.refreshCards();
     // Enable keyboard navigation - start with scenario selection
@@ -507,6 +554,7 @@ export class LaunchScreen {
 
   public hide(): void {
     this.container.isVisible = false;
+    this.advancedTexture.removeControl(this.container);
     this.focusManager.disable();
   }
 
@@ -544,6 +592,13 @@ export class LaunchScreen {
 
   public dispose(): void {
     this.focusManager.dispose();
-    this.advancedTexture.dispose();
+    this.container.dispose();
+    if (this.ownsTexture) {
+      this.advancedTexture.dispose();
+    }
+  }
+
+  public getTexture(): AdvancedDynamicTexture {
+    return this.advancedTexture;
   }
 }

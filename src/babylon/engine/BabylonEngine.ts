@@ -6,6 +6,7 @@ import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Camera } from "@babylonjs/core/Cameras/camera";
+import { SceneOptimizer, SceneOptimizerOptions } from "@babylonjs/core/Misc/sceneOptimizer";
 
 export const TILE_SIZE = 1;
 export const HEIGHT_UNIT = 0.5;
@@ -51,6 +52,12 @@ export class BabylonEngine {
     const scene = new Scene(this.engine);
     scene.clearColor = new Color4(0.4, 0.6, 0.9, 1);
     scene.skipFrustumClipping = true;
+
+    SceneOptimizer.OptimizeAsync(
+      scene,
+      SceneOptimizerOptions.ModerateDegradationAllowed()
+    );
+
     return scene;
   }
 

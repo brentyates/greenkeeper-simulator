@@ -6,6 +6,7 @@ import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollVie
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 
 import {
   ResearchState,
@@ -79,65 +80,25 @@ export class ResearchPanel {
   }
 
   private createPanel(): void {
-    this.panel = new Rectangle('researchPanel');
-    this.panel.width = '420px';
-    this.panel.height = '500px';
-    this.panel.cornerRadius = 8;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 2;
-    this.panel.background = 'rgba(20, 45, 35, 0.95)';
-    this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    this.panel.isVisible = false;
-    this.panel.isPointerBlocker = true;
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 10;
-    this.panel.shadowOffsetX = 3;
-    this.panel.shadowOffsetY = 3;
-    this.advancedTexture.addControl(this.panel);
+    const { panel, stack } = createDirectPopup(this.advancedTexture, {
+      name: 'research',
+      width: 420,
+      height: 500,
+      colors: POPUP_COLORS.green,
+      padding: 12,
+    });
 
-    const stack = new StackPanel('researchStack');
-    stack.width = '396px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.panel.addControl(stack);
+    this.panel = panel;
 
-    this.createHeader(stack);
+    createPopupHeader(stack, {
+      title: '🔬 RESEARCH LAB',
+      width: 396,
+      onClose: () => this.callbacks.onClose(),
+    });
     this.createCurrentResearchSection(stack);
     this.createFundingControls(stack);
     this.createCategoryTabs(stack);
     this.createResearchList(stack);
-  }
-
-  private createHeader(parent: StackPanel): void {
-    const headerContainer = new Rectangle('headerContainer');
-    headerContainer.height = '36px';
-    headerContainer.width = '396px';
-    headerContainer.thickness = 0;
-    headerContainer.background = 'transparent';
-    parent.addControl(headerContainer);
-
-    const title = new TextBlock('title');
-    title.text = '🔬 RESEARCH LAB';
-    title.color = '#ffcc00';
-    title.fontSize = 16;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.left = '0px';
-    headerContainer.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '28px';
-    closeBtn.height = '28px';
-    closeBtn.cornerRadius = 4;
-    closeBtn.background = '#aa4444';
-    closeBtn.color = 'white';
-    closeBtn.thickness = 0;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    closeBtn.onPointerEnterObservable.add(() => { closeBtn.background = '#cc5555'; });
-    closeBtn.onPointerOutObservable.add(() => { closeBtn.background = '#aa4444'; });
-    headerContainer.addControl(closeBtn);
   }
 
   private createCurrentResearchSection(parent: StackPanel): void {

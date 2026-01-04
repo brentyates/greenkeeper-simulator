@@ -182,7 +182,7 @@ export function updateEntityVisualPosition(
   const y = startPos.y + (endPos.y - startPos.y) * easeT;
   const z = startPos.z + (endPos.z - startPos.z) * easeT;
 
-  state.container.position = new Vector3(x, y, z);
+  state.container.position.set(x, y, z);
 }
 
 export function disposeEntityMesh(state: EntityVisualState): void {

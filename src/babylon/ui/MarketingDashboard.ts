@@ -15,6 +15,7 @@ import {
   getActiveCampaignCount,
   getCampaignSummary,
 } from '../../core/marketing';
+import { createOverlayPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 
 export interface MarketingDashboardCallbacks {
   onStartCampaign: (campaignId: string, duration: number) => void;
@@ -27,7 +28,6 @@ export class MarketingDashboard {
   private callbacks: MarketingDashboardCallbacks;
 
   private overlay: Rectangle | null = null;
-  private panel: Rectangle | null = null;
   private metricsText: TextBlock | null = null;
   private activeCampaignsList: StackPanel | null = null;
   private availableCampaignsList: StackPanel | null = null;
@@ -39,64 +39,24 @@ export class MarketingDashboard {
   }
 
   private createPanel(): void {
-    this.overlay = new Rectangle('marketingOverlay');
-    this.overlay.width = '100%';
-    this.overlay.height = '100%';
-    this.overlay.background = 'rgba(0, 0, 0, 0.6)';
-    this.overlay.thickness = 0;
-    this.overlay.isVisible = false;
-    this.overlay.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.overlay);
+    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+      name: 'marketing',
+      width: 550,
+      height: 620,
+      colors: POPUP_COLORS.green,
+      padding: 15,
+    });
 
-    this.panel = new Rectangle('marketingPanel');
-    this.panel.width = '550px';
-    this.panel.height = '620px';
-    this.panel.cornerRadius = 10;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 3;
-    this.panel.background = 'rgba(20, 45, 35, 0.98)';
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 15;
-    this.overlay.addControl(this.panel);
+    this.overlay = overlay;
 
-    const mainStack = new StackPanel('marketingStack');
-    mainStack.width = '520px';
-    mainStack.paddingTop = '15px';
-    this.panel.addControl(mainStack);
-
-    this.createHeader(mainStack);
-    this.createMetricsSection(mainStack);
-    this.createActiveCampaignsSection(mainStack);
-    this.createAvailableCampaignsSection(mainStack);
-  }
-
-  private createHeader(parent: StackPanel): void {
-    const header = new Rectangle('header');
-    header.height = '45px';
-    header.width = '520px';
-    header.thickness = 0;
-    header.background = 'transparent';
-    parent.addControl(header);
-
-    const title = new TextBlock('title');
-    title.text = '📢 MARKETING DASHBOARD';
-    title.color = '#ffcc00';
-    title.fontSize = 20;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    header.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '35px';
-    closeBtn.height = '35px';
-    closeBtn.cornerRadius = 5;
-    closeBtn.background = 'rgba(100, 50, 50, 0.8)';
-    closeBtn.color = '#ff8888';
-    closeBtn.thickness = 1;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    header.addControl(closeBtn);
+    createPopupHeader(stack, {
+      title: '📢 MARKETING DASHBOARD',
+      width: 520,
+      onClose: () => this.callbacks.onClose(),
+    });
+    this.createMetricsSection(stack);
+    this.createActiveCampaignsSection(stack);
+    this.createAvailableCampaignsSection(stack);
   }
 
   private createMetricsSection(parent: StackPanel): void {

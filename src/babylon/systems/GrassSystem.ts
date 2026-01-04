@@ -119,6 +119,7 @@ export class GrassSystem {
     this.tileMaterial.emissiveColor = new Color3(1, 1, 1);
     this.tileMaterial.disableLighting = true;
     this.tileMaterial.backFaceCulling = false;
+    this.tileMaterial.freeze();
 
     this.waterMaterial = new StandardMaterial("waterMat", this.scene);
     this.waterMaterial.diffuseColor = new Color3(1, 1, 1);
@@ -129,6 +130,7 @@ export class GrassSystem {
     this.waterMaterial.alpha = 1;
     this.waterMaterial.needAlphaBlending = () => true;
     this.waterMaterial.needAlphaTesting = () => false;
+    this.waterMaterial.freeze();
   }
 
   public build(): void {
@@ -353,6 +355,7 @@ export class GrassSystem {
     mesh.material = this.tileMaterial;
     mesh.useVertexColors = true;
     mesh.alwaysSelectAsActiveMesh = true;
+    mesh.freezeWorldMatrix();
 
     return mesh;
   }
@@ -537,6 +540,7 @@ export class GrassSystem {
     mesh.material = this.tileMaterial;
     mesh.useVertexColors = true;
     mesh.alwaysSelectAsActiveMesh = true;
+    mesh.freezeWorldMatrix();
 
     return mesh;
   }
@@ -687,6 +691,7 @@ export class GrassSystem {
     mesh.material = this.tileMaterial;
     mesh.useVertexColors = true;
     mesh.alwaysSelectAsActiveMesh = true;
+    mesh.freezeWorldMatrix();
 
     return mesh;
   }

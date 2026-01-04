@@ -6,15 +6,16 @@ import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollVie
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 
 import {
   Employee,
-  EmployeeRole,
   EmployeeRoster,
   ApplicationState,
   SkillLevel,
   PrestigeTier,
   PRESTIGE_HIRING_CONFIG,
+  EMPLOYEE_ROLE_INFO,
 } from '../../core/employees';
 
 export interface EmployeePanelCallbacks {
@@ -23,24 +24,6 @@ export interface EmployeePanelCallbacks {
   onClose: () => void;
   onPostJobOpening: () => void;
 }
-
-const ROLE_ICONS: Record<EmployeeRole, string> = {
-  groundskeeper: '🌿',
-  mechanic: '🔧',
-  irrigator: '💧',
-  pro_shop_staff: '🏌️',
-  manager: '📋',
-  caddy: '🎒',
-};
-
-const ROLE_LABELS: Record<EmployeeRole, string> = {
-  groundskeeper: 'Groundskeeper',
-  mechanic: 'Mechanic',
-  irrigator: 'Irrigator',
-  pro_shop_staff: 'Pro Shop',
-  manager: 'Manager',
-  caddy: 'Caddy',
-};
 
 const SKILL_COLORS: Record<SkillLevel, string> = {
   novice: '#888888',
@@ -63,6 +46,7 @@ export class EmployeePanel {
   private nextApplicationText: TextBlock | null = null;
   private postingCountText: TextBlock | null = null;
   private postJobButton: Button | null = null;
+  private hasActivePosting: boolean = false;
 
   private selectedEmployeeId: string | null = null;
 
@@ -73,22 +57,15 @@ export class EmployeePanel {
   }
 
   private createPanel(): void {
-    this.panel = new Rectangle('employeePanel');
-    this.panel.width = '360px';
-    this.panel.height = '450px';
-    this.panel.cornerRadius = 8;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 2;
-    this.panel.background = 'rgba(20, 45, 35, 0.95)';
-    this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    this.panel.isVisible = false;
-    this.panel.isPointerBlocker = true;
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 10;
-    this.panel.shadowOffsetX = 3;
-    this.panel.shadowOffsetY = 3;
-    this.advancedTexture.addControl(this.panel);
+    const { panel } = createDirectPopup(this.advancedTexture, {
+      name: 'employee',
+      width: 360,
+      height: 450,
+      colors: POPUP_COLORS.green,
+      padding: 12,
+    });
+
+    this.panel = panel;
 
     this.createMainView();
     this.createApplicationsView();
@@ -108,41 +85,14 @@ export class EmployeePanel {
     stack.paddingBottom = '12px';
     this.mainView.addControl(stack);
 
-    this.createHeader(stack);
+    createPopupHeader(stack, {
+      title: '👥 EMPLOYEE MANAGEMENT',
+      width: 336,
+      onClose: () => this.callbacks.onClose(),
+    });
     this.createSummaryRow(stack);
     this.createEmployeeList(stack);
     this.createActionButtons(stack);
-  }
-
-  private createHeader(parent: StackPanel): void {
-    const headerContainer = new Rectangle('headerContainer');
-    headerContainer.height = '36px';
-    headerContainer.width = '336px';
-    headerContainer.thickness = 0;
-    headerContainer.background = 'transparent';
-    parent.addControl(headerContainer);
-
-    const title = new TextBlock('title');
-    title.text = '👥 EMPLOYEE MANAGEMENT';
-    title.color = '#ffcc00';
-    title.fontSize = 16;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.left = '0px';
-    headerContainer.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '28px';
-    closeBtn.height = '28px';
-    closeBtn.cornerRadius = 4;
-    closeBtn.background = '#aa4444';
-    closeBtn.color = 'white';
-    closeBtn.thickness = 0;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    closeBtn.onPointerEnterObservable.add(() => { closeBtn.background = '#cc5555'; });
-    closeBtn.onPointerOutObservable.add(() => { closeBtn.background = '#aa4444'; });
-    headerContainer.addControl(closeBtn);
   }
 
   private createSummaryRow(parent: StackPanel): void {
@@ -258,7 +208,7 @@ export class EmployeePanel {
     row.addControl(grid);
 
     const icon = new TextBlock('empIcon');
-    icon.text = ROLE_ICONS[employee.role];
+    icon.text = EMPLOYEE_ROLE_INFO[employee.role].icon;
     icon.fontSize = 18;
     grid.addControl(icon, 0, 0);
 
@@ -275,7 +225,7 @@ export class EmployeePanel {
     infoStack.addControl(nameText);
 
     const roleText = new TextBlock('empRole');
-    roleText.text = ROLE_LABELS[employee.role];
+    roleText.text = EMPLOYEE_ROLE_INFO[employee.role].name;
     roleText.color = '#aaaaaa';
     roleText.fontSize = 10;
     roleText.height = '14px';
@@ -371,35 +321,12 @@ export class EmployeePanel {
     stack.paddingBottom = '12px';
     this.applicationsView.addControl(stack);
 
-    const headerContainer = new Rectangle('applicationsHeaderContainer');
-    headerContainer.height = '36px';
-    headerContainer.width = '336px';
-    headerContainer.thickness = 0;
-    headerContainer.background = 'transparent';
-    stack.addControl(headerContainer);
-
-    const title = new TextBlock('applicationsTitle');
-    title.text = '📋 JOB APPLICATIONS';
-    title.color = '#ffcc00';
-    title.fontSize = 16;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.left = '0px';
-    headerContainer.addControl(title);
-
-    const backBtn = Button.CreateSimpleButton('backBtn', '← Back');
-    backBtn.width = '70px';
-    backBtn.height = '28px';
-    backBtn.cornerRadius = 4;
-    backBtn.background = '#4a6a5a';
-    backBtn.color = 'white';
-    backBtn.thickness = 0;
-    backBtn.fontSize = 12;
-    backBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    backBtn.onPointerClickObservable.add(() => this.hideApplicationsView());
-    backBtn.onPointerEnterObservable.add(() => { backBtn.background = '#5a7a6a'; });
-    backBtn.onPointerOutObservable.add(() => { backBtn.background = '#4a6a5a'; });
-    headerContainer.addControl(backBtn);
+    createPopupHeader(stack, {
+      title: '📋 JOB APPLICATIONS',
+      width: 336,
+      onClose: () => this.hideApplicationsView(),
+      closeLabel: '← Back',
+    });
 
     // Status info
     const statusContainer = new Rectangle('statusContainer');
@@ -474,8 +401,12 @@ export class EmployeePanel {
     this.postJobButton.fontSize = 14;
     this.postJobButton.paddingTop = '8px';
     this.postJobButton.onPointerClickObservable.add(() => this.callbacks.onPostJobOpening());
-    this.postJobButton.onPointerEnterObservable.add(() => { this.postJobButton!.background = '#4a7a9a'; });
-    this.postJobButton.onPointerOutObservable.add(() => { this.postJobButton!.background = '#3a6a8a'; });
+    this.postJobButton.onPointerEnterObservable.add(() => {
+      this.postJobButton!.background = this.hasActivePosting ? '#3a6a4a' : '#4a7a9a';
+    });
+    this.postJobButton.onPointerOutObservable.add(() => {
+      this.postJobButton!.background = this.hasActivePosting ? '#2a5a3a' : '#3a6a8a';
+    });
     stack.addControl(this.postJobButton);
   }
 
@@ -505,7 +436,7 @@ export class EmployeePanel {
     row.addControl(grid);
 
     const icon = new TextBlock('candIcon');
-    icon.text = ROLE_ICONS[candidate.role];
+    icon.text = EMPLOYEE_ROLE_INFO[candidate.role].icon;
     icon.fontSize = 18;
     grid.addControl(icon, 0, 0);
 
@@ -522,7 +453,7 @@ export class EmployeePanel {
     infoStack.addControl(nameText);
 
     const roleText = new TextBlock('candRole');
-    roleText.text = ROLE_LABELS[candidate.role];
+    roleText.text = EMPLOYEE_ROLE_INFO[candidate.role].name;
     roleText.color = '#aaaaaa';
     roleText.fontSize = 10;
     roleText.height = '14px';
@@ -626,18 +557,31 @@ export class EmployeePanel {
       this.nextApplicationText!.text = `${hoursUntilNext.toFixed(1)} hours`;
     }
 
-    // Update posting count
+    // Update post job button based on active postings
     const postingCount = state.activeJobPostings.length;
+    this.hasActivePosting = postingCount > 0;
+
     if (postingCount === 0) {
       this.postingCountText!.text = 'No active job postings';
       this.postingCountText!.color = '#888888';
+      this.postJobButton!.textBlock!.text = `📢 Post Job Opening ($${config.postingCost})`;
+      this.postJobButton!.background = '#3a6a8a';
+      this.postJobButton!.color = '#88ccff';
+      this.postJobButton!.isEnabled = true;
     } else {
-      this.postingCountText!.text = `${postingCount} active job posting${postingCount > 1 ? 's' : ''}`;
-      this.postingCountText!.color = '#44aa44';
+      const posting = state.activeJobPostings[0];
+      const expiresInMinutes = Math.max(0, posting.expiresAt - currentGameTime);
+      const expiresInHours = expiresInMinutes / 60;
+      const expiresText = expiresInHours >= 1
+        ? `${expiresInHours.toFixed(1)}h left`
+        : `${Math.ceil(expiresInMinutes)}m left`;
+      this.postingCountText!.text = `✓ Active posting (${expiresText})`;
+      this.postingCountText!.color = '#44ff44';
+      this.postJobButton!.textBlock!.text = `⏳ Posting Active (${expiresText})`;
+      this.postJobButton!.background = '#444444';
+      this.postJobButton!.color = '#888888';
+      this.postJobButton!.isEnabled = false;
     }
-
-    // Update post job button text with current cost
-    this.postJobButton!.textBlock!.text = `📢 Post Job Opening ($${config.postingCost})`;
 
     // Update applications list
     const children = [...this.applicationsContainer.children];

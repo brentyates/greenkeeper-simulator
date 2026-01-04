@@ -1,7 +1,8 @@
 import { Scene } from "@babylonjs/core/scene";
-import { KeyboardEventTypes } from "@babylonjs/core/Events/keyboardEvents";
+import { KeyboardEventTypes, KeyboardInfo } from "@babylonjs/core/Events/keyboardEvents";
+import { Observer } from "@babylonjs/core/Misc/observable";
 import { Control } from "@babylonjs/gui/2D/controls/control";
-import { Rectangle } from "@babylonjs/gui/2D/controls/rectangle";
+import { Vector2WithInfo } from "@babylonjs/gui/2D/math2D";
 
 /**
  * Represents a focusable UI element with keyboard and accessibility support
@@ -21,20 +22,22 @@ export interface FocusableElement {
   group?: string;
 }
 
+interface RegisteredElement extends FocusableElement {
+  clickObserver: Observer<Vector2WithInfo> | null;
+}
+
 /**
  * FocusManager handles keyboard navigation and focus management for UI elements
  * Supports Tab, Arrow keys, Enter/Space activation, and visual focus indicators
  */
 export class FocusManager {
   private scene: Scene;
-  private elements: FocusableElement[] = [];
+  private elements: RegisteredElement[] = [];
   private currentFocusIndex: number = -1;
   private enabled: boolean = false;
   private currentGroup: string | null = null;
+  private keyboardObserver: Observer<KeyboardInfo> | null = null;
 
-  // Visual focus indicator
-  private focusIndicator: Rectangle | null = null;
-  private focusIndicatorPadding: number = 4;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -45,13 +48,15 @@ export class FocusManager {
    * Register a focusable element
    */
   public register(element: FocusableElement): void {
-    this.elements.push(element);
-
-    // Set up mouse click to also activate
-    element.control.onPointerClickObservable.add(() => {
+    const clickObserver = element.control.onPointerClickObservable.add(() => {
       if (element.isEnabled?.() !== false) {
         element.onActivate();
       }
+    });
+
+    this.elements.push({
+      ...element,
+      clickObserver
     });
   }
 
@@ -63,6 +68,10 @@ export class FocusManager {
     if (index !== -1) {
       if (this.currentFocusIndex === index) {
         this.clearFocus();
+      }
+      const element = this.elements[index];
+      if (element.clickObserver) {
+        element.control.onPointerClickObservable.remove(element.clickObserver);
       }
       this.elements.splice(index, 1);
       if (this.currentFocusIndex > index) {
@@ -76,6 +85,11 @@ export class FocusManager {
    */
   public clear(): void {
     this.clearFocus();
+    for (const element of this.elements) {
+      if (element.clickObserver) {
+        element.control.onPointerClickObservable.remove(element.clickObserver);
+      }
+    }
     this.elements = [];
     this.currentFocusIndex = -1;
     this.currentGroup = null;
@@ -112,7 +126,7 @@ export class FocusManager {
   /**
    * Get elements in the current group
    */
-  private getGroupElements(): FocusableElement[] {
+  private getGroupElements(): RegisteredElement[] {
     if (!this.currentGroup) {
       return this.elements;
     }
@@ -219,50 +233,25 @@ export class FocusManager {
 
   /**
    * Show visual focus indicator around a control
+   * Note: Visual indicator is disabled - AccessibleButton handles its own focus styling
    */
-  private showFocusIndicator(control: Control): void {
-    if (!control.parent) return;
-
-    // Create focus indicator if it doesn't exist
-    if (!this.focusIndicator) {
-      this.focusIndicator = new Rectangle('focusIndicator');
-      this.focusIndicator.thickness = 3;
-      this.focusIndicator.color = '#FFFFFF';
-      this.focusIndicator.background = 'transparent';
-      this.focusIndicator.cornerRadius = 8;
-      this.focusIndicator.alpha = 0.8;
-      this.focusIndicator.isPointerBlocker = false;
-    }
-
-    // Position and size the indicator
-    this.focusIndicator.width = control.widthInPixels + (this.focusIndicatorPadding * 2) + 'px';
-    this.focusIndicator.height = control.heightInPixels + (this.focusIndicatorPadding * 2) + 'px';
-    this.focusIndicator.left = control.leftInPixels + 'px';
-    this.focusIndicator.top = control.topInPixels + 'px';
-    this.focusIndicator.horizontalAlignment = control.horizontalAlignment;
-    this.focusIndicator.verticalAlignment = control.verticalAlignment;
-
-    // Add to the same parent
-    if (!this.focusIndicator.parent) {
-      control.parent.addControl(this.focusIndicator);
-    }
-    this.focusIndicator.isVisible = true;
+  private showFocusIndicator(_control: Control): void {
+    // Focus indicator disabled - AccessibleButton already changes appearance on focus
+    // The overlay rectangle doesn't work well with StackPanels which layout children linearly
   }
 
   /**
    * Hide visual focus indicator
    */
   private hideFocusIndicator(): void {
-    if (this.focusIndicator) {
-      this.focusIndicator.isVisible = false;
-    }
+    // No-op - focus indicator disabled
   }
 
   /**
    * Set up keyboard event handling
    */
   private setupKeyboardHandling(): void {
-    this.scene.onKeyboardObservable.add((kbInfo) => {
+    this.keyboardObserver = this.scene.onKeyboardObservable.add((kbInfo) => {
       if (!this.enabled) return;
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
@@ -326,9 +315,9 @@ export class FocusManager {
    */
   public dispose(): void {
     this.clear();
-    if (this.focusIndicator) {
-      this.focusIndicator.dispose();
-      this.focusIndicator = null;
+    if (this.keyboardObserver) {
+      this.scene.onKeyboardObservable.remove(this.keyboardObserver);
+      this.keyboardObserver = null;
     }
   }
 }

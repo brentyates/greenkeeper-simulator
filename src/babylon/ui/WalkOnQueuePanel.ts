@@ -6,6 +6,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
+import { createOverlayPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 import { WalkOnState, WalkOnGolfer } from '../../core/walk-ons';
 
 export interface WalkOnQueuePanelCallbacks {
@@ -19,7 +20,6 @@ export class WalkOnQueuePanel {
   private callbacks: WalkOnQueuePanelCallbacks;
 
   private overlay: Rectangle | null = null;
-  private panel: Rectangle | null = null;
   private metricsText: TextBlock | null = null;
   private queueList: StackPanel | null = null;
 
@@ -30,64 +30,25 @@ export class WalkOnQueuePanel {
   }
 
   private createPanel(): void {
-    this.overlay = new Rectangle('walkOnOverlay');
-    this.overlay.width = '100%';
-    this.overlay.height = '100%';
-    this.overlay.background = 'rgba(0, 0, 0, 0.6)';
-    this.overlay.thickness = 0;
-    this.overlay.isVisible = false;
-    this.overlay.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.overlay);
+    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+      name: 'walkOn',
+      width: 450,
+      height: 500,
+      colors: POPUP_COLORS.green,
+      padding: 15,
+    });
 
-    this.panel = new Rectangle('walkOnPanel');
-    this.panel.width = '450px';
-    this.panel.height = '500px';
-    this.panel.cornerRadius = 10;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 3;
-    this.panel.background = 'rgba(20, 45, 35, 0.98)';
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 15;
-    this.overlay.addControl(this.panel);
+    this.overlay = overlay;
 
-    const mainStack = new StackPanel('walkOnStack');
-    mainStack.width = '420px';
-    mainStack.paddingTop = '15px';
-    this.panel.addControl(mainStack);
-
-    this.createHeader(mainStack);
-    this.createMetricsSection(mainStack);
-    this.createQueueList(mainStack);
-    this.createFooter(mainStack);
-  }
-
-  private createHeader(parent: StackPanel): void {
-    const header = new Rectangle('header');
-    header.height = '45px';
-    header.width = '420px';
-    header.thickness = 0;
-    header.background = 'transparent';
-    parent.addControl(header);
-
-    const title = new TextBlock('title');
-    title.text = '🚶 WALK-ON QUEUE';
-    title.color = '#88ccff';
-    title.fontSize = 20;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    header.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '35px';
-    closeBtn.height = '35px';
-    closeBtn.cornerRadius = 5;
-    closeBtn.background = 'rgba(100, 50, 50, 0.8)';
-    closeBtn.color = '#ff8888';
-    closeBtn.thickness = 1;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    header.addControl(closeBtn);
+    createPopupHeader(stack, {
+      title: '🚶 WALK-ON QUEUE',
+      titleColor: '#88ccff',
+      width: 420,
+      onClose: () => this.callbacks.onClose(),
+    });
+    this.createMetricsSection(stack);
+    this.createQueueList(stack);
+    this.createFooter(stack);
   }
 
   private createMetricsSection(parent: StackPanel): void {

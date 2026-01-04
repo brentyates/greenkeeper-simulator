@@ -5,6 +5,7 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { createOverlayPopup, POPUP_COLORS } from './PopupUtils';
 
 export interface DaySummaryData {
   day: number;
@@ -52,7 +53,6 @@ export class DaySummaryPopup {
   private callbacks: DaySummaryPopupCallbacks;
 
   private overlay: Rectangle | null = null;
-  private panel: Rectangle | null = null;
   private dayText: TextBlock | null = null;
   private profitText: TextBlock | null = null;
   private revenueStack: StackPanel | null = null;
@@ -66,33 +66,15 @@ export class DaySummaryPopup {
   }
 
   private createPopup(): void {
-    this.overlay = new Rectangle('summaryOverlay');
-    this.overlay.width = '100%';
-    this.overlay.height = '100%';
-    this.overlay.background = 'rgba(0, 0, 0, 0.7)';
-    this.overlay.thickness = 0;
-    this.overlay.isVisible = false;
-    this.overlay.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.overlay);
+    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+      name: 'summary',
+      width: 450,
+      height: 550,
+      colors: POPUP_COLORS.green,
+      padding: 15,
+    });
 
-    this.panel = new Rectangle('summaryPanel');
-    this.panel.width = '450px';
-    this.panel.height = '550px';
-    this.panel.cornerRadius = 10;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 3;
-    this.panel.background = 'rgba(20, 45, 35, 0.98)';
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 15;
-    this.panel.shadowOffsetX = 5;
-    this.panel.shadowOffsetY = 5;
-    this.overlay.addControl(this.panel);
-
-    const stack = new StackPanel('summaryStack');
-    stack.width = '420px';
-    stack.paddingTop = '15px';
-    stack.paddingBottom = '15px';
-    this.panel.addControl(stack);
+    this.overlay = overlay;
 
     this.createHeader(stack);
     this.createFinancialSummary(stack);

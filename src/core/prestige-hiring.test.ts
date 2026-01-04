@@ -27,8 +27,8 @@ describe('Prestige-Based Hiring System', () => {
       expect(state.lastApplicationTime).toBe(0);
       expect(state.activeJobPostings).toHaveLength(0);
       expect(state.totalApplicationsReceived).toBe(0);
-      // Municipal tier should have 48-hour interval (48 * 60 = 2880 minutes)
-      expect(state.nextApplicationTime).toBe(2880);
+      // Municipal tier should have 8-hour interval (8 * 60 = 480 minutes)
+      expect(state.nextApplicationTime).toBe(480);
     });
 
     it('should vary next application time by prestige tier', () => {
@@ -43,18 +43,18 @@ describe('Prestige-Based Hiring System', () => {
   describe('tickApplications', () => {
     it('should not generate application before next application time', () => {
       const state = createInitialApplicationState(0, 'public');
-      const ticked = tickApplications(state, 100, 'public'); // Well before next time
+      const result = tickApplications(state, 100, 'public'); // Well before next time
 
-      expect(ticked.applications).toHaveLength(0);
+      expect(result.state.applications).toHaveLength(0);
     });
 
     it('should generate application when time arrives', () => {
       const state = createInitialApplicationState(0, 'public');
       const config = PRESTIGE_HIRING_CONFIG.public;
-      const ticked = tickApplications(state, config.applicationRate * 60, 'public');
+      const result = tickApplications(state, config.applicationRate * 60, 'public');
 
-      expect(ticked.applications).toHaveLength(1);
-      expect(ticked.totalApplicationsReceived).toBe(1);
+      expect(result.state.applications).toHaveLength(1);
+      expect(result.state.totalApplicationsReceived).toBe(1);
     });
 
     it('should respect max applications limit', () => {
@@ -63,7 +63,7 @@ describe('Prestige-Based Hiring System', () => {
 
       // Generate max applications (2 for municipal)
       for (let i = 0; i < config.maxApplications + 2; i++) {
-        state = tickApplications(state, (config.applicationRate * 60) * (i + 1), 'municipal');
+        state = tickApplications(state, (config.applicationRate * 60) * (i + 1), 'municipal').state;
       }
 
       expect(state.applications.length).toBeLessThanOrEqual(config.maxApplications);
@@ -79,8 +79,8 @@ describe('Prestige-Based Hiring System', () => {
 
       for (let i = 0; i < 10; i++) {
         const time = i * 1000;
-        municipalApps = tickApplications(municipalApps, time, 'municipal');
-        championshipApps = tickApplications(championshipApps, time, 'championship');
+        municipalApps = tickApplications(municipalApps, time, 'municipal').state;
+        championshipApps = tickApplications(championshipApps, time, 'championship').state;
       }
 
       // Championship should eventually have better skilled candidates
@@ -103,7 +103,7 @@ describe('Prestige-Based Hiring System', () => {
 
       // Tick past expiration time
       const config = PRESTIGE_HIRING_CONFIG.public;
-      state = tickApplications(state, config.postingDuration * 60 + 100, 'public');
+      state = tickApplications(state, config.postingDuration * 60 + 100, 'public').state;
 
       expect(state.activeJobPostings).toHaveLength(0);
     });
@@ -144,7 +144,7 @@ describe('Prestige-Based Hiring System', () => {
   describe('acceptApplication', () => {
     it('should remove application from list', () => {
       let state = createInitialApplicationState(0, 'public');
-      state = tickApplications(state, 2000, 'public');
+      state = tickApplications(state, 2000, 'public').state;
 
       const applicationId = state.applications[0].id;
       const updated = acceptApplication(state, applicationId);
@@ -165,7 +165,7 @@ describe('Prestige-Based Hiring System', () => {
   describe('rejectApplication', () => {
     it('should remove application from list', () => {
       let state = createInitialApplicationState(0, 'public');
-      state = tickApplications(state, 2000, 'public');
+      state = tickApplications(state, 2000, 'public').state;
 
       const applicationId = state.applications[0].id;
       const updated = rejectApplication(state, applicationId);
@@ -179,10 +179,10 @@ describe('Prestige-Based Hiring System', () => {
   describe('getTimeUntilNextApplication', () => {
     it('should return correct time remaining', () => {
       const state = createInitialApplicationState(0, 'public');
-      const timeUntil = getTimeUntilNextApplication(state, 500);
+      const timeUntil = getTimeUntilNextApplication(state, 100);
 
       const config = PRESTIGE_HIRING_CONFIG.public;
-      const expected = config.applicationRate * 60 - 500;
+      const expected = config.applicationRate * 60 - 100;
       expect(timeUntil).toBe(expected);
     });
 

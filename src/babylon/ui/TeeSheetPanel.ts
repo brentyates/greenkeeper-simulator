@@ -6,6 +6,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
+import { createOverlayPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 import {
   TeeTimeSystemState,
   TeeTime,
@@ -31,7 +32,6 @@ export class TeeSheetPanel {
   private callbacks: TeeSheetPanelCallbacks;
 
   private overlay: Rectangle | null = null;
-  private panel: Rectangle | null = null;
   private dayText: TextBlock | null = null;
   private statsText: TextBlock | null = null;
   private spacingImpactText: TextBlock | null = null;
@@ -45,66 +45,27 @@ export class TeeSheetPanel {
   }
 
   private createPanel(): void {
-    this.overlay = new Rectangle('teeSheetOverlay');
-    this.overlay.width = '100%';
-    this.overlay.height = '100%';
-    this.overlay.background = 'rgba(0, 0, 0, 0.6)';
-    this.overlay.thickness = 0;
-    this.overlay.isVisible = false;
-    this.overlay.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.overlay);
+    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+      name: 'teeSheet',
+      width: 500,
+      height: 700,
+      colors: POPUP_COLORS.green,
+      padding: 15,
+    });
 
-    this.panel = new Rectangle('teeSheetPanel');
-    this.panel.width = '500px';
-    this.panel.height = '700px';
-    this.panel.cornerRadius = 10;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 3;
-    this.panel.background = 'rgba(20, 45, 35, 0.98)';
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 15;
-    this.overlay.addControl(this.panel);
+    this.overlay = overlay;
 
-    const mainStack = new StackPanel('teeSheetStack');
-    mainStack.width = '470px';
-    mainStack.paddingTop = '15px';
-    this.panel.addControl(mainStack);
-
-    this.createHeader(mainStack);
-    this.createDayNavigation(mainStack);
-    this.createStatsSection(mainStack);
-    this.createSpacingSection(mainStack);
-    this.createTeeTimeList(mainStack);
-    this.createFooter(mainStack);
-  }
-
-  private createHeader(parent: StackPanel): void {
-    const header = new Rectangle('header');
-    header.height = '45px';
-    header.width = '470px';
-    header.thickness = 0;
-    header.background = 'transparent';
-    parent.addControl(header);
-
-    const title = new TextBlock('title');
-    title.text = '📋 TEE SHEET';
-    title.color = '#88ccff';
-    title.fontSize = 20;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    header.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '35px';
-    closeBtn.height = '35px';
-    closeBtn.cornerRadius = 5;
-    closeBtn.background = 'rgba(100, 50, 50, 0.8)';
-    closeBtn.color = '#ff8888';
-    closeBtn.thickness = 1;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    header.addControl(closeBtn);
+    createPopupHeader(stack, {
+      title: '📋 TEE SHEET',
+      titleColor: '#88ccff',
+      width: 470,
+      onClose: () => this.callbacks.onClose(),
+    });
+    this.createDayNavigation(stack);
+    this.createStatsSection(stack);
+    this.createSpacingSection(stack);
+    this.createTeeTimeList(stack);
+    this.createFooter(stack);
   }
 
   private createDayNavigation(parent: StackPanel): void {

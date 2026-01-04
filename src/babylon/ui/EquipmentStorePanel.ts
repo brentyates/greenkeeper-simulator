@@ -5,6 +5,7 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 
 import {
   ResearchState,
@@ -64,28 +65,15 @@ export class EquipmentStorePanel {
   }
 
   private createPanel(): void {
-    this.panel = new Rectangle('equipmentStorePanel');
-    this.panel.width = '500px';
-    this.panel.height = '520px';
-    this.panel.cornerRadius = 8;
-    this.panel.color = '#4a7a9a';
-    this.panel.thickness = 2;
-    this.panel.background = 'rgba(20, 35, 55, 0.95)';
-    this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    this.panel.isVisible = false;
-    this.panel.isPointerBlocker = true;
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 10;
-    this.panel.shadowOffsetX = 3;
-    this.panel.shadowOffsetY = 3;
-    this.advancedTexture.addControl(this.panel);
+    const { panel, stack } = createDirectPopup(this.advancedTexture, {
+      name: 'equipmentStore',
+      width: 500,
+      height: 520,
+      colors: POPUP_COLORS.blue,
+      padding: 12,
+    });
 
-    const stack = new StackPanel('equipmentStack');
-    stack.width = '476px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.panel.addControl(stack);
+    this.panel = panel;
 
     this.createHeader(stack);
     this.createFleetStats(stack);
@@ -94,21 +82,12 @@ export class EquipmentStorePanel {
   }
 
   private createHeader(parent: StackPanel): void {
-    const headerContainer = new Rectangle('headerContainer');
-    headerContainer.height = '36px';
-    headerContainer.width = '476px';
-    headerContainer.thickness = 0;
-    headerContainer.background = 'transparent';
-    parent.addControl(headerContainer);
-
-    const title = new TextBlock('title');
-    title.text = '🤖 EQUIPMENT STORE';
-    title.color = '#66ccff';
-    title.fontSize = 16;
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.left = '0px';
-    headerContainer.addControl(title);
+    const headerContainer = createPopupHeader(parent, {
+      title: '🤖 EQUIPMENT STORE',
+      titleColor: '#66ccff',
+      width: 476,
+      onClose: () => this.callbacks.onClose(),
+    });
 
     this.cashText = new TextBlock('cashText');
     this.cashText.text = 'Cash: $0';
@@ -117,19 +96,6 @@ export class EquipmentStorePanel {
     this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.cashText.paddingRight = '40px';
     headerContainer.addControl(this.cashText);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', '✕');
-    closeBtn.width = '28px';
-    closeBtn.height = '28px';
-    closeBtn.cornerRadius = 4;
-    closeBtn.background = '#aa4444';
-    closeBtn.color = 'white';
-    closeBtn.thickness = 0;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerClickObservable.add(() => this.callbacks.onClose());
-    closeBtn.onPointerEnterObservable.add(() => { closeBtn.background = '#cc5555'; });
-    closeBtn.onPointerOutObservable.add(() => { closeBtn.background = '#aa4444'; });
-    headerContainer.addControl(closeBtn);
   }
 
   private createFleetStats(parent: StackPanel): void {

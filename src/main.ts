@@ -6,6 +6,8 @@ import { ScenarioDefinition, getScenarioById, SCENARIOS } from './data/scenarioD
 import { hasSave, deleteSave } from './core/save-game';
 import { getProgressManager } from './systems/ProgressManager';
 import { LaunchScreen } from './babylon/ui/LaunchScreen';
+import { UserManual } from './babylon/ui/UserManual';
+import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
@@ -120,6 +122,14 @@ declare global {
     hasSave: (scenarioId: string) => boolean;
     clearSave: (scenarioId: string) => void;
     app: GameApp;
+    showGuide: () => void;
+    hideGuide: () => void;
+    isGuideVisible: () => boolean;
+    navigateGuideSection: (sectionId: string) => void;
+    getGuideSection: () => string | null;
+    listGuideSections: () => { id: string; label: string }[];
+    showMainMenu: () => void;
+    getMenuState: () => 'main' | 'guide' | 'game' | null;
   }
 }
 
@@ -127,7 +137,9 @@ class GameApp {
   private canvas: HTMLCanvasElement;
   private engine: Engine | null = null;
   private menuScene: Scene | null = null;
+  private menuTexture: AdvancedDynamicTexture | null = null;
   private launchScreen: LaunchScreen | null = null;
+  private userManual: UserManual | null = null;
   private game: BabylonMain | null = null;
   private startupParams: StartupParams;
   private progressManager = getProgressManager();
@@ -167,15 +179,28 @@ class GameApp {
     // Add a camera (required for rendering, even just for GUI)
     new FreeCamera('menuCamera', new Vector3(0, 0, -10), this.menuScene);
 
-    // Create launch screen
+    // Create single shared GUI texture (only one fullscreen GUI per scene!)
+    this.menuTexture = AdvancedDynamicTexture.CreateFullscreenUI('MenuUI', true, this.menuScene);
+
+    // Create launch screen with shared texture
     this.launchScreen = new LaunchScreen(this.engine, this.menuScene, {
       onStartScenario: (scenario: ScenarioDefinition) => {
         this.startGame(scenario, false);
       },
       onContinueScenario: (scenario: ScenarioDefinition) => {
         this.startGame(scenario, true);
+      },
+      onOpenManual: () => {
+        this.showUserManual();
       }
-    });
+    }, this.menuTexture);
+
+    // Create user manual with same shared texture
+    this.userManual = new UserManual(this.engine, this.menuScene, {
+      onClose: () => {
+        this.hideUserManual();
+      }
+    }, this.menuTexture);
 
     // Start render loop for menu
     this.engine.runRenderLoop(() => {
@@ -193,6 +218,14 @@ class GameApp {
     if (this.launchScreen) {
       this.launchScreen.dispose();
       this.launchScreen = null;
+    }
+    if (this.userManual) {
+      this.userManual.dispose();
+      this.userManual = null;
+    }
+    if (this.menuTexture) {
+      this.menuTexture.dispose();
+      this.menuTexture = null;
     }
     if (this.menuScene) {
       this.menuScene.dispose();
@@ -236,6 +269,24 @@ class GameApp {
     this.showLaunchScreen();
   }
 
+  private showUserManual(): void {
+    if (this.launchScreen) {
+      this.launchScreen.hide();
+    }
+    if (this.userManual) {
+      this.userManual.show();
+    }
+  }
+
+  private hideUserManual(): void {
+    if (this.userManual) {
+      this.userManual.hide();
+    }
+    if (this.launchScreen) {
+      this.launchScreen.show();
+    }
+  }
+
   private handleScenarioComplete(scenarioId: string, score: number): void {
     this.progressManager.completeScenario(scenarioId, score);
     console.log(`Scenario ${scenarioId} completed with score ${score}`);
@@ -243,6 +294,61 @@ class GameApp {
 
   public getGame(): BabylonMain | null {
     return this.game;
+  }
+
+  public showGuide(): void {
+    if (this.menuScene && this.launchScreen && this.userManual) {
+      this.showUserManual();
+    }
+  }
+
+  public hideGuide(): void {
+    if (this.menuScene && this.launchScreen && this.userManual) {
+      this.hideUserManual();
+    }
+  }
+
+  public isGuideVisible(): boolean {
+    return this.userManual?.isVisible() ?? false;
+  }
+
+  public navigateGuideSection(sectionId: string): void {
+    if (this.userManual) {
+      this.userManual.navigateToSection(sectionId);
+    }
+  }
+
+  public getGuideSection(): string | null {
+    if (this.userManual) {
+      return this.userManual.getCurrentSection();
+    }
+    return null;
+  }
+
+  public listGuideSections(): { id: string; label: string }[] {
+    if (this.userManual) {
+      return this.userManual.getAvailableSections();
+    }
+    return [];
+  }
+
+  public showMainMenu(): void {
+    if (this.userManual?.isVisible()) {
+      this.hideUserManual();
+    }
+  }
+
+  public getMenuState(): 'main' | 'guide' | 'game' | null {
+    if (this.game) {
+      return 'game';
+    }
+    if (this.userManual?.isVisible()) {
+      return 'guide';
+    }
+    if (this.launchScreen) {
+      return 'main';
+    }
+    return null;
   }
 }
 
@@ -379,4 +485,36 @@ window.hasSave = (scenarioId: string) => {
 
 window.clearSave = (scenarioId: string) => {
   deleteSave(scenarioId);
+};
+
+window.showGuide = () => {
+  window.app.showGuide();
+};
+
+window.hideGuide = () => {
+  window.app.hideGuide();
+};
+
+window.isGuideVisible = () => {
+  return window.app.isGuideVisible();
+};
+
+window.navigateGuideSection = (sectionId: string) => {
+  window.app.navigateGuideSection(sectionId);
+};
+
+window.getGuideSection = () => {
+  return window.app.getGuideSection();
+};
+
+window.listGuideSections = () => {
+  return window.app.listGuideSections();
+};
+
+window.showMainMenu = () => {
+  window.app.showMainMenu();
+};
+
+window.getMenuState = () => {
+  return window.app.getMenuState();
 };
