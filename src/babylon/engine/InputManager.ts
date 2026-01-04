@@ -40,6 +40,8 @@ export interface InputCallbacks {
   onDragStart?: (screenX: number, screenY: number) => void;
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
+  onPinchZoom?: (delta: number) => void;
+  onSwipe?: (direction: Direction) => void;
 }
 
 export class InputManager {
@@ -50,10 +52,19 @@ export class InputManager {
   private isDragging: boolean = false;
   private wheelHandler: ((event: WheelEvent) => void) | null = null;
 
+  // Touch input support
+  private touchStartPos: { x: number; y: number } | null = null;
+  private touchStartTime: number = 0;
+  private initialPinchDistance: number = 0;
+  private lastPinchDistance: number = 0;
+  private readonly SWIPE_THRESHOLD = 50; // pixels
+  private readonly TAP_TIME_THRESHOLD = 300; // ms
+
   constructor(scene: Scene) {
     this.scene = scene;
     this.setupKeyboardInput();
     this.setupMouseInput();
+    this.setupTouchInput();
   }
 
   public setCallbacks(callbacks: InputCallbacks): void {
@@ -216,6 +227,134 @@ export class InputManager {
     this.scene.getEngine().getRenderingCanvas()?.addEventListener("wheel", this.wheelHandler, { passive: false });
   }
 
+  private setupTouchInput(): void {
+    const canvas = this.scene.getEngine().getRenderingCanvas();
+    if (!canvas) return;
+
+    // Touch start
+    canvas.addEventListener('touchstart', (event: TouchEvent) => {
+      if (!this.enabled) return;
+
+      if (event.touches.length === 1) {
+        // Single touch - could be tap or swipe
+        const touch = event.touches[0];
+        this.touchStartPos = { x: touch.clientX, y: touch.clientY };
+        this.touchStartTime = Date.now();
+        this.callbacks.onDragStart?.(touch.clientX, touch.clientY);
+      } else if (event.touches.length === 2) {
+        // Two-finger pinch
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
+        this.lastPinchDistance = this.initialPinchDistance;
+        this.touchStartPos = null; // Cancel swipe detection
+      }
+    }, { passive: true });
+
+    // Touch move
+    canvas.addEventListener('touchmove', (event: TouchEvent) => {
+      if (!this.enabled) return;
+
+      if (event.touches.length === 1 && this.touchStartPos) {
+        // Single touch drag
+        const touch = event.touches[0];
+        this.callbacks.onDrag?.(touch.clientX, touch.clientY);
+        this.callbacks.onMouseMove?.(touch.clientX, touch.clientY);
+      } else if (event.touches.length === 2) {
+        // Pinch zoom
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (this.lastPinchDistance > 0) {
+          const delta = distance - this.lastPinchDistance;
+          // Normalize delta for zoom callback
+          const normalizedDelta = delta / 10;
+          this.callbacks.onPinchZoom?.(normalizedDelta);
+
+          // Also call zoom callbacks
+          if (delta > 0) {
+            this.callbacks.onZoomIn?.();
+          } else if (delta < 0) {
+            this.callbacks.onZoomOut?.();
+          }
+        }
+
+        this.lastPinchDistance = distance;
+      }
+    }, { passive: true });
+
+    // Touch end
+    canvas.addEventListener('touchend', (event: TouchEvent) => {
+      if (!this.enabled) return;
+
+      if (event.changedTouches.length === 1 && this.touchStartPos) {
+        const touch = event.changedTouches[0];
+        const endX = touch.clientX;
+        const endY = touch.clientY;
+        const timeDiff = Date.now() - this.touchStartTime;
+
+        const dx = endX - this.touchStartPos.x;
+        const dy = endY - this.touchStartPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Check if it was a tap (short time, minimal movement)
+        if (timeDiff < this.TAP_TIME_THRESHOLD && distance < 10) {
+          this.callbacks.onClick?.(endX, endY);
+        }
+        // Check if it was a swipe (significant movement)
+        else if (distance > this.SWIPE_THRESHOLD) {
+          const direction = this.getSwipeDirection(dx, dy);
+          if (direction) {
+            this.callbacks.onSwipe?.(direction);
+            // Also trigger move callback for swipe-to-move
+            this.callbacks.onMove?.(direction);
+          }
+        }
+
+        this.callbacks.onDragEnd?.();
+      }
+
+      // Reset touch state
+      if (event.touches.length === 0) {
+        this.touchStartPos = null;
+        this.initialPinchDistance = 0;
+        this.lastPinchDistance = 0;
+      }
+    }, { passive: true });
+
+    // Touch cancel
+    canvas.addEventListener('touchcancel', () => {
+      this.touchStartPos = null;
+      this.initialPinchDistance = 0;
+      this.lastPinchDistance = 0;
+      this.callbacks.onDragEnd?.();
+    }, { passive: true });
+  }
+
+  /**
+   * Determine swipe direction from touch delta
+   */
+  private getSwipeDirection(dx: number, dy: number): Direction | null {
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Determine primary direction
+    if (absDx > absDy) {
+      // Horizontal swipe
+      return dx > 0 ? 'right' : 'left';
+    } else if (absDy > 0) {
+      // Vertical swipe
+      return dy > 0 ? 'down' : 'up';
+    }
+
+    return null;
+  }
+
   public dispose(): void {
     this.keysDown.clear();
     this.callbacks = {};
@@ -223,5 +362,6 @@ export class InputManager {
       this.scene.getEngine().getRenderingCanvas()?.removeEventListener("wheel", this.wheelHandler);
       this.wheelHandler = null;
     }
+    // Note: Touch event listeners will be cleaned up when canvas is destroyed
   }
 }
