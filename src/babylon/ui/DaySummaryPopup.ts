@@ -35,6 +35,12 @@ export interface DaySummaryData {
     score: number;
     change: number;
   };
+  maintenance?: {
+    tasksCompleted: number;
+    tilesMowed: number;
+    tilesWatered: number;
+    tilesFertilized: number;
+  };
 }
 
 export interface DaySummaryPopupCallbacks {
@@ -70,7 +76,7 @@ export class DaySummaryPopup {
 
     this.panel = new Rectangle('summaryPanel');
     this.panel.width = '450px';
-    this.panel.height = '520px';
+    this.panel.height = '550px';
     this.panel.cornerRadius = 10;
     this.panel.color = '#5a9a6a';
     this.panel.thickness = 3;
@@ -204,7 +210,7 @@ export class DaySummaryPopup {
 
   private createStatsSection(parent: StackPanel): void {
     const container = new Rectangle('statsContainer');
-    container.height = '150px';
+    container.height = '175px';
     container.width = '420px';
     container.cornerRadius = 6;
     container.background = 'rgba(30, 60, 45, 0.7)';
@@ -366,6 +372,12 @@ export class DaySummaryPopup {
       this.createStatLine('⭐', 'Prestige Score', `${data.prestige.score.toFixed(0)} (${prestigeChange >= 0 ? '+' : ''}${prestigeChange.toFixed(0)})`,
         prestigeChange >= 0 ? '#ffcc00' : '#ff8844')
     );
+
+    if (data.maintenance && data.maintenance.tasksCompleted > 0) {
+      this.statsStack.addControl(
+        this.createStatLine('🔧', 'Crew Work', `${data.maintenance.tasksCompleted} tasks completed`, '#88ccff')
+      );
+    }
 
     this.overlay.isVisible = true;
   }

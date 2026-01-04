@@ -203,6 +203,7 @@ export class BabylonMain {
     totalSatisfaction: 0,
     courseHealthStart: 0,
     prestigeStart: 0,
+    maintenance: { tasksCompleted: 0, tilesMowed: 0, tilesWatered: 0, tilesFertilized: 0 },
   };
 
   private gameOptions: GameOptions;
@@ -696,6 +697,7 @@ export class BabylonMain {
       totalSatisfaction: 0,
       courseHealthStart: courseStats.health,
       prestigeStart: this.prestigeState.currentScore,
+      maintenance: { tasksCompleted: 0, tilesMowed: 0, tilesWatered: 0, tilesFertilized: 0 },
     };
   }
 
@@ -723,6 +725,7 @@ export class BabylonMain {
         score: this.prestigeState.currentScore,
         change: this.prestigeState.currentScore - this.dailyStats.prestigeStart,
       },
+      maintenance: { ...this.dailyStats.maintenance },
     };
 
     this.daySummaryPopup?.show(summaryData);
@@ -2251,10 +2254,13 @@ export class BabylonMain {
     for (const effect of workResult.effects) {
       if (effect.type === 'mow') {
         this.grassSystem.mowAt(effect.gridX, effect.gridY);
+        this.dailyStats.maintenance.tilesMowed++;
       } else if (effect.type === 'water') {
         this.grassSystem.waterArea(effect.gridX, effect.gridY, 0, 30 * effect.efficiency);
+        this.dailyStats.maintenance.tilesWatered++;
       } else if (effect.type === 'fertilize') {
         this.grassSystem.fertilizeArea(effect.gridX, effect.gridY, 0, 25, effect.efficiency);
+        this.dailyStats.maintenance.tilesFertilized++;
       }
     }
 
@@ -2263,6 +2269,7 @@ export class BabylonMain {
       if (expReward > 0) {
         this.employeeRoster = awardExperience(this.employeeRoster, completion.employeeId, expReward);
       }
+      this.dailyStats.maintenance.tasksCompleted++;
     }
 
     // Tick research (only charge funding if there's active research)

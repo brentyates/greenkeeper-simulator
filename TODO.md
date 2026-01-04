@@ -248,8 +248,8 @@ Employees work independently based on their role and assigned area.
 #### Integration
 - [x] Connect employee work to grass simulation
 - [ ] Deduct maintenance supplies from economy
-- [ ] Update employee fatigue during work
-- [ ] Show employee work in daily summary
+- [x] Update employee fatigue during work (handled by tickEmployees)
+- [x] Show employee work in daily summary
 
 ---
 
