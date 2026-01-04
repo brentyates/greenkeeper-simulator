@@ -282,9 +282,9 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ## Phase 10: Polish & Balance
 
-### 10.1 Tutorial Scenario Guidance
-- [ ] Add tooltips explaining each system
-- [ ] Highlight UI elements for first-time actions
+### 10.1 Tutorial Scenario Guidance ✅
+- [x] Add tooltips explaining each system (contextual hints in tutorial_basics scenario)
+- [ ] Highlight UI elements for first-time actions (future enhancement)
 - [x] Ensure tutorial scenario is completable with basic actions (verified: $600-850/day profit possible)
 
 ### 10.2 Balance Tuning

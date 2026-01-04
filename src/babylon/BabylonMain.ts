@@ -215,6 +215,7 @@ export class BabylonMain {
   private marketingState: MarketingState;
   private autonomousState: AutonomousEquipmentState;
   private lastTeeTimeUpdateHour: number = -1;
+  private shownTutorialHints: Set<string> = new Set();
 
   constructor(canvasId: string, options: GameOptions = {}) {
     this.gameOptions = options;
@@ -1773,6 +1774,9 @@ export class BabylonMain {
       // Update economy and management systems
       this.updateEconomySystems(deltaMs);
 
+      // Check tutorial hints
+      this.checkTutorialHints();
+
       // Check scenario objectives periodically
       if (this.scenarioManager && Math.random() < 0.01) {
         this.checkScenarioCompletion();
@@ -2292,6 +2296,49 @@ export class BabylonMain {
       mesh.dispose();
     }
     this.babylonEngine.dispose();
+  }
+
+  private showTutorialHint(id: string, message: string, color?: string): void {
+    if (this.shownTutorialHints.has(id)) return;
+    if (this.currentScenario?.id !== 'tutorial_basics') return;
+    this.shownTutorialHints.add(id);
+    this.uiManager.showNotification(message, color, 5000);
+  }
+
+  private checkTutorialHints(): void {
+    if (this.currentScenario?.id !== 'tutorial_basics') return;
+
+    const courseStats = this.grassSystem.getCourseStats();
+    const hours = Math.floor(this.gameTime / 60);
+
+    if (this.gameDay === 1 && hours >= 6 && hours < 7) {
+      this.showTutorialHint('welcome', '🎓 Welcome! Use WASD to move around your course.');
+    }
+
+    if (this.gameDay === 1 && hours >= 8) {
+      this.showTutorialHint('equipment', '🎓 Press 1/2/3 to select equipment, Space to toggle on/off.');
+    }
+
+    if (courseStats.health < 65) {
+      this.showTutorialHint('health_low', '🎓 Course health is low! Mow (1), water (2), or fertilize (3).');
+    }
+
+    const mowerState = this.equipmentManager.getState('mower');
+    const sprinklerState = this.equipmentManager.getState('sprinkler');
+    const spreaderState = this.equipmentManager.getState('spreader');
+    if ((mowerState && mowerState.resourceCurrent < 20) ||
+        (sprinklerState && sprinklerState.resourceCurrent < 20) ||
+        (spreaderState && spreaderState.resourceCurrent < 20)) {
+      this.showTutorialHint('refill', '🎓 Running low on supplies! Press E near the refill station.');
+    }
+
+    if (this.gameDay === 2 && hours >= 7) {
+      this.showTutorialHint('panels', '🎓 Press H=Employees, Y=Research, G=TeeSheet, K=Marketing');
+    }
+
+    if (this.prestigeState.golfersRejectedToday >= 3) {
+      this.showTutorialHint('pricing', '🎓 Golfers leaving! Lower prices with - button in prestige panel.', '#ffaa44');
+    }
   }
 }
 
