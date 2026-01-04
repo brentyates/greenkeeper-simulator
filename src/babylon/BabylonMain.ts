@@ -87,6 +87,7 @@ import {
 import { AmenityUpgrade, getUpgradeCost } from "../core/amenities";
 import {
   TeeTimeSystemState,
+  TeeTimeSpacing,
   createInitialTeeTimeState,
   generateDailySlots,
   simulateDailyBookings,
@@ -96,6 +97,7 @@ import {
   checkInTeeTime,
   cancelTeeTime,
   markNoShow,
+  updateSpacing,
   type GameTime,
 } from "../core/tee-times";
 import {
@@ -515,6 +517,11 @@ export class BabylonMain {
       onChangeDay: (delta: number) => {
         this.teeSheetViewDay = Math.max(1, this.teeSheetViewDay + delta);
         this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+      },
+      onSpacingChange: (spacing: TeeTimeSpacing) => {
+        this.teeTimeState = updateSpacing(this.teeTimeState, spacing);
+        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+        this.uiManager.showNotification(`Tee time spacing: ${spacing}`);
       },
       onClose: () => {
         this.teeSheetPanel?.hide();

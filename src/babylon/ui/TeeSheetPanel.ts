@@ -9,6 +9,8 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import {
   TeeTimeSystemState,
   TeeTime,
+  TeeTimeSpacing,
+  SPACING_CONFIGS,
   getTeeTimes,
   formatTeeTime,
   getDailyStats,
@@ -20,6 +22,7 @@ export interface TeeSheetPanelCallbacks {
   onCancel: (teeTimeId: string) => void;
   onMarkNoShow: (teeTimeId: string) => void;
   onChangeDay: (delta: number) => void;
+  onSpacingChange: (spacing: TeeTimeSpacing) => void;
   onClose: () => void;
 }
 
@@ -31,7 +34,9 @@ export class TeeSheetPanel {
   private panel: Rectangle | null = null;
   private dayText: TextBlock | null = null;
   private statsText: TextBlock | null = null;
+  private spacingImpactText: TextBlock | null = null;
   private teeTimeList: StackPanel | null = null;
+  private currentSpacing: TeeTimeSpacing = 'standard';
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: TeeSheetPanelCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -50,7 +55,7 @@ export class TeeSheetPanel {
 
     this.panel = new Rectangle('teeSheetPanel');
     this.panel.width = '500px';
-    this.panel.height = '600px';
+    this.panel.height = '700px';
     this.panel.cornerRadius = 10;
     this.panel.color = '#5a9a6a';
     this.panel.thickness = 3;
@@ -68,6 +73,7 @@ export class TeeSheetPanel {
     this.createHeader(mainStack);
     this.createDayNavigation(mainStack);
     this.createStatsSection(mainStack);
+    this.createSpacingSection(mainStack);
     this.createTeeTimeList(mainStack);
     this.createFooter(mainStack);
   }
@@ -157,9 +163,105 @@ export class TeeSheetPanel {
     statsContainer.addControl(this.statsText);
   }
 
+  private createSpacingSection(parent: StackPanel): void {
+    const spacingContainer = new Rectangle('spacingContainer');
+    spacingContainer.height = '85px';
+    spacingContainer.width = '470px';
+    spacingContainer.cornerRadius = 6;
+    spacingContainer.background = 'rgba(40, 70, 55, 0.7)';
+    spacingContainer.thickness = 1;
+    spacingContainer.color = '#4a7a5a';
+    spacingContainer.paddingTop = '5px';
+    parent.addControl(spacingContainer);
+
+    const spacingStack = new StackPanel('spacingStack');
+    spacingStack.isVertical = true;
+    spacingStack.paddingTop = '5px';
+    spacingContainer.addControl(spacingStack);
+
+    const titleRow = new StackPanel('titleRow');
+    titleRow.isVertical = false;
+    titleRow.height = '25px';
+    spacingStack.addControl(titleRow);
+
+    const spacingLabel = new TextBlock('spacingLabel');
+    spacingLabel.text = '⏱ Tee Time Spacing: ';
+    spacingLabel.color = '#88ccff';
+    spacingLabel.fontSize = 13;
+    spacingLabel.fontWeight = 'bold';
+    spacingLabel.width = '150px';
+    spacingLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    titleRow.addControl(spacingLabel);
+
+    const buttonRow = new StackPanel('buttonRow');
+    buttonRow.isVertical = false;
+    buttonRow.height = '30px';
+    buttonRow.paddingTop = '3px';
+    spacingStack.addControl(buttonRow);
+
+    const spacingOptions: TeeTimeSpacing[] = ['packed', 'tight', 'standard', 'comfortable', 'relaxed', 'exclusive'];
+    for (const spacing of spacingOptions) {
+      const btn = Button.CreateSimpleButton(`spacing_${spacing}`, getSpacingLabel(spacing));
+      btn.width = '72px';
+      btn.height = '26px';
+      btn.cornerRadius = 4;
+      btn.fontSize = 10;
+      btn.thickness = 1;
+      btn.paddingLeft = '2px';
+      btn.paddingRight = '2px';
+      btn.background = spacing === this.currentSpacing ? '#4a8a5a' : '#2a4a3a';
+      btn.color = spacing === this.currentSpacing ? '#ffffff' : '#aaaaaa';
+      btn.onPointerClickObservable.add(() => {
+        this.currentSpacing = spacing;
+        this.callbacks.onSpacingChange(spacing);
+        this.updateSpacingButtons(buttonRow);
+        this.updateSpacingImpact();
+      });
+      buttonRow.addControl(btn);
+    }
+
+    this.spacingImpactText = new TextBlock('spacingImpact');
+    this.spacingImpactText.text = '';
+    this.spacingImpactText.color = '#aaaaaa';
+    this.spacingImpactText.fontSize = 10;
+    this.spacingImpactText.textWrapping = true;
+    this.spacingImpactText.height = '22px';
+    this.spacingImpactText.paddingTop = '3px';
+    spacingStack.addControl(this.spacingImpactText);
+    this.updateSpacingImpact();
+  }
+
+  private updateSpacingButtons(buttonRow: StackPanel): void {
+    const spacingOptions: TeeTimeSpacing[] = ['packed', 'tight', 'standard', 'comfortable', 'relaxed', 'exclusive'];
+    buttonRow.children.forEach((child, index) => {
+      if (child instanceof Button && index < spacingOptions.length) {
+        const spacing = spacingOptions[index];
+        child.background = spacing === this.currentSpacing ? '#4a8a5a' : '#2a4a3a';
+        child.color = spacing === this.currentSpacing ? '#ffffff' : '#aaaaaa';
+      }
+    });
+  }
+
+  private updateSpacingImpact(): void {
+    if (!this.spacingImpactText) return;
+    const config = SPACING_CONFIGS[this.currentSpacing];
+    const revenueEffect = config.revenueMultiplier >= 1
+      ? `+${((config.revenueMultiplier - 1) * 100).toFixed(0)}%`
+      : `-${((1 - config.revenueMultiplier) * 100).toFixed(0)}%`;
+    const repEffect = config.reputationModifier >= 0
+      ? `+${(config.reputationModifier * 100).toFixed(0)}%`
+      : `${(config.reputationModifier * 100).toFixed(0)}%`;
+    const paceEffect = config.paceOfPlayPenalty > 0
+      ? `+${(config.paceOfPlayPenalty * 100).toFixed(0)}%`
+      : config.paceOfPlayPenalty < 0
+        ? `${(config.paceOfPlayPenalty * 100).toFixed(0)}%`
+        : '0%';
+    this.spacingImpactText.text = `Max: ${config.maxDailyTeeTimes} slots | Revenue: ${revenueEffect} | Reputation: ${repEffect} | Pace penalty: ${paceEffect}`;
+  }
+
   private createTeeTimeList(parent: StackPanel): void {
     const listContainer = new Rectangle('listContainer');
-    listContainer.height = '380px';
+    listContainer.height = '290px';
     listContainer.width = '470px';
     listContainer.cornerRadius = 6;
     listContainer.background = 'rgba(20, 40, 30, 0.5)';
@@ -170,7 +272,7 @@ export class TeeSheetPanel {
 
     const scrollViewer = new ScrollViewer('teeTimeScroll');
     scrollViewer.width = '460px';
-    scrollViewer.height = '370px';
+    scrollViewer.height = '280px';
     scrollViewer.thickness = 0;
     scrollViewer.barSize = 10;
     scrollViewer.barColor = '#4a8a5a';
@@ -321,9 +423,13 @@ export class TeeSheetPanel {
 
     if (this.statsText) {
       const stats = getDailyStats(state, currentDay);
-      const spacing = getSpacingLabel(state.spacingConfig.spacing);
       const avgGroupSize = stats.bookedSlots > 0 ? stats.totalGolfers / stats.bookedSlots : 0;
-      this.statsText.text = `Bookings: ${stats.bookedSlots}/${stats.totalSlots} | Revenue: $${stats.totalRevenue.toFixed(0)} | Avg Group: ${avgGroupSize.toFixed(1)} | Spacing: ${spacing}`;
+      this.statsText.text = `Bookings: ${stats.bookedSlots}/${stats.totalSlots} | Revenue: $${stats.totalRevenue.toFixed(0)} | Avg Group: ${avgGroupSize.toFixed(1)}`;
+    }
+
+    if (this.currentSpacing !== state.spacingConfig.spacing) {
+      this.currentSpacing = state.spacingConfig.spacing;
+      this.updateSpacingImpact();
     }
 
     if (this.teeTimeList) {

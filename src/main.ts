@@ -8,6 +8,8 @@ import { LaunchScreen } from './babylon/ui/LaunchScreen';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
+import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 export interface StartupParams {
   preset?: string;
@@ -120,6 +122,9 @@ class GameApp {
     this.engine = new Engine(this.canvas, true, { preserveDrawingBuffer: true, stencil: true });
     this.menuScene = new Scene(this.engine);
     this.menuScene.clearColor = new Color4(0.05, 0.12, 0.08, 1);
+
+    // Add a camera (required for rendering, even just for GUI)
+    new FreeCamera('menuCamera', new Vector3(0, 0, -10), this.menuScene);
 
     // Create launch screen
     this.launchScreen = new LaunchScreen(this.engine, this.menuScene, {
