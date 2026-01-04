@@ -811,7 +811,7 @@ export class UIManager {
   private createControlsHelp(): void {
     const panel = new Rectangle('helpPanel');
     panel.width = '160px';
-    panel.height = '100px';
+    panel.height = '155px';
     panel.cornerRadius = 5;
     panel.color = '#3a5a4a';
     panel.thickness = 1;
@@ -823,25 +823,29 @@ export class UIManager {
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel('helpStack');
-    stack.paddingTop = '8px';
+    stack.paddingTop = '6px';
     panel.addControl(stack);
 
     const lines = [
       'WASD/Arrows: Move',
       '1/2/3: Equipment',
-      'Space: Toggle',
-      '[ / ]: Zoom',
+      'Space: Toggle | E: Refill',
+      '[ / ]: Zoom | P: Pause',
+      '─ Management ─',
+      'H: Employees | Y: Research',
+      'G: TeeSheet | K: Marketing',
+      'B: Equipment | U: Amenities',
     ];
 
     for (const line of lines) {
       const text = new TextBlock();
       text.text = line;
-      text.color = '#aaa';
-      text.fontSize = 11;
+      text.color = line.startsWith('─') ? '#6a8a6a' : '#aaa';
+      text.fontSize = 10;
       text.fontFamily = 'Arial, sans-serif';
-      text.height = '18px';
+      text.height = '16px';
       text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-      text.paddingLeft = '10px';
+      text.paddingLeft = '8px';
       stack.addControl(text);
     }
   }
