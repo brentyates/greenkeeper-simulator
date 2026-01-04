@@ -6,6 +6,7 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Ellipse } from '@babylonjs/gui/2D/controls/ellipse';
+import { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
@@ -25,6 +26,8 @@ export class UIManager {
 
   private dayText!: TextBlock;
   private timeText!: TextBlock;
+  private weatherText!: TextBlock;
+  private weatherIcon!: TextBlock;
 
   private fuelBar!: Rectangle;
   private fuelText!: TextBlock;
@@ -38,6 +41,7 @@ export class UIManager {
 
   private cashText!: TextBlock;
   private golfersText!: TextBlock;
+  private satisfactionText!: TextBlock;
   private economyPanel!: Rectangle;
 
   private scenarioPanel!: Rectangle;
@@ -51,6 +55,7 @@ export class UIManager {
   private prestigeStarsText!: TextBlock;
   private prestigeTierText!: TextBlock;
   private prestigeScoreText!: TextBlock;
+  private prestigePriceWarning!: TextBlock;
 
   private minimapContainer!: Rectangle;
   private minimapPlayerDot!: Ellipse;
@@ -58,9 +63,18 @@ export class UIManager {
   private notificationContainer!: StackPanel;
 
   private pauseOverlay!: Rectangle;
+  private speedText!: TextBlock;
   private onResume?: () => void;
   private onRestart?: () => void;
   private onMainMenu?: () => void;
+  private onEmployees?: () => void;
+  private onResearch?: () => void;
+  private onTeeSheet?: () => void;
+  private onMarketing?: () => void;
+  private onSpeedChange?: (delta: number) => void;
+  private onPriceChange?: (delta: number) => void;
+
+  private currentPriceText!: TextBlock;
 
   constructor(scene: Scene) {
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI', true, scene);
@@ -279,8 +293,8 @@ export class UIManager {
 
   private createTimePanel(): void {
     const panel = new Rectangle('timePanel');
-    panel.width = '100px';
-    panel.height = '70px';
+    panel.width = '110px';
+    panel.height = '90px';
     panel.cornerRadius = 5;
     panel.color = '#4a8a5a';
     panel.thickness = 2;
@@ -292,7 +306,7 @@ export class UIManager {
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel();
-    stack.paddingTop = '8px';
+    stack.paddingTop = '6px';
     panel.addControl(stack);
 
     const dayRow = new StackPanel();
@@ -300,11 +314,11 @@ export class UIManager {
     dayRow.height = '18px';
     stack.addControl(dayRow);
 
-    const sunIcon = new TextBlock();
-    sunIcon.text = '☀️';
-    sunIcon.fontSize = 13;
-    sunIcon.width = '20px';
-    dayRow.addControl(sunIcon);
+    this.weatherIcon = new TextBlock();
+    this.weatherIcon.text = '☀️';
+    this.weatherIcon.fontSize = 13;
+    this.weatherIcon.width = '20px';
+    dayRow.addControl(this.weatherIcon);
 
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1';
@@ -319,8 +333,16 @@ export class UIManager {
     this.timeText.color = '#ffcc00';
     this.timeText.fontSize = 14;
     this.timeText.fontFamily = 'Arial, sans-serif';
-    this.timeText.height = '22px';
+    this.timeText.height = '20px';
     stack.addControl(this.timeText);
+
+    this.weatherText = new TextBlock('weatherText');
+    this.weatherText.text = 'Sunny 72°F';
+    this.weatherText.color = '#aaccff';
+    this.weatherText.fontSize = 10;
+    this.weatherText.fontFamily = 'Arial, sans-serif';
+    this.weatherText.height = '16px';
+    stack.addControl(this.weatherText);
 
     const speedBg = new Rectangle();
     speedBg.width = '40px';
@@ -341,7 +363,7 @@ export class UIManager {
   private createEconomyPanel(): void {
     this.economyPanel = new Rectangle('economyPanel');
     this.economyPanel.width = '140px';
-    this.economyPanel.height = '65px';
+    this.economyPanel.height = '85px';
     this.economyPanel.cornerRadius = 5;
     this.economyPanel.color = '#4a8a5a';
     this.economyPanel.thickness = 2;
@@ -349,7 +371,7 @@ export class UIManager {
     this.economyPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.economyPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.economyPanel.left = '-10px';
-    this.economyPanel.top = '90px';
+    this.economyPanel.top = '110px';
     this.advancedTexture.addControl(this.economyPanel);
 
     const stack = new StackPanel();
@@ -394,12 +416,31 @@ export class UIManager {
     this.golfersText.fontFamily = 'Arial, sans-serif';
     this.golfersText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     golfersRow.addControl(this.golfersText);
+
+    const satisfactionRow = new StackPanel();
+    satisfactionRow.isVertical = false;
+    satisfactionRow.height = '20px';
+    stack.addControl(satisfactionRow);
+
+    const satisfactionIcon = new TextBlock();
+    satisfactionIcon.text = '😊';
+    satisfactionIcon.fontSize = 13;
+    satisfactionIcon.width = '24px';
+    satisfactionRow.addControl(satisfactionIcon);
+
+    this.satisfactionText = new TextBlock('satisfactionText');
+    this.satisfactionText.text = '-- rating';
+    this.satisfactionText.color = '#aaaaaa';
+    this.satisfactionText.fontSize = 11;
+    this.satisfactionText.fontFamily = 'Arial, sans-serif';
+    this.satisfactionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    satisfactionRow.addControl(this.satisfactionText);
   }
 
   private createPrestigePanel(): void {
     this.prestigePanel = new Rectangle('prestigePanel');
     this.prestigePanel.width = '140px';
-    this.prestigePanel.height = '70px';
+    this.prestigePanel.height = '115px';
     this.prestigePanel.cornerRadius = 5;
     this.prestigePanel.color = '#4a8a5a';
     this.prestigePanel.thickness = 2;
@@ -407,7 +448,7 @@ export class UIManager {
     this.prestigePanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.prestigePanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.prestigePanel.left = '-10px';
-    this.prestigePanel.top = '165px';
+    this.prestigePanel.top = '205px';
     this.advancedTexture.addControl(this.prestigePanel);
 
     const stack = new StackPanel();
@@ -450,6 +491,62 @@ export class UIManager {
     this.prestigeScoreText.height = '14px';
     this.prestigeScoreText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.prestigeScoreText);
+
+    this.prestigePriceWarning = new TextBlock('prestigePriceWarning');
+    this.prestigePriceWarning.text = '';
+    this.prestigePriceWarning.color = '#ffaa44';
+    this.prestigePriceWarning.fontSize = 9;
+    this.prestigePriceWarning.height = '14px';
+    this.prestigePriceWarning.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.prestigePriceWarning);
+
+    const priceRow = new StackPanel();
+    priceRow.isVertical = false;
+    priceRow.height = '22px';
+    priceRow.paddingTop = '2px';
+    stack.addControl(priceRow);
+
+    const minusBtn = Button.CreateSimpleButton('priceMinusBtn', '-');
+    minusBtn.width = '22px';
+    minusBtn.height = '18px';
+    minusBtn.cornerRadius = 3;
+    minusBtn.background = '#4a5a4a';
+    minusBtn.color = 'white';
+    minusBtn.fontSize = 12;
+    minusBtn.thickness = 0;
+    minusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(-5));
+    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = '#5a6a5a'; });
+    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = '#4a5a4a'; });
+    priceRow.addControl(minusBtn);
+
+    this.currentPriceText = new TextBlock('currentPrice');
+    this.currentPriceText.text = '$25';
+    this.currentPriceText.color = '#88dd88';
+    this.currentPriceText.fontSize = 11;
+    this.currentPriceText.width = '50px';
+    this.currentPriceText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    priceRow.addControl(this.currentPriceText);
+
+    const plusBtn = Button.CreateSimpleButton('pricePlusBtn', '+');
+    plusBtn.width = '22px';
+    plusBtn.height = '18px';
+    plusBtn.cornerRadius = 3;
+    plusBtn.background = '#4a5a4a';
+    plusBtn.color = 'white';
+    plusBtn.fontSize = 12;
+    plusBtn.thickness = 0;
+    plusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(5));
+    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = '#5a6a5a'; });
+    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = '#4a5a4a'; });
+    priceRow.addControl(plusBtn);
+
+    const feeLabel = new TextBlock();
+    feeLabel.text = '/18';
+    feeLabel.color = '#7a9a7a';
+    feeLabel.fontSize = 9;
+    feeLabel.width = '22px';
+    feeLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    priceRow.addControl(feeLabel);
   }
 
   private createScenarioPanel(): void {
@@ -463,7 +560,7 @@ export class UIManager {
     this.scenarioPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.scenarioPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.scenarioPanel.left = '-10px';
-    this.scenarioPanel.top = '245px';
+    this.scenarioPanel.top = '285px';
     this.scenarioPanel.isVisible = false;
     this.advancedTexture.addControl(this.scenarioPanel);
 
@@ -760,7 +857,7 @@ export class UIManager {
 
     const panel = new Rectangle('pausePanel');
     panel.width = '300px';
-    panel.height = '300px';
+    panel.height = '600px';
     panel.cornerRadius = 10;
     panel.background = 'rgba(26, 58, 42, 0.95)';
     panel.color = '#4a8a5a';
@@ -768,7 +865,7 @@ export class UIManager {
     this.pauseOverlay.addControl(panel);
 
     const stack = new StackPanel('pauseStack');
-    stack.paddingTop = '20px';
+    stack.paddingTop = '15px';
     panel.addControl(stack);
 
     const title = new TextBlock('pauseTitle');
@@ -776,7 +873,7 @@ export class UIManager {
     title.color = '#ffcc00';
     title.fontSize = 28;
     title.fontFamily = 'Arial Black, sans-serif';
-    title.height = '50px';
+    title.height = '45px';
     stack.addControl(title);
 
     const resumeBtn = this.createMenuButton('▶️ Resume', () => this.onResume?.());
@@ -788,14 +885,131 @@ export class UIManager {
     const mainMenuBtn = this.createMenuButton('🏠 Main Menu', () => this.onMainMenu?.());
     stack.addControl(mainMenuBtn);
 
+    const divider = new Rectangle('divider');
+    divider.width = '200px';
+    divider.height = '2px';
+    divider.background = '#3a6a4a';
+    divider.thickness = 0;
+    divider.paddingTop = '10px';
+    divider.paddingBottom = '5px';
+    stack.addControl(divider);
+
+    const mgmtLabel = new TextBlock('mgmtLabel');
+    mgmtLabel.text = 'MANAGEMENT';
+    mgmtLabel.color = '#88ccff';
+    mgmtLabel.fontSize = 12;
+    mgmtLabel.height = '25px';
+    stack.addControl(mgmtLabel);
+
+    const employeesBtn = this.createMenuButton('👥 Employees', () => {
+      this.hidePauseMenu();
+      this.onEmployees?.();
+    });
+    stack.addControl(employeesBtn);
+
+    const researchBtn = this.createMenuButton('🔬 Research', () => {
+      this.hidePauseMenu();
+      this.onResearch?.();
+    });
+    stack.addControl(researchBtn);
+
+    const teeSheetBtn = this.createMenuButton('📋 Tee Sheet', () => {
+      this.hidePauseMenu();
+      this.onTeeSheet?.();
+    });
+    stack.addControl(teeSheetBtn);
+
+    const marketingBtn = this.createMenuButton('📢 Marketing', () => {
+      this.hidePauseMenu();
+      this.onMarketing?.();
+    });
+    stack.addControl(marketingBtn);
+
+    const speedDivider = new Rectangle('speedDivider');
+    speedDivider.width = '200px';
+    speedDivider.height = '2px';
+    speedDivider.background = '#3a6a4a';
+    speedDivider.thickness = 0;
+    speedDivider.paddingTop = '8px';
+    speedDivider.paddingBottom = '3px';
+    stack.addControl(speedDivider);
+
+    const speedLabel = new TextBlock('speedLabel');
+    speedLabel.text = 'GAME SPEED';
+    speedLabel.color = '#ffcc00';
+    speedLabel.fontSize = 11;
+    speedLabel.height = '20px';
+    stack.addControl(speedLabel);
+
+    const speedContainer = new Rectangle('speedContainer');
+    speedContainer.height = '35px';
+    speedContainer.width = '200px';
+    speedContainer.thickness = 0;
+    stack.addControl(speedContainer);
+
+    const slowBtn = new Rectangle('slowBtn');
+    slowBtn.width = '50px';
+    slowBtn.height = '30px';
+    slowBtn.cornerRadius = 5;
+    slowBtn.background = '#2a5a3a';
+    slowBtn.color = '#7FFF7F';
+    slowBtn.thickness = 1;
+    slowBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    slowBtn.left = '10px';
+    const slowText = new TextBlock();
+    slowText.text = '◀';
+    slowText.color = 'white';
+    slowText.fontSize = 14;
+    slowBtn.addControl(slowText);
+    slowBtn.onPointerClickObservable.add(() => {
+      this.onSpeedChange?.(-1);
+      this.updateSpeedDisplay();
+    });
+    slowBtn.onPointerEnterObservable.add(() => { slowBtn.background = '#3a7a4a'; });
+    slowBtn.onPointerOutObservable.add(() => { slowBtn.background = '#2a5a3a'; });
+    speedContainer.addControl(slowBtn);
+
+    this.speedText = new TextBlock('speedText');
+    this.speedText.text = '1x';
+    this.speedText.color = '#ffffff';
+    this.speedText.fontSize = 16;
+    this.speedText.fontWeight = 'bold';
+    speedContainer.addControl(this.speedText);
+
+    const fastBtn = new Rectangle('fastBtn');
+    fastBtn.width = '50px';
+    fastBtn.height = '30px';
+    fastBtn.cornerRadius = 5;
+    fastBtn.background = '#2a5a3a';
+    fastBtn.color = '#7FFF7F';
+    fastBtn.thickness = 1;
+    fastBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    fastBtn.left = '-10px';
+    const fastText = new TextBlock();
+    fastText.text = '▶';
+    fastText.color = 'white';
+    fastText.fontSize = 14;
+    fastBtn.addControl(fastText);
+    fastBtn.onPointerClickObservable.add(() => {
+      this.onSpeedChange?.(1);
+      this.updateSpeedDisplay();
+    });
+    fastBtn.onPointerEnterObservable.add(() => { fastBtn.background = '#3a7a4a'; });
+    fastBtn.onPointerOutObservable.add(() => { fastBtn.background = '#2a5a3a'; });
+    speedContainer.addControl(fastBtn);
+
     const hint = new TextBlock('pauseHint');
     hint.text = 'Press P or ESC to resume';
     hint.color = '#888888';
-    hint.fontSize = 12;
+    hint.fontSize = 11;
     hint.fontFamily = 'Arial, sans-serif';
-    hint.height = '30px';
-    hint.paddingTop = '10px';
+    hint.height = '20px';
+    hint.paddingTop = '3px';
     stack.addControl(hint);
+  }
+
+  private updateSpeedDisplay(): void {
+    // Speed display will be updated by BabylonMain calling showPauseMenu with currentSpeed
   }
 
   private createMenuButton(label: string, onClick: () => void): Rectangle {
@@ -830,10 +1044,28 @@ export class UIManager {
     return btn;
   }
 
-  public showPauseMenu(onResume: () => void, onRestart: () => void, onMainMenu?: () => void): void {
+  public showPauseMenu(
+    onResume: () => void,
+    onRestart: () => void,
+    onMainMenu?: () => void,
+    onEmployees?: () => void,
+    onResearch?: () => void,
+    onTeeSheet?: () => void,
+    onMarketing?: () => void,
+    onSpeedChange?: (delta: number) => void,
+    currentSpeed?: number
+  ): void {
     this.onResume = onResume;
     this.onRestart = onRestart;
     this.onMainMenu = onMainMenu;
+    this.onEmployees = onEmployees;
+    this.onResearch = onResearch;
+    this.onTeeSheet = onTeeSheet;
+    this.onMarketing = onMarketing;
+    this.onSpeedChange = onSpeedChange;
+    if (this.speedText && currentSpeed !== undefined) {
+      this.speedText.text = `${currentSpeed}x`;
+    }
     this.pauseOverlay.isVisible = true;
   }
 
@@ -845,13 +1077,27 @@ export class UIManager {
     return this.pauseOverlay.isVisible;
   }
 
-  public showNotification(message: string, duration: number = 2000): void {
+  public setPriceCallback(callback: (delta: number) => void): void {
+    this.onPriceChange = callback;
+  }
+
+  public updateCurrentPrice(price: number): void {
+    if (this.currentPriceText) {
+      this.currentPriceText.text = `$${price}`;
+    }
+  }
+
+  public showNotification(message: string, color?: string, duration: number = 2000): void {
+    const isWarning = color === '#ffaa44' || color === 'warning';
+    const bgColor = isWarning ? 'rgba(90, 58, 42, 0.95)' : 'rgba(42, 90, 58, 0.95)';
+    const borderColor = color || (isWarning ? '#ffaa44' : '#7FFF7F');
+
     const notification = new Rectangle('notification');
     notification.width = `${Math.max(200, message.length * 8 + 40)}px`;
     notification.height = '36px';
     notification.cornerRadius = 5;
-    notification.background = 'rgba(42, 90, 58, 0.95)';
-    notification.color = '#7FFF7F';
+    notification.background = bgColor;
+    notification.color = borderColor;
     notification.thickness = 2;
     notification.paddingBottom = '10px';
 
@@ -921,28 +1167,64 @@ export class UIManager {
     this.updateResources(percent, percent, percent);
   }
 
-  public updateTime(hours: number, minutes: number, day: number = 1): void {
+  public updateTime(hours: number, minutes: number, day: number = 1, season?: string): void {
     const period = hours >= 12 ? 'PM' : 'AM';
     const displayHour = hours % 12 || 12;
     const displayMin = minutes.toString().padStart(2, '0');
     this.timeText.text = `${displayHour}:${displayMin} ${period}`;
-    this.dayText.text = `Day ${day}`;
+    if (season) {
+      const seasonIcon = season === 'summer' ? '☀️' :
+                         season === 'winter' ? '❄️' :
+                         season === 'fall' ? '🍂' : '🌸';
+      this.dayText.text = `${seasonIcon} Day ${day}`;
+    } else {
+      this.dayText.text = `Day ${day}`;
+    }
+  }
+
+  public updateWeather(type: string, temperature: number): void {
+    const icon = type === 'stormy' ? '⛈️' :
+                 type === 'rainy' ? '🌧️' :
+                 type === 'cloudy' ? '☁️' : '☀️';
+
+    this.weatherIcon.text = icon;
+    this.weatherText.text = `${type.charAt(0).toUpperCase() + type.slice(1)} ${temperature}°F`;
+
+    if (type === 'stormy' || type === 'rainy') {
+      this.weatherText.color = '#88aaff';
+    } else if (type === 'cloudy') {
+      this.weatherText.color = '#aabbcc';
+    } else if (temperature > 90) {
+      this.weatherText.color = '#ffaa66';
+    } else {
+      this.weatherText.color = '#ffdd88';
+    }
   }
 
   public updateScore(score: number): void {
     this.scoreText.text = score.toLocaleString();
   }
 
-  public updateEconomy(cash: number, golferCount: number): void {
+  public updateEconomy(cash: number, golferCount: number, satisfaction?: number): void {
     const formattedCash = cash >= 0
       ? `$${cash.toLocaleString()}`
       : `-$${Math.abs(cash).toLocaleString()}`;
     this.cashText.text = formattedCash;
     this.cashText.color = cash >= 0 ? '#44ff44' : '#ff4444';
     this.golfersText.text = `${golferCount} golfer${golferCount !== 1 ? 's' : ''}`;
+    if (satisfaction !== undefined) {
+      this.satisfactionText.text = `${Math.round(satisfaction)}% rating`;
+      if (satisfaction >= 80) {
+        this.satisfactionText.color = '#44ff44';
+      } else if (satisfaction >= 60) {
+        this.satisfactionText.color = '#ffcc00';
+      } else {
+        this.satisfactionText.color = '#ff6644';
+      }
+    }
   }
 
-  public updatePrestige(state: PrestigeState): void {
+  public updatePrestige(state: PrestigeState, rejectionRate: number = 0, recommendedMax?: number): void {
     this.prestigeStarsText.text = getStarDisplay(state.starRating);
     this.prestigeTierText.text = TIER_LABELS[state.tier];
     this.prestigeScoreText.text = `${Math.round(state.currentScore)} / 1000`;
@@ -953,6 +1235,19 @@ export class UIManager {
       this.prestigeScoreText.color = '#aa4444';
     } else {
       this.prestigeScoreText.color = '#888888';
+    }
+
+    if (rejectionRate >= 20 && recommendedMax) {
+      this.prestigePriceWarning.text = `⚠️ ${rejectionRate}% rej (max $${recommendedMax})`;
+      this.prestigePriceWarning.color = '#ff6644';
+    } else if (rejectionRate >= 5 && recommendedMax) {
+      this.prestigePriceWarning.text = `💰 ${rejectionRate}% rej (max $${recommendedMax})`;
+      this.prestigePriceWarning.color = '#ffaa44';
+    } else if (rejectionRate >= 5) {
+      this.prestigePriceWarning.text = `💰 ${rejectionRate}% rejection`;
+      this.prestigePriceWarning.color = '#ffaa44';
+    } else {
+      this.prestigePriceWarning.text = '';
     }
   }
 

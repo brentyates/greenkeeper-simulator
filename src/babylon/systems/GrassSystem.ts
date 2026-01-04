@@ -37,6 +37,7 @@ import {
   applyWatering,
   applyFertilizing,
   getAverageStats,
+  WeatherEffect,
 } from "../../core/grass-simulation";
 
 import { CourseData } from "../../data/courseData";
@@ -824,7 +825,7 @@ export class GrassSystem {
     }
   }
 
-  public update(deltaMs: number, gameTimeMinutes: number): void {
+  public update(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void {
     this.gameTime = gameTimeMinutes;
     this.waterTime += deltaMs / 1000;
 
@@ -840,7 +841,7 @@ export class GrassSystem {
         const prevNutrients = cell.nutrients;
         const prevHealth = cell.health;
 
-        const result = simulateGrowth(cell, deltaMinutes);
+        const result = simulateGrowth(cell, deltaMinutes, weather);
 
         cell.height = result.height;
         cell.moisture = result.moisture;
@@ -959,7 +960,8 @@ export class GrassSystem {
     centerX: number,
     centerY: number,
     radius: number,
-    amount: number
+    amount: number,
+    effectiveness: number = 1.0
   ): number {
     const cellsToFertilize = getCellsInRadius(centerX, centerY, radius);
     let affectedCount = 0;
@@ -968,7 +970,7 @@ export class GrassSystem {
       const cell = this.getCell(x, y);
       if (!cell) continue;
 
-      const result = applyFertilizing(cell, amount);
+      const result = applyFertilizing(cell, amount, effectiveness);
       if (result) {
         this.cells[y][x] = result;
         result.lastFertilized = this.gameTime;
@@ -986,6 +988,16 @@ export class GrassSystem {
 
   public getAllCells(): CellState[][] {
     return this.cells;
+  }
+
+  public restoreCells(savedCells: CellState[][]): void {
+    for (let y = 0; y < savedCells.length && y < this.cells.length; y++) {
+      for (let x = 0; x < savedCells[y].length && x < this.cells[y].length; x++) {
+        const saved = savedCells[y][x];
+        this.cells[y][x] = { ...saved };
+      }
+    }
+    this.updateAllTileVisuals();
   }
 
   public getCourseStats(): {

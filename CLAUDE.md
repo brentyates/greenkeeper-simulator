@@ -154,8 +154,17 @@ Defined in `src/data/testPresets.ts`. Common ones:
 | Space | Toggle equipment on/off |
 | E | Refill at station |
 | Tab | Cycle overlay modes (normal/moisture/nutrients/height) |
-| P | Pause game |
+| P / Escape | Pause game |
+| M | Mute audio |
+| `+` / `-` | Speed up / slow down time |
 | `[` / `]` | Zoom out/in |
+| T | Toggle terrain editor |
+| H | Employee panel |
+| Y | Research panel |
+| G | Tee sheet panel |
+| K | Marketing panel |
+| B | Equipment store |
+| U | Amenities panel |
 
 ## Economy & Management Integration Status
 

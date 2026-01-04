@@ -124,7 +124,10 @@ class GameApp {
     // Create launch screen
     this.launchScreen = new LaunchScreen(this.engine, this.menuScene, {
       onStartScenario: (scenario: ScenarioDefinition) => {
-        this.startGame(scenario);
+        this.startGame(scenario, false);
+      },
+      onContinueScenario: (scenario: ScenarioDefinition) => {
+        this.startGame(scenario, true);
       }
     });
 
@@ -139,7 +142,7 @@ class GameApp {
     });
   }
 
-  private startGame(scenario: ScenarioDefinition): void {
+  private startGame(scenario: ScenarioDefinition, loadFromSave: boolean = false): void {
     // Clean up menu resources
     if (this.launchScreen) {
       this.launchScreen.dispose();
@@ -160,6 +163,7 @@ class GameApp {
     // Start the actual game
     this.game = startBabylonGame('renderCanvas', {
       scenario,
+      loadFromSave,
       onReturnToMenu: () => this.returnToMenu(),
       onScenarioComplete: (score: number) => this.handleScenarioComplete(scenario.id, score)
     });

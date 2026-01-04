@@ -30,6 +30,8 @@ import {
   getCompletedResearchCount,
   getUnlockedEquipment,
   getUnlockedFertilizers,
+  getBestFertilizerEffectiveness,
+  getEquipmentEfficiencyBonus,
   getActiveUpgrades,
   getUnlockedAutonomousEquipment,
   isAutonomousEquipment,
@@ -50,7 +52,8 @@ import {
 
   // Utility functions
   formatResearchTime,
-  getResearchCategoryName
+  getResearchCategoryName,
+  describeResearchUnlock
 } from "./research";
 
 // ============================================================================
@@ -400,7 +403,7 @@ describe("Research System", () => {
   describe("getFundingCostPerMinute", () => {
     it("returns correct cost for funding level", () => {
       const state = makeResearchState({ fundingLevel: "maximum" });
-      expect(getFundingCostPerMinute(state)).toBe(400);
+      expect(getFundingCostPerMinute(state)).toBe(8);
     });
   });
 
@@ -450,6 +453,65 @@ describe("Research System", () => {
 
       expect(fertilizers).toContain("fertilizer_standard");
       expect(fertilizers).toContain("fertilizer_premium");
+    });
+  });
+
+  describe("getBestFertilizerEffectiveness", () => {
+    it("returns 1.0 when no fertilizers researched", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower"]
+      });
+      expect(getBestFertilizerEffectiveness(state)).toBe(1.0);
+    });
+
+    it("returns effectiveness of researched fertilizer", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "basic_fertilizer"]
+      });
+      expect(getBestFertilizerEffectiveness(state)).toBe(1.0);
+    });
+
+    it("returns highest effectiveness when multiple fertilizers researched", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "basic_fertilizer", "premium_fertilizer"]
+      });
+      expect(getBestFertilizerEffectiveness(state)).toBe(1.5);
+    });
+
+    it("returns maximum effectiveness with all fertilizers", () => {
+      const state = makeResearchState({
+        completedResearch: [
+          "basic_push_mower",
+          "basic_fertilizer",
+          "premium_fertilizer",
+          "slow_release_fertilizer",
+          "organic_fertilizer"
+        ]
+      });
+      expect(getBestFertilizerEffectiveness(state)).toBe(2.5);
+    });
+  });
+
+  describe("getEquipmentEfficiencyBonus", () => {
+    it("returns 1.0 when no training researched", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower"]
+      });
+      expect(getEquipmentEfficiencyBonus(state)).toBe(1.0);
+    });
+
+    it("returns bonus from basic training", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "employee_training_1"]
+      });
+      expect(getEquipmentEfficiencyBonus(state)).toBe(1.1);
+    });
+
+    it("stacks bonuses from multiple training upgrades", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "employee_training_1", "employee_training_2"]
+      });
+      expect(getEquipmentEfficiencyBonus(state)).toBeCloseTo(1.375);
     });
   });
 
@@ -876,6 +938,44 @@ describe("Research System", () => {
       expect(getResearchCategoryName("facilities")).toBe("Facilities");
       expect(getResearchCategoryName("management")).toBe("Management");
       expect(getResearchCategoryName("robotics")).toBe("Robotics");
+    });
+  });
+
+  describe("describeResearchUnlock", () => {
+    it("describes equipment unlock", () => {
+      const item = getResearchItem("riding_mower_basic");
+      expect(item).not.toBeNull();
+      const desc = describeResearchUnlock(item!);
+      expect(desc).toBe("Unlocked Basic Riding Mower");
+    });
+
+    it("describes autonomous equipment unlock", () => {
+      const item = getResearchItem("robot_mower_fairway");
+      expect(item).not.toBeNull();
+      const desc = describeResearchUnlock(item!);
+      expect(desc).toContain("autonomous");
+    });
+
+    it("describes fertilizer unlock with effectiveness", () => {
+      const item = getResearchItem("premium_fertilizer");
+      expect(item).not.toBeNull();
+      const desc = describeResearchUnlock(item!);
+      expect(desc).toContain("1.5x effectiveness");
+    });
+
+    it("describes upgrade bonus", () => {
+      const item = getResearchItem("employee_training_1");
+      expect(item).not.toBeNull();
+      const desc = describeResearchUnlock(item!);
+      expect(desc).toContain("10%");
+      expect(desc).toContain("efficiency");
+    });
+
+    it("describes feature unlock", () => {
+      const item = getResearchItem("weather_system");
+      expect(item).not.toBeNull();
+      const desc = describeResearchUnlock(item!);
+      expect(desc).toContain("feature");
     });
   });
 

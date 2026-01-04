@@ -8,7 +8,9 @@ import {
   countCellsNeedingMowing,
   countCellsNeedingWater,
   countCellsNeedingFertilizer,
-  getOverallCondition
+  getOverallCondition,
+  getWeatherMoistureEffect,
+  WeatherEffect
 } from './grass-simulation';
 import { CellState } from './terrain';
 
@@ -137,6 +139,88 @@ describe('Grass Growth Simulation', () => {
       const result = simulateGrowth(cell, 100);
       expect(result.nutrients).toBeCloseTo(98, 1);
     });
+
+    describe('weather effects', () => {
+      it('rain increases moisture', () => {
+        const cell = makeCell({ moisture: 50 });
+        const weather: WeatherEffect = { type: 'rainy', temperature: 70 };
+        const result = simulateGrowth(cell, 60, weather);
+        expect(result.moisture).toBeGreaterThan(50);
+      });
+
+      it('rain reduces moisture loss', () => {
+        const cell = makeCell({ moisture: 50 });
+        const noWeather = simulateGrowth(cell, 60);
+        const withRain = simulateGrowth(cell, 60, { type: 'rainy', temperature: 70 });
+        expect(withRain.moisture).toBeGreaterThan(noWeather.moisture);
+      });
+
+      it('storm adds more moisture than rain', () => {
+        const cell = makeCell({ moisture: 50 });
+        const rain = simulateGrowth(cell, 60, { type: 'rainy', temperature: 70 });
+        const storm = simulateGrowth(cell, 60, { type: 'stormy', temperature: 70 });
+        expect(storm.moisture).toBeGreaterThan(rain.moisture);
+      });
+
+      it('cloudy weather reduces moisture loss', () => {
+        const cell = makeCell({ moisture: 50 });
+        const sunny = simulateGrowth(cell, 60, { type: 'sunny', temperature: 70 });
+        const cloudy = simulateGrowth(cell, 60, { type: 'cloudy', temperature: 70 });
+        expect(cloudy.moisture).toBeGreaterThan(sunny.moisture);
+      });
+
+      it('hot sunny weather increases moisture loss', () => {
+        const cell = makeCell({ moisture: 50 });
+        const normal = simulateGrowth(cell, 60, { type: 'sunny', temperature: 75 });
+        const hot = simulateGrowth(cell, 60, { type: 'sunny', temperature: 95 });
+        expect(hot.moisture).toBeLessThan(normal.moisture);
+      });
+
+      it('very hot weather loses moisture faster', () => {
+        const cell = makeCell({ moisture: 50 });
+        const hot80 = simulateGrowth(cell, 60, { type: 'sunny', temperature: 85 });
+        const hot95 = simulateGrowth(cell, 60, { type: 'sunny', temperature: 95 });
+        expect(hot95.moisture).toBeLessThan(hot80.moisture);
+      });
+
+      it('moisture is capped at 100', () => {
+        const cell = makeCell({ moisture: 95 });
+        const result = simulateGrowth(cell, 60, { type: 'stormy', temperature: 70 });
+        expect(result.moisture).toBeLessThanOrEqual(100);
+      });
+    });
+  });
+});
+
+describe('getWeatherMoistureEffect', () => {
+  it('returns neutral effect for no weather', () => {
+    const effect = getWeatherMoistureEffect();
+    expect(effect.gainRate).toBe(0);
+    expect(effect.lossMultiplier).toBe(1.0);
+  });
+
+  it('returns moisture gain for rain', () => {
+    const effect = getWeatherMoistureEffect({ type: 'rainy', temperature: 70 });
+    expect(effect.gainRate).toBeGreaterThan(0);
+    expect(effect.lossMultiplier).toBeLessThan(1.0);
+  });
+
+  it('returns higher moisture gain for storm', () => {
+    const rain = getWeatherMoistureEffect({ type: 'rainy', temperature: 70 });
+    const storm = getWeatherMoistureEffect({ type: 'stormy', temperature: 70 });
+    expect(storm.gainRate).toBeGreaterThan(rain.gainRate);
+  });
+
+  it('returns reduced loss for cloudy', () => {
+    const effect = getWeatherMoistureEffect({ type: 'cloudy', temperature: 70 });
+    expect(effect.gainRate).toBe(0);
+    expect(effect.lossMultiplier).toBeLessThan(1.0);
+  });
+
+  it('returns increased loss for hot sunny weather', () => {
+    const normalSunny = getWeatherMoistureEffect({ type: 'sunny', temperature: 75 });
+    const hotSunny = getWeatherMoistureEffect({ type: 'sunny', temperature: 95 });
+    expect(hotSunny.lossMultiplier).toBeGreaterThan(normalSunny.lossMultiplier);
   });
 });
 

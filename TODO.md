@@ -12,8 +12,9 @@ This file tracks the work needed to integrate all economy/management systems int
 - Scenario system: Progress tracking, objective checking, win/lose detection
 - Tee Time system: Slot generation, booking simulation, walk-ons, revenue tracking
 - Marketing system: Campaign processing, demand multipliers
+- Weather system: Dynamic weather, seasonal effects, grass moisture impact, UI display
 - Day transition: Daily expenses, prestige snapshots, all counter resets
-- UI: Economy panel (cash + golfers), Scenario progress panel with bar
+- UI: Economy panel (cash + golfers), Scenario progress panel with bar, Weather display
 
 **Prestige System** ✅ COMPLETE (See [Prestige System](#prestige-system) section)
 - ~~Phase P1: Core prestige score and star rating~~ ✅
@@ -31,14 +32,18 @@ This file tracks the work needed to integrate all economy/management systems int
 - ~~Phase T6: Marketing System~~ ✅ (core logic complete, UI pending)
 - ~~Phase T7: Advanced Features~~ ✅ (core logic complete, UI pending)
 
-**Next Up: UI Integration** (wire core logic into game and build UI panels)
+**UI Integration Complete:**
+- [x] Employee management UI (EmployeePanel.ts)
+- [x] Research UI (ResearchPanel.ts)
+- [x] Day summary popup (DaySummaryPopup.ts)
+- [x] Tee sheet panel (TeeSheetPanel.ts)
+- [x] Marketing dashboard (MarketingDashboard.ts)
+- [x] Management tabs in pause menu
 
-**Other Enhancements (Nice-to-Have):**
-- Employee management UI (hire/fire, view roster)
-- Research UI (tech tree, funding controls)
-- Day summary popup
-- Golfer satisfaction display
-- Save/load game state
+**Remaining (Nice-to-Have):**
+- [x] Golfer satisfaction display (in economy panel)
+- [x] Keyboard shortcuts for panels (G=TeeSheet, K=Marketing, H=Employees, Y=Research, B=Equipment Store, U=Amenities)
+- [x] Save/load game state (auto-save at end of each day)
 
 ---
 
@@ -46,11 +51,13 @@ This file tracks the work needed to integrate all economy/management systems int
 
 The core logic modules are complete and tested. This TODO covers wiring them into `BabylonMain` and creating the UI layers.
 
-### Core Logic Summary (1485 tests passing)
+### Core Logic Summary (1612 tests passing)
 
 | Module | File | Tests | Description |
 |--------|------|-------|-------------|
 | Prestige | `prestige.ts` | 75 | Star rating, conditions, green fee tolerance |
+| Weather | `weather.ts` | 45 | Dynamic weather, seasons, forecasting |
+| Autonomous | `autonomous-equipment.ts` | 32 | Robot mowers, sprayers, spreaders |
 | Amenities | `amenities.ts` | 49 | Clubhouse, facilities, services scoring |
 | Reputation | `reputation.ts` | 34 | Reviews, word-of-mouth, satisfaction |
 | Exclusivity | `exclusivity.ts` | 41 | Membership, awards, dress code |
@@ -149,7 +156,7 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ### 4.3 Golfer UI Indicators
 - [x] Show current golfer count on course (in economy panel)
-- [ ] Display average satisfaction rating (optional enhancement)
+- [x] Display average satisfaction rating (in economy panel with color coding)
 - [ ] Show golfers as small markers on minimap (optional)
 - [x] Add notification when golfers arrive/depart - shows count and revenue/tips
 
@@ -162,18 +169,18 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ## Phase 5: Employee System
 
-### 5.1 Create EmployeePanel Component (FUTURE - UI Enhancement)
-- [ ] Create `src/babylon/ui/EmployeePanel.ts`
-- [ ] List current employees with name, role, skill level
-- [ ] Show employee status (working, on break, idle)
-- [ ] Display hourly wage and total payroll cost
-- [ ] Add hire/fire buttons
+### 5.1 Create EmployeePanel Component ✅
+- [x] Create `src/babylon/ui/EmployeePanel.ts`
+- [x] List current employees with name, role, skill level
+- [x] Show employee status (working, on break, idle)
+- [x] Display hourly wage and total payroll cost
+- [x] Add hire/fire buttons
 
-### 5.2 Hiring Interface (FUTURE - UI Enhancement)
-- [ ] Show hiring pool of available candidates
-- [ ] Display candidate stats (skills, wage)
-- [ ] Confirm hire with cost warning
-- [ ] Refresh hiring pool periodically
+### 5.2 Hiring Interface ✅
+- [x] Show hiring pool of available candidates
+- [x] Display candidate stats (skills, wage)
+- [x] Confirm hire with cost warning
+- [x] Refresh hiring pool periodically
 
 ### 5.3 Employee Simulation
 - [x] Call `tickEmployees()` in update loop
@@ -186,29 +193,31 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ## Phase 6: Research System
 
-### 6.1 Create ResearchPanel Component (FUTURE - UI Enhancement)
-- [ ] Create `src/babylon/ui/ResearchPanel.ts`
-- [ ] Display tech tree by category
-- [ ] Show locked/available/completed status for each item
-- [ ] Display current research progress bar
-- [ ] Show research queue
+### 6.1 Create ResearchPanel Component ✅
+- [x] Create `src/babylon/ui/ResearchPanel.ts`
+- [x] Display tech tree by category
+- [x] Show locked/available/completed status for each item
+- [x] Display current research progress bar
+- [x] Show research queue
 
-### 6.2 Funding Controls (FUTURE - UI Enhancement)
-- [ ] Add funding level selector (none/minimum/normal/maximum)
-- [ ] Display cost per minute at current funding level
-- [ ] Show estimated time to completion
+### 6.2 Funding Controls ✅
+- [x] Add funding level selector (none/minimum/normal/maximum)
+- [x] Display cost per minute at current funding level
+- [x] Show estimated time to completion
 
 ### 6.3 Research Simulation
 - [x] Call `tickResearch()` in update loop
 - [x] Deduct research funding cost from economy
-- [x] Notify when research completes
-- [ ] Unlock equipment/fertilizers when research completes
+- [x] Notify when research completes (with detailed unlock description)
+- [x] Show what was unlocked (equipment, fertilizer, upgrade bonus, feature)
 
 ### 6.4 Apply Research Unlocks
-- [ ] Make unlocked equipment purchasable
-- [ ] Apply upgrade bonuses (efficiency, speed, etc.)
-- [ ] Enable autonomous robot equipment when unlocked
-- [ ] Show fleet AI benefits if researched
+- [x] Make unlocked equipment purchasable (EquipmentStorePanel.ts, keyboard shortcut: B)
+- [x] Apply fertilizer effectiveness bonus from research
+- [x] Add helper functions for research bonuses (getBestFertilizerEffectiveness, getEquipmentEfficiencyBonus)
+- [x] Apply employee training bonus from research (reduces fatigue, boosts experience)
+- [x] Enable autonomous robot equipment when unlocked (autonomous-equipment.ts, 32 tests)
+- [x] Show fleet AI benefits if researched (40% breakdown rate reduction)
 
 ---
 
@@ -218,15 +227,15 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [x] Trigger end-of-day summary at midnight (or configurable hour) - runs at 10 PM
 - [x] Process daily expenses (utilities, base maintenance)
 - [x] Reset daily golfer counters (prestige, tee times, walk-ons, golfers)
-- [ ] Check scenario day-based objectives (future: scenarios with day limits)
+- [x] Check scenario day-based objectives (timeLimitDays in scenarios, checkTimeLimitFailed in ScenarioManager)
 
-### 7.2 Day Summary Popup
-- [ ] Create `src/babylon/ui/DaySummaryPopup.ts`
-- [ ] Show revenue breakdown (green fees, tips)
-- [ ] Show expense breakdown (wages, supplies, research)
-- [ ] Display net profit/loss for the day
-- [ ] Show course health change
-- [ ] Show golfer statistics (count, satisfaction, return rate)
+### 7.2 Day Summary Popup ✅
+- [x] Create `src/babylon/ui/DaySummaryPopup.ts`
+- [x] Show revenue breakdown (green fees, tips)
+- [x] Show expense breakdown (wages, supplies, research)
+- [x] Display net profit/loss for the day
+- [x] Show course health change
+- [x] Show golfer statistics (count, satisfaction, return rate)
 
 ### 7.3 Time-Based Events
 - [x] Peak golfer hours (7-10am, 1-4pm) - arrival rates vary by hour
@@ -237,32 +246,37 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ## Phase 8: Pause Menu Enhancements
 
-### 8.1 Add Management Tabs to Pause Menu
-- [ ] Add "Employees" tab linking to EmployeePanel
-- [ ] Add "Research" tab linking to ResearchPanel
-- [ ] Add "Finances" tab showing transaction history
-- [ ] Add "Objectives" tab showing scenario details
+### 8.1 Add Management Tabs to Pause Menu ✅
+- [x] Add "Employees" tab linking to EmployeePanel
+- [x] Add "Research" tab linking to ResearchPanel
+- [x] Add "Tee Sheet" tab linking to TeeSheetPanel
+- [x] Add "Marketing" tab linking to MarketingDashboard
 
 ### 8.2 Game Speed Controls
 - [x] Pause should fully stop all simulation
-- [ ] Allow speed changes from pause menu
+- [x] Allow speed changes from pause menu (slow/fast buttons with display)
 - [x] Add fast-forward (4x, 8x) for longer scenarios - speeds: 0.5x, 1x, 2x, 4x, 8x
 
 ---
 
-## Phase 9: Save/Load System
+## Phase 9: Save/Load System ✅
 
 ### 9.1 Extend GameState
-- [ ] Add economy state to saved game
-- [ ] Add employee roster to saved game
-- [ ] Add golfer pool state to saved game
-- [ ] Add research state to saved game
-- [ ] Add scenario progress to saved game
+- [x] Add economy state to saved game
+- [x] Add employee roster to saved game
+- [x] Add golfer pool state to saved game
+- [x] Add research state to saved game
+- [x] Add scenario progress to saved game
+- [x] Add prestige, tee time, walk-on, revenue, marketing states
+- [x] Add autonomous equipment state to saved game
+- [x] Add course cells (grass health, terrain)
 
 ### 9.2 Auto-Save
-- [ ] Save progress at end of each game day
-- [ ] Save when returning to menu
-- [ ] Load saved state when continuing scenario
+- [x] Save progress at end of each game day
+- [x] Save when returning to menu
+- [x] Load saved state when continuing scenario (via `loadFromSave` option)
+- [x] Launch screen shows save indicator (💾) on scenarios with saves
+- [x] "Continue" button appears for scenarios with saved games
 
 ---
 
@@ -271,19 +285,20 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 ### 10.1 Tutorial Scenario Guidance
 - [ ] Add tooltips explaining each system
 - [ ] Highlight UI elements for first-time actions
-- [ ] Ensure tutorial scenario is completable with basic actions
+- [x] Ensure tutorial scenario is completable with basic actions (verified: $600-850/day profit possible)
 
 ### 10.2 Balance Tuning
-- [ ] Adjust green fee defaults for each course size
-- [ ] Balance employee wages vs golfer revenue
-- [ ] Tune research costs and times
-- [ ] Ensure all 10 scenarios are completable
+- [x] Adjust green fee defaults for each course size (verified: $45/$65/$30 weekday/weekend/twilight)
+- [x] Balance employee wages vs golfer revenue (verified: ~$2.5k/day profit margin)
+- [x] Tune research costs and times (fixed: reduced from $50-400 to $1-8/game-minute)
+- [x] Fix research funding bug - only charge when active research exists (was draining $4k+/day)
+- [ ] Ensure all 10 scenarios are completable (needs playtesting)
 
 ### 10.3 Visual Feedback
 - [ ] Show golfer sprites on course (optional)
 - [ ] Employee sprites at work stations (optional)
 - [ ] Equipment upgrade visual changes
-- [ ] Weather effects on grass appearance
+- [x] Weather effects on grass simulation (rain adds moisture, heat increases loss)
 
 ---
 
@@ -384,7 +399,7 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 #### P3.2 Amenity Costs ✅
 - [x] Define one-time costs for facilities
 - [x] Define monthly costs for services
-- [ ] Integrate amenity purchases with economy system (future: UI wiring)
+- [x] Integrate amenity purchases with economy system (AmenityPanel.ts)
 
 #### P3.3 Amenity Prestige Bonuses ✅
 - [x] Implement `calculateAmenityScore()` → 0-1000
@@ -392,11 +407,11 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 - [x] Max possible: ~1000 points
 - [x] Integrated into master prestige formula (20% weight)
 
-#### P3.4 Amenity UI (future enhancement)
-- [ ] Create amenity management panel
-- [ ] Show available upgrades with costs
-- [ ] Show current amenities and their prestige contribution
-- [ ] Cost/benefit tooltips showing prestige gained per dollar
+#### P3.4 Amenity UI ✅
+- [x] Create amenity management panel (`src/babylon/ui/AmenityPanel.ts`)
+- [x] Show available upgrades with costs
+- [x] Show current amenities and their prestige contribution
+- [ ] Cost/benefit tooltips showing prestige gained per dollar (future enhancement)
 
 ---
 
@@ -429,18 +444,18 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 - [ ] Create golfer rejection visual feedback
 - [ ] Show price check → head shake → walk away animation
 - [ ] Display thought bubble ($$$, frown)
-- [ ] Track golfers rejected per day
+- [x] Track golfers rejected per day (prestigeState.golfersRejectedToday)
 
-#### P4.6 Green Fee Advisor UI
-- [ ] Display current fee vs recommended range
-- [ ] Show expected rejection rate if overpriced
-- [ ] Warning indicator when above recommended range
-- [ ] "Optimize Price" suggestion button
+#### P4.6 Green Fee Advisor UI ✅
+- [x] Display current fee vs recommended range (shown in prestige panel warning)
+- [x] Show expected rejection rate if overpriced (in prestige panel)
+- [x] Warning indicator when above recommended range (orange/red indicator)
+- [x] Price adjustment controls (+/- buttons in prestige panel)
 
-#### P4.7 Turn-Away Alert
-- [ ] Show popup when golfers are being rejected
-- [ ] Display count of turn-aways today
-- [ ] Calculate and show lost revenue estimate
+#### P4.7 Turn-Away Alert ✅
+- [x] Show popup when golfers are being rejected (warning notification with orange color)
+- [x] Display count of turn-aways today (tracked in prestigeState.golfersRejectedToday)
+- [x] Calculate and show lost revenue estimate (tracked in prestigeState.revenueLostToday)
 
 ---
 
@@ -507,7 +522,7 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 | `src/core/exclusivity.ts` | Exclusivity and awards system ✅ |
 | `src/core/exclusivity.test.ts` | Unit tests for exclusivity ✅ |
 | `src/babylon/ui/PrestigePanel.ts` | Star rating and breakdown display |
-| `src/babylon/ui/AmenityPanel.ts` | Amenity management interface |
+| `src/babylon/ui/AmenityPanel.ts` | Amenity management interface ✅ |
 | `src/babylon/ui/GreenFeeAdvisor.ts` | Pricing recommendations |
 
 ---
@@ -538,12 +553,12 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Calculate slots based on spacing configuration
 - [x] Track slot availability and booking status
 
-#### T1.4 Basic Tee Sheet UI
-- [ ] Create `src/babylon/ui/TeeSheetPanel.ts`
-- [ ] Display daily tee times in time-ordered list
-- [ ] Show booking status icons (available, reserved, checked-in)
-- [ ] Display player count and revenue per slot
-- [ ] Add day navigation (previous/next day)
+#### T1.4 Basic Tee Sheet UI ✅
+- [x] Create `src/babylon/ui/TeeSheetPanel.ts`
+- [x] Display daily tee times in time-ordered list
+- [x] Show booking status icons (available, reserved, checked-in)
+- [x] Display player count and revenue per slot
+- [x] Add day navigation (previous/next day)
 
 ---
 
@@ -689,7 +704,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Implement `startCampaign()` with duration clamping
 - [x] Implement `stopCampaign()` early termination
 - [x] Track cooldowns between campaigns
-- [ ] Create marketing dashboard UI (future: UI work)
+- [x] Create marketing dashboard UI `src/babylon/ui/MarketingDashboard.ts`
 
 #### T6.3 Campaign Effects ✅
 - [x] Calculate combined demand multipliers

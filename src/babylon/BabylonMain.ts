@@ -5,6 +5,13 @@ import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
+import { EmployeePanel } from "./ui/EmployeePanel";
+import { ResearchPanel } from "./ui/ResearchPanel";
+import { DaySummaryPopup, DaySummaryData } from "./ui/DaySummaryPopup";
+import { TeeSheetPanel } from "./ui/TeeSheetPanel";
+import { MarketingDashboard } from "./ui/MarketingDashboard";
+import { EquipmentStorePanel } from "./ui/EquipmentStorePanel";
+import { AmenityPanel } from "./ui/AmenityPanel";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -30,6 +37,11 @@ import {
   tickEmployees,
   processPayroll,
   getManagerBonus,
+  hireEmployee,
+  fireEmployee,
+  generateHiringPool,
+  HiringPool,
+  Employee,
 } from "../core/employees";
 import {
   GolferPoolState,
@@ -41,6 +53,7 @@ import {
   updateCourseRating,
   addGolfer,
   getActiveGolferCount,
+  getAverageSatisfaction,
   WeatherCondition,
   DEFAULT_GREEN_FEES,
   resetDailyStats as resetGolferDailyStats,
@@ -50,6 +63,14 @@ import {
   createInitialResearchState,
   tickResearch,
   getFundingCostPerMinute,
+  startResearch,
+  cancelResearch,
+  setFundingLevel,
+  FundingLevel,
+  RESEARCH_ITEMS,
+  getBestFertilizerEffectiveness,
+  getEquipmentEfficiencyBonus,
+  describeResearchUnlock,
 } from "../core/research";
 import { ScenarioManager } from "../core/scenario";
 import {
@@ -61,7 +82,9 @@ import {
   takeDailySnapshot,
   updateHistoricalExcellence,
   resetDailyStats as resetPrestigeDailyStats,
+  upgradeAmenity,
 } from "../core/prestige";
+import { AmenityUpgrade, getUpgradeCost } from "../core/amenities";
 import {
   TeeTimeSystemState,
   createInitialTeeTimeState,
@@ -70,6 +93,9 @@ import {
   applyBookingSimulation,
   getAvailableSlots,
   resetDailyMetrics as resetTeeTimeDailyMetrics,
+  checkInTeeTime,
+  cancelTeeTime,
+  markNoShow,
   type GameTime,
 } from "../core/tee-times";
 import {
@@ -88,10 +114,29 @@ import {
   createInitialMarketingState,
   processDailyCampaigns,
   calculateCombinedDemandMultiplier,
+  startCampaign,
+  stopCampaign,
 } from "../core/marketing";
+import { createSaveState, saveGame, loadGame, hasSave } from "../core/save-game";
+import {
+  AutonomousEquipmentState,
+  createInitialAutonomousState,
+  tickAutonomousEquipment,
+  purchaseRobot,
+  sellRobot,
+} from "../core/autonomous-equipment";
+import {
+  WeatherState,
+  createInitialWeatherState,
+  tickWeather,
+  getWeatherDescription,
+  getWeatherImpactDescription,
+  getSeasonFromDay,
+} from "../core/weather";
 
 export interface GameOptions {
   scenario?: ScenarioDefinition;
+  loadFromSave?: boolean;
   onReturnToMenu?: () => void;
   onScenarioComplete?: (score: number) => void;
 }
@@ -129,6 +174,24 @@ export class BabylonMain {
   private terrainEditorUI: TerrainEditorUI | null = null;
   private editorUITexture: AdvancedDynamicTexture | null = null;
 
+  private employeePanel: EmployeePanel | null = null;
+  private hiringPool: HiringPool = { candidates: [], refreshTime: 0 };
+  private researchPanel: ResearchPanel | null = null;
+  private daySummaryPopup: DaySummaryPopup | null = null;
+  private teeSheetPanel: TeeSheetPanel | null = null;
+  private teeSheetViewDay: number = 1;
+  private marketingDashboard: MarketingDashboard | null = null;
+  private equipmentStorePanel: EquipmentStorePanel | null = null;
+  private amenityPanel: AmenityPanel | null = null;
+  private dailyStats = {
+    revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
+    expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
+    golfersServed: 0,
+    totalSatisfaction: 0,
+    courseHealthStart: 0,
+    prestigeStart: 0,
+  };
+
   private gameOptions: GameOptions;
   private currentCourse: CourseData;
   private currentScenario: ScenarioDefinition | null = null;
@@ -138,7 +201,8 @@ export class BabylonMain {
   private golferPool: GolferPoolState;
   private researchState: ResearchState;
   private scenarioManager: ScenarioManager | null = null;
-  private weather: WeatherCondition = { type: "sunny", temperature: 72, windSpeed: 5 };
+  private weatherState: WeatherState = createInitialWeatherState();
+  private weather: WeatherCondition = this.weatherState.current;
   private greenFees: GreenFeeStructure = { ...DEFAULT_GREEN_FEES };
   private lastPayrollHour: number = -1;
   private lastArrivalHour: number = -1;
@@ -149,6 +213,7 @@ export class BabylonMain {
   private walkOnState: WalkOnState;
   private revenueState: RevenueState;
   private marketingState: MarketingState;
+  private autonomousState: AutonomousEquipmentState;
   private lastTeeTimeUpdateHour: number = -1;
 
   constructor(canvasId: string, options: GameOptions = {}) {
@@ -176,6 +241,10 @@ export class BabylonMain {
     this.walkOnState = createInitialWalkOnState();
     this.revenueState = createInitialRevenueState();
     this.marketingState = createInitialMarketingState();
+    this.autonomousState = createInitialAutonomousState(
+      REFILL_STATIONS[0]?.x ?? 25,
+      REFILL_STATIONS[0]?.y ?? 19
+    );
 
     // Set green fees based on course size
     const courseHoles = course.par ? Math.round(course.par / 4) : 9;
@@ -217,7 +286,21 @@ export class BabylonMain {
     this.setupInputCallbacks();
     this.buildScene();
     this.setupTerrainEditor();
+    this.setupEmployeePanel();
+    this.setupResearchPanel();
+    this.setupDaySummaryPopup();
+    this.setupTeeSheetPanel();
+    this.setupMarketingDashboard();
+    this.setupEquipmentStorePanel();
+    this.setupAmenityPanel();
+    this.setupPriceCallback();
     this.setupUpdateLoop();
+
+    // Load saved game if requested
+    if (options.loadFromSave && this.loadSavedGame()) {
+      this.uiManager.showNotification(`Loaded Day ${this.gameDay}`);
+      this.updatePlayerPosition();
+    }
 
     // Show scenario objective if we have one
     if (this.currentScenario) {
@@ -308,6 +391,377 @@ export class BabylonMain {
     });
   }
 
+  private setupEmployeePanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("EmployeePanelUI", true, this.babylonEngine.getScene());
+
+    this.employeePanel = new EmployeePanel(uiTexture, {
+      onHire: (employee: Employee) => {
+        const result = hireEmployee(this.employeeRoster, employee);
+        if (result) {
+          this.employeeRoster = result;
+          this.hiringPool = {
+            ...this.hiringPool,
+            candidates: this.hiringPool.candidates.filter(c => c.id !== employee.id),
+          };
+          this.uiManager.showNotification(`Hired ${employee.name} as ${employee.role}`);
+          this.employeePanel?.update(this.employeeRoster);
+        } else {
+          this.uiManager.showNotification("Cannot hire - roster full");
+        }
+      },
+      onFire: (employeeId: string) => {
+        const employee = this.employeeRoster.employees.find(e => e.id === employeeId);
+        const result = fireEmployee(this.employeeRoster, employeeId);
+        if (result) {
+          this.employeeRoster = result;
+          if (employee) {
+            this.uiManager.showNotification(`Fired ${employee.name}`);
+          }
+          this.employeePanel?.update(this.employeeRoster);
+        }
+      },
+      onClose: () => {
+        this.employeePanel?.hide();
+      },
+      onRefreshPool: () => {
+        this.hiringPool = generateHiringPool(this.gameTime + this.gameDay * 24 * 60, 5);
+        this.employeePanel?.updateHiringPool(this.hiringPool);
+      },
+    });
+
+    this.employeePanel.update(this.employeeRoster);
+    this.hiringPool = generateHiringPool(this.gameTime, 5);
+  }
+
+  private setupResearchPanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("ResearchPanelUI", true, this.babylonEngine.getScene());
+
+    this.researchPanel = new ResearchPanel(uiTexture, {
+      onStartResearch: (itemId: string) => {
+        const currentTime = this.gameTime + this.gameDay * 24 * 60;
+        const result = startResearch(this.researchState, itemId, currentTime);
+        if (result) {
+          this.researchState = result;
+          const item = RESEARCH_ITEMS.find(i => i.id === itemId);
+          if (item) {
+            this.uiManager.showNotification(`Started researching: ${item.name}`);
+          }
+          this.researchPanel?.update(this.researchState);
+        } else {
+          this.uiManager.showNotification("Cannot start research");
+        }
+      },
+      onQueueResearch: (itemId: string) => {
+        this.researchState = {
+          ...this.researchState,
+          researchQueue: [...this.researchState.researchQueue, itemId],
+        };
+        this.researchPanel?.update(this.researchState);
+      },
+      onCancelResearch: () => {
+        this.researchState = cancelResearch(this.researchState);
+        this.uiManager.showNotification("Research cancelled");
+        this.researchPanel?.update(this.researchState);
+      },
+      onSetFunding: (level: FundingLevel) => {
+        this.researchState = setFundingLevel(this.researchState, level);
+        this.uiManager.showNotification(`Funding set to ${level}`);
+        this.researchPanel?.update(this.researchState);
+      },
+      onClose: () => {
+        this.researchPanel?.hide();
+      },
+    });
+
+    this.researchPanel.update(this.researchState);
+  }
+
+  private setupDaySummaryPopup(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("DaySummaryUI", true, this.babylonEngine.getScene());
+
+    this.daySummaryPopup = new DaySummaryPopup(uiTexture, {
+      onContinue: () => {
+        this.resetDailyStats();
+      },
+    });
+  }
+
+  private setupTeeSheetPanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("TeeSheetUI", true, this.babylonEngine.getScene());
+    this.teeSheetViewDay = this.gameDay;
+
+    this.teeSheetPanel = new TeeSheetPanel(uiTexture, {
+      onCheckIn: (teeTimeId: string) => {
+        const result = checkInTeeTime(this.teeTimeState, teeTimeId);
+        this.teeTimeState = result;
+        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+        this.uiManager.showNotification('Golfer checked in');
+      },
+      onCancel: (teeTimeId: string) => {
+        const result = cancelTeeTime(this.teeTimeState, teeTimeId);
+        this.teeTimeState = result;
+        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+        this.uiManager.showNotification('Tee time cancelled');
+      },
+      onMarkNoShow: (teeTimeId: string) => {
+        const result = markNoShow(this.teeTimeState, teeTimeId);
+        if (result) {
+          this.teeTimeState = result;
+          this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+          this.uiManager.showNotification('Marked as no-show');
+        }
+      },
+      onChangeDay: (delta: number) => {
+        this.teeSheetViewDay = Math.max(1, this.teeSheetViewDay + delta);
+        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+      },
+      onClose: () => {
+        this.teeSheetPanel?.hide();
+      },
+    });
+  }
+
+  private setupMarketingDashboard(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("MarketingUI", true, this.babylonEngine.getScene());
+
+    this.marketingDashboard = new MarketingDashboard(uiTexture, {
+      onStartCampaign: (campaignId: string, duration: number) => {
+        const result = startCampaign(this.marketingState, campaignId, this.gameDay, duration);
+        if (result) {
+          this.marketingState = result.state;
+          if (result.setupCost > 0) {
+            const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+            const expenseResult = addExpense(this.economyState, result.setupCost, "marketing", "Campaign setup", timestamp, false);
+            if (expenseResult) {
+              this.economyState = expenseResult;
+              this.dailyStats.expenses.other += result.setupCost;
+            }
+          }
+          this.marketingDashboard?.update(this.marketingState, this.gameDay, this.economyState.cash);
+          this.uiManager.showNotification('Campaign started!');
+        }
+      },
+      onStopCampaign: (campaignId: string) => {
+        const result = stopCampaign(this.marketingState, campaignId, this.gameDay);
+        this.marketingState = result;
+        this.marketingDashboard?.update(this.marketingState, this.gameDay, this.economyState.cash);
+        this.uiManager.showNotification('Campaign stopped');
+      },
+      onClose: () => {
+        this.marketingDashboard?.hide();
+      },
+    });
+  }
+
+  private setupEquipmentStorePanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("EquipmentStoreUI", true, this.babylonEngine.getScene());
+
+    this.equipmentStorePanel = new EquipmentStorePanel(uiTexture, {
+      onPurchaseRobot: (equipmentId, stats) => {
+        const result = purchaseRobot(this.autonomousState, equipmentId, stats);
+        if (result && result.cost <= this.economyState.cash) {
+          this.autonomousState = result.state;
+          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+          const expenseResult = addExpense(this.economyState, result.cost, "equipment_purchase", `Robot purchase: ${equipmentId}`, timestamp, false);
+          if (expenseResult) {
+            this.economyState = expenseResult;
+            this.dailyStats.expenses.other += result.cost;
+          }
+          this.equipmentStorePanel?.update(this.researchState, this.autonomousState, this.economyState.cash);
+          this.uiManager.showNotification(`Purchased ${equipmentId}!`);
+          return true;
+        }
+        return false;
+      },
+      onSellRobot: (robotId) => {
+        const result = sellRobot(this.autonomousState, robotId);
+        if (result) {
+          this.autonomousState = result.state;
+          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+          const incomeResult = addIncome(this.economyState, result.refund, "other_income", `Robot sold: ${robotId}`, timestamp);
+          if (incomeResult) {
+            this.economyState = incomeResult;
+            this.dailyStats.revenue.other += result.refund;
+          }
+          this.equipmentStorePanel?.update(this.researchState, this.autonomousState, this.economyState.cash);
+          this.uiManager.showNotification(`Sold robot for $${result.refund.toLocaleString()}`);
+          return true;
+        }
+        return false;
+      },
+      onClose: () => {
+        this.equipmentStorePanel?.hide();
+      },
+    });
+  }
+
+  private setupAmenityPanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI("AmenityPanelUI", true, this.babylonEngine.getScene());
+
+    this.amenityPanel = new AmenityPanel(uiTexture, {
+      onPurchaseUpgrade: (upgrade: AmenityUpgrade) => {
+        const cost = getUpgradeCost(this.prestigeState.amenities, upgrade);
+        if (this.economyState.cash < cost) {
+          return false;
+        }
+        this.prestigeState = upgradeAmenity(this.prestigeState, upgrade);
+        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+        const expenseResult = addExpense(this.economyState, cost, "equipment_purchase", `Amenity: ${upgrade.type}`, timestamp, false);
+        if (expenseResult) {
+          this.economyState = expenseResult;
+          this.dailyStats.expenses.other += cost;
+        }
+        this.amenityPanel?.update(this.prestigeState, this.economyState.cash);
+        this.uiManager.showNotification(`Purchased ${upgrade.type} upgrade!`);
+        return true;
+      },
+      onClose: () => {
+        this.amenityPanel?.hide();
+      },
+    });
+  }
+
+  private setupPriceCallback(): void {
+    this.uiManager.setPriceCallback((delta: number) => {
+      const newPrice = Math.max(5, Math.min(500, this.greenFees.weekday18Holes + delta));
+      if (newPrice !== this.greenFees.weekday18Holes) {
+        this.greenFees = {
+          ...this.greenFees,
+          weekday18Holes: newPrice,
+          weekday9Holes: Math.round(newPrice * 0.6),
+          weekend18Holes: Math.round(newPrice * 1.2),
+          weekend9Holes: Math.round(newPrice * 0.72),
+          twilight18Holes: Math.round(newPrice * 0.6),
+          twilight9Holes: Math.round(newPrice * 0.36),
+        };
+        this.uiManager.updateCurrentPrice(newPrice);
+      }
+    });
+    this.uiManager.updateCurrentPrice(this.greenFees.weekday18Holes);
+  }
+
+  private resetDailyStats(): void {
+    const courseStats = this.grassSystem.getCourseStats();
+    this.dailyStats = {
+      revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
+      expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
+      golfersServed: 0,
+      totalSatisfaction: 0,
+      courseHealthStart: courseStats.health,
+      prestigeStart: this.prestigeState.currentScore,
+    };
+  }
+
+  private showDaySummary(): void {
+    const courseStats = this.grassSystem.getCourseStats();
+    const avgSatisfaction = this.dailyStats.golfersServed > 0
+      ? this.dailyStats.totalSatisfaction / this.dailyStats.golfersServed
+      : 0;
+
+    const summaryData: DaySummaryData = {
+      day: this.gameDay,
+      revenue: { ...this.dailyStats.revenue },
+      expenses: { ...this.dailyStats.expenses },
+      courseHealth: {
+        start: this.dailyStats.courseHealthStart,
+        end: courseStats.health,
+        change: courseStats.health - this.dailyStats.courseHealthStart,
+      },
+      golfers: {
+        totalServed: this.dailyStats.golfersServed,
+        averageSatisfaction: avgSatisfaction,
+        tipsEarned: this.dailyStats.revenue.tips,
+      },
+      prestige: {
+        score: this.prestigeState.currentScore,
+        change: this.prestigeState.currentScore - this.dailyStats.prestigeStart,
+      },
+    };
+
+    this.daySummaryPopup?.show(summaryData);
+    this.pauseGame();
+  }
+
+  private saveCurrentGame(): void {
+    if (!this.currentScenario || !this.scenarioManager) return;
+
+    const cells = this.grassSystem.getAllCells();
+    const scenarioProgress = this.scenarioManager.getProgress();
+    const state = createSaveState(
+      this.currentScenario.id,
+      this.gameTime,
+      this.gameDay,
+      this.playerX,
+      this.playerY,
+      this.score,
+      this.economyState,
+      this.employeeRoster,
+      this.golferPool,
+      this.researchState,
+      this.prestigeState,
+      this.teeTimeState,
+      this.walkOnState,
+      this.revenueState,
+      this.marketingState,
+      this.hiringPool,
+      scenarioProgress,
+      this.autonomousState,
+      this.weatherState,
+      cells
+    );
+
+    if (saveGame(state)) {
+      this.uiManager.showNotification('Game saved');
+    }
+  }
+
+  private loadSavedGame(): boolean {
+    if (!this.currentScenario) return false;
+
+    const saved = loadGame(this.currentScenario.id);
+    if (!saved) return false;
+
+    this.gameTime = saved.gameTime;
+    this.gameDay = saved.gameDay;
+    this.playerX = saved.playerX;
+    this.playerY = saved.playerY;
+    this.score = saved.score;
+    this.economyState = saved.economyState;
+    this.employeeRoster = saved.employeeRoster;
+    this.golferPool = saved.golferPool;
+    this.researchState = saved.researchState;
+    this.prestigeState = saved.prestigeState;
+    this.teeTimeState = saved.teeTimeState;
+    this.walkOnState = saved.walkOnState;
+    this.revenueState = saved.revenueState;
+    this.marketingState = saved.marketingState;
+    this.hiringPool = saved.hiringPool;
+
+    if (saved.scenarioProgress && this.scenarioManager) {
+      this.scenarioManager.updateProgress(saved.scenarioProgress);
+    }
+
+    if (saved.autonomousState) {
+      this.autonomousState = saved.autonomousState;
+    }
+
+    if (saved.weatherState) {
+      this.weatherState = saved.weatherState;
+      this.weather = this.weatherState.current;
+    }
+
+    if (saved.cells && saved.cells.length > 0) {
+      this.grassSystem.restoreCells(saved.cells);
+    }
+
+    return true;
+  }
+
+  public hasSavedGame(): boolean {
+    if (!this.currentScenario) return false;
+    return hasSave(this.currentScenario.id);
+  }
+
   private setupInputCallbacks(): void {
     this.inputManager.setCallbacks({
       onMove: (direction: Direction) => this.handleMove(direction),
@@ -341,6 +795,12 @@ export class BabylonMain {
       onDrag: (screenX: number, screenY: number) =>
         this.handleDrag(screenX, screenY),
       onDragEnd: () => this.handleDragEnd(),
+      onEmployeePanel: () => this.handleEmployeePanel(),
+      onResearchPanel: () => this.handleResearchPanel(),
+      onTeeSheetPanel: () => this.handleTeeSheetPanel(),
+      onMarketingPanel: () => this.handleMarketingPanel(),
+      onEquipmentStore: () => this.handleEquipmentStore(),
+      onAmenityPanel: () => this.handleAmenityPanel(),
     });
   }
 
@@ -943,7 +1403,8 @@ export class BabylonMain {
         this.grassSystem.waterArea(x, y, state.effectRadius, 15);
         break;
       case "spreader":
-        this.grassSystem.fertilizeArea(x, y, state.effectRadius, 10);
+        const fertilizerEffectiveness = getBestFertilizerEffectiveness(this.researchState);
+        this.grassSystem.fertilizeArea(x, y, state.effectRadius, 10, fertilizerEffectiveness);
         break;
     }
   }
@@ -989,6 +1450,7 @@ export class BabylonMain {
         );
         if (expenseResult) {
           this.economyState = expenseResult;
+          this.dailyStats.expenses.supplies += cost;
         }
         this.uiManager.showNotification(`Refilled! Cost: $${cost.toFixed(2)}`);
       } else {
@@ -1018,12 +1480,73 @@ export class BabylonMain {
     }
   }
 
+  private handleEmployeePanel(): void {
+    if (this.employeePanel?.isVisible()) {
+      this.employeePanel.hide();
+    } else {
+      this.employeePanel?.update(this.employeeRoster);
+      this.employeePanel?.show();
+    }
+  }
+
+  private handleResearchPanel(): void {
+    if (this.researchPanel?.isVisible()) {
+      this.researchPanel.hide();
+    } else {
+      this.researchPanel?.update(this.researchState);
+      this.researchPanel?.show();
+    }
+  }
+
+  private handleTeeSheetPanel(): void {
+    if (this.teeSheetPanel?.isVisible()) {
+      this.teeSheetPanel.hide();
+    } else {
+      this.teeSheetViewDay = this.gameDay;
+      this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
+      this.teeSheetPanel?.show();
+    }
+  }
+
+  private handleMarketingPanel(): void {
+    if (this.marketingDashboard?.isVisible()) {
+      this.marketingDashboard.hide();
+    } else {
+      this.marketingDashboard?.update(this.marketingState, this.gameDay, this.economyState.cash);
+      this.marketingDashboard?.show();
+    }
+  }
+
+  private handleEquipmentStore(): void {
+    if (this.equipmentStorePanel?.isVisible()) {
+      this.equipmentStorePanel.hide();
+    } else {
+      this.equipmentStorePanel?.update(this.researchState, this.autonomousState, this.economyState.cash);
+      this.equipmentStorePanel?.show();
+    }
+  }
+
+  private handleAmenityPanel(): void {
+    if (this.amenityPanel?.isVisible()) {
+      this.amenityPanel.hide();
+    } else {
+      this.amenityPanel?.update(this.prestigeState, this.economyState.cash);
+      this.amenityPanel?.show();
+    }
+  }
+
   private pauseGame(): void {
     this.isPaused = true;
     this.uiManager.showPauseMenu(
       () => this.resumeGame(),
       () => this.restartGame(),
-      this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined
+      this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined,
+      () => this.handleEmployeePanel(),
+      () => this.handleResearchPanel(),
+      () => this.handleTeeSheetPanel(),
+      () => this.handleMarketingPanel(),
+      (delta: number) => this.handleTimeSpeed(delta),
+      this.timeScale
     );
   }
 
@@ -1040,6 +1563,8 @@ export class BabylonMain {
     this.gameDay = 1;
     this.score = 0;
     this.timeScale = 1;
+    this.weatherState = createInitialWeatherState(this.gameDay);
+    this.weather = this.weatherState.current;
     this.equipmentManager.refill();
     this.grassSystem.dispose();
     this.grassSystem = new GrassSystem(
@@ -1053,6 +1578,7 @@ export class BabylonMain {
   }
 
   private returnToMenu(): void {
+    this.saveCurrentGame();
     if (this.gameOptions.onReturnToMenu) {
       this.gameOptions.onReturnToMenu();
     }
@@ -1242,7 +1768,7 @@ export class BabylonMain {
         this.gameDay++;
       }
 
-      this.grassSystem.update(deltaMs * this.timeScale, this.gameTime);
+      this.grassSystem.update(deltaMs * this.timeScale, this.gameTime, this.weather);
 
       // Update economy and management systems
       this.updateEconomySystems(deltaMs);
@@ -1256,7 +1782,9 @@ export class BabylonMain {
 
       const hours = Math.floor(this.gameTime / 60);
       const minutes = Math.floor(this.gameTime % 60);
-      this.uiManager.updateTime(hours, minutes, this.gameDay);
+      const season = getSeasonFromDay(this.gameDay).season;
+      this.uiManager.updateTime(hours, minutes, this.gameDay, season);
+      this.uiManager.updateWeather(this.weather.type, this.weather.temperature);
       this.uiManager.updateEquipment(
         this.equipmentManager.getCurrentType(),
         this.equipmentManager.isActive()
@@ -1286,7 +1814,8 @@ export class BabylonMain {
       this.uiManager.updateScore(this.score);
       this.uiManager.updateEconomy(
         this.economyState.cash,
-        getActiveGolferCount(this.golferPool)
+        getActiveGolferCount(this.golferPool),
+        getAverageSatisfaction(this.golferPool)
       );
 
       // Update scenario progress HUD
@@ -1380,6 +1909,25 @@ export class BabylonMain {
     const isTwilight = hours >= 16;
     const timestamp = this.gameDay * 24 * 60 + this.gameTime;
 
+    const weatherResult = tickWeather(this.weatherState, this.gameTime, this.gameDay);
+    if (weatherResult.changed || weatherResult.state !== this.weatherState) {
+      this.weatherState = weatherResult.state;
+      this.weather = this.weatherState.current;
+      if (weatherResult.changed) {
+        const impact = getWeatherImpactDescription(this.weather);
+        this.uiManager.showNotification(
+          `Weather: ${getWeatherDescription(this.weather)}`,
+          undefined,
+          3000
+        );
+        if (impact) {
+          setTimeout(() => {
+            this.uiManager.showNotification(impact, undefined, 4000);
+          }, 500);
+        }
+      }
+    }
+
     // Hourly payroll processing
     if (hours !== this.lastPayrollHour && this.employeeRoster.employees.length > 0) {
       this.lastPayrollHour = hours;
@@ -1396,6 +1944,7 @@ export class BabylonMain {
         );
         if (expenseResult) {
           this.economyState = expenseResult;
+          this.dailyStats.expenses.wages += payrollResult.totalPaid;
         }
       }
     }
@@ -1406,7 +1955,10 @@ export class BabylonMain {
       const cells = this.grassSystem.getAllCells();
       const conditionsScore = calculateCurrentConditions(cells);
       this.prestigeState = updatePrestigeScore(this.prestigeState, conditionsScore);
-      this.uiManager.updatePrestige(this.prestigeState);
+      const demandMult = calculateDemandMultiplier(this.greenFees.weekday18Holes, this.prestigeState.tolerance);
+      const rejectionRate = Math.round((1 - demandMult) * 100);
+      const recommendedMax = this.prestigeState.tolerance.rejectionThreshold;
+      this.uiManager.updatePrestige(this.prestigeState, rejectionRate, recommendedMax);
     }
 
     // Hourly tee time processing
@@ -1474,6 +2026,7 @@ export class BabylonMain {
           );
           if (expenseResult) {
             this.economyState = expenseResult;
+            this.dailyStats.expenses.other += marketingResult.dailyCost;
           }
         }
 
@@ -1489,12 +2042,19 @@ export class BabylonMain {
         );
         if (utilitiesResult) {
           this.economyState = utilitiesResult;
+          this.dailyStats.expenses.utilities += dailyUtilitiesCost;
         }
 
         // Take prestige daily snapshot and update historical tracking
         const dailySnapshot = takeDailySnapshot(this.prestigeState.currentConditions, this.gameDay);
         const newHistoricalExcellence = updateHistoricalExcellence(this.prestigeState.historicalExcellence, dailySnapshot);
         this.prestigeState = { ...this.prestigeState, historicalExcellence: newHistoricalExcellence };
+
+        // Show day summary popup
+        this.showDaySummary();
+
+        // Auto-save at end of day
+        this.saveCurrentGame();
 
         // Reset all daily counters
         this.walkOnState = resetDailyWalkOnMetrics(this.walkOnState);
@@ -1517,10 +2077,29 @@ export class BabylonMain {
         hours
       );
 
-      // Apply prestige demand multiplier
+      // Apply prestige demand multiplier and track rejected golfers
       const demandMultiplier = calculateDemandMultiplier(this.greenFees.weekday18Holes, this.prestigeState.tolerance);
+      const potentialArrivals = Math.floor(baseArrivalRate + (Math.random() < (baseArrivalRate % 1) ? 1 : 0));
       const arrivalRate = baseArrivalRate * demandMultiplier;
       const arrivalCount = Math.floor(arrivalRate + (Math.random() < (arrivalRate % 1) ? 1 : 0));
+      const rejectedCount = Math.max(0, potentialArrivals - arrivalCount);
+
+      // Track rejected golfers in prestige state
+      if (rejectedCount > 0) {
+        const lostRevenue = rejectedCount * this.greenFees.weekday18Holes;
+        this.prestigeState = {
+          ...this.prestigeState,
+          golfersRejectedToday: this.prestigeState.golfersRejectedToday + rejectedCount,
+          revenueLostToday: this.prestigeState.revenueLostToday + lostRevenue,
+        };
+        // Show warning if significant rejections (first time each hour)
+        if (this.prestigeState.golfersRejectedToday >= 5 && rejectedCount >= 2) {
+          this.uiManager.showNotification(
+            `⚠️ ${rejectedCount} golfers turned away! (Prices too high)`,
+            '#ffaa44'
+          );
+        }
+      }
 
       if (arrivalCount > 0) {
         const arrivals = generateArrivals(
@@ -1542,6 +2121,7 @@ export class BabylonMain {
             `Green fee: ${golfer.type}`,
             timestamp
           );
+          this.dailyStats.revenue.greenFees += golfer.paidAmount;
           if (this.scenarioManager) {
             this.scenarioManager.addRevenue(golfer.paidAmount);
             this.scenarioManager.addGolfers(1);
@@ -1583,39 +2163,84 @@ export class BabylonMain {
           `${departureCount} golfer${departureCount > 1 ? 's' : ''} finished (+$${tickResult.tips.toFixed(0)} tips)`
         );
       }
-      for (const _departure of tickResult.departures) {
+      this.dailyStats.revenue.tips += tickResult.tips;
+      for (const departure of tickResult.departures) {
+        this.dailyStats.golfersServed++;
+        this.dailyStats.totalSatisfaction += departure.satisfaction;
         if (this.scenarioManager) {
           this.scenarioManager.addRound();
         }
       }
     }
 
-    // Tick employees (energy, breaks)
-    const tickEmployeesResult = tickEmployees(this.employeeRoster, gameMinutes);
+    // Tick employees (energy, breaks) - apply training bonus from research
+    const trainingBonus = getEquipmentEfficiencyBonus(this.researchState);
+    const tickEmployeesResult = tickEmployees(this.employeeRoster, gameMinutes, trainingBonus);
     this.employeeRoster = tickEmployeesResult.roster;
 
-    // Tick research
-    this.accumulatedResearchTime += gameMinutes;
-    if (this.accumulatedResearchTime >= 1) {
-      const researchMinutes = Math.floor(this.accumulatedResearchTime);
-      this.accumulatedResearchTime -= researchMinutes;
-      const fundingCost = getFundingCostPerMinute(this.researchState) * researchMinutes;
-      if (fundingCost > 0 && this.economyState.cash >= fundingCost) {
+    // Tick research (only charge funding if there's active research)
+    if (this.researchState.currentResearch) {
+      this.accumulatedResearchTime += gameMinutes;
+      if (this.accumulatedResearchTime >= 1) {
+        const researchMinutes = Math.floor(this.accumulatedResearchTime);
+        this.accumulatedResearchTime -= researchMinutes;
+        const fundingCost = getFundingCostPerMinute(this.researchState) * researchMinutes;
+        if (fundingCost > 0 && this.economyState.cash >= fundingCost) {
+          const expenseResult = addExpense(
+            this.economyState,
+            fundingCost,
+            "research",
+            "Research funding",
+            timestamp,
+            true
+          );
+          if (expenseResult) {
+            this.economyState = expenseResult;
+          }
+          const researchResult = tickResearch(this.researchState, researchMinutes, timestamp);
+          this.researchState = researchResult.state;
+          if (researchResult.completed) {
+            const unlockDesc = describeResearchUnlock(researchResult.completed);
+            this.uiManager.showNotification(`Research complete: ${unlockDesc}`);
+          }
+        }
+      }
+    }
+
+    // Tick autonomous equipment (robots)
+    if (this.autonomousState.robots.length > 0) {
+      const cells = this.grassSystem.getAllCells();
+      const fleetAIActive = this.researchState.completedResearch.includes('fleet_ai');
+      const robotResult = tickAutonomousEquipment(
+        this.autonomousState,
+        cells,
+        gameMinutes,
+        fleetAIActive
+      );
+      this.autonomousState = robotResult.state;
+
+      if (robotResult.operatingCost > 0) {
         const expenseResult = addExpense(
           this.economyState,
-          fundingCost,
-          "research",
-          "Research funding",
+          robotResult.operatingCost,
+          "equipment_maintenance",
+          "Robot operating costs",
           timestamp,
           true
         );
         if (expenseResult) {
           this.economyState = expenseResult;
         }
-        const researchResult = tickResearch(this.researchState, researchMinutes, timestamp);
-        this.researchState = researchResult.state;
-        if (researchResult.completed) {
-          this.uiManager.showNotification(`Research complete: ${researchResult.completed.name}!`);
+      }
+
+      for (const effect of robotResult.effects) {
+        if (effect.type === 'mower') {
+          this.grassSystem.mowAt(effect.gridX, effect.gridY);
+        } else if (effect.type === 'sprayer') {
+          this.grassSystem.waterArea(effect.gridX, effect.gridY, 1, 10 * effect.efficiency);
+        } else if (effect.type === 'spreader') {
+          const effectiveness = getBestFertilizerEffectiveness(this.researchState);
+          this.grassSystem.fertilizeArea(effect.gridX, effect.gridY, 1, 10 * effect.efficiency, effectiveness);
         }
       }
     }

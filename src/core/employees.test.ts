@@ -881,6 +881,49 @@ describe("Employee System", () => {
       const expectedWage = config.baseWage * config.wageMultipliers.trained;
       expect(result.roster.employees[0].hourlyWage).toBeCloseTo(expectedWage, 2);
     });
+
+    it("applies training bonus to reduce fatigue accrual", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "working", fatigue: 0 });
+      const roster = makeRoster({ employees: [emp] });
+
+      // Without training bonus
+      const resultNoBonus = tickEmployees(roster, 10, 1.0);
+      const fatigueNoBonus = resultNoBonus.roster.employees[0].fatigue;
+
+      // With 1.5x training bonus (fatigue should be reduced)
+      const resultWithBonus = tickEmployees(roster, 10, 1.5);
+      const fatigueWithBonus = resultWithBonus.roster.employees[0].fatigue;
+
+      expect(fatigueWithBonus).toBeLessThan(fatigueNoBonus);
+    });
+
+    it("applies training bonus to increase experience gain", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "working", experience: 0 });
+      const roster = makeRoster({ employees: [emp] });
+
+      // Without training bonus
+      const resultNoBonus = tickEmployees(roster, 10, 1.0);
+      const expNoBonus = resultNoBonus.roster.employees[0].experience;
+
+      // With 1.5x training bonus
+      const resultWithBonus = tickEmployees(roster, 10, 1.5);
+      const expWithBonus = resultWithBonus.roster.employees[0].experience;
+
+      expect(expWithBonus).toBeGreaterThan(expNoBonus);
+      expect(expWithBonus).toBeCloseTo(expNoBonus * 1.5, 2);
+    });
+
+    it("uses default training bonus of 1.0 when not specified", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "working", experience: 0 });
+      const roster = makeRoster({ employees: [emp] });
+
+      const resultDefault = tickEmployees(roster, 10);
+      const resultExplicit = tickEmployees(roster, 10, 1.0);
+
+      expect(resultDefault.roster.employees[0].experience).toBe(
+        resultExplicit.roster.employees[0].experience
+      );
+    });
   });
 
   describe("processPayroll", () => {

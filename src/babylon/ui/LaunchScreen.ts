@@ -11,9 +11,11 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { ScenarioDefinition, SCENARIOS } from '../../data/scenarioData';
 import { getProgressManager, ProgressManager } from '../../systems/ProgressManager';
 import { getCourseById } from '../../data/courseData';
+import { hasSave } from '../../core/save-game';
 
 export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
+  onContinueScenario?: (scenario: ScenarioDefinition) => void;
 }
 
 export class LaunchScreen {
@@ -24,6 +26,7 @@ export class LaunchScreen {
   private selectedScenario: ScenarioDefinition | null = null;
   private scenarioCards: Map<string, Rectangle> = new Map();
   private startButton: Rectangle | null = null;
+  private continueButton: Rectangle | null = null;
 
   constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks) {
     this.callbacks = callbacks;
@@ -209,7 +212,9 @@ export class LaunchScreen {
     diffText.fontFamily = 'Arial, sans-serif';
     diffBadge.addControl(diffText);
 
-    // Status icon
+    // Status icons
+    const hasSavedGame = hasSave(scenario.id);
+
     if (isLocked) {
       const lockIcon = new TextBlock('lockIcon');
       lockIcon.text = '🔒';
@@ -224,6 +229,15 @@ export class LaunchScreen {
       checkIcon.width = '30px';
       checkIcon.paddingLeft = '8px';
       badgeRow.addControl(checkIcon);
+    }
+
+    if (hasSavedGame && !isLocked) {
+      const saveIcon = new TextBlock('saveIcon');
+      saveIcon.text = '💾';
+      saveIcon.fontSize = 12;
+      saveIcon.width = '25px';
+      saveIcon.paddingLeft = '4px';
+      badgeRow.addControl(saveIcon);
     }
 
     // Scenario name
@@ -332,6 +346,12 @@ export class LaunchScreen {
       this.startButton.alpha = 1;
       this.startButton.isEnabled = true;
     }
+
+    // Show/hide continue button based on saved game
+    if (this.continueButton) {
+      const hasSavedGame = hasSave(scenario.id);
+      this.continueButton.isVisible = hasSavedGame;
+    }
   }
 
   private createActionBar(parent: StackPanel): void {
@@ -348,8 +368,25 @@ export class LaunchScreen {
     buttonRow.height = '50px';
     actionBar.addControl(buttonRow);
 
-    // Start button
-    this.startButton = this.createActionButton('▶ START GAME', () => {
+    // Continue button (only visible when saved game exists)
+    this.continueButton = this.createActionButton('▶ CONTINUE', () => {
+      if (this.selectedScenario && this.callbacks.onContinueScenario) {
+        this.callbacks.onContinueScenario(this.selectedScenario);
+      }
+    }, '#4a6a7a');
+    this.continueButton.isVisible = false;
+    buttonRow.addControl(this.continueButton);
+
+    // Spacer after continue
+    const spacer1 = new Rectangle('spacer1');
+    spacer1.width = '10px';
+    spacer1.height = '1px';
+    spacer1.thickness = 0;
+    spacer1.background = 'transparent';
+    buttonRow.addControl(spacer1);
+
+    // Start button (new game)
+    this.startButton = this.createActionButton('▶ NEW GAME', () => {
       if (this.selectedScenario) {
         this.callbacks.onStartScenario(this.selectedScenario);
       }
@@ -359,12 +396,12 @@ export class LaunchScreen {
     buttonRow.addControl(this.startButton);
 
     // Spacer
-    const spacer = new Rectangle('spacer');
-    spacer.width = '20px';
-    spacer.height = '1px';
-    spacer.thickness = 0;
-    spacer.background = 'transparent';
-    buttonRow.addControl(spacer);
+    const spacer2 = new Rectangle('spacer2');
+    spacer2.width = '20px';
+    spacer2.height = '1px';
+    spacer2.thickness = 0;
+    spacer2.background = 'transparent';
+    buttonRow.addControl(spacer2);
 
     // Quick play button (auto-select first unlocked)
     const quickPlayBtn = this.createActionButton('🎮 QUICK PLAY', () => {

@@ -30,6 +30,12 @@ export interface InputCallbacks {
   onUndo?: () => void;
   onRedo?: () => void;
   onMouseMove?: (screenX: number, screenY: number) => void;
+  onEmployeePanel?: () => void;
+  onResearchPanel?: () => void;
+  onTeeSheetPanel?: () => void;
+  onMarketingPanel?: () => void;
+  onEquipmentStore?: () => void;
+  onAmenityPanel?: () => void;
   onDragStart?: (screenX: number, screenY: number) => void;
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
@@ -138,6 +144,18 @@ export class InputManager {
       this.callbacks.onEditorBrushSizeChange?.(-1);
     } else if (key === ".") {
       this.callbacks.onEditorBrushSizeChange?.(1);
+    } else if (key === "h") {
+      this.callbacks.onEmployeePanel?.();
+    } else if (key === "y") {
+      this.callbacks.onResearchPanel?.();
+    } else if (key === "g") {
+      this.callbacks.onTeeSheetPanel?.();
+    } else if (key === "k") {
+      this.callbacks.onMarketingPanel?.();
+    } else if (key === "b") {
+      this.callbacks.onEquipmentStore?.();
+    } else if (key === "u") {
+      this.callbacks.onAmenityPanel?.();
     }
   }
 

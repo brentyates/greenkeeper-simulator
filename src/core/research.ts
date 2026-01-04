@@ -88,9 +88,9 @@ export const FUNDING_POINTS_PER_MINUTE: Record<FundingLevel, number> = {
 
 export const FUNDING_COST_PER_MINUTE: Record<FundingLevel, number> = {
   none: 0,
-  minimum: 50,
-  normal: 150,
-  maximum: 400
+  minimum: 1,
+  normal: 3,
+  maximum: 8
 };
 
 export const CATEGORY_COLORS: Record<ResearchCategory, string> = {
@@ -655,6 +655,28 @@ export function getUnlockedFertilizers(state: ResearchState): readonly string[] 
     .map(item => (item.unlocks as { type: "fertilizer"; fertilizerId: string }).fertilizerId);
 }
 
+export function getBestFertilizerEffectiveness(state: ResearchState): number {
+  const fertilizers = state.completedResearch
+    .map(id => getResearchItem(id))
+    .filter((item): item is ResearchItem => item !== null)
+    .filter(item => item.unlocks.type === "fertilizer")
+    .map(item => (item.unlocks as { type: "fertilizer"; fertilizerId: string; effectiveness: number }).effectiveness);
+
+  if (fertilizers.length === 0) return 1.0;
+  return Math.max(...fertilizers);
+}
+
+export function getEquipmentEfficiencyBonus(state: ResearchState): number {
+  const upgrades = getActiveUpgrades(state);
+  let bonus = 1.0;
+  for (const upgrade of upgrades) {
+    if (upgrade.type === "efficiency") {
+      bonus *= upgrade.value;
+    }
+  }
+  return bonus;
+}
+
 export function getActiveUpgrades(state: ResearchState): readonly UpgradeBonus[] {
   return state.completedResearch
     .map(id => getResearchItem(id))
@@ -991,4 +1013,24 @@ export function getResearchCategoryName(category: ResearchCategory): string {
     robotics: "Robotics"
   };
   return names[category];
+}
+
+export function describeResearchUnlock(item: ResearchItem): string {
+  const unlock = item.unlocks;
+  switch (unlock.type) {
+    case "equipment":
+      if (unlock.stats.isAutonomous) {
+        return `Unlocked autonomous ${item.name}`;
+      }
+      return `Unlocked ${item.name}`;
+    case "fertilizer":
+      return `Unlocked ${item.name} (${unlock.effectiveness}x effectiveness)`;
+    case "upgrade":
+      const bonusPercent = Math.round((unlock.bonus.value - 1) * 100);
+      return `+${bonusPercent}% ${unlock.bonus.type} bonus`;
+    case "feature":
+      return `Unlocked feature: ${item.name}`;
+    default:
+      return item.name;
+  }
 }

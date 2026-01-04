@@ -462,7 +462,8 @@ export interface EmployeeTickResult {
 
 export function tickEmployees(
   roster: EmployeeRoster,
-  deltaMinutes: number
+  deltaMinutes: number,
+  trainingBonus: number = 1.0
 ): EmployeeTickResult {
   const promotions: { employeeId: string; newLevel: SkillLevel }[] = [];
   const breaksTaken: string[] = [];
@@ -472,11 +473,14 @@ export function tickEmployees(
     let updated = { ...employee };
 
     if (employee.status === "working") {
-      // Accrue fatigue and experience
+      // Training reduces fatigue (better techniques) and boosts experience gain
+      const fatigueMultiplier = 1 / trainingBonus;
+      const experienceMultiplier = trainingBonus;
+
       updated = {
         ...updated,
-        fatigue: Math.min(100, updated.fatigue + config.fatigueAccrualRate * deltaMinutes),
-        experience: updated.experience + deltaMinutes * updated.skills.efficiency
+        fatigue: Math.min(100, updated.fatigue + config.fatigueAccrualRate * deltaMinutes * fatigueMultiplier),
+        experience: updated.experience + deltaMinutes * updated.skills.efficiency * experienceMultiplier
       };
 
       // Check if needs break
