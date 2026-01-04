@@ -417,9 +417,11 @@ export function hireEmployee(
     return null;
   }
 
+  const hiredEmployee = { ...employee, status: "working" as EmployeeStatus };
+
   return {
     ...roster,
-    employees: [...roster.employees, employee]
+    employees: [...roster.employees, hiredEmployee]
   };
 }
 

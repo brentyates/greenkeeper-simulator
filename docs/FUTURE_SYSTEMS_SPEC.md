@@ -423,6 +423,165 @@ interface WateringZone {
 
 ---
 
+## 10. Facility & Building Progression System
+
+> This system replaces the standalone refill station concept with buildings that serve as operational hubs and prestige contributors.
+
+### Overview
+
+Every course has core facilities (clubhouse, maintenance shed) that serve as:
+- Equipment origin points (workers and equipment start here)
+- Resource refill locations (fuel, fertilizer, seed)
+- Prestige contributors (upgraded facilities increase course rating)
+- Upgrade progression paths
+
+### Core Buildings
+
+**Clubhouse (Required - Central Hub)**
+| Tier | Name | Cost | Prestige | Capacity | Features |
+|------|------|------|----------|----------|----------|
+| 0 | Starter Shack | $0 | +0 | 20 | Basic check-in, restroom |
+| 1 | Small Clubhouse | $50k | +50 | 50 | Pro shop, snack bar |
+| 2 | Standard Clubhouse | $150k | +120 | 100 | Restaurant, locker rooms |
+| 3 | Premium Clubhouse | $350k | +220 | 200 | Full dining, bar, event space |
+| 4 | Grand Clubhouse | $750k | +350 | 400 | Fine dining, spa, conference rooms |
+
+**Maintenance Shed (Required - Equipment Hub)**
+| Tier | Name | Cost | Prestige | Equipment Slots | Features |
+|------|------|------|----------|-----------------|----------|
+| 0 | Tool Shed | $0 | +0 | 2 | Basic tool storage |
+| 1 | Maintenance Bay | $25k | +10 | 4 | Equipment storage, fuel tank |
+| 2 | Equipment Center | $75k | +25 | 8 | Workshop, parts storage, larger fuel |
+| 3 | Operations Complex | $175k | +50 | 16 | Multiple bays, full workshop, bulk storage |
+
+### Secondary Buildings (Placeable)
+
+**Course Amenities:**
+| Building | Cost | Prestige | Function |
+|----------|------|----------|----------|
+| Comfort Station | $15k | +5 | Restroom mid-course |
+| Halfway House | $40k | +25 | Snacks, drinks at turn |
+| Beverage Cart Depot | $20k | +10 | Cart storage, restocking |
+| Starter's Hut | $10k | +5 | Tee time check-in station |
+
+**Decorative/Environmental:**
+| Item | Cost | Prestige | Notes |
+|------|------|----------|-------|
+| Ornamental Tree | $500 | +1 | Various species |
+| Flower Bed | $1k | +2 | Seasonal colors |
+| Stone Bench | $800 | +1 | Resting spot |
+| Water Fountain | $2k | +3 | Drinking fountain |
+| Decorative Bridge | $5k | +5 | Over water features |
+| Course Signage | $1.5k | +2 | Hole markers, direction |
+
+**Revenue Generators:**
+| Building | Cost | Monthly Revenue | Prestige |
+|----------|------|-----------------|----------|
+| Concession Stand | $25k | $2k-5k | +10 |
+| Practice Green | $35k | Included in fees | +15 |
+| Chipping Area | $20k | Included in fees | +10 |
+| Driving Range (9 bays) | $100k | $8k-15k | +30 |
+| Driving Range (18 bays) | $200k | $15k-30k | +50 |
+
+### Building Mechanics
+
+```typescript
+interface Building {
+  id: string;
+  type: BuildingType;
+  tier: number;
+  gridX: number;
+  gridY: number;
+  condition: number;      // 0-100, degrades without maintenance
+  monthlyUpkeep: number;
+}
+
+interface MaintenanceShed extends Building {
+  type: 'maintenance_shed';
+  fuelCapacity: number;
+  fertilizerCapacity: number;
+  seedCapacity: number;
+  currentFuel: number;
+  currentFertilizer: number;
+  currentSeed: number;
+  equipmentSlots: number;
+  assignedEquipment: string[];
+}
+
+interface Clubhouse extends Building {
+  type: 'clubhouse';
+  guestCapacity: number;
+  hasProShop: boolean;
+  hasRestaurant: boolean;
+  hasLockerRoom: boolean;
+  hasEventSpace: boolean;
+}
+```
+
+### Equipment Origination
+
+Workers and equipment originate from maintenance sheds:
+
+- **Morning Start:** Workers report to assigned maintenance shed
+- **Equipment Checkout:** Workers pick up equipment from shed
+- **Refill Stops:** Return to shed for fuel/supplies (replaces refill stations)
+- **End of Day:** Equipment returned, secured in shed
+
+Multiple maintenance sheds allow:
+- Distributed equipment across large courses
+- Reduced travel time for workers
+- Backup capacity if one shed is at capacity
+
+### Upgrade System
+
+**Upgrade Process:**
+1. Select building to upgrade
+2. Pay upgrade cost
+3. Building enters construction phase (1-7 days)
+4. Building unavailable during construction
+5. Upgrade complete → new tier active
+
+**Construction Effects:**
+- Clubhouse upgrade: Reduced guest capacity during work
+- Maintenance shed upgrade: Workers relocate to other sheds temporarily
+- Requires temporary portable facilities for long upgrades
+
+### Prestige Integration
+
+Building prestige contributes to the overall score:
+
+```typescript
+function calculateFacilityPrestige(buildings: Building[]): number {
+  let total = 0;
+
+  for (const building of buildings) {
+    const basePrestige = BUILDING_PRESTIGE[building.type][building.tier];
+    const conditionMultiplier = building.condition / 100;
+    total += basePrestige * conditionMultiplier;
+  }
+
+  return total;
+}
+```
+
+Facility prestige is weighted as part of the total prestige calculation:
+- Current conditions: 25%
+- Historical excellence: 25%
+- **Facilities & Amenities: 20%** (includes buildings)
+- Reputation: 20%
+- Exclusivity: 10%
+
+### Integration Points
+
+- **Economy:** Building costs, monthly upkeep, upgrade costs
+- **Employees:** Workers assigned to specific maintenance sheds
+- **Equipment:** Equipment stored at and dispatched from sheds
+- **Prestige:** Building tiers affect course prestige score
+- **Research:** Unlock advanced building tiers, efficiency upgrades
+- **Weather:** Buildings provide shelter during storms
+
+---
+
 ## Missing Documentation for Existing Systems
 
 ### 1. Staff Scheduling & Management (Mentioned but Not Detailed)

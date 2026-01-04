@@ -255,7 +255,9 @@ export class BabylonMain {
     const startingCash = options.scenario?.conditions.startingCash ?? 10000;
     this.economyState = createInitialEconomyState(startingCash);
     this.employeeRoster = createInitialRoster();
-    this.employeeWorkState = createInitialWorkSystemState(0, 0);
+    const maintenanceShedX = REFILL_STATIONS[0]?.x ?? Math.floor(course.width / 2);
+    const maintenanceShedY = REFILL_STATIONS[0]?.y ?? Math.floor(course.height / 2);
+    this.employeeWorkState = createInitialWorkSystemState(maintenanceShedX, maintenanceShedY);
     this.golferPool = createInitialPoolState();
     this.researchState = createInitialResearchState();
     this.prestigeState = createInitialPrestigeState(100);
