@@ -122,7 +122,7 @@ export function createGolferEntity(
   };
 }
 
-export const MOVE_SPEED = 12.0;
+export const MOVE_SPEED = 3.0;
 export const MOVE_DURATION_MS = 150;
 
 export function getNextPosition(entity: MovableEntity): GridPosition | null {

@@ -6,6 +6,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { EmployeeTask } from "../../core/employee-work";
+import { MOVE_DURATION_MS } from "../../core/movable-entity";
 
 export interface EmployeePosition {
   readonly employeeId: string;
@@ -28,6 +29,11 @@ interface WorkerMeshGroup {
   hat: Mesh;
   equipment: Mesh | null;
   currentTask: EmployeeTask;
+  lastGridX: number;
+  lastGridY: number;
+  targetGridX: number;
+  targetGridY: number;
+  visualProgress: number;
 }
 
 const TASK_COLORS: Record<EmployeeTask, { body: Color3; equipment: Color3 | null }> = {
@@ -84,7 +90,7 @@ export class EmployeeVisualSystem {
     }
   }
 
-  public update(positions: readonly EmployeePosition[]): void {
+  public update(positions: readonly EmployeePosition[], deltaMs: number): void {
     const currentIds = new Set(positions.map(p => p.employeeId));
 
     for (const [id, group] of this.workerMeshes) {
@@ -98,16 +104,16 @@ export class EmployeeVisualSystem {
       let group = this.workerMeshes.get(pos.employeeId);
 
       if (!group) {
-        group = this.createWorkerMesh(pos.employeeId);
+        group = this.createWorkerMesh(pos.employeeId, pos.gridX, pos.gridY);
         this.workerMeshes.set(pos.employeeId, group);
       }
 
-      this.updateWorkerPosition(group, pos.gridX, pos.gridY, pos.nextX, pos.nextY, pos.moveProgress);
+      this.updateWorkerPosition(group, pos.gridX, pos.gridY, pos.nextX, pos.nextY, deltaMs);
       this.updateWorkerTask(group, pos.task);
     }
   }
 
-  private createWorkerMesh(employeeId: string): WorkerMeshGroup {
+  private createWorkerMesh(employeeId: string, startX: number, startY: number): WorkerMeshGroup {
     const container = MeshBuilder.CreateBox(
       `worker_${employeeId}`,
       { size: 0.01 },
@@ -159,6 +165,11 @@ export class EmployeeVisualSystem {
       hat,
       equipment: null,
       currentTask: "idle",
+      lastGridX: startX,
+      lastGridY: startY,
+      targetGridX: startX,
+      targetGridY: startY,
+      visualProgress: 1,
     };
   }
 
@@ -168,20 +179,31 @@ export class EmployeeVisualSystem {
     gridY: number,
     nextX: number | null,
     nextY: number | null,
-    moveProgress: number
+    deltaMs: number
   ): void {
-    const startElevation = this.elevationProvider.getElevationAt(gridX, gridY, 0);
-    const startPos = gridTo3D(gridX + 0.5, gridY + 0.5, startElevation);
+    const isMoving = nextX !== null && nextY !== null;
+    const targetX = isMoving ? nextX : gridX;
+    const targetY = isMoving ? nextY : gridY;
 
-    if (nextX === null || nextY === null || moveProgress <= 0) {
-      group.container.position = new Vector3(startPos.x, startPos.y, startPos.z);
-      return;
+    if (targetX !== group.targetGridX || targetY !== group.targetGridY) {
+      group.lastGridX = group.targetGridX;
+      group.lastGridY = group.targetGridY;
+      group.targetGridX = targetX;
+      group.targetGridY = targetY;
+      group.visualProgress = 0;
     }
 
-    const endElevation = this.elevationProvider.getElevationAt(nextX, nextY, 0);
-    const endPos = gridTo3D(nextX + 0.5, nextY + 0.5, endElevation);
+    if (group.visualProgress < 1) {
+      group.visualProgress = Math.min(1, group.visualProgress + deltaMs / MOVE_DURATION_MS);
+    }
 
-    const t = Math.min(1, moveProgress);
+    const startElevation = this.elevationProvider.getElevationAt(group.lastGridX, group.lastGridY, 0);
+    const startPos = gridTo3D(group.lastGridX + 0.5, group.lastGridY + 0.5, startElevation);
+
+    const endElevation = this.elevationProvider.getElevationAt(group.targetGridX, group.targetGridY, 0);
+    const endPos = gridTo3D(group.targetGridX + 0.5, group.targetGridY + 0.5, endElevation);
+
+    const t = group.visualProgress;
     const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
     const x = startPos.x + (endPos.x - startPos.x) * easeT;
