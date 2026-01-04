@@ -2,9 +2,18 @@
 
 This file tracks the work needed to integrate all economy/management systems into a fully playable game loop.
 
+## Deployment
+
+**Firebase Hosting**: https://greenkeeper-96a0b.web.app
+
+```bash
+npm run build && firebase deploy --only hosting
+```
+
 ## Current Status: All Core Logic Complete ✅
 
 **What's Working:**
+- Firebase Hosting: Live at https://greenkeeper-96a0b.web.app
 - Economy system: Cash, transactions, loans integrated
 - Employee system: Payroll, ticks, manager bonuses running
 - Golfer system: Arrivals, progression, tips, satisfaction running

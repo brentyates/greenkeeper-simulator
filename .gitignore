@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.env.local
+.env.*.local
+.firebase/
 .playwright-mcp/
 .claude/
 *.log
