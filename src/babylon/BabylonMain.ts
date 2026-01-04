@@ -51,6 +51,7 @@ import {
   tickEmployeeWork,
   syncWorkersWithRoster,
   TASK_EXPERIENCE_REWARDS,
+  TASK_SUPPLY_COSTS,
 } from "../core/employee-work";
 import {
   GolferPoolState,
@@ -2270,6 +2271,23 @@ export class BabylonMain {
         this.employeeRoster = awardExperience(this.employeeRoster, completion.employeeId, expReward);
       }
       this.dailyStats.maintenance.tasksCompleted++;
+
+      const supplyCost = TASK_SUPPLY_COSTS[completion.task];
+      if (supplyCost > 0) {
+        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+        const expenseResult = addExpense(
+          this.economyState,
+          supplyCost,
+          "supplies",
+          `Maintenance: ${completion.task}`,
+          timestamp,
+          true
+        );
+        if (expenseResult) {
+          this.economyState = expenseResult;
+          this.dailyStats.expenses.supplies += supplyCost;
+        }
+      }
     }
 
     // Tick research (only charge funding if there's active research)

@@ -87,6 +87,16 @@ export const TASK_EXPERIENCE_REWARDS: Record<EmployeeTask, number> = {
   idle: 0,
 };
 
+export const TASK_SUPPLY_COSTS: Record<EmployeeTask, number> = {
+  mow_grass: 0.25,
+  water_area: 0.10,
+  fertilize_area: 0.50,
+  rake_bunker: 0.05,
+  patrol: 0,
+  return_to_base: 0,
+  idle: 0,
+};
+
 export const WORK_THRESHOLDS = {
   heightCritical: 80,
   heightStandard: 60,

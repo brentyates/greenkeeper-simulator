@@ -224,7 +224,7 @@ Employees work independently based on their role and assigned area.
 - [x] Implement task prioritization (critical overgrowth > mowing > watering > fertilizing)
 - [x] Add pathfinding for employee movement to work targets
 - [x] Execute work actions that modify grass state (mowing effect, watering effect)
-- [ ] Handle resource consumption (employees deplete resources from maintenance shed)
+- [x] Handle resource consumption (supply costs per task: mow=$0.25, water=$0.10, fertilize=$0.50)
 
 #### Groundskeeper Work Priorities
 - [x] Find and mow grass with height > 60
@@ -247,7 +247,7 @@ Employees work independently based on their role and assigned area.
 
 #### Integration
 - [x] Connect employee work to grass simulation
-- [ ] Deduct maintenance supplies from economy
+- [x] Deduct maintenance supplies from economy
 - [x] Update employee fatigue during work (handled by tickEmployees)
 - [x] Show employee work in daily summary
 
