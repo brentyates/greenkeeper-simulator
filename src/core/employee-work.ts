@@ -1,14 +1,15 @@
 import { CellState, isWalkable, canMoveFromTo } from './terrain';
 import { Employee, EmployeeRole, calculateEffectiveEfficiency } from './employees';
+import {
+  EmployeeEntity,
+  EmployeeTask,
+  GridPosition,
+  MOVE_SPEED,
+  moveEntityAlongPath,
+  createEmployeeEntity,
+} from './movable-entity';
 
-export type EmployeeTask =
-  | 'mow_grass'
-  | 'water_area'
-  | 'fertilize_area'
-  | 'rake_bunker'
-  | 'patrol'
-  | 'return_to_base'
-  | 'idle';
+export type { EmployeeTask, GridPosition } from './movable-entity';
 
 export interface WorkTarget {
   readonly gridX: number;
@@ -17,23 +18,9 @@ export interface WorkTarget {
   readonly priority: number;
 }
 
-export interface GridPosition {
-  readonly x: number;
-  readonly y: number;
-}
-
-export interface EmployeeWorkState {
+export type EmployeeWorkState = EmployeeEntity & {
   readonly employeeId: string;
-  readonly gridX: number;
-  readonly gridY: number;
-  readonly currentTask: EmployeeTask;
-  readonly targetX: number | null;
-  readonly targetY: number | null;
-  readonly workProgress: number;
-  readonly assignedAreaId: string | null;
-  readonly path: readonly GridPosition[];
-  readonly moveProgress: number;
-}
+};
 
 export interface CourseArea {
   readonly id: string;
@@ -82,7 +69,7 @@ export const TASK_DURATIONS: Record<EmployeeTask, number> = {
   idle: 0,
 };
 
-export const EMPLOYEE_MOVE_SPEED = 12.0;
+export const EMPLOYEE_MOVE_SPEED = MOVE_SPEED;
 
 export const TASK_EXPERIENCE_REWARDS: Record<EmployeeTask, number> = {
   mow_grass: 10,
@@ -132,17 +119,15 @@ export function addWorker(
   const existingWorker = state.workers.find(w => w.employeeId === employee.id);
   if (existingWorker) return state;
 
+  const baseEntity = createEmployeeEntity(
+    employee.id,
+    state.maintenanceShedX,
+    state.maintenanceShedY,
+    calculateEffectiveEfficiency(employee)
+  );
   const newWorker: EmployeeWorkState = {
+    ...baseEntity,
     employeeId: employee.id,
-    gridX: state.maintenanceShedX,
-    gridY: state.maintenanceShedY,
-    currentTask: 'idle',
-    targetX: null,
-    targetY: null,
-    workProgress: 0,
-    assignedAreaId: null,
-    path: [],
-    moveProgress: 0,
   };
 
   return {
@@ -216,6 +201,7 @@ function findBestWorkTarget(
   currentY: number,
   role: EmployeeRole,
   assignedArea: CourseArea | null,
+  claimedTargets: ReadonlySet<string>,
   maxDistance: number = 100
 ): WorkTarget | null {
   const priorities = getTaskPriorityForRole(role);
@@ -225,6 +211,7 @@ function findBestWorkTarget(
   for (let y = 0; y < cells.length; y++) {
     for (let x = 0; x < cells[y].length; x++) {
       if (!isInArea(x, y, assignedArea)) continue;
+      if (claimedTargets.has(`${x},${y}`)) continue;
 
       const cell = cells[y][x];
       if (!isWalkable(cell)) continue;
@@ -408,6 +395,13 @@ export function tickEmployeeWork(
   const completions: TaskCompletion[] = [];
   let tasksCompleted = 0;
 
+  const claimedTargets = new Set<string>();
+  for (const worker of state.workers) {
+    if (worker.targetX !== null && worker.targetY !== null) {
+      claimedTargets.add(`${worker.targetX},${worker.targetY}`);
+    }
+  }
+
   const updatedWorkers = state.workers.map(worker => {
     const employee = employees.find(e => e.id === worker.employeeId);
     if (!employee) return worker;
@@ -425,26 +419,12 @@ export function tickEmployeeWork(
       : null;
 
     const efficiency = calculateEffectiveEfficiency(employee);
-    const currentX = Math.floor(worker.gridX);
-    const currentY = Math.floor(worker.gridY);
+    const currentX = worker.gridX;
+    const currentY = worker.gridY;
     const currentCell = cells[currentY]?.[currentX];
 
     if (worker.moveProgress > 0 && worker.moveProgress < 1 && worker.path.length > 0) {
-      const moveAmount = EMPLOYEE_MOVE_SPEED * deltaMinutes;
-      const newMoveProgress = Math.min(1, worker.moveProgress + moveAmount);
-
-      if (newMoveProgress >= 1) {
-        const nextTile = worker.path[0];
-        return {
-          ...worker,
-          gridX: nextTile.x,
-          gridY: nextTile.y,
-          path: worker.path.slice(1),
-          moveProgress: 0,
-        };
-      }
-
-      return { ...worker, moveProgress: newMoveProgress };
+      return moveEntityAlongPath(worker, deltaMinutes);
     }
 
     if (worker.workProgress > 0 && worker.workProgress < 100) {
@@ -474,9 +454,13 @@ export function tickEmployeeWork(
         });
         tasksCompleted++;
 
+        claimedTargets.delete(`${worker.targetX},${worker.targetY}`);
+
         return {
           ...worker,
           workProgress: 0,
+          targetX: null,
+          targetY: null,
         };
       }
 
@@ -488,6 +472,7 @@ export function tickEmployeeWork(
       for (const task of priorities) {
         const need = getTaskNeed(currentCell, task);
         if (need > 0) {
+          claimedTargets.add(`${currentX},${currentY}`);
           return {
             ...worker,
             currentTask: task,
@@ -508,12 +493,14 @@ export function tickEmployeeWork(
       currentX,
       currentY,
       employee.role,
-      assignedArea
+      assignedArea,
+      claimedTargets
     );
 
     if (target) {
       const path = findPath(cells, currentX, currentY, target.gridX, target.gridY);
       if (path.length > 0) {
+        claimedTargets.add(`${target.gridX},${target.gridY}`);
         return {
           ...worker,
           currentTask: 'patrol' as EmployeeTask,

@@ -56,6 +56,13 @@ import {
   TASK_SUPPLY_COSTS,
 } from "../core/employee-work";
 import {
+  PlayerEntity,
+  createPlayerEntity,
+  setEntityPath,
+  teleportEntity,
+  MOVE_DURATION_MS,
+} from "../core/movable-entity";
+import {
   GolferPoolState,
   GreenFeeStructure,
   createInitialPoolState,
@@ -171,17 +178,12 @@ export class BabylonMain {
   private isMuted: boolean = false;
   private overlayAutoSwitched: boolean = false;
 
-  private playerX: number = 25;
-  private playerY: number = 19;
+  private player: PlayerEntity = createPlayerEntity('player', 25, 19);
   private playerMesh: Mesh | null = null;
   private cameraFollowPlayer: boolean = true;
-  private isMoving: boolean = false;
-  private moveStartPos: { x: number; y: number; z: number } | null = null;
-  private moveEndPos: { x: number; y: number; z: number } | null = null;
-  private moveProgress: number = 0;
-  private readonly MOVE_DURATION: number = 150;
-  private movePath: { x: number; y: number }[] = [];
-  private pendingDirection: Direction | null = null;
+  private visualMoveProgress: number = 0;
+  private moveStartWorldPos: Vector3 | null = null;
+  private moveEndWorldPos: Vector3 | null = null;
 
   private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
@@ -295,8 +297,9 @@ export class BabylonMain {
     }
 
     // Set starting position based on course size
-    this.playerX = Math.floor(course.width / 2);
-    this.playerY = Math.floor(course.height * 0.75);
+    const startX = Math.floor(course.width / 2);
+    const startY = Math.floor(course.height * 0.75);
+    this.player = createPlayerEntity('player', startX, startY);
     this.babylonEngine = new BabylonEngine(
       canvasId,
       course.width,
@@ -752,8 +755,8 @@ export class BabylonMain {
       this.currentScenario.id,
       this.gameTime,
       this.gameDay,
-      this.playerX,
-      this.playerY,
+      this.player.gridX,
+      this.player.gridY,
       this.score,
       this.economyState,
       this.employeeRoster,
@@ -784,8 +787,7 @@ export class BabylonMain {
 
     this.gameTime = saved.gameTime;
     this.gameDay = saved.gameDay;
-    this.playerX = saved.playerX;
-    this.playerY = saved.playerY;
+    this.player = teleportEntity(this.player, saved.playerX, saved.playerY);
     this.score = saved.score;
     this.economyState = saved.economyState;
     this.employeeRoster = saved.employeeRoster;
@@ -1086,13 +1088,10 @@ export class BabylonMain {
       return;
     }
 
-    this.playerX = x;
-    this.playerY = y;
-    this.isMoving = false;
-    this.moveStartPos = null;
-    this.moveEndPos = null;
-    this.movePath = [];
-    this.pendingDirection = null;
+    this.player = teleportEntity(this.player, x, y);
+    this.visualMoveProgress = 0;
+    this.moveStartWorldPos = null;
+    this.moveEndWorldPos = null;
 
     this.updatePlayerPosition();
     this.uiManager.showNotification(`Teleported to (${x}, ${y})`);
@@ -1101,7 +1100,7 @@ export class BabylonMain {
   private updatePlayerPosition(): void {
     if (!this.playerMesh) return;
 
-    const worldPos = this.grassSystem.gridToWorld(this.playerX, this.playerY);
+    const worldPos = this.grassSystem.gridToWorld(this.player.gridX, this.player.gridY);
     this.playerMesh.position = worldPos.clone();
 
     if (this.cameraFollowPlayer) {
@@ -1109,29 +1108,28 @@ export class BabylonMain {
     }
   }
 
+  private isPlayerMoving(): boolean {
+    return this.moveStartWorldPos !== null && this.moveEndWorldPos !== null;
+  }
+
   private updateMovement(deltaMs: number): void {
-    if (
-      !this.isMoving ||
-      !this.moveStartPos ||
-      !this.moveEndPos ||
-      !this.playerMesh
-    ) {
-      if (!this.isMoving) {
+    if (!this.isPlayerMoving() || !this.playerMesh) {
+      if (!this.isPlayerMoving()) {
         this.checkContinuousMovement();
       }
       return;
     }
 
-    this.moveProgress += deltaMs;
-    const t = Math.min(1, this.moveProgress / this.MOVE_DURATION);
+    this.visualMoveProgress += deltaMs;
+    const t = Math.min(1, this.visualMoveProgress / MOVE_DURATION_MS);
     const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
     const x =
-      this.moveStartPos.x + (this.moveEndPos.x - this.moveStartPos.x) * easeT;
+      this.moveStartWorldPos!.x + (this.moveEndWorldPos!.x - this.moveStartWorldPos!.x) * easeT;
     const y =
-      this.moveStartPos.y + (this.moveEndPos.y - this.moveStartPos.y) * easeT;
+      this.moveStartWorldPos!.y + (this.moveEndWorldPos!.y - this.moveStartWorldPos!.y) * easeT;
     const z =
-      this.moveStartPos.z + (this.moveEndPos.z - this.moveStartPos.z) * easeT;
+      this.moveStartWorldPos!.z + (this.moveEndWorldPos!.z - this.moveStartWorldPos!.z) * easeT;
 
     this.playerMesh.position = new Vector3(x, y, z);
 
@@ -1140,27 +1138,27 @@ export class BabylonMain {
     }
 
     if (t >= 1) {
-      this.isMoving = false;
-      this.moveStartPos = null;
-      this.moveEndPos = null;
+      this.moveStartWorldPos = null;
+      this.moveEndWorldPos = null;
       this.checkContinuousMovement();
     }
   }
 
   private checkContinuousMovement(): void {
-    if (this.movePath.length > 0) {
-      const next = this.movePath.shift()!;
+    if (this.player.path.length > 0) {
+      const next = this.player.path[0];
+      this.player = { ...this.player, path: this.player.path.slice(1) };
       this.startMoveTo(next.x, next.y);
       return;
     }
 
     if (
-      this.pendingDirection &&
-      this.isDirectionKeyHeld(this.pendingDirection)
+      this.player.pendingDirection &&
+      this.isDirectionKeyHeld(this.player.pendingDirection)
     ) {
-      this.tryMove(this.pendingDirection);
+      this.tryMove(this.player.pendingDirection);
     } else {
-      this.pendingDirection = null;
+      this.player = { ...this.player, pendingDirection: null };
     }
   }
 
@@ -1192,18 +1190,17 @@ export class BabylonMain {
   private handleMove(direction: Direction): void {
     if (this.isPaused) return;
 
-    this.pendingDirection = direction;
-    this.movePath = [];
+    this.player = { ...this.player, pendingDirection: direction, path: [] };
 
-    if (!this.isMoving) {
+    if (!this.isPlayerMoving()) {
       this.tryMove(direction);
     }
   }
 
   private tryMove(direction: Direction): boolean {
     const course = this.currentCourse;
-    let newX = this.playerX;
-    let newY = this.playerY;
+    let newX = this.player.gridX;
+    let newY = this.player.gridY;
 
     switch (direction) {
       case "up":
@@ -1224,7 +1221,7 @@ export class BabylonMain {
       return false;
     }
 
-    const fromCell = this.grassSystem.getCell(this.playerX, this.playerY);
+    const fromCell = this.grassSystem.getCell(this.player.gridX, this.player.gridY);
     const toCell = this.grassSystem.getCell(newX, newY);
 
     if (!canMoveFromTo(fromCell, toCell)) {
@@ -1236,16 +1233,14 @@ export class BabylonMain {
   }
 
   private startMoveTo(newX: number, newY: number): void {
-    this.moveStartPos = this.grassSystem.gridToWorld(
-      this.playerX,
-      this.playerY
+    this.moveStartWorldPos = this.grassSystem.gridToWorld(
+      this.player.gridX,
+      this.player.gridY
     );
-    this.moveEndPos = this.grassSystem.gridToWorld(newX, newY);
-    this.moveProgress = 0;
-    this.isMoving = true;
+    this.moveEndWorldPos = this.grassSystem.gridToWorld(newX, newY);
+    this.visualMoveProgress = 0;
 
-    this.playerX = newX;
-    this.playerY = newY;
+    this.player = { ...this.player, gridX: newX, gridY: newY };
 
     if (this.equipmentManager.isActive()) {
       this.applyEquipmentEffect(newX, newY);
@@ -1276,20 +1271,20 @@ export class BabylonMain {
     const targetCell = this.grassSystem.getCell(gridPos.x, gridPos.y);
     if (!targetCell || targetCell.type === "water") return;
 
-    if (gridPos.x === this.playerX && gridPos.y === this.playerY) {
+    if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
       return;
     }
 
     const path = this.findPath(
-      this.playerX,
-      this.playerY,
+      this.player.gridX,
+      this.player.gridY,
       gridPos.x,
       gridPos.y
     );
     if (path.length > 0) {
-      this.movePath = path;
-      this.pendingDirection = null;
-      if (!this.isMoving) {
+      this.player = setEntityPath(this.player, path);
+      this.player = { ...this.player, pendingDirection: null };
+      if (!this.isPlayerMoving()) {
         this.checkContinuousMovement();
       }
     }
@@ -1511,8 +1506,8 @@ export class BabylonMain {
 
   private handleRefill(): void {
     const nearStation = REFILL_STATIONS.some((station) => {
-      const dx = Math.abs(station.x - this.playerX);
-      const dy = Math.abs(station.y - this.playerY);
+      const dx = Math.abs(station.x - this.player.gridX);
+      const dy = Math.abs(station.y - this.player.gridY);
       return dx <= 2 && dy <= 2;
     });
 
@@ -1648,8 +1643,9 @@ export class BabylonMain {
 
   private restartGame(): void {
     const course = this.currentCourse;
-    this.playerX = Math.floor(course.width / 2);
-    this.playerY = Math.floor(course.height * 0.75);
+    const startX = Math.floor(course.width / 2);
+    const startY = Math.floor(course.height * 0.75);
+    this.player = teleportEntity(this.player, startX, startY);
     this.gameTime = 6 * 60;
     this.gameDay = 1;
     this.score = 0;
@@ -1801,8 +1797,8 @@ export class BabylonMain {
 
   private handleDebugExport(): void {
     const state = {
-      playerX: this.playerX,
-      playerY: this.playerY,
+      playerX: this.player.gridX,
+      playerY: this.player.gridY,
       gameTime: this.gameTime,
       gameDay: this.gameDay,
       score: this.score,
@@ -1822,8 +1818,8 @@ export class BabylonMain {
       stats.nutrients
     );
     this.uiManager.updateMinimapPlayerPosition(
-      this.playerX,
-      this.playerY,
+      this.player.gridX,
+      this.player.gridY,
       course.width,
       course.height
     );
@@ -1963,8 +1959,8 @@ export class BabylonMain {
       }
 
       this.uiManager.updateMinimapPlayerPosition(
-        this.playerX,
-        this.playerY,
+        this.player.gridX,
+        this.player.gridY,
         course.width,
         course.height
       );
