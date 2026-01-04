@@ -560,7 +560,7 @@ export class UIManager {
     this.scenarioPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.scenarioPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.scenarioPanel.left = '-10px';
-    this.scenarioPanel.top = '285px';
+    this.scenarioPanel.top = '325px';
     this.scenarioPanel.isVisible = false;
     this.advancedTexture.addControl(this.scenarioPanel);
 
