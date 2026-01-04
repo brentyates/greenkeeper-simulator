@@ -610,11 +610,11 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Calculate satisfaction penalty based on pace
 - [x] Track backup incidents
 
-#### T3.4 Spacing Configuration UI
-- [ ] Create spacing configuration panel
-- [ ] Add slider or selector for spacing presets
-- [ ] Show impact preview (max tee times, revenue potential, pace risk, reputation impact)
-- [ ] Display backup probability warning
+#### T3.4 Spacing Configuration UI ✅
+- [x] Create spacing configuration panel (integrated into TeeSheetPanel)
+- [x] Add slider or selector for spacing presets (6 options: packed to exclusive)
+- [x] Show impact preview (max tee times, revenue potential, pace risk, reputation impact)
+- [ ] Display backup probability warning (future)
 
 #### T3.5 Visual Feedback
 - [ ] Show groups bunching on holes when backed up
