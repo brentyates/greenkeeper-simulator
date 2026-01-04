@@ -10,9 +10,13 @@ import { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
+import { FocusManager } from './FocusManager';
+import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 
 export class UIManager {
   private advancedTexture: AdvancedDynamicTexture;
+  private focusManager: FocusManager;
+  private pauseMenuButtons: AccessibleButton[] = [];
 
   private healthBar!: Rectangle;
   private healthText!: TextBlock;
@@ -86,6 +90,7 @@ export class UIManager {
 
   constructor(scene: Scene) {
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI', true, scene);
+    this.focusManager = new FocusManager(scene);
 
     this.createCourseStatusPanel();
     this.createEquipmentSelector();
@@ -890,14 +895,33 @@ export class UIManager {
     title.height = '45px';
     stack.addControl(title);
 
-    const resumeBtn = this.createMenuButton('▶️ Resume', () => this.onResume?.());
-    stack.addControl(resumeBtn);
+    // Create accessible buttons for pause menu
+    const resumeBtn = createAccessibleButton({
+      label: '▶️ Resume',
+      onClick: () => this.onResume?.(),
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    resumeBtn.control.paddingTop = '10px';
+    stack.addControl(resumeBtn.control);
+    this.pauseMenuButtons.push(resumeBtn);
 
-    const restartBtn = this.createMenuButton('🔄 Restart', () => this.onRestart?.());
-    stack.addControl(restartBtn);
+    const restartBtn = createAccessibleButton({
+      label: '🔄 Restart',
+      onClick: () => this.onRestart?.(),
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    restartBtn.control.paddingTop = '10px';
+    stack.addControl(restartBtn.control);
+    this.pauseMenuButtons.push(restartBtn);
 
-    const mainMenuBtn = this.createMenuButton('🏠 Main Menu', () => this.onMainMenu?.());
-    stack.addControl(mainMenuBtn);
+    const mainMenuBtn = createAccessibleButton({
+      label: '🏠 Main Menu',
+      onClick: () => this.onMainMenu?.(),
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    mainMenuBtn.control.paddingTop = '10px';
+    stack.addControl(mainMenuBtn.control);
+    this.pauseMenuButtons.push(mainMenuBtn);
 
     const divider = new Rectangle('divider');
     divider.width = '200px';
@@ -915,29 +939,57 @@ export class UIManager {
     mgmtLabel.height = '25px';
     stack.addControl(mgmtLabel);
 
-    const employeesBtn = this.createMenuButton('👥 Employees', () => {
-      this.hidePauseMenu();
-      this.onEmployees?.();
-    });
-    stack.addControl(employeesBtn);
+    const employeesBtn = createAccessibleButton({
+      label: '👥 Employees',
+      fontSize: 16,
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onEmployees?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    employeesBtn.control.paddingTop = '10px';
+    stack.addControl(employeesBtn.control);
+    this.pauseMenuButtons.push(employeesBtn);
 
-    const researchBtn = this.createMenuButton('🔬 Research', () => {
-      this.hidePauseMenu();
-      this.onResearch?.();
-    });
-    stack.addControl(researchBtn);
+    const researchBtn = createAccessibleButton({
+      label: '🔬 Research',
+      fontSize: 16,
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onResearch?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    researchBtn.control.paddingTop = '10px';
+    stack.addControl(researchBtn.control);
+    this.pauseMenuButtons.push(researchBtn);
 
-    const teeSheetBtn = this.createMenuButton('📋 Tee Sheet', () => {
-      this.hidePauseMenu();
-      this.onTeeSheet?.();
-    });
-    stack.addControl(teeSheetBtn);
+    const teeSheetBtn = createAccessibleButton({
+      label: '📋 Tee Sheet',
+      fontSize: 16,
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onTeeSheet?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    teeSheetBtn.control.paddingTop = '10px';
+    stack.addControl(teeSheetBtn.control);
+    this.pauseMenuButtons.push(teeSheetBtn);
 
-    const marketingBtn = this.createMenuButton('📢 Marketing', () => {
-      this.hidePauseMenu();
-      this.onMarketing?.();
-    });
-    stack.addControl(marketingBtn);
+    const marketingBtn = createAccessibleButton({
+      label: '📢 Marketing',
+      fontSize: 16,
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onMarketing?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    marketingBtn.control.paddingTop = '10px';
+    stack.addControl(marketingBtn.control);
+    this.pauseMenuButtons.push(marketingBtn);
 
     const speedDivider = new Rectangle('speedDivider');
     speedDivider.width = '200px';
@@ -961,27 +1013,22 @@ export class UIManager {
     speedContainer.thickness = 0;
     stack.addControl(speedContainer);
 
-    const slowBtn = new Rectangle('slowBtn');
-    slowBtn.width = '50px';
-    slowBtn.height = '30px';
-    slowBtn.cornerRadius = 5;
-    slowBtn.background = '#2a5a3a';
-    slowBtn.color = '#7FFF7F';
-    slowBtn.thickness = 1;
-    slowBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    slowBtn.left = '10px';
-    const slowText = new TextBlock();
-    slowText.text = '◀';
-    slowText.color = 'white';
-    slowText.fontSize = 14;
-    slowBtn.addControl(slowText);
-    slowBtn.onPointerClickObservable.add(() => {
-      this.onSpeedChange?.(-1);
-      this.updateSpeedDisplay();
-    });
-    slowBtn.onPointerEnterObservable.add(() => { slowBtn.background = '#3a7a4a'; });
-    slowBtn.onPointerOutObservable.add(() => { slowBtn.background = '#2a5a3a'; });
-    speedContainer.addControl(slowBtn);
+    // Speed control buttons - smaller size
+    const slowBtn = createAccessibleButton({
+      label: '◀',
+      width: '50px',
+      height: '30px',
+      fontSize: 14,
+      onClick: () => {
+        this.onSpeedChange?.(-1);
+        this.updateSpeedDisplay();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    slowBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    slowBtn.control.left = '10px';
+    speedContainer.addControl(slowBtn.control);
+    this.pauseMenuButtons.push(slowBtn);
 
     this.speedText = new TextBlock('speedText');
     this.speedText.text = '1x';
@@ -990,30 +1037,24 @@ export class UIManager {
     this.speedText.fontWeight = 'bold';
     speedContainer.addControl(this.speedText);
 
-    const fastBtn = new Rectangle('fastBtn');
-    fastBtn.width = '50px';
-    fastBtn.height = '30px';
-    fastBtn.cornerRadius = 5;
-    fastBtn.background = '#2a5a3a';
-    fastBtn.color = '#7FFF7F';
-    fastBtn.thickness = 1;
-    fastBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    fastBtn.left = '-10px';
-    const fastText = new TextBlock();
-    fastText.text = '▶';
-    fastText.color = 'white';
-    fastText.fontSize = 14;
-    fastBtn.addControl(fastText);
-    fastBtn.onPointerClickObservable.add(() => {
-      this.onSpeedChange?.(1);
-      this.updateSpeedDisplay();
-    });
-    fastBtn.onPointerEnterObservable.add(() => { fastBtn.background = '#3a7a4a'; });
-    fastBtn.onPointerOutObservable.add(() => { fastBtn.background = '#2a5a3a'; });
-    speedContainer.addControl(fastBtn);
+    const fastBtn = createAccessibleButton({
+      label: '▶',
+      width: '50px',
+      height: '30px',
+      fontSize: 14,
+      onClick: () => {
+        this.onSpeedChange?.(1);
+        this.updateSpeedDisplay();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    fastBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    fastBtn.control.left = '-10px';
+    speedContainer.addControl(fastBtn.control);
+    this.pauseMenuButtons.push(fastBtn);
 
     const hint = new TextBlock('pauseHint');
-    hint.text = 'Press P or ESC to resume';
+    hint.text = 'Press P, ESC, or Tab+Enter to navigate';
     hint.color = '#888888';
     hint.fontSize = 11;
     hint.fontFamily = 'Arial, sans-serif';
@@ -1119,37 +1160,6 @@ export class UIManager {
     }
   }
 
-  private createMenuButton(label: string, onClick: () => void): Rectangle {
-    const btn = new Rectangle(`btn_${label}`);
-    btn.width = '200px';
-    btn.height = '45px';
-    btn.cornerRadius = 8;
-    btn.background = '#2a5a3a';
-    btn.color = '#7FFF7F';
-    btn.thickness = 2;
-    btn.paddingTop = '10px';
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = 'white';
-    text.fontSize = 16;
-    text.fontFamily = 'Arial, sans-serif';
-    btn.addControl(text);
-
-    btn.onPointerEnterObservable.add(() => {
-      btn.background = '#3a7a4a';
-      btn.color = '#ffffff';
-    });
-
-    btn.onPointerOutObservable.add(() => {
-      btn.background = '#2a5a3a';
-      btn.color = '#7FFF7F';
-    });
-
-    btn.onPointerClickObservable.add(onClick);
-
-    return btn;
-  }
 
   public showPauseMenu(
     onResume: () => void,
@@ -1174,10 +1184,14 @@ export class UIManager {
       this.speedText.text = `${currentSpeed}x`;
     }
     this.pauseOverlay.isVisible = true;
+    // Enable keyboard navigation for pause menu
+    this.focusManager.enableForGroup('pause-menu', 0);
   }
 
   public hidePauseMenu(): void {
     this.pauseOverlay.isVisible = false;
+    // Disable keyboard navigation
+    this.focusManager.disable();
   }
 
   public isPauseMenuVisible(): boolean {
@@ -1463,6 +1477,8 @@ export class UIManager {
   }
 
   public dispose(): void {
+    this.focusManager.dispose();
     this.advancedTexture.dispose();
   }
 }
+

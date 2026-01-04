@@ -12,6 +12,8 @@ import { ScenarioDefinition, SCENARIOS } from '../../data/scenarioData';
 import { getProgressManager, ProgressManager } from '../../systems/ProgressManager';
 import { getCourseById } from '../../data/courseData';
 import { hasSave } from '../../core/save-game';
+import { FocusManager } from './FocusManager';
+import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 
 export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
@@ -25,13 +27,16 @@ export class LaunchScreen {
   private container: Rectangle;
   private selectedScenario: ScenarioDefinition | null = null;
   private scenarioCards: Map<string, Rectangle> = new Map();
-  private startButton: Rectangle | null = null;
-  private continueButton: Rectangle | null = null;
+  private startButton: AccessibleButton | null = null;
+  private continueButton: AccessibleButton | null = null;
+  private quickPlayButton: AccessibleButton | null = null;
+  private focusManager: FocusManager;
 
   constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks) {
     this.callbacks = callbacks;
     this.progressManager = getProgressManager();
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('LaunchScreenUI', true, scene);
+    this.focusManager = new FocusManager(scene);
 
     this.container = new Rectangle('launchContainer');
     this.container.width = '100%';
@@ -322,8 +327,22 @@ export class LaunchScreen {
         }
       });
 
-      card.onPointerClickObservable.add(() => {
-        this.selectScenario(scenario);
+      // Register with focus manager for keyboard navigation
+      this.focusManager.register({
+        control: card,
+        onActivate: () => this.selectScenario(scenario),
+        onFocus: () => {
+          if (this.selectedScenario?.id !== scenario.id) {
+            card.background = '#2a5a3a';
+          }
+        },
+        onBlur: () => {
+          if (this.selectedScenario?.id !== scenario.id) {
+            card.background = isCompleted ? '#1a3a2a' : '#1a3a2a';
+          }
+        },
+        isEnabled: () => !isLocked,
+        group: 'launch-scenarios'
       });
     }
 
@@ -350,16 +369,10 @@ export class LaunchScreen {
       card.color = '#7FFF7F';
     }
 
-    // Enable start button
-    if (this.startButton) {
-      this.startButton.alpha = 1;
-      this.startButton.isEnabled = true;
-    }
-
     // Show/hide continue button based on saved game
     if (this.continueButton) {
       const hasSavedGame = hasSave(scenario.id);
-      this.continueButton.isVisible = hasSavedGame;
+      this.continueButton.control.isVisible = hasSavedGame;
     }
   }
 
@@ -377,13 +390,19 @@ export class LaunchScreen {
     actionBar.addControl(buttonRow);
 
     // Continue button (only visible when saved game exists)
-    this.continueButton = this.createActionButton('▶ CONTINUE', () => {
-      if (this.selectedScenario && this.callbacks.onContinueScenario) {
-        this.callbacks.onContinueScenario(this.selectedScenario);
-      }
-    }, '#4a6a7a');
-    this.continueButton.isVisible = false;
-    buttonRow.addControl(this.continueButton);
+    this.continueButton = createAccessibleButton({
+      label: '▶ CONTINUE',
+      backgroundColor: '#4a6a7a',
+      onClick: () => {
+        if (this.selectedScenario && this.callbacks.onContinueScenario) {
+          this.callbacks.onContinueScenario(this.selectedScenario);
+        }
+      },
+      isEnabled: () => this.selectedScenario !== null && hasSave(this.selectedScenario!.id),
+      focusGroup: 'launch-buttons'
+    }, this.focusManager);
+    this.continueButton.control.isVisible = false;
+    buttonRow.addControl(this.continueButton.control);
 
     // Spacer after continue
     const spacer1 = new Rectangle('spacer1');
@@ -394,14 +413,17 @@ export class LaunchScreen {
     buttonRow.addControl(spacer1);
 
     // Start button (new game)
-    this.startButton = this.createActionButton('▶ NEW GAME', () => {
-      if (this.selectedScenario) {
-        this.callbacks.onStartScenario(this.selectedScenario);
-      }
-    });
-    this.startButton.alpha = 0.5;
-    this.startButton.isEnabled = false;
-    buttonRow.addControl(this.startButton);
+    this.startButton = createAccessibleButton({
+      label: '▶ NEW GAME',
+      onClick: () => {
+        if (this.selectedScenario) {
+          this.callbacks.onStartScenario(this.selectedScenario);
+        }
+      },
+      isEnabled: () => this.selectedScenario !== null,
+      focusGroup: 'launch-buttons'
+    }, this.focusManager);
+    buttonRow.addControl(this.startButton.control);
 
     // Spacer
     const spacer2 = new Rectangle('spacer2');
@@ -412,56 +434,31 @@ export class LaunchScreen {
     buttonRow.addControl(spacer2);
 
     // Quick play button (auto-select first unlocked)
-    const quickPlayBtn = this.createActionButton('🎮 QUICK PLAY', () => {
-      const unlocked = this.progressManager.getUnlockedScenarios();
-      const lastPlayed = this.progressManager.getLastPlayedScenario();
+    this.quickPlayButton = createAccessibleButton({
+      label: '🎮 QUICK PLAY',
+      backgroundColor: '#4a7a5a',
+      onClick: () => {
+        const unlocked = this.progressManager.getUnlockedScenarios();
+        const lastPlayed = this.progressManager.getLastPlayedScenario();
 
-      // Try to continue last played, or pick first unlocked incomplete
-      let scenario = unlocked.find(s => s.id === lastPlayed);
-      if (!scenario) {
-        scenario = unlocked.find(s => !this.progressManager.isScenarioCompleted(s.id));
-      }
-      if (!scenario && unlocked.length > 0) {
-        scenario = unlocked[0];
-      }
+        // Try to continue last played, or pick first unlocked incomplete
+        let scenario = unlocked.find(s => s.id === lastPlayed);
+        if (!scenario) {
+          scenario = unlocked.find(s => !this.progressManager.isScenarioCompleted(s.id));
+        }
+        if (!scenario && unlocked.length > 0) {
+          scenario = unlocked[0];
+        }
 
-      if (scenario) {
-        this.callbacks.onStartScenario(scenario);
-      }
-    }, '#4a7a5a');
-    buttonRow.addControl(quickPlayBtn);
+        if (scenario) {
+          this.callbacks.onStartScenario(scenario);
+        }
+      },
+      focusGroup: 'launch-buttons'
+    }, this.focusManager);
+    buttonRow.addControl(this.quickPlayButton.control);
   }
 
-  private createActionButton(label: string, onClick: () => void, bgColor: string = '#2a5a3a'): Rectangle {
-    const btn = new Rectangle(`btn_${label}`);
-    btn.width = '180px';
-    btn.height = '45px';
-    btn.cornerRadius = 8;
-    btn.background = bgColor;
-    btn.color = '#7FFF7F';
-    btn.thickness = 2;
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = 'white';
-    text.fontSize = 14;
-    text.fontFamily = 'Arial Black, sans-serif';
-    btn.addControl(text);
-
-    btn.onPointerEnterObservable.add(() => {
-      btn.background = '#3a8a5a';
-      btn.color = '#ffffff';
-    });
-
-    btn.onPointerOutObservable.add(() => {
-      btn.background = bgColor;
-      btn.color = '#7FFF7F';
-    });
-
-    btn.onPointerClickObservable.add(onClick);
-
-    return btn;
-  }
 
   private getDifficultyColor(difficulty: string): string {
     switch (difficulty) {
@@ -504,10 +501,13 @@ export class LaunchScreen {
   public show(): void {
     this.container.isVisible = true;
     this.refreshCards();
+    // Enable keyboard navigation - start with scenario selection
+    this.focusManager.enableForGroup('launch-scenarios', 0);
   }
 
   public hide(): void {
     this.container.isVisible = false;
+    this.focusManager.disable();
   }
 
   public isVisible(): boolean {
@@ -543,6 +543,7 @@ export class LaunchScreen {
   }
 
   public dispose(): void {
+    this.focusManager.dispose();
     this.advancedTexture.dispose();
   }
 }
