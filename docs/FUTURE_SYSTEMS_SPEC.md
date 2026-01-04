@@ -425,9 +425,17 @@ interface WateringZone {
 
 ## 10. Facility & Building Progression System
 
-> This system replaces the standalone refill station concept with buildings that serve as operational hubs and prestige contributors.
+> **SUPERSEDED:** This section has been expanded and unified in **[PLACEABLE_ASSETS_SPEC.md](./PLACEABLE_ASSETS_SPEC.md)**.
+>
+> The new specification consolidates:
+> - Building tiers from this document
+> - Abstract amenities from `amenities.ts`
+> - Refill stations from `courseData.ts`
+> - Prestige bonuses from `PRESTIGE_SYSTEM_SPEC.md`
+>
+> Into a unified grid-based placement system where all entities have physical locations.
 
-### Overview
+### Overview (See PLACEABLE_ASSETS_SPEC.md for Full Details)
 
 Every course has core facilities (clubhouse, maintenance shed) that serve as:
 - Equipment origin points (workers and equipment start here)

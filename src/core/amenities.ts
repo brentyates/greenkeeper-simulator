@@ -1,3 +1,20 @@
+/**
+ * MIGRATION NOTE: This abstract amenity system will be replaced by the grid-based
+ * PlaceableEntity system defined in docs/PLACEABLE_ASSETS_SPEC.md.
+ *
+ * Current approach: Amenities are boolean flags and tier numbers without grid positions.
+ * Future approach: All amenities become PlaceableEntity instances with physical locations.
+ *
+ * Migration path:
+ * 1. Create PlaceableEntity system in src/core/placeable-entity.ts
+ * 2. Implement EntityManager for CRUD operations
+ * 3. Create migration function: migrateAmenityState(old: AmenityState) => PlaceableEntity[]
+ * 4. Update UI to use placement-based building menu
+ * 5. Deprecate this module once migration is complete
+ *
+ * Until migration is complete, this module continues to function for prestige calculations.
+ */
+
 export type ClubhouseTier = 0 | 1 | 2 | 3 | 4;
 export type ProShopTier = 0 | 1 | 2 | 3;
 export type DiningTier = 0 | 1 | 2 | 3 | 4;
