@@ -244,6 +244,54 @@ Defined in `src/data/testPresets.ts`. Common ones:
 - `elevation_test`, `ramp_test`, `cliff_test`
 - `tree_collision_test`, `water_collision_test`
 
+## Architecture: Single Source of Truth
+
+**CRITICAL**: The game uses a unified control layer where ALL input (keyboard, mouse, and automated tests) flows through the SAME public API methods.
+
+```
+┌────────────────────────────────────────────────────┐
+│   PUBLIC API (Single Source of Truth)             │
+│   movePlayer(), selectEquipment(), etc.           │
+└────────────────────────────────────────────────────┘
+           ▲                           ▲
+           │                           │
+    ┌──────┴──────┐            ┌──────┴──────────┐
+    │ InputManager │            │ Tests/Bots/MCP  │
+    │ (keyboard)   │            │ (automation)    │
+    └──────────────┘            └─────────────────┘
+```
+
+### Why This Matters
+
+1. **Keyboard and tests use THE SAME CODE** - no duplication, no divergence
+2. **Bugs found in tests = bugs in actual gameplay** - perfect test coverage
+3. **Easy to add new features** - implement once, works everywhere
+4. **Bots and automation** work identically to human players
+
+### Implementation
+
+The `InputManager` callbacks now call public API methods:
+
+```typescript
+// src/babylon/BabylonMain.ts
+private setupInputCallbacks(): void {
+  this.inputManager.setCallbacks({
+    onMove: (direction) => {
+      this.movePlayer(direction);  // ✅ Uses public API!
+    },
+    onEquipmentSelect: (slot) => {
+      this.selectEquipment(slot);  // ✅ Uses public API!
+    },
+    // ... etc
+  });
+}
+```
+
+This ensures keyboard → InputManager → Public API → Game Logic
+And tests → Public API → Game Logic
+
+**Both paths converge at the public API layer!**
+
 ## Game Controls
 
 | Key | Action |

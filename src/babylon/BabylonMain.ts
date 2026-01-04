@@ -829,10 +829,27 @@ export class BabylonMain {
 
   private setupInputCallbacks(): void {
     this.inputManager.setCallbacks({
-      onMove: (direction: Direction) => this.handleMove(direction),
-      onEquipmentSelect: (slot: EquipmentSlot) =>
-        this.handleEquipmentSelect(slot),
-      onEquipmentToggle: () => this.handleEquipmentToggle(),
+      // Core movement - use public API for consistency
+      onMove: (direction: Direction) => {
+        const dirMap: Record<Direction, 'up' | 'down' | 'left' | 'right'> = {
+          up: 'up',
+          down: 'down',
+          left: 'left',
+          right: 'right'
+        };
+        this.movePlayer(dirMap[direction]);
+      },
+
+      // Equipment control - use public API
+      onEquipmentSelect: (slot: EquipmentSlot) => {
+        this.selectEquipment(slot);
+      },
+
+      onEquipmentToggle: () => {
+        this.toggleEquipment();
+      },
+
+      // Other handlers remain private as they're more complex
       onRefill: () => this.handleRefill(),
       onOverlayCycle: () => this.handleOverlayCycle(),
       onPause: () => this.handlePause(),
@@ -845,14 +862,26 @@ export class BabylonMain {
       onDebugExport: () => this.handleDebugExport(),
       onClick: (screenX: number, screenY: number) =>
         this.handleClick(screenX, screenY),
-      onEditorToggle: () => this.handleEditorToggle(),
+
+      // Terrain editor - use public API where available
+      onEditorToggle: () => {
+        this.toggleTerrainEditor();
+      },
+
       onEditorToolSelect: (tool: number) => this.handleEditorToolNumber(tool),
       onEditorBrushSelect: (brush: string) =>
         this.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>
         this.handleEditorBrushSize(delta),
-      onUndo: () => this.handleEditorUndo(),
-      onRedo: () => this.handleEditorRedo(),
+
+      onUndo: () => {
+        this.undoTerrainEdit();
+      },
+
+      onRedo: () => {
+        this.redoTerrainEdit();
+      },
+
       onMouseMove: (screenX: number, screenY: number) =>
         this.handleMouseMove(screenX, screenY),
       onDragStart: (screenX: number, screenY: number) =>
