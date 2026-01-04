@@ -9,7 +9,6 @@ import {
   getPostingCost,
   PRESTIGE_HIRING_CONFIG,
   PrestigeTier,
-  ApplicationState,
   resetEmployeeCounter,
   resetJobPostingCounter,
 } from './employees';
