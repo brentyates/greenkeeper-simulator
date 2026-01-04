@@ -8,25 +8,40 @@ The game features a RollerCoaster Tycoon-style progression system where players 
 
 ## Course Progression
 
+**Important:** Tile sizes listed below represent the **total course grid** including fairways, greens, rough, bunkers, water, trees, and out-of-play areas. Actual **playable grass tiles** (fairway + rough + greens) are typically 40-60% of total grid size. See COURSE_MAINTENANCE_SPEC.md for tile-by-tile maintenance mechanics.
+
 ### 1. Pine Valley Starter (3 holes, Par 12)
-**Size:** 30×50 tiles
-**Description:** A small beginner course perfect for learning the basics of greenkeeping.
+- **Total Grid Size:** 30×50 = 1,500 tiles
+- **Playable Grass:** ~600-800 tiles (40-50% of grid)
+- **Description:** A small beginner course perfect for learning the basics of greenkeeping.
 
 ### 2. Meadowbrook Nine (9 holes, Par 36)
-**Size:** 60×80 tiles
-**Description:** A standard 9-hole course with varied terrain and elevation changes.
+- **Total Grid Size:** 60×80 = 4,800 tiles
+- **Playable Grass:** ~2,400-2,900 tiles (50-60% of grid)
+- **Description:** A standard 9-hole course with varied terrain and elevation changes.
 
 ### 3. Sunrise Valley - Hole 1 (18 holes, Par 72)
-**Size:** 50×38 tiles
-**Description:** The original single-hole demonstration course, now part of an 18-hole layout.
+- **Total Grid Size:** 50×38 = 1,900 tiles
+- **Playable Grass:** ~950-1,140 tiles (50-60% of grid)
+- **Description:** The original single-hole demonstration course, now part of an 18-hole layout.
 
 ### 4. Royal Highlands Championship (18 holes, Par 72)
-**Size:** 90×120 tiles
-**Description:** A prestigious championship course with challenging water hazards and strategic bunkers.
+- **Total Grid Size:** 90×120 = 10,800 tiles
+- **Playable Grass:** ~5,400-6,500 tiles (50-60% of grid)
+- **Description:** A prestigious championship course with challenging water hazards and strategic bunkers.
 
 ### 5. Grand Summit Resort (27 holes, Par 108)
-**Size:** 100×140 tiles
-**Description:** The ultimate test - a massive resort course with dramatic elevation changes and signature holes.
+- **Total Grid Size:** 100×140 = 14,000 tiles
+- **Playable Grass:** ~7,000-8,400 tiles (50-60% of grid)
+- **Description:** The ultimate test - a massive resort course with dramatic elevation changes and signature holes.
+
+**Maintenance Implications:**
+- Starter course: ~700 grass tiles = manageable solo with basic equipment
+- 9-hole course: ~2,600 grass tiles = requires 1-2 employees or frequent refills
+- Championship 18-hole: ~6,000 grass tiles = requires team of 4-6 groundskeepers
+- Resort 27-hole: ~7,700 grass tiles = requires team of 8-12 staff or robot fleet
+
+See EQUIPMENT_SYSTEM_SPEC.md and EMPLOYEE_SYSTEM_SPEC.md for capacity and delegation strategies.
 
 ## Scenario Types
 

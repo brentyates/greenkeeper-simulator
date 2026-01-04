@@ -82,6 +82,13 @@ interface CellState {
   nutrients: number;   // Fertilizer/nutrient level
   health: number;      // Calculated overall health
 
+  // Grass variety (see RESEARCH_TREE_SPEC.md - Turf Science section)
+  grassVariety: string;  // e.g., "kentucky_bluegrass", "tourgrade_bentgrass"
+  waterNeedMultiplier: number;      // From variety, default 1.0
+  fertilizerNeedMultiplier: number; // From variety, default 1.0
+  mowingFrequencyMultiplier: number; // From variety, default 1.0
+  prestigeModifier: number;          // From variety, per 100 tiles
+
   // Tracking
   lastMowed: number;      // Game time of last mow
   lastWatered: number;    // Game time of last water
@@ -148,12 +155,19 @@ function simulateGrowth(cell: CellState, deltaMinutes: number): GrowthResult {
   if (cell.nutrients > 50) growthRate += 0.10;  // Fertilized grows faster
   if (cell.health < 30) growthRate -= 0.05;     // Unhealthy grows slower
 
+  // Grass variety mowing frequency modifier (see RESEARCH_TREE_SPEC.md)
+  // Lower frequency = slower growth (e.g., 0.7 = 30% slower growth)
+  growthRate *= cell.mowingFrequencyMultiplier;
+
   // Apply growth
   const newHeight = Math.min(100, cell.height + growthRate * deltaMinutes);
 
-  // Decay moisture and nutrients
-  const newMoisture = Math.max(0, cell.moisture - 0.05 * deltaMinutes);
-  const newNutrients = Math.max(0, cell.nutrients - 0.02 * deltaMinutes);
+  // Decay moisture and nutrients (adjusted by grass variety needs)
+  const moistureDecayRate = 0.05 * cell.waterNeedMultiplier;
+  const nutrientDecayRate = 0.02 * cell.fertilizerNeedMultiplier;
+
+  const newMoisture = Math.max(0, cell.moisture - moistureDecayRate * deltaMinutes);
+  const newNutrients = Math.max(0, cell.nutrients - nutrientDecayRate * deltaMinutes);
 
   return {
     height: newHeight,
@@ -168,9 +182,11 @@ function simulateGrowth(cell: CellState, deltaMinutes: number): GrowthResult {
 
 | Resource | Decay Rate | Time to Empty | Notes |
 |----------|------------|---------------|-------|
-| Moisture | 0.05/min | ~33 hours | Faster in hot weather (future) |
-| Nutrients | 0.02/min | ~83 hours | Slower, longer-lasting |
-| Height | +0.1/min (growth) | Mow every ~6-8 hours | Varies by conditions |
+| Moisture | 0.05/min × variety multiplier | ~33 hours (baseline) | Modified by grass variety; faster in hot weather (future) |
+| Nutrients | 0.02/min × variety multiplier | ~83 hours (baseline) | Modified by grass variety; slower, longer-lasting |
+| Height | +0.1/min (growth) × variety multiplier | Mow every ~6-8 hours (baseline) | Modified by grass variety; varies by conditions |
+
+**Note:** Grass variety multipliers from RESEARCH_TREE_SPEC.md Turf Science section. For example, UltraGreen Genesis has 0.5× water and fertilizer needs, reducing maintenance costs by 50%.
 
 ### Growth Rate Modifiers
 
@@ -519,6 +535,12 @@ Prestige.CurrentConditions = f(
   ...
 )
 ```
+
+Additionally, grass variety choices affect the "Amenities" component of prestige (see PRESTIGE_SYSTEM_SPEC.md):
+- Each grass variety has a `prestigeModifierPer100Tiles` value
+- Example: TourGrade Bentgrass on 200 fairway tiles = +50 prestige points
+- Example: UltraGreen Genesis on 100 green tiles = +50 prestige points
+- This rewards investment in premium grass varieties beyond just maintenance savings
 
 ### Golfer Satisfaction
 

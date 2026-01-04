@@ -26,12 +26,32 @@ Inspired by RollerCoaster Tycoon's park rating and ride pricing systems:
 | ★★★★☆ | Private Club | 600-799 | Exclusive country club |
 | ★★★★★ | Championship | 800-1000 | Tour-worthy destination |
 
-### Half-Star Granularity
-Display can show half stars (0.5 increments) for more feedback:
-- Score 0-99 = 0.5 stars
-- Score 100-199 = 1 star
-- Score 200-299 = 1.5 stars
-- etc.
+### Conversion Formula
+
+**Simple Formula:**
+```typescript
+starRating = Math.min(5.0, Math.floor(prestigeScore / 200) + ((prestigeScore % 200) >= 100 ? 0.5 : 0));
+```
+
+**Or using table:**
+
+| Prestige Score Range | Star Rating | Display |
+|---------------------|-------------|---------|
+| 0-99 | 0.5 | ½★☆☆☆☆ |
+| 100-199 | 1.0 | ★☆☆☆☆ |
+| 200-299 | 1.5 | ★½★☆☆☆ |
+| 300-399 | 2.0 | ★★☆☆☆ |
+| 400-499 | 2.5 | ★★½★☆☆ |
+| 500-599 | 3.0 | ★★★☆☆ |
+| 600-699 | 3.5 | ★★★½★☆ |
+| 700-799 | 4.0 | ★★★★☆ |
+| 800-899 | 4.5 | ★★★★½★ |
+| 900-1000 | 5.0 | ★★★★★ |
+
+**Key Thresholds:**
+- **4.0★ (score 700+):** Required for Regional/State tournaments (see TOURNAMENT_SYSTEM_SPEC.md)
+- **5.0★ (score 800+):** Required for PGA Tour events and Major championships
+- **5.0★ for 365 days:** Unlocks Tour event eligibility
 
 ---
 

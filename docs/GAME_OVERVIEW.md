@@ -8,6 +8,72 @@ Greenkeeper Simulator is a first-person management game where you begin as a han
 
 ---
 
+## Game Time Scale
+
+**Critical Foundation:** All game systems use a unified time scale with variable speed controls.
+
+### Base Time Rate (1x Speed)
+```
+1 real-world second = 1 game minute (at 1x speed)
+```
+
+At 1x speed:
+- 1 real second = 1 game minute
+- 1 real minute = 1 game hour
+- 24 real minutes = 1 game day (24 hours)
+- 12 real hours = 1 game month (30 days)
+
+### Speed Controls
+Like RollerCoaster Tycoon, players can control game speed:
+
+| Speed | Real → Game Time | 1 Game Day | 1 Game Month | Use Case |
+|-------|------------------|------------|--------------|----------|
+| Pause | 0x | - | - | Planning, menus, precision work |
+| 1x | 1 sec = 1 min | 24 min | 12 hours | Manual mowing, hands-on work |
+| 2x | 1 sec = 2 min | 12 min | 6 hours | Supervised delegation |
+| 3x | 1 sec = 3 min | 8 min | 4 hours | Watching employees work |
+| 5x | 1 sec = 5 min | 4.8 min | 2.4 hours | Fast-forwarding routine days |
+
+**Design Philosophy:**
+- **1x speed** for active player work (mowing, equipment operation, course inspection)
+- **2-3x speed** for delegated operations (watching employees, monitoring course)
+- **5x speed** for "auto-pilot" moments (overnight, waiting for research, time-gated objectives)
+- **Pause** automatically when critical events occur (golfer complaints, equipment breakdown, tournament offer)
+
+### Milestone Time-to-Complete (Real Time)
+
+With speed controls, major milestones are achievable in reasonable play sessions:
+
+| Milestone | Game Time | Real Time at Speed |
+|-----------|-----------|-------------------|
+| Complete 30-day scenario | 30 days | 12 hrs (1x), 6 hrs (2x), 2.4 hrs (5x) |
+| Research mid-tier tech | 600 points at Normal funding | 3.3 hrs (1x), 1.7 hrs (2x), 40 min (5x) |
+| Unlock first tournament | 30 consecutive days at 4★ | 12 hrs (1x), 6 hrs (2x), 2.4 hrs (5x) |
+| Unlock Tour event | 365 consecutive days at 5★ | 6 days (1x), 3 days (2x), 1.2 days (5x) |
+| Full major championship prep | 14 days | 5.6 hrs (1x), 2.8 hrs (2x), 1.1 hrs (5x) |
+
+**Key Insight:** Tournament unlocks requiring "365 consecutive days" = ~29 hours at 5x speed = achievable over a weekend of dedicated play.
+
+### Time-Based Rates in Specifications
+
+All numeric rates in specs use **game time** (not real time):
+- Growth rates: "0.1 per minute" = 0.1 per game minute
+- Equipment consumption: "0.5 per second" = 0.5 per game minute (since 1 game minute = smallest unit)
+- Research funding: "3 points per minute" = 3 points per game minute
+- Employee wages: "$12 per hour" = $12 per game hour
+- Economic reports: "Monthly" = every 30 game days
+
+**Speed-Independent Behavior:**
+All calculations use game time, so 2x speed makes everything happen twice as fast in real time, but the same in game time. This ensures:
+- Grass grows at the same rate relative to game days
+- Research completes in the same number of game hours
+- Revenue and expenses scale proportionally
+- Tournaments still require the same number of game days of preparation
+
+**Note:** All specifications (COURSE_MAINTENANCE_SPEC, EQUIPMENT_SYSTEM_SPEC, RESEARCH_TREE_SPEC, etc.) define rates in game time. The speed multiplier is applied uniformly across all systems.
+
+---
+
 ## The Greenkeeper's Journey
 
 ### Stage 1: The Solo Greenkeeper
