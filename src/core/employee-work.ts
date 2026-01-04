@@ -75,7 +75,7 @@ export const TASK_DURATIONS: Record<EmployeeTask, number> = {
   idle: 0,
 };
 
-export const EMPLOYEE_MOVE_SPEED = 3.0;
+export const EMPLOYEE_MOVE_SPEED = 12.0;
 
 export const TASK_EXPERIENCE_REWARDS: Record<EmployeeTask, number> = {
   mow_grass: 10,
@@ -298,8 +298,8 @@ function moveToward(
   const dy = targetY - worker.gridY;
   const distance = Math.abs(dx) + Math.abs(dy);
 
-  if (distance === 0) {
-    return { gridX: worker.gridX, gridY: worker.gridY, arrived: true };
+  if (distance < 0.5) {
+    return { gridX: targetX, gridY: targetY, arrived: true };
   }
 
   const moveAmount = EMPLOYEE_MOVE_SPEED * deltaMinutes;
@@ -312,7 +312,7 @@ function moveToward(
   const newX = worker.gridX + dx * ratio;
   const newY = worker.gridY + dy * ratio;
 
-  return { gridX: Math.round(newX), gridY: Math.round(newY), arrived: false };
+  return { gridX: newX, gridY: newY, arrived: false };
 }
 
 function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | null {
@@ -378,7 +378,8 @@ export function tickEmployeeWork(
       return { ...worker, currentTask: 'patrol' as EmployeeTask };
     }
 
-    if (worker.gridX !== worker.targetX || worker.gridY !== worker.targetY) {
+    const distanceToTarget = Math.abs(worker.gridX - worker.targetX!) + Math.abs(worker.gridY - worker.targetY!);
+    if (distanceToTarget >= 0.5) {
       const movement = moveToward(worker, worker.targetX!, worker.targetY!, deltaMinutes);
       return {
         ...worker,
