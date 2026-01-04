@@ -400,8 +400,8 @@ export function tickEmployeeWork(
       const effectType = getWorkEffect(worker.currentTask);
       if (effectType) {
         effects.push({
-          gridX: worker.gridX,
-          gridY: worker.gridY,
+          gridX: worker.targetX!,
+          gridY: worker.targetY!,
           type: effectType,
           efficiency,
         });
@@ -409,8 +409,8 @@ export function tickEmployeeWork(
       completions.push({
         employeeId: worker.employeeId,
         task: worker.currentTask,
-        gridX: worker.gridX,
-        gridY: worker.gridY,
+        gridX: worker.targetX!,
+        gridY: worker.targetY!,
       });
       tasksCompleted++;
 
