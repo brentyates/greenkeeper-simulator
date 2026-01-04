@@ -946,7 +946,22 @@ export class BabylonMain {
       onEquipmentStore: () => this.handleEquipmentStore(),
       onAmenityPanel: () => this.handleAmenityPanel(),
       onWalkOnQueuePanel: () => this.handleWalkOnQueuePanel(),
+      isInputBlocked: () => this.isAnyPopupOpen(),
     });
+  }
+
+  private isAnyPopupOpen(): boolean {
+    return (
+      this.employeePanel?.isVisible() ||
+      this.researchPanel?.isVisible() ||
+      this.teeSheetPanel?.isVisible() ||
+      this.marketingDashboard?.isVisible() ||
+      this.equipmentStorePanel?.isVisible() ||
+      this.amenityPanel?.isVisible() ||
+      this.walkOnQueuePanel?.isVisible() ||
+      this.daySummaryPopup?.isVisible() ||
+      this.uiManager.isPauseMenuVisible()
+    ) ?? false;
   }
 
   private buildScene(): void {

@@ -89,6 +89,7 @@ export class ResearchPanel {
     this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
     this.panel.isVisible = false;
+    this.panel.isPointerBlocker = true;
     this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
     this.panel.shadowBlur = 10;
     this.panel.shadowOffsetX = 3;

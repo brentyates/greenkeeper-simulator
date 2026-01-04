@@ -42,6 +42,7 @@ export interface InputCallbacks {
   onDragEnd?: () => void;
   onPinchZoom?: (delta: number) => void;
   onSwipe?: (direction: Direction) => void;
+  isInputBlocked?: () => boolean;
 }
 
 export class InputManager {
@@ -217,6 +218,7 @@ export class InputManager {
 
     this.wheelHandler = (event: WheelEvent) => {
       if (!this.enabled) return;
+      if (this.callbacks.isInputBlocked?.()) return;
       event.preventDefault();
       if (event.deltaY > 0) {
         this.callbacks.onZoomOut?.();

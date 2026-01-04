@@ -45,6 +45,7 @@ export class MarketingDashboard {
     this.overlay.background = 'rgba(0, 0, 0, 0.6)';
     this.overlay.thickness = 0;
     this.overlay.isVisible = false;
+    this.overlay.isPointerBlocker = true;
     this.advancedTexture.addControl(this.overlay);
 
     this.panel = new Rectangle('marketingPanel');

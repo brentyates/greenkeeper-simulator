@@ -872,6 +872,7 @@ export class UIManager {
     this.pauseOverlay.background = 'rgba(0, 0, 0, 0.7)';
     this.pauseOverlay.thickness = 0;
     this.pauseOverlay.isVisible = false;
+    this.pauseOverlay.isPointerBlocker = true;
     this.advancedTexture.addControl(this.pauseOverlay);
 
     const panel = new Rectangle('pausePanel');

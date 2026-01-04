@@ -50,6 +50,7 @@ export class TerrainEditorUI {
     this.panel.left = '10px';
     this.panel.top = '10px';
     this.panel.isVisible = false;
+    this.panel.isPointerBlocker = true;
     this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
     this.panel.shadowBlur = 10;
     this.panel.shadowOffsetX = 3;
