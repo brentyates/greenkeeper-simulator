@@ -108,6 +108,11 @@ declare global {
     loadScenario: (id: string) => void;
     getScenarioState: () => { progress: number; completed: boolean; failed: boolean; message?: string } | null;
     getEconomyState: () => { cash: number; earned: number; spent: number } | null;
+    getPrestigeState: () => { score: number; stars: number; tier: string; amenityScore: number } | null;
+    purchaseAmenity: (upgradeType: string) => boolean;
+    getTeeTimeStats: () => { totalBookings: number; cancellations: number; noShows: number; slotsAvailable: number } | null;
+    getMarketingStats: () => { activeCampaigns: number; totalSpent: number; totalROI: number } | null;
+    startMarketingCampaign: (campaignId: string, days?: number) => boolean;
     setCash: (amount: number) => void;
     advanceDay: () => void;
     getGameDay: () => number | null;
@@ -306,6 +311,41 @@ window.getEconomyState = () => {
     return window.game.getEconomyState();
   }
   return null;
+};
+
+window.getPrestigeState = () => {
+  if (window.game) {
+    return window.game.getPrestigeState();
+  }
+  return null;
+};
+
+window.purchaseAmenity = (upgradeType: string) => {
+  if (window.game) {
+    return window.game.purchaseAmenity(upgradeType);
+  }
+  return false;
+};
+
+window.getTeeTimeStats = () => {
+  if (window.game) {
+    return window.game.getTeeTimeStats();
+  }
+  return null;
+};
+
+window.getMarketingStats = () => {
+  if (window.game) {
+    return window.game.getMarketingStats();
+  }
+  return null;
+};
+
+window.startMarketingCampaign = (campaignId: string, days?: number) => {
+  if (window.game) {
+    return window.game.startMarketingCampaign(campaignId, days);
+  }
+  return false;
 };
 
 window.setCash = (amount: number) => {

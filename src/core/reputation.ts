@@ -28,6 +28,10 @@ export interface ReputationState {
   golfersThisMonth: number;
   wordOfMouthMultiplier: number;
 
+  turnAwaysThisMonth: number;
+  totalTurnAways: number;
+  turnAwayPenalty: number;
+
   categoryAverages: {
     conditions: number;
     pace: number;
@@ -60,6 +64,9 @@ export const WORD_OF_MOUTH_THRESHOLDS = {
 export const MAX_STORED_REVIEWS = 365;
 export const RECENT_REVIEW_DAYS = 30;
 
+export const TURN_AWAY_PENALTY_PER_GOLFER = 0.02;
+export const MAX_TURN_AWAY_PENALTY = 0.3;
+
 export function createInitialReputationState(): ReputationState {
   return {
     totalReviews: 0,
@@ -73,6 +80,10 @@ export function createInitialReputationState(): ReputationState {
 
     golfersThisMonth: 0,
     wordOfMouthMultiplier: 0.8,
+
+    turnAwaysThisMonth: 0,
+    totalTurnAways: 0,
+    turnAwayPenalty: 0,
 
     categoryAverages: {
       conditions: 3.0,
@@ -246,7 +257,8 @@ function calculateReputationComposite(
   averageRating: number,
   returnRate: number,
   totalReviews: number,
-  wordOfMouthMultiplier: number
+  wordOfMouthMultiplier: number,
+  turnAwayPenalty: number = 0
 ): number {
   const satisfactionScore = (averageRating / 5) * 1000;
 
@@ -265,7 +277,7 @@ function calculateReputationComposite(
     tournamentScore * REPUTATION_WEIGHTS.tournamentHistory +
     awardsScore * REPUTATION_WEIGHTS.awards;
 
-  const adjustedScore = baseScore * wordOfMouthMultiplier;
+  const adjustedScore = baseScore * wordOfMouthMultiplier * (1 - turnAwayPenalty);
 
   return Math.max(0, Math.min(1000, Math.round(adjustedScore)));
 }
@@ -311,5 +323,47 @@ export function getReputationSummary(state: ReputationState): {
     totalReviews: state.totalReviews,
     returnRate: state.returnRate,
     wordOfMouth,
+  };
+}
+
+export function trackTurnAway(state: ReputationState): ReputationState {
+  const newTurnAwaysThisMonth = state.turnAwaysThisMonth + 1;
+  const newTotalTurnAways = state.totalTurnAways + 1;
+  const penalty = Math.min(
+    MAX_TURN_AWAY_PENALTY,
+    newTurnAwaysThisMonth * TURN_AWAY_PENALTY_PER_GOLFER
+  );
+
+  const composite = calculateReputationComposite(
+    state.averageRating,
+    state.returnRate,
+    state.totalReviews,
+    state.wordOfMouthMultiplier,
+    penalty
+  );
+
+  return {
+    ...state,
+    turnAwaysThisMonth: newTurnAwaysThisMonth,
+    totalTurnAways: newTotalTurnAways,
+    turnAwayPenalty: penalty,
+    composite,
+  };
+}
+
+export function resetMonthlyTurnAways(state: ReputationState): ReputationState {
+  const composite = calculateReputationComposite(
+    state.averageRating,
+    state.returnRate,
+    state.totalReviews,
+    state.wordOfMouthMultiplier,
+    0
+  );
+
+  return {
+    ...state,
+    turnAwaysThisMonth: 0,
+    turnAwayPenalty: 0,
+    composite,
   };
 }

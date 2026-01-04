@@ -43,7 +43,15 @@ import {
   generateHiringPool,
   HiringPool,
   Employee,
+  awardExperience,
 } from "../core/employees";
+import {
+  EmployeeWorkSystemState,
+  createInitialWorkSystemState,
+  tickEmployeeWork,
+  syncWorkersWithRoster,
+  TASK_EXPERIENCE_REWARDS,
+} from "../core/employee-work";
 import {
   GolferPoolState,
   GreenFeeStructure,
@@ -119,6 +127,7 @@ import {
   calculateCombinedDemandMultiplier,
   startCampaign,
   stopCampaign,
+  canStartCampaign,
 } from "../core/marketing";
 import { createSaveState, saveGame, loadGame, hasSave } from "../core/save-game";
 import {
@@ -202,6 +211,7 @@ export class BabylonMain {
 
   private economyState: EconomyState;
   private employeeRoster: EmployeeRoster;
+  private employeeWorkState: EmployeeWorkSystemState;
   private golferPool: GolferPoolState;
   private researchState: ResearchState;
   private scenarioManager: ScenarioManager | null = null;
@@ -239,6 +249,7 @@ export class BabylonMain {
     const startingCash = options.scenario?.conditions.startingCash ?? 10000;
     this.economyState = createInitialEconomyState(startingCash);
     this.employeeRoster = createInitialRoster();
+    this.employeeWorkState = createInitialWorkSystemState(0, 0);
     this.golferPool = createInitialPoolState();
     this.researchState = createInitialResearchState();
     this.prestigeState = createInitialPrestigeState(100);
@@ -405,6 +416,7 @@ export class BabylonMain {
         const result = hireEmployee(this.employeeRoster, employee);
         if (result) {
           this.employeeRoster = result;
+          this.employeeWorkState = syncWorkersWithRoster(this.employeeWorkState, this.employeeRoster.employees);
           this.hiringPool = {
             ...this.hiringPool,
             candidates: this.hiringPool.candidates.filter(c => c.id !== employee.id),
@@ -420,6 +432,7 @@ export class BabylonMain {
         const result = fireEmployee(this.employeeRoster, employeeId);
         if (result) {
           this.employeeRoster = result;
+          this.employeeWorkState = syncWorkersWithRoster(this.employeeWorkState, this.employeeRoster.employees);
           if (employee) {
             this.uiManager.showNotification(`Fired ${employee.name}`);
           }
@@ -2225,6 +2238,33 @@ export class BabylonMain {
     const tickEmployeesResult = tickEmployees(this.employeeRoster, gameMinutes, trainingBonus);
     this.employeeRoster = tickEmployeesResult.roster;
 
+    // Tick employee autonomous work
+    const cells = this.grassSystem.getAllCells();
+    const workResult = tickEmployeeWork(
+      this.employeeWorkState,
+      this.employeeRoster.employees,
+      cells,
+      gameMinutes
+    );
+    this.employeeWorkState = workResult.state;
+
+    for (const effect of workResult.effects) {
+      if (effect.type === 'mow') {
+        this.grassSystem.mowAt(effect.gridX, effect.gridY);
+      } else if (effect.type === 'water') {
+        this.grassSystem.waterArea(effect.gridX, effect.gridY, 0, 30 * effect.efficiency);
+      } else if (effect.type === 'fertilize') {
+        this.grassSystem.fertilizeArea(effect.gridX, effect.gridY, 0, 25, effect.efficiency);
+      }
+    }
+
+    for (const completion of workResult.completions) {
+      const expReward = TASK_EXPERIENCE_REWARDS[completion.task];
+      if (expReward > 0) {
+        this.employeeRoster = awardExperience(this.employeeRoster, completion.employeeId, expReward);
+      }
+    }
+
     // Tick research (only charge funding if there's active research)
     if (this.researchState.currentResearch) {
       this.accumulatedResearchTime += gameMinutes;
@@ -2346,8 +2386,77 @@ export class BabylonMain {
     };
   }
 
+  public getPrestigeState(): {
+    score: number;
+    stars: number;
+    tier: string;
+    amenityScore: number;
+  } {
+    return {
+      score: this.prestigeState.currentScore,
+      stars: this.prestigeState.starRating,
+      tier: this.prestigeState.tier,
+      amenityScore: this.prestigeState.amenityScore
+    };
+  }
+
   public getGameDay(): number {
     return this.gameDay;
+  }
+
+  public getTeeTimeStats(): {
+    totalBookings: number;
+    cancellations: number;
+    noShows: number;
+    slotsAvailable: number;
+  } {
+    const todaySlots = this.teeTimeState.teeTimes.get(this.gameDay) ?? [];
+    const available = todaySlots.filter(t => t.status === 'available').length;
+
+    return {
+      totalBookings: this.teeTimeState.bookingMetrics.totalBookingsToday,
+      cancellations: this.teeTimeState.bookingMetrics.cancellationsToday,
+      noShows: this.teeTimeState.bookingMetrics.noShowsToday,
+      slotsAvailable: available
+    };
+  }
+
+  public getMarketingStats(): {
+    activeCampaigns: number;
+    totalSpent: number;
+    totalROI: number;
+  } {
+    const totalSpent = this.marketingState.metrics.totalSpent;
+    const totalRevenue = this.marketingState.metrics.totalRevenueGenerated;
+    const roi = totalSpent > 0 ? ((totalRevenue - totalSpent) / totalSpent) * 100 : 0;
+
+    return {
+      activeCampaigns: this.marketingState.activeCampaigns.length,
+      totalSpent,
+      totalROI: Math.round(roi)
+    };
+  }
+
+  public startMarketingCampaign(campaignId: string, days: number = 7): boolean {
+    const canStart = canStartCampaign(this.marketingState, campaignId, this.economyState.cash);
+    if (!canStart.canStart) {
+      return false;
+    }
+
+    const result = startCampaign(this.marketingState, campaignId, this.gameDay, days);
+    if (result) {
+      this.marketingState = result.state;
+      const cost = result.setupCost;
+      if (cost > 0) {
+        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+        const expenseResult = addExpense(this.economyState, cost, 'marketing', `Campaign: ${campaignId}`, timestamp, false);
+        if (expenseResult) {
+          this.economyState = expenseResult;
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   public getGameTime(): { hours: number; minutes: number } {
@@ -2380,6 +2489,47 @@ export class BabylonMain {
     if (this.scenarioManager) {
       this.scenarioManager.incrementDay();
     }
+    const cells = this.grassSystem.getAllCells();
+    const conditionsScore = calculateCurrentConditions(cells);
+    this.prestigeState = updatePrestigeScore(this.prestigeState, conditionsScore);
+  }
+
+  public purchaseAmenity(upgradeType: string): boolean {
+    let upgrade: AmenityUpgrade;
+
+    switch (upgradeType) {
+      case 'clubhouse_1':
+        upgrade = { type: 'clubhouse', tier: 1 };
+        break;
+      case 'pro_shop_1':
+        upgrade = { type: 'proShop', tier: 1 };
+        break;
+      case 'dining_1':
+        upgrade = { type: 'dining', tier: 1 };
+        break;
+      case 'facility_driving_range':
+        upgrade = { type: 'facility', facility: 'drivingRange' };
+        break;
+      case 'facility_putting_green':
+        upgrade = { type: 'facility', facility: 'puttingGreen' };
+        break;
+      default:
+        return false;
+    }
+
+    const cost = getUpgradeCost(this.prestigeState.amenities, upgrade);
+    if (this.economyState.cash < cost) {
+      return false;
+    }
+
+    this.prestigeState = upgradeAmenity(this.prestigeState, upgrade);
+    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+    const expenseResult = addExpense(this.economyState, cost, "equipment_purchase", `Amenity: ${upgrade.type}`, timestamp, false);
+    if (expenseResult) {
+      this.economyState = expenseResult;
+    }
+
+    return true;
   }
 
   public dispose(): void {

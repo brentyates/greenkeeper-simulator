@@ -60,7 +60,7 @@ npm run build && firebase deploy --only hosting
 
 The core logic modules are complete and tested. This TODO covers wiring them into `BabylonMain` and creating the UI layers.
 
-### Core Logic Summary (1612 tests passing)
+### Core Logic Summary (1627 tests passing)
 
 | Module | File | Tests | Description |
 |--------|------|-------|-------------|
@@ -198,6 +198,59 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [x] Deduct wages from economy
 - [x] Apply manager bonus to golfer experience
 
+### 5.4 Employee Visual Representation
+
+Employees should be visible on the course while working. This creates a living, dynamic environment.
+
+#### Sprite System
+- [ ] Create EmployeeVisualSystem in src/babylon/systems/
+- [ ] Load employee sprite assets (groundskeeper, irrigator, mechanic, etc.)
+- [ ] Implement sprite animation state machine (idle, walking, working, on_break)
+- [ ] Sync visual position with employee grid position
+- [ ] Show work equipment (mower, rake, tools) when actively working
+
+#### Visual Feedback
+- [ ] Show speech bubbles for employee alerts (tired, needs supplies)
+- [ ] Display work trail showing recently maintained areas
+- [ ] Indicate fatigue through slower movement animation
+- [ ] Show break location icons when employees on break
+
+### 5.5 Employee Autonomous Work Behavior
+
+Employees work independently based on their role and assigned area.
+
+#### Core Work System
+- [x] Create employee-work.ts with autonomous work logic
+- [x] Implement task prioritization (critical overgrowth > mowing > watering > fertilizing)
+- [x] Add pathfinding for employee movement to work targets
+- [x] Execute work actions that modify grass state (mowing effect, watering effect)
+- [ ] Handle resource consumption (employees deplete resources from maintenance shed)
+
+#### Groundskeeper Work Priorities
+- [x] Find and mow grass with height > 60
+- [x] Water dry areas with moisture < 40
+- [x] Fertilize depleted areas with nutrients < 30
+- [x] Rake bunkers periodically
+- [x] Patrol assigned area when no urgent tasks
+
+#### Area Assignment
+- [x] Define course areas (Front 9, Back 9, Greens, Bunkers, Practice Area)
+- [x] Allow assigning employees to specific areas
+- [x] Employees only work within their assigned area
+- [x] Unassigned employees cover entire course
+
+#### Work Execution
+- [x] Track work progress per tile (0-100%)
+- [x] Apply grass effects when work completes
+- [x] Award experience points for completed work
+- [x] Handle interrupted work (employee goes on break mid-task)
+
+#### Integration
+- [x] Connect employee work to grass simulation
+- [ ] Deduct maintenance supplies from economy
+- [ ] Update employee fatigue during work
+- [ ] Show employee work in daily summary
+
 ---
 
 ## Phase 6: Research System
@@ -305,9 +358,16 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 
 ### 10.3 Visual Feedback
 - [ ] Show golfer sprites on course (optional)
-- [ ] Employee sprites at work stations (optional)
+- [ ] Employee sprites at work stations (see Phase 5.4 for details)
 - [ ] Equipment upgrade visual changes
 - [x] Weather effects on grass simulation (rain adds moisture, heat increases loss)
+
+### 10.4 Equipment-Based Overlay Modes
+- [ ] Auto-switch to relevant overlay when equipment selected (fertilizer → nutrients, sprinkler → moisture)
+- [ ] Show color-coded need levels when equipment is active (green=OK, yellow=needs attention, red=critical)
+- [ ] Allow manual override to keep specific overlay while using equipment
+- [ ] Display legend for current overlay colors
+- [ ] Add quick-action from overlay (click tile to target equipment at that location)
 
 ---
 
@@ -511,10 +571,10 @@ The Prestige System is the primary determinant of green fee pricing power. It ma
 - [x] Unit tests for amenity score calculation
 - [x] Unit tests for reputation score calculation
 - [x] Unit tests for exclusivity score calculation
-- [ ] Integration test: prestige affects golfer demand
-- [ ] Integration test: overpricing causes visible rejections
-- [ ] E2E test: improve course to reach 3-star rating
-- [ ] E2E test: amenity purchase increases prestige
+- [x] Integration test: prestige affects golfer demand (src/core/integration.test.ts)
+- [x] Integration test: overpricing causes visible rejections (src/core/integration.test.ts)
+- [x] E2E test: improve course to reach 3-star rating (tests/prestige-tests.spec.ts)
+- [x] E2E test: amenity purchase increases prestige (tests/prestige-tests.spec.ts)
 
 ---
 
@@ -658,7 +718,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [ ] Show NPCs waiting at pro shop
 - [ ] Add impatience animations (checking watches, pacing)
 - [ ] Show departure animations for frustrated golfers
-- [ ] Track reputation hit from turn-aways
+- [x] Track reputation hit from turn-aways (src/core/reputation.ts - trackTurnAway, resetMonthlyTurnAways)
 
 ---
 
@@ -774,10 +834,10 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Unit tests for walk-on processing
 - [x] Unit tests for revenue calculations
 - [x] Unit tests for campaign effectiveness
-- [ ] Integration test: tee time spacing affects satisfaction
-- [ ] Integration test: walk-on queue management
-- [ ] E2E test: complete day of tee time bookings
-- [ ] E2E test: marketing campaign ROI
+- [x] Integration test: tee time spacing affects satisfaction (src/core/integration.test.ts)
+- [x] Integration test: walk-on queue management (src/core/integration.test.ts)
+- [x] E2E test: complete day of tee time bookings (tests/tee-time-tests.spec.ts)
+- [x] E2E test: marketing campaign ROI (tests/marketing-tests.spec.ts)
 
 ---
 
@@ -824,7 +884,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 
 ## Testing Checklist
 
-- [ ] Unit tests for any new logic functions
+- [x] Unit tests for any new logic functions (src/core/integration.test.ts - 15 tests)
 - [x] E2E test: Scenario loading from URL (tests/scenario-tests.spec.ts)
 - [x] E2E test: Scenario fail by running out of time (tests/scenario-tests.spec.ts)
 - [x] E2E test: Scenario fail by going bankrupt (tests/scenario-tests.spec.ts)

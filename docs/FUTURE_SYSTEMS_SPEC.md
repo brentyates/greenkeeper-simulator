@@ -267,6 +267,60 @@ grantEligibility = sustainabilityScore >= 60;  // Threshold for environmental gr
 
 ---
 
+### 8. Soil Compaction & Aeration System (Medium Impact)
+
+**Current State:** Not documented or implemented.
+
+**Proposed System:**
+- **Compaction Tracking:** Each tile tracks soil compaction level (0-100)
+- **Compaction Sources:** Foot traffic, cart traffic, equipment weight, rainfall
+- **Effects of Compaction:** Reduced water penetration, poor root growth, decreased grass health
+- **Aeration Methods:** Core aeration, spike aeration, solid tine, verticutting
+- **Recovery Time:** Aerated areas need time to recover before play
+
+**Compaction Formula:**
+```typescript
+interface SoilCompaction {
+  compactionLevel: number;      // 0-100, higher = more compacted
+  lastAerated: number;          // Game time of last aeration
+  trafficAccumulator: number;   // Daily traffic count
+}
+
+// Compaction increases
+dailyCompactionIncrease = trafficCount * 0.1 + rainfallMM * 0.05;
+// Capped at 100
+
+// Health penalty from compaction
+healthPenalty = compactionLevel * 0.3;  // Up to -30% health at full compaction
+
+// Aeration effectiveness
+compactionReduction = aerationType.effectiveness * (1 - grassType.sensitivity);
+```
+
+**Aeration Types:**
+| Type | Cost | Duration | Compaction Reduction | Recovery Days |
+|------|------|----------|---------------------|---------------|
+| Spike Aeration | $500/acre | 2 hours | 20% | 3 |
+| Core Aeration | $1,500/acre | 4 hours | 60% | 14 |
+| Deep Tine | $2,500/acre | 6 hours | 80% | 21 |
+| Verticutting | $800/acre | 3 hours | 30% + thatch removal | 7 |
+
+**Strategic Impact:**
+- Seasonal planning (aerate in off-season when recovery is acceptable)
+- High-traffic area identification and management
+- Trade-off between course availability and maintenance needs
+- Cart path placement decisions to reduce compaction
+- Equipment selection (lighter equipment = less compaction)
+
+**Integration Points:**
+- Course Maintenance: Compaction affects grass health calculation
+- Tee Times: Areas under aeration may need restricted access
+- Equipment: Aeration equipment as purchasable items
+- Research: Improved aeration techniques, compaction-resistant grass varieties
+- Economy: Aeration costs, potential for contracted services
+
+---
+
 ## Missing Documentation for Existing Systems
 
 ### 1. Staff Scheduling & Management (Mentioned but Not Detailed)

@@ -37,6 +37,7 @@ import {
   getNextSkillLevel,
   getExperienceForNextLevel,
   isEligibleForPromotion,
+  awardExperience,
   getManagerBonus,
 
   // State transformation functions
@@ -606,6 +607,49 @@ describe("Employee System", () => {
         experience: 10000
       });
       expect(isEligibleForPromotion(emp)).toBe(false);
+    });
+  });
+
+  describe("awardExperience", () => {
+    it("adds experience to employee", () => {
+      const emp = makeEmployee({ experience: 100 });
+      const roster = makeRoster({ employees: [emp] });
+      const updated = awardExperience(roster, emp.id, 50);
+      expect(updated.employees[0].experience).toBe(150);
+    });
+
+    it("promotes employee when threshold reached", () => {
+      const config = EMPLOYEE_CONFIGS.groundskeeper;
+      const emp = makeEmployee({
+        role: "groundskeeper",
+        skillLevel: "novice",
+        experience: config.experienceToLevel - 50,
+      });
+      const roster = makeRoster({ employees: [emp] });
+      const updated = awardExperience(roster, emp.id, 100);
+      expect(updated.employees[0].skillLevel).toBe("trained");
+      expect(updated.employees[0].experience).toBe(50);
+    });
+
+    it("increases skills on promotion", () => {
+      const config = EMPLOYEE_CONFIGS.groundskeeper;
+      const emp = makeEmployee({
+        role: "groundskeeper",
+        skillLevel: "novice",
+        experience: config.experienceToLevel - 10,
+        skills: { efficiency: 1.0, quality: 1.0, stamina: 1.0, reliability: 1.0 },
+      });
+      const roster = makeRoster({ employees: [emp] });
+      const updated = awardExperience(roster, emp.id, 20);
+      expect(updated.employees[0].skills.efficiency).toBe(1.05);
+      expect(updated.employees[0].skills.quality).toBe(1.05);
+    });
+
+    it("returns roster unchanged for unknown employee", () => {
+      const emp = makeEmployee({ experience: 100 });
+      const roster = makeRoster({ employees: [emp] });
+      const updated = awardExperience(roster, "unknown-id", 50);
+      expect(updated).toBe(roster);
     });
   });
 

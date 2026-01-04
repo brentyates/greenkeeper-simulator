@@ -745,9 +745,215 @@ The player progressively shifts from worker to manager to director.
 
 ---
 
+## Visual Representation
+
+### Employee Sprites
+
+All employees are visible on the golf course while working. This creates a living, dynamic course environment.
+
+```typescript
+interface EmployeeVisualState {
+  gridX: number;
+  gridY: number;
+  facingDirection: 'n' | 's' | 'e' | 'w';
+  animation: EmployeeAnimation;
+  equipmentVisible: boolean;
+}
+
+type EmployeeAnimation =
+  | 'idle'
+  | 'walking'
+  | 'mowing'
+  | 'watering'
+  | 'fertilizing'
+  | 'raking_bunker'
+  | 'repairing'
+  | 'on_break';
+```
+
+### Sprite Requirements by Role
+
+| Role | Sprites Needed | Equipment Shown |
+|------|---------------|-----------------|
+| Groundskeeper | Walk, Mow, Water, Rake, Fertilize, Idle, Break | Push mower, rake, spreader |
+| Irrigator | Walk, Water, Adjusting, Idle, Break | Hose, sprinkler tools |
+| Mechanic | Walk, Repair, Carry Tools, Idle, Break | Toolbox, wrenches |
+| Pro Shop Staff | Walk, Idle at Counter | None |
+| Caddy | Walk with bag, Advising, Idle | Golf bag |
+| Manager | Walk, Clipboard, Idle | Clipboard |
+
+### Visual Behavior
+
+**Groundskeeper on duty:**
+1. Walks to assigned area
+2. Scans for work (grass height, moisture, etc.)
+3. Performs visible task (mowing animation, particles fly)
+4. Moves to next task
+5. Takes breaks at break areas
+
+**Visual indicators:**
+- Speech bubbles for alerts (tired, needs supplies)
+- Work trail showing recently maintained areas
+- Equipment glow when actively working
+- Fatigue shown through slower movement
+
+---
+
+## Autonomous Work Behavior
+
+Employees work independently based on their role and assigned area.
+
+### Work Priority System
+
+```typescript
+interface WorkTask {
+  type: EmployeeTask;
+  gridX: number;
+  gridY: number;
+  priority: number;
+  estimatedMinutes: number;
+}
+
+type EmployeeTask =
+  | 'mow_grass'
+  | 'water_dry_area'
+  | 'fertilize_depleted'
+  | 'rake_bunker'
+  | 'repair_divot'
+  | 'equipment_maintenance'
+  | 'patrol'
+  | 'return_to_base';
+
+function findNextTask(
+  employee: Employee,
+  cells: CellState[][],
+  assignedArea: Area | null
+): WorkTask | null {
+  const priorities = getRolePriorities(employee.role);
+
+  for (const taskType of priorities) {
+    const target = findNearestNeedyTile(
+      employee.gridX,
+      employee.gridY,
+      taskType,
+      cells,
+      assignedArea
+    );
+    if (target) {
+      return {
+        type: taskType,
+        gridX: target.x,
+        gridY: target.y,
+        priority: getTaskPriority(taskType, target),
+        estimatedMinutes: getTaskDuration(taskType, employee)
+      };
+    }
+  }
+
+  return { type: 'patrol', ...patrolNextTile(employee, assignedArea) };
+}
+```
+
+### Groundskeeper Work Priorities
+
+Default priority order (configurable):
+
+1. **Critical overgrowth** (grass height > 80)
+2. **Standard mowing** (grass height > 60)
+3. **Water critical** (moisture < 20)
+4. **Standard watering** (moisture < 40)
+5. **Fertilize depleted** (nutrients < 30)
+6. **Rake bunkers** (if bunker maintenance enabled)
+7. **Patrol assigned area**
+
+### Movement and Pathfinding
+
+```typescript
+interface EmployeeMovement {
+  currentPath: GridCoord[];
+  moveSpeed: number; // tiles per minute
+  isMoving: boolean;
+  blockedRetryCount: number;
+}
+
+const EMPLOYEE_MOVE_SPEEDS: Record<EmployeeRole, number> = {
+  groundskeeper: 3.0,  // 3 tiles per minute
+  irrigator: 2.5,
+  mechanic: 2.0,
+  pro_shop_staff: 2.0,
+  manager: 2.5,
+  caddy: 4.0  // Faster for keeping up with golfers
+};
+```
+
+### Work Execution
+
+```typescript
+interface WorkExecution {
+  employee: Employee;
+  task: WorkTask;
+  progress: number;  // 0-100
+  effectsApplied: boolean;
+}
+
+function executeWork(
+  execution: WorkExecution,
+  deltaMinutes: number
+): { execution: WorkExecution; effects: CellEffect[] } {
+  const efficiency = calculateEffectiveEfficiency(execution.employee);
+  const taskDuration = getTaskDuration(execution.task.type, execution.employee);
+  const progressPerMinute = 100 / taskDuration;
+
+  const newProgress = execution.progress + (progressPerMinute * deltaMinutes * efficiency);
+
+  if (newProgress >= 100 && !execution.effectsApplied) {
+    return {
+      execution: { ...execution, progress: 100, effectsApplied: true },
+      effects: getTaskEffects(execution.task)
+    };
+  }
+
+  return {
+    execution: { ...execution, progress: Math.min(100, newProgress) },
+    effects: []
+  };
+}
+```
+
+### Area Assignment
+
+Employees can be assigned to specific zones:
+
+```typescript
+interface CourseArea {
+  id: string;
+  name: string;
+  tiles: GridCoord[];
+  assignedEmployees: string[];
+}
+
+// Example areas:
+// - Front 9 Fairways
+// - Back 9 Fairways
+// - All Greens
+// - Bunkers
+// - Practice Area
+```
+
+### Efficiency Comparison
+
+| Task | Player Time | Novice Employee | Expert Employee |
+|------|------------|-----------------|-----------------|
+| Mow 1 tile | 2 sec | 6 sec | 3 sec |
+| Water 1 tile | 1 sec | 3 sec | 1.5 sec |
+| Fertilize 1 tile | 1 sec | 4 sec | 2 sec |
+| Rake bunker | 5 sec | 15 sec | 8 sec |
+
+---
+
 ## Implementation Priority
 
-### Phase 1: Core Hiring
+### Phase 1: Core Hiring ✅
 1. Employee data structure
 2. Hiring pool generation
 3. Basic hire/fire functionality
@@ -758,6 +964,12 @@ The player progressively shifts from worker to manager to director.
 2. Task prioritization
 3. Autonomous movement
 4. Work action execution
+
+### Phase 2.5: Visual Representation
+1. Employee sprite loading and rendering
+2. Animation state machine
+3. Position sync with work state
+4. Equipment/tool visualization
 
 ### Phase 3: State Management
 1. Fatigue system

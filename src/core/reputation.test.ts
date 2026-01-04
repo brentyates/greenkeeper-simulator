@@ -4,12 +4,16 @@ import {
   WORD_OF_MOUTH_THRESHOLDS,
   MAX_STORED_REVIEWS,
   RECENT_REVIEW_DAYS,
+  TURN_AWAY_PENALTY_PER_GOLFER,
+  MAX_TURN_AWAY_PENALTY,
 
   createInitialReputationState,
   generateReview,
   addReview,
   updateWordOfMouth,
   trackGolferVisit,
+  trackTurnAway,
+  resetMonthlyTurnAways,
   calculateReputationScore,
   refreshRecentReviews,
   getReputationSummary,
@@ -36,6 +40,13 @@ describe('reputation', () => {
       const state = createInitialReputationState();
       expect(state.golfersThisMonth).toBe(0);
       expect(state.wordOfMouthMultiplier).toBe(0.8);
+    });
+
+    it('starts with zero turn-aways', () => {
+      const state = createInitialReputationState();
+      expect(state.turnAwaysThisMonth).toBe(0);
+      expect(state.totalTurnAways).toBe(0);
+      expect(state.turnAwayPenalty).toBe(0);
     });
 
     it('has empty review lists', () => {
@@ -306,6 +317,86 @@ describe('reputation', () => {
 
     it('has appropriate max review storage', () => {
       expect(MAX_STORED_REVIEWS).toBeGreaterThanOrEqual(365);
+    });
+
+    it('has turn-away penalty constants', () => {
+      expect(TURN_AWAY_PENALTY_PER_GOLFER).toBeGreaterThan(0);
+      expect(MAX_TURN_AWAY_PENALTY).toBeLessThanOrEqual(1);
+      expect(MAX_TURN_AWAY_PENALTY).toBeGreaterThan(TURN_AWAY_PENALTY_PER_GOLFER);
+    });
+  });
+
+  describe('trackTurnAway', () => {
+    it('increments turn-away counters', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      expect(state.turnAwaysThisMonth).toBe(1);
+      expect(state.totalTurnAways).toBe(1);
+    });
+
+    it('accumulates turn-aways over multiple calls', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      state = trackTurnAway(state);
+      state = trackTurnAway(state);
+      expect(state.turnAwaysThisMonth).toBe(3);
+      expect(state.totalTurnAways).toBe(3);
+    });
+
+    it('calculates penalty based on monthly turn-aways', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      expect(state.turnAwayPenalty).toBeCloseTo(TURN_AWAY_PENALTY_PER_GOLFER);
+
+      state = trackTurnAway(state);
+      expect(state.turnAwayPenalty).toBeCloseTo(2 * TURN_AWAY_PENALTY_PER_GOLFER);
+    });
+
+    it('caps penalty at maximum', () => {
+      let state = createInitialReputationState();
+      for (let i = 0; i < 50; i++) {
+        state = trackTurnAway(state);
+      }
+      expect(state.turnAwayPenalty).toBe(MAX_TURN_AWAY_PENALTY);
+    });
+
+    it('reduces reputation composite with turn-aways', () => {
+      let state = createInitialReputationState();
+      const initialComposite = state.composite;
+      state = trackTurnAway(state);
+      expect(state.composite).toBeLessThan(initialComposite);
+    });
+  });
+
+  describe('resetMonthlyTurnAways', () => {
+    it('resets monthly counter but keeps total', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      state = trackTurnAway(state);
+      expect(state.turnAwaysThisMonth).toBe(2);
+      expect(state.totalTurnAways).toBe(2);
+
+      state = resetMonthlyTurnAways(state);
+      expect(state.turnAwaysThisMonth).toBe(0);
+      expect(state.totalTurnAways).toBe(2);
+    });
+
+    it('clears penalty after reset', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      expect(state.turnAwayPenalty).toBeGreaterThan(0);
+
+      state = resetMonthlyTurnAways(state);
+      expect(state.turnAwayPenalty).toBe(0);
+    });
+
+    it('restores composite after penalty is cleared', () => {
+      let state = createInitialReputationState();
+      state = trackTurnAway(state);
+      const penalizedComposite = state.composite;
+
+      state = resetMonthlyTurnAways(state);
+      expect(state.composite).toBeGreaterThan(penalizedComposite);
     });
   });
 });

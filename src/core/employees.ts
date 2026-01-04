@@ -348,6 +348,43 @@ export function isEligibleForPromotion(employee: Employee): boolean {
   return nextLevel !== null && employee.experience >= config.experienceToLevel;
 }
 
+export function awardExperience(
+  roster: EmployeeRoster,
+  employeeId: string,
+  amount: number
+): EmployeeRoster {
+  const employee = roster.employees.find(e => e.id === employeeId);
+  if (!employee) return roster;
+
+  const config = EMPLOYEE_CONFIGS[employee.role];
+  let updated = {
+    ...employee,
+    experience: employee.experience + amount,
+  };
+
+  if (updated.experience >= config.experienceToLevel) {
+    const nextLevel = getNextSkillLevel(updated.skillLevel);
+    if (nextLevel) {
+      updated = {
+        ...updated,
+        skillLevel: nextLevel,
+        experience: updated.experience - config.experienceToLevel,
+        hourlyWage: Math.round(config.baseWage * config.wageMultipliers[nextLevel] * 100) / 100,
+        skills: {
+          ...updated.skills,
+          efficiency: Math.min(2.0, updated.skills.efficiency + 0.05),
+          quality: Math.min(2.0, updated.skills.quality + 0.05),
+        },
+      };
+    }
+  }
+
+  return {
+    ...roster,
+    employees: roster.employees.map(e => (e.id === employeeId ? updated : e)),
+  };
+}
+
 export function getManagerBonus(roster: EmployeeRoster): number {
   const managers = getEmployeesByRole(roster, "manager");
   if (managers.length === 0) return 1.0;
