@@ -8,7 +8,7 @@ import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
 import { MarketingState } from './marketing';
 import { CellState } from './terrain';
-import { HiringPool } from './employees';
+import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
 import { WeatherState } from './weather';
@@ -33,7 +33,7 @@ export interface SaveGameState {
   walkOnState: WalkOnState;
   revenueState: RevenueState;
   marketingState: MarketingState;
-  hiringPool: HiringPool;
+  applicationState: ApplicationState;
   scenarioProgress: ScenarioProgress;
   autonomousState: AutonomousEquipmentState;
   weatherState: WeatherState;
@@ -60,7 +60,7 @@ export function createSaveState(
   walkOnState: WalkOnState,
   revenueState: RevenueState,
   marketingState: MarketingState,
-  hiringPool: HiringPool,
+  applicationState: ApplicationState,
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
@@ -84,7 +84,7 @@ export function createSaveState(
     walkOnState,
     revenueState,
     marketingState,
-    hiringPool,
+    applicationState,
     scenarioProgress,
     autonomousState,
     weatherState,

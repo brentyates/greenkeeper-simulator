@@ -47,8 +47,12 @@ import {
   getManagerBonus,
   hireEmployee,
   fireEmployee,
-  generateHiringPool,
-  HiringPool,
+  ApplicationState,
+  createInitialApplicationState,
+  tickApplications,
+  postJobOpening,
+  acceptApplication,
+  getPostingCost,
   Employee,
   awardExperience,
 } from "../core/employees";
@@ -196,7 +200,7 @@ export class BabylonMain {
   private employeeVisualSystem: EmployeeVisualSystem | null = null;
 
   private employeePanel: EmployeePanel | null = null;
-  private hiringPool: HiringPool = { candidates: [], refreshTime: 0 };
+  private applicationState: ApplicationState = createInitialApplicationState();
   private researchPanel: ResearchPanel | null = null;
   private daySummaryPopup: DaySummaryPopup | null = null;
   private teeSheetPanel: TeeSheetPanel | null = null;
@@ -434,12 +438,20 @@ export class BabylonMain {
         if (result) {
           this.employeeRoster = result;
           this.employeeWorkState = syncWorkersWithRoster(this.employeeWorkState, this.employeeRoster.employees);
-          this.hiringPool = {
-            ...this.hiringPool,
-            candidates: this.hiringPool.candidates.filter(c => c.id !== employee.id),
-          };
+
+          // Remove application after hiring
+          const updatedAppState = acceptApplication(this.applicationState, employee.id);
+          if (updatedAppState) {
+            this.applicationState = updatedAppState;
+          }
+
           this.uiManager.showNotification(`Hired ${employee.name} as ${employee.role}`);
           this.employeePanel?.update(this.employeeRoster);
+          this.employeePanel?.updateApplications(
+            this.applicationState,
+            this.prestigeState.tier,
+            this.gameTime + this.gameDay * 24 * 60
+          );
         } else {
           this.uiManager.showNotification("Cannot hire - roster full");
         }
@@ -459,14 +471,49 @@ export class BabylonMain {
       onClose: () => {
         this.employeePanel?.hide();
       },
-      onRefreshPool: () => {
-        this.hiringPool = generateHiringPool(this.gameTime + this.gameDay * 24 * 60, 5);
-        this.employeePanel?.updateHiringPool(this.hiringPool);
+      onPostJobOpening: () => {
+        const cost = getPostingCost(this.prestigeState.tier);
+        if (this.economyState.cash < cost) {
+          this.uiManager.showNotification(`⚠️ Not enough cash! Need $${cost}`, '#ff4444');
+          return;
+        }
+
+        const currentTime = this.gameTime + this.gameDay * 24 * 60;
+        const result = postJobOpening(this.applicationState, currentTime, this.prestigeState.tier);
+
+        if (result) {
+          this.applicationState = result.state;
+          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+          const expenseResult = addExpense(
+            this.economyState,
+            cost,
+            "marketing",
+            "Job Posting",
+            timestamp,
+            false
+          );
+          if (expenseResult) {
+            this.economyState = expenseResult;
+            this.dailyStats.expenses.other += cost;
+          }
+
+          this.uiManager.showNotification(`📢 Job opening posted! Cost: $${cost}`);
+          this.employeePanel?.updateApplications(
+            this.applicationState,
+            this.prestigeState.tier,
+            currentTime
+          );
+        }
       },
     });
 
     this.employeePanel.update(this.employeeRoster);
-    this.hiringPool = generateHiringPool(this.gameTime, 5);
+
+    // Initialize application state based on starting prestige tier
+    this.applicationState = createInitialApplicationState(
+      this.gameTime + this.gameDay * 24 * 60,
+      this.prestigeState.tier
+    );
   }
 
   private setupResearchPanel(): void {
@@ -769,7 +816,7 @@ export class BabylonMain {
       this.walkOnState,
       this.revenueState,
       this.marketingState,
-      this.hiringPool,
+      this.applicationState,
       scenarioProgress,
       this.autonomousState,
       this.weatherState,
@@ -800,7 +847,10 @@ export class BabylonMain {
     this.walkOnState = saved.walkOnState;
     this.revenueState = saved.revenueState;
     this.marketingState = saved.marketingState;
-    this.hiringPool = saved.hiringPool;
+    this.applicationState = saved.applicationState || createInitialApplicationState(
+      this.gameTime + this.gameDay * 24 * 60,
+      this.prestigeState.tier
+    );
 
     if (saved.scenarioProgress && this.scenarioManager) {
       this.scenarioManager.updateProgress(saved.scenarioProgress);
@@ -1528,7 +1578,13 @@ export class BabylonMain {
     if (this.employeePanel?.isVisible()) {
       this.employeePanel.hide();
     } else {
+      const currentTime = this.gameTime + this.gameDay * 24 * 60;
       this.employeePanel?.update(this.employeeRoster);
+      this.employeePanel?.updateApplications(
+        this.applicationState,
+        this.prestigeState.tier,
+        currentTime
+      );
       this.employeePanel?.show();
     }
   }
@@ -2235,6 +2291,14 @@ export class BabylonMain {
     const tickEmployeesResult = tickEmployees(this.employeeRoster, gameMinutes, trainingBonus);
     this.employeeRoster = tickEmployeesResult.roster;
 
+    // Tick job applications based on prestige tier
+    const absoluteTime = this.gameDay * 24 * 60 + this.gameTime;
+    this.applicationState = tickApplications(
+      this.applicationState,
+      absoluteTime,
+      this.prestigeState.tier
+    );
+
     // Tick employee autonomous work
     const cells = this.grassSystem.getAllCells();
     const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
@@ -2847,6 +2911,10 @@ export class BabylonMain {
     else if (lowerKey === 'p' || lowerKey === 'escape') this.handlePause();
     else if (lowerKey === 'm') this.handleMute();
     else if (lowerKey === 't') this.handleEditorToggle();
+    else if (lowerKey === 'h') this.handleEmployeePanel();
+    else if (lowerKey === 'y') this.handleResearchPanel();
+    else if (lowerKey === 'g') this.handleTeeSheetPanel();
+    else if (lowerKey === 'k') this.handleMarketingPanel();
   }
 
   /**
@@ -2869,6 +2937,47 @@ export class BabylonMain {
   /**
    * Get full game state for testing.
    */
+  /**
+   * Toggle employee panel visibility.
+   */
+  public toggleEmployeePanel(): void {
+    this.handleEmployeePanel();
+  }
+
+  /**
+   * Get employee roster state.
+   */
+  public getEmployeeState(): {
+    employees: readonly Employee[];
+    count: number;
+    maxEmployees: number;
+    totalHourlyWages: number;
+  } {
+    return {
+      employees: this.employeeRoster.employees,
+      count: this.employeeRoster.employees.length,
+      maxEmployees: this.employeeRoster.maxEmployees,
+      totalHourlyWages: this.employeeRoster.employees.reduce((sum, e) => sum + e.hourlyWage, 0)
+    };
+  }
+
+  /**
+   * Get job application state.
+   */
+  public getApplicationState(): {
+    applications: readonly Employee[];
+    nextApplicationTime: number;
+    activeJobPostings: number;
+    totalReceived: number;
+  } {
+    return {
+      applications: this.applicationState.applications,
+      nextApplicationTime: this.applicationState.nextApplicationTime,
+      activeJobPostings: this.applicationState.activeJobPostings.length,
+      totalReceived: this.applicationState.totalApplicationsReceived
+    };
+  }
+
   public getFullGameState(): {
     player: { x: number; y: number; isMoving: boolean };
     equipment: ReturnType<BabylonMain['getEquipmentState']>;

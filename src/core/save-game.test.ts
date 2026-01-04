@@ -10,7 +10,7 @@ import {
   listSaves,
 } from './save-game';
 import { createInitialEconomyState } from './economy';
-import { createInitialRoster } from './employees';
+import { createInitialRoster, createInitialApplicationState } from './employees';
 import { createInitialPoolState } from './golfers';
 import { createInitialResearchState } from './research';
 import { createInitialPrestigeState } from './prestige';
@@ -67,7 +67,7 @@ function createMockSaveState(scenarioId = 'test_scenario'): SaveGameState {
     createInitialWalkOnState(),
     createInitialRevenueState(),
     createInitialMarketingState(),
-    { candidates: [], refreshTime: 0 },
+    createInitialApplicationState(),
     createMockScenarioProgress(),
     createInitialAutonomousState(),
     createInitialWeatherState(),
