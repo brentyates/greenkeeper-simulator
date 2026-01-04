@@ -1,4 +1,4 @@
-import { CellState, isWalkable } from './terrain';
+import { CellState, isWalkable, canMoveFromTo } from './terrain';
 import { Employee, EmployeeRole, calculateEffectiveEfficiency } from './employees';
 
 export type EmployeeTask =
@@ -17,6 +17,11 @@ export interface WorkTarget {
   readonly priority: number;
 }
 
+export interface GridPosition {
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface EmployeeWorkState {
   readonly employeeId: string;
   readonly gridX: number;
@@ -26,6 +31,8 @@ export interface EmployeeWorkState {
   readonly targetY: number | null;
   readonly workProgress: number;
   readonly assignedAreaId: string | null;
+  readonly path: readonly GridPosition[];
+  readonly moveProgress: number;
 }
 
 export interface CourseArea {
@@ -134,6 +141,8 @@ export function addWorker(
     targetY: null,
     workProgress: 0,
     assignedAreaId: null,
+    path: [],
+    moveProgress: 0,
   };
 
   return {
@@ -288,31 +297,92 @@ function getTaskNeed(cell: CellState, task: EmployeeTask): number {
   }
 }
 
-function moveToward(
-  worker: EmployeeWorkState,
-  targetX: number,
-  targetY: number,
-  deltaMinutes: number
-): { gridX: number; gridY: number; arrived: boolean } {
-  const dx = targetX - worker.gridX;
-  const dy = targetY - worker.gridY;
-  const distance = Math.abs(dx) + Math.abs(dy);
-
-  if (distance < 0.5) {
-    return { gridX: targetX, gridY: targetY, arrived: true };
+function findPath(
+  cells: CellState[][],
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number
+): GridPosition[] {
+  interface PathNode {
+    x: number;
+    y: number;
+    g: number;
+    h: number;
+    f: number;
+    parent: PathNode | null;
   }
 
-  const moveAmount = EMPLOYEE_MOVE_SPEED * deltaMinutes;
+  const height = cells.length;
+  const width = cells[0]?.length ?? 0;
 
-  if (moveAmount >= distance) {
-    return { gridX: targetX, gridY: targetY, arrived: true };
+  if (startX === endX && startY === endY) return [];
+  if (endX < 0 || endX >= width || endY < 0 || endY >= height) return [];
+
+  const openSet: PathNode[] = [];
+  const closedSet = new Set<string>();
+
+  const heuristic = (x: number, y: number) =>
+    Math.abs(x - endX) + Math.abs(y - endY);
+
+  openSet.push({
+    x: startX,
+    y: startY,
+    g: 0,
+    h: heuristic(startX, startY),
+    f: heuristic(startX, startY),
+    parent: null,
+  });
+
+  while (openSet.length > 0) {
+    openSet.sort((a, b) => a.f - b.f);
+    const current = openSet.shift()!;
+
+    if (current.x === endX && current.y === endY) {
+      const path: GridPosition[] = [];
+      let node: PathNode | null = current;
+      while (node?.parent) {
+        path.unshift({ x: node.x, y: node.y });
+        node = node.parent;
+      }
+      return path;
+    }
+
+    closedSet.add(`${current.x},${current.y}`);
+
+    const neighbors = [
+      { x: current.x, y: current.y - 1 },
+      { x: current.x, y: current.y + 1 },
+      { x: current.x - 1, y: current.y },
+      { x: current.x + 1, y: current.y },
+    ];
+
+    for (const neighbor of neighbors) {
+      if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+      if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+      const fromCell = cells[current.y]?.[current.x];
+      const toCell = cells[neighbor.y]?.[neighbor.x];
+      if (!fromCell || !toCell || !canMoveFromTo(fromCell, toCell)) continue;
+
+      const g = current.g + 1;
+      const h = heuristic(neighbor.x, neighbor.y);
+      const f = g + h;
+
+      const existing = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+      if (existing) {
+        if (g < existing.g) {
+          existing.g = g;
+          existing.f = f;
+          existing.parent = current;
+        }
+      } else {
+        openSet.push({ x: neighbor.x, y: neighbor.y, g, h, f, parent: current });
+      }
+    }
   }
 
-  const ratio = moveAmount / distance;
-  const newX = worker.gridX + dx * ratio;
-  const newY = worker.gridY + dy * ratio;
-
-  return { gridX: newX, gridY: newY, arrived: false };
+  return [];
 }
 
 function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | null {
@@ -343,7 +413,7 @@ export function tickEmployeeWork(
     if (!employee) return worker;
 
     if (employee.status !== 'working') {
-      return { ...worker, currentTask: 'idle' as EmployeeTask };
+      return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], moveProgress: 0 };
     }
 
     if (employee.role !== 'groundskeeper' && employee.role !== 'irrigator') {
@@ -355,75 +425,107 @@ export function tickEmployeeWork(
       : null;
 
     const efficiency = calculateEffectiveEfficiency(employee);
+    const currentX = Math.floor(worker.gridX);
+    const currentY = Math.floor(worker.gridY);
+    const currentCell = cells[currentY]?.[currentX];
 
-    if (worker.currentTask === 'idle' || worker.targetX === null) {
-      const target = findBestWorkTarget(
-        cells,
-        worker.gridX,
-        worker.gridY,
-        employee.role,
-        assignedArea
-      );
+    if (worker.moveProgress > 0 && worker.moveProgress < 1 && worker.path.length > 0) {
+      const moveAmount = EMPLOYEE_MOVE_SPEED * deltaMinutes;
+      const newMoveProgress = Math.min(1, worker.moveProgress + moveAmount);
 
-      if (target) {
+      if (newMoveProgress >= 1) {
+        const nextTile = worker.path[0];
         return {
           ...worker,
-          currentTask: target.task,
-          targetX: target.gridX,
-          targetY: target.gridY,
+          gridX: nextTile.x,
+          gridY: nextTile.y,
+          path: worker.path.slice(1),
+          moveProgress: 0,
+        };
+      }
+
+      return { ...worker, moveProgress: newMoveProgress };
+    }
+
+    if (worker.workProgress > 0 && worker.workProgress < 100) {
+      const taskDuration = TASK_DURATIONS[worker.currentTask];
+      if (taskDuration === 0) {
+        return { ...worker, currentTask: 'idle' as EmployeeTask, workProgress: 0, path: [], targetX: null, targetY: null };
+      }
+
+      const progressPerMinute = 100 / taskDuration;
+      const newProgress = worker.workProgress + progressPerMinute * deltaMinutes * efficiency;
+
+      if (newProgress >= 100) {
+        const effectType = getWorkEffect(worker.currentTask);
+        if (effectType) {
+          effects.push({
+            gridX: currentX,
+            gridY: currentY,
+            type: effectType,
+            efficiency,
+          });
+        }
+        completions.push({
+          employeeId: worker.employeeId,
+          task: worker.currentTask,
+          gridX: currentX,
+          gridY: currentY,
+        });
+        tasksCompleted++;
+
+        return {
+          ...worker,
           workProgress: 0,
         };
       }
 
-      return { ...worker, currentTask: 'patrol' as EmployeeTask };
+      return { ...worker, workProgress: newProgress };
     }
 
-    const distanceToTarget = Math.abs(worker.gridX - worker.targetX!) + Math.abs(worker.gridY - worker.targetY!);
-    if (distanceToTarget >= 0.5) {
-      const movement = moveToward(worker, worker.targetX!, worker.targetY!, deltaMinutes);
-      return {
-        ...worker,
-        gridX: movement.gridX,
-        gridY: movement.gridY,
-      };
-    }
-
-    const taskDuration = TASK_DURATIONS[worker.currentTask];
-    if (taskDuration === 0) {
-      return { ...worker, currentTask: 'idle' as EmployeeTask, targetX: null, targetY: null };
-    }
-
-    const progressPerMinute = 100 / taskDuration;
-    const newProgress = worker.workProgress + progressPerMinute * deltaMinutes * efficiency;
-
-    if (newProgress >= 100) {
-      const effectType = getWorkEffect(worker.currentTask);
-      if (effectType) {
-        effects.push({
-          gridX: worker.targetX!,
-          gridY: worker.targetY!,
-          type: effectType,
-          efficiency,
-        });
+    if (currentCell) {
+      const priorities = getTaskPriorityForRole(employee.role);
+      for (const task of priorities) {
+        const need = getTaskNeed(currentCell, task);
+        if (need > 0) {
+          return {
+            ...worker,
+            currentTask: task,
+            targetX: currentX,
+            targetY: currentY,
+            workProgress: 0.01,
+          };
+        }
       }
-      completions.push({
-        employeeId: worker.employeeId,
-        task: worker.currentTask,
-        gridX: worker.targetX!,
-        gridY: worker.targetY!,
-      });
-      tasksCompleted++;
-
-      return {
-        ...worker,
-        currentTask: 'idle' as EmployeeTask,
-        targetX: null,
-        targetY: null,
-        workProgress: 0,
-      };
     }
 
-    return { ...worker, workProgress: newProgress };
+    if (worker.path.length > 0) {
+      return { ...worker, moveProgress: 0.01, currentTask: 'patrol' as EmployeeTask };
+    }
+
+    const target = findBestWorkTarget(
+      cells,
+      currentX,
+      currentY,
+      employee.role,
+      assignedArea
+    );
+
+    if (target) {
+      const path = findPath(cells, currentX, currentY, target.gridX, target.gridY);
+      if (path.length > 0) {
+        return {
+          ...worker,
+          currentTask: 'patrol' as EmployeeTask,
+          targetX: target.gridX,
+          targetY: target.gridY,
+          path,
+          moveProgress: 0.01,
+        };
+      }
+    }
+
+    return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], targetX: null, targetY: null };
   });
 
   return {
@@ -465,11 +567,14 @@ export function getActiveWorkerCount(state: EmployeeWorkSystemState): number {
 
 export function getWorkerPositions(
   state: EmployeeWorkSystemState
-): readonly { employeeId: string; gridX: number; gridY: number; task: EmployeeTask }[] {
+): readonly { employeeId: string; gridX: number; gridY: number; task: EmployeeTask; nextX: number | null; nextY: number | null; moveProgress: number }[] {
   return state.workers.map(w => ({
     employeeId: w.employeeId,
     gridX: w.gridX,
     gridY: w.gridY,
     task: w.currentTask,
+    nextX: w.path.length > 0 ? w.path[0].x : null,
+    nextY: w.path.length > 0 ? w.path[0].y : null,
+    moveProgress: w.moveProgress,
   }));
 }

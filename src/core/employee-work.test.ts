@@ -210,7 +210,7 @@ describe('employee-work', () => {
       expect(worker.targetY).not.toBeNull();
     });
 
-    it('moves worker toward target', () => {
+    it('moves worker toward target using path', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
@@ -220,9 +220,11 @@ describe('employee-work', () => {
         ...state,
         workers: state.workers.map(w => ({
           ...w,
-          currentTask: 'mow_grass' as const,
+          currentTask: 'patrol' as const,
           targetX: 10,
           targetY: 0,
+          path: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+          moveProgress: 0.01,
         })),
       };
 
@@ -230,7 +232,8 @@ describe('employee-work', () => {
       const result = tickEmployeeWork(state, [workingEmployee], cells, 1);
 
       const worker = result.state.workers[0];
-      expect(worker.gridX).toBeGreaterThan(0);
+      expect(worker.gridX).toBe(1);
+      expect(worker.path.length).toBe(1);
     });
 
     it('completes work and generates effect', () => {
@@ -395,8 +398,8 @@ describe('employee-work', () => {
       const result = tickEmployeeWork(state, [workingEmployee], cells, 0.1);
       const worker = result.state.workers[0];
 
-      expect(worker.currentTask).toBe('mow_grass');
       expect(worker.targetX).toBe(2);
+      expect(worker.path.length).toBeGreaterThan(0);
     });
   });
 

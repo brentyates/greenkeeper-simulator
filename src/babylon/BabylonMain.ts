@@ -2323,7 +2323,7 @@ export class BabylonMain {
     // Update employee visual positions
     const workerPositions = getWorkerPositions(this.employeeWorkState);
     if (this.employeeVisualSystem) {
-      this.employeeVisualSystem.update(workerPositions, deltaMs);
+      this.employeeVisualSystem.update(workerPositions);
     }
 
     // Update minimap worker dots
