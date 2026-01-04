@@ -401,6 +401,34 @@ describe('employee-work', () => {
       expect(worker.targetX).toBe(2);
       expect(worker.path.length).toBeGreaterThan(0);
     });
+
+    it('prevents multiple workers from claiming the same tile when at same location', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee1 = createEmployee('groundskeeper', 'novice', 0);
+      const employee2 = createEmployee('groundskeeper', 'novice', 0);
+      const working1 = { ...employee1, status: 'working' as const };
+      const working2 = { ...employee2, status: 'working' as const };
+      state = addWorker(state, working1);
+      state = addWorker(state, working2);
+
+      const cells = createTestGrid(10, 10, (x, y) => {
+        if (x === 0 && y === 0) {
+          return createTestCell('fairway', 100, 100, 100, 90);
+        }
+        if (x === 1 && y === 0) {
+          return createTestCell('fairway', 100, 100, 100, 85);
+        }
+        return createTestCell('fairway', 100, 100, 100, 0);
+      });
+
+      const result = tickEmployeeWork(state, [working1, working2], cells, 0.1);
+      const worker1 = result.state.workers[0];
+      const worker2 = result.state.workers[1];
+
+      const target1 = `${worker1.targetX},${worker1.targetY}`;
+      const target2 = `${worker2.targetX},${worker2.targetY}`;
+      expect(target1).not.toBe(target2);
+    });
   });
 
   describe('constants', () => {

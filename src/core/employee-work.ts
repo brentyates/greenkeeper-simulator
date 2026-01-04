@@ -467,7 +467,8 @@ export function tickEmployeeWork(
       return { ...worker, workProgress: newProgress };
     }
 
-    if (currentCell) {
+    const workerOwnsClaim = worker.targetX === currentX && worker.targetY === currentY;
+    if (currentCell && (workerOwnsClaim || !claimedTargets.has(`${currentX},${currentY}`))) {
       const priorities = getTaskPriorityForRole(employee.role);
       for (const task of priorities) {
         const need = getTaskNeed(currentCell, task);

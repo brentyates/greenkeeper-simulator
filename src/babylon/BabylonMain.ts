@@ -4,6 +4,12 @@ import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
+import {
+  EntityVisualState,
+  PLAYER_APPEARANCE,
+  createEntityMesh,
+  updateEntityVisualPosition,
+} from "./systems/EntityVisualSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { EmployeePanel } from "./ui/EmployeePanel";
@@ -60,7 +66,6 @@ import {
   createPlayerEntity,
   setEntityPath,
   teleportEntity,
-  MOVE_DURATION_MS,
 } from "../core/movable-entity";
 import {
   GolferPoolState,
@@ -179,11 +184,8 @@ export class BabylonMain {
   private overlayAutoSwitched: boolean = false;
 
   private player: PlayerEntity = createPlayerEntity('player', 25, 19);
-  private playerMesh: Mesh | null = null;
+  private playerVisual: EntityVisualState | null = null;
   private cameraFollowPlayer: boolean = true;
-  private visualMoveProgress: number = 0;
-  private moveStartWorldPos: Vector3 | null = null;
-  private moveEndWorldPos: Vector3 | null = null;
 
   private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
@@ -1016,69 +1018,13 @@ export class BabylonMain {
 
   private createPlayer(): void {
     const scene = this.babylonEngine.getScene();
-
-    this.playerMesh = MeshBuilder.CreateBox(
-      "playerContainer",
-      { size: 0.01 },
-      scene
+    this.playerVisual = createEntityMesh(
+      scene,
+      "player",
+      PLAYER_APPEARANCE,
+      this.player.gridX,
+      this.player.gridY
     );
-    this.playerMesh.isVisible = false;
-
-    const shadow = MeshBuilder.CreateDisc(
-      "shadow",
-      { radius: 0.2, tessellation: 16 },
-      scene
-    );
-    shadow.rotation.x = Math.PI / 2;
-    shadow.position.y = 0.01;
-    const shadowMat = new StandardMaterial("shadowMat", scene);
-    shadowMat.diffuseColor = new Color3(0, 0, 0);
-    shadowMat.alpha = 0.3;
-    shadowMat.disableLighting = true;
-    shadow.material = shadowMat;
-    shadow.parent = this.playerMesh;
-
-    const body = MeshBuilder.CreateCylinder(
-      "body",
-      { height: 0.4, diameterTop: 0.16, diameterBottom: 0.2 },
-      scene
-    );
-    body.position.y = 0.2;
-    const bodyMat = new StandardMaterial("bodyMat", scene);
-    bodyMat.diffuseColor = new Color3(0.11, 0.48, 0.24);
-    bodyMat.emissiveColor = new Color3(0.06, 0.24, 0.12);
-    body.material = bodyMat;
-    body.parent = this.playerMesh;
-
-    const head = MeshBuilder.CreateSphere("head", { diameter: 0.2 }, scene);
-    head.position.y = 0.5;
-    const headMat = new StandardMaterial("headMat", scene);
-    headMat.diffuseColor = new Color3(0.94, 0.82, 0.69);
-    headMat.emissiveColor = new Color3(0.47, 0.41, 0.35);
-    head.material = headMat;
-    head.parent = this.playerMesh;
-
-    const hat = MeshBuilder.CreateCylinder(
-      "hat",
-      { height: 0.1, diameterTop: 0.16, diameterBottom: 0.24 },
-      scene
-    );
-    hat.position.y = 0.65;
-    const hatMat = new StandardMaterial("hatMat", scene);
-    hatMat.diffuseColor = new Color3(0.9, 0.9, 0.85);
-    hatMat.emissiveColor = new Color3(0.45, 0.45, 0.42);
-    hat.material = hatMat;
-    hat.parent = this.playerMesh;
-
-    const hatBrim = MeshBuilder.CreateDisc(
-      "hatBrim",
-      { radius: 0.16, tessellation: 16 },
-      scene
-    );
-    hatBrim.rotation.x = Math.PI / 2;
-    hatBrim.position.y = 0.6;
-    hatBrim.material = hatMat;
-    hatBrim.parent = this.playerMesh;
   }
 
   public teleport(x: number, y: number): void {
@@ -1089,19 +1035,24 @@ export class BabylonMain {
     }
 
     this.player = teleportEntity(this.player, x, y);
-    this.visualMoveProgress = 0;
-    this.moveStartWorldPos = null;
-    this.moveEndWorldPos = null;
+
+    if (this.playerVisual) {
+      this.playerVisual.lastGridX = x;
+      this.playerVisual.lastGridY = y;
+      this.playerVisual.targetGridX = x;
+      this.playerVisual.targetGridY = y;
+      this.playerVisual.visualProgress = 1;
+    }
 
     this.updatePlayerPosition();
     this.uiManager.showNotification(`Teleported to (${x}, ${y})`);
   }
 
   private updatePlayerPosition(): void {
-    if (!this.playerMesh) return;
+    if (!this.playerVisual) return;
 
     const worldPos = this.grassSystem.gridToWorld(this.player.gridX, this.player.gridY);
-    this.playerMesh.position = worldPos.clone();
+    this.playerVisual.container.position = worldPos.clone();
 
     if (this.cameraFollowPlayer) {
       this.babylonEngine.setCameraTarget(worldPos);
@@ -1109,37 +1060,31 @@ export class BabylonMain {
   }
 
   private isPlayerMoving(): boolean {
-    return this.moveStartWorldPos !== null && this.moveEndWorldPos !== null;
+    return this.playerVisual !== null && this.playerVisual.visualProgress < 1;
   }
 
   private updateMovement(deltaMs: number): void {
-    if (!this.isPlayerMoving() || !this.playerMesh) {
-      if (!this.isPlayerMoving()) {
-        this.checkContinuousMovement();
-      }
-      return;
-    }
+    if (!this.playerVisual) return;
 
-    this.visualMoveProgress += deltaMs;
-    const t = Math.min(1, this.visualMoveProgress / MOVE_DURATION_MS);
-    const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const wasMoving = this.isPlayerMoving();
 
-    const x =
-      this.moveStartWorldPos!.x + (this.moveEndWorldPos!.x - this.moveStartWorldPos!.x) * easeT;
-    const y =
-      this.moveStartWorldPos!.y + (this.moveEndWorldPos!.y - this.moveStartWorldPos!.y) * easeT;
-    const z =
-      this.moveStartWorldPos!.z + (this.moveEndWorldPos!.z - this.moveStartWorldPos!.z) * easeT;
-
-    this.playerMesh.position = new Vector3(x, y, z);
+    updateEntityVisualPosition(
+      this.playerVisual,
+      this.player.gridX,
+      this.player.gridY,
+      null,
+      null,
+      deltaMs,
+      this.grassSystem
+    );
 
     if (this.cameraFollowPlayer) {
-      this.babylonEngine.setCameraTarget(new Vector3(x, y, z));
+      this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
     }
 
-    if (t >= 1) {
-      this.moveStartWorldPos = null;
-      this.moveEndWorldPos = null;
+    if (wasMoving && !this.isPlayerMoving()) {
+      this.checkContinuousMovement();
+    } else if (!wasMoving) {
       this.checkContinuousMovement();
     }
   }
@@ -1233,13 +1178,6 @@ export class BabylonMain {
   }
 
   private startMoveTo(newX: number, newY: number): void {
-    this.moveStartWorldPos = this.grassSystem.gridToWorld(
-      this.player.gridX,
-      this.player.gridY
-    );
-    this.moveEndWorldPos = this.grassSystem.gridToWorld(newX, newY);
-    this.visualMoveProgress = 0;
-
     this.player = { ...this.player, gridX: newX, gridY: newY };
 
     if (this.equipmentManager.isActive()) {
@@ -1834,8 +1772,8 @@ export class BabylonMain {
 
       this.updateMovement(deltaMs);
 
-      if (this.playerMesh) {
-        this.equipmentManager.update(deltaMs, this.playerMesh.position);
+      if (this.playerVisual) {
+        this.equipmentManager.update(deltaMs, this.playerVisual.container.position);
       }
 
       this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;

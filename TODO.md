@@ -60,7 +60,7 @@ npm run build && firebase deploy --only hosting
 
 The core logic modules are complete and tested. This TODO covers wiring them into `BabylonMain` and creating the UI layers.
 
-### Core Logic Summary (1668 tests passing)
+### Core Logic Summary (1688 tests passing)
 
 | Module | File | Tests | Description |
 |--------|------|-------|-------------|
@@ -224,13 +224,14 @@ Employees should be visible on the course while working. This creates a living, 
 - [x] Employee-specific: currentTask, targetX/Y, workProgress, assignedAreaId (EmployeeEntity)
 - [x] Golfer-specific: currentHole, satisfaction, isWalking (GolferEntity)
 - [x] Benefits: shared movement types, consistent interpolation, type guards for entity discrimination
-- [x] Fixed employees racing to same work areas via claimedTargets tracking
+- [x] Fixed employees racing to same work areas via claimedTargets tracking (includes same-tile check)
 - [x] Fixed visual timing: both player and employees use 150ms real-time interpolation
 - [x] Fixed MOVE_SPEED: changed from 12 to 3 tiles/min per spec
 
-#### Visual System Unification (Future)
-- [ ] Create shared EntityVisualSystem for rendering any MovableEntity
-- [ ] Move player mesh creation from BabylonMain to shared system
+#### Visual System Unification ✅
+- [x] Create shared EntityVisualSystem for rendering any MovableEntity (src/babylon/systems/EntityVisualSystem.ts)
+- [x] Move player mesh creation from BabylonMain to shared system (uses createEntityMesh with PLAYER_APPEARANCE)
+- [x] Both player and employees use updateEntityVisualPosition for consistent 150ms interpolation
 - [ ] Unify equipment rendering between player and employees
 - [ ] Add camera following as a flag on the rendered entity
 

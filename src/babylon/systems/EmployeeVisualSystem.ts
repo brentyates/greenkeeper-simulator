@@ -4,9 +4,15 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { gridTo3D } from "../engine/BabylonEngine";
 import { EmployeeTask } from "../../core/employee-work";
-import { MOVE_DURATION_MS } from "../../core/movable-entity";
+import {
+  EntityVisualState,
+  ElevationProvider,
+  EMPLOYEE_APPEARANCE,
+  createEntityMesh,
+  updateEntityVisualPosition,
+  disposeEntityMesh,
+} from "./EntityVisualSystem";
 
 export interface EmployeePosition {
   readonly employeeId: string;
@@ -18,22 +24,11 @@ export interface EmployeePosition {
   readonly moveProgress: number;
 }
 
-export interface ElevationProvider {
-  getElevationAt(gridX: number, gridY: number, defaultValue?: number): number;
-}
+export type { ElevationProvider } from "./EntityVisualSystem";
 
-interface WorkerMeshGroup {
-  container: Mesh;
-  body: Mesh;
-  head: Mesh;
-  hat: Mesh;
+interface WorkerMeshGroup extends EntityVisualState {
   equipment: Mesh | null;
   currentTask: EmployeeTask;
-  lastGridX: number;
-  lastGridY: number;
-  targetGridX: number;
-  targetGridY: number;
-  visualProgress: number;
 }
 
 const TASK_COLORS: Record<EmployeeTask, { body: Color3; equipment: Color3 | null }> = {
@@ -50,42 +45,26 @@ export class EmployeeVisualSystem {
   private scene: Scene;
   private elevationProvider: ElevationProvider;
   private workerMeshes: Map<string, WorkerMeshGroup> = new Map();
-  private materials: Map<string, StandardMaterial> = new Map();
+  private taskMaterials: Map<string, StandardMaterial> = new Map();
 
   constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
     this.elevationProvider = elevationProvider;
-    this.createMaterials();
+    this.createTaskMaterials();
   }
 
-  private createMaterials(): void {
-    const skinMat = new StandardMaterial("workerSkinMat", this.scene);
-    skinMat.diffuseColor = new Color3(0.85, 0.7, 0.55);
-    skinMat.emissiveColor = new Color3(0.42, 0.35, 0.27);
-    this.materials.set("skin", skinMat);
-
-    const hatMat = new StandardMaterial("workerHatMat", this.scene);
-    hatMat.diffuseColor = new Color3(0.7, 0.5, 0.2);
-    hatMat.emissiveColor = new Color3(0.35, 0.25, 0.1);
-    this.materials.set("hat", hatMat);
-
-    const shadowMat = new StandardMaterial("workerShadowMat", this.scene);
-    shadowMat.diffuseColor = new Color3(0, 0, 0);
-    shadowMat.alpha = 0.25;
-    shadowMat.disableLighting = true;
-    this.materials.set("shadow", shadowMat);
-
+  private createTaskMaterials(): void {
     for (const [task, colors] of Object.entries(TASK_COLORS)) {
       const bodyMat = new StandardMaterial(`workerBody_${task}`, this.scene);
       bodyMat.diffuseColor = colors.body;
       bodyMat.emissiveColor = colors.body.scale(0.5);
-      this.materials.set(`body_${task}`, bodyMat);
+      this.taskMaterials.set(`body_${task}`, bodyMat);
 
       if (colors.equipment) {
         const equipMat = new StandardMaterial(`workerEquip_${task}`, this.scene);
         equipMat.diffuseColor = colors.equipment;
         equipMat.emissiveColor = colors.equipment.scale(0.4);
-        this.materials.set(`equip_${task}`, equipMat);
+        this.taskMaterials.set(`equip_${task}`, equipMat);
       }
     }
   }
@@ -108,116 +87,40 @@ export class EmployeeVisualSystem {
         this.workerMeshes.set(pos.employeeId, group);
       }
 
-      this.updateWorkerPosition(group, pos.gridX, pos.gridY, pos.nextX, pos.nextY, deltaMs);
+      updateEntityVisualPosition(
+        group,
+        pos.gridX,
+        pos.gridY,
+        pos.nextX,
+        pos.nextY,
+        deltaMs,
+        this.elevationProvider
+      );
       this.updateWorkerTask(group, pos.task);
     }
   }
 
   private createWorkerMesh(employeeId: string, startX: number, startY: number): WorkerMeshGroup {
-    const container = MeshBuilder.CreateBox(
-      `worker_${employeeId}`,
-      { size: 0.01 },
-      this.scene
+    const baseState = createEntityMesh(
+      this.scene,
+      employeeId,
+      EMPLOYEE_APPEARANCE,
+      startX,
+      startY
     );
-    container.isVisible = false;
-
-    const shadow = MeshBuilder.CreateDisc(
-      `worker_shadow_${employeeId}`,
-      { radius: 0.15, tessellation: 12 },
-      this.scene
-    );
-    shadow.rotation.x = Math.PI / 2;
-    shadow.position.y = 0.01;
-    shadow.material = this.materials.get("shadow")!;
-    shadow.parent = container;
-
-    const body = MeshBuilder.CreateCylinder(
-      `worker_body_${employeeId}`,
-      { height: 0.32, diameterTop: 0.12, diameterBottom: 0.16 },
-      this.scene
-    );
-    body.position.y = 0.16;
-    body.material = this.materials.get("body_idle")!;
-    body.parent = container;
-
-    const head = MeshBuilder.CreateSphere(
-      `worker_head_${employeeId}`,
-      { diameter: 0.16 },
-      this.scene
-    );
-    head.position.y = 0.4;
-    head.material = this.materials.get("skin")!;
-    head.parent = container;
-
-    const hat = MeshBuilder.CreateCylinder(
-      `worker_hat_${employeeId}`,
-      { height: 0.08, diameterTop: 0.12, diameterBottom: 0.2 },
-      this.scene
-    );
-    hat.position.y = 0.52;
-    hat.material = this.materials.get("hat")!;
-    hat.parent = container;
 
     return {
-      container,
-      body,
-      head,
-      hat,
+      ...baseState,
       equipment: null,
       currentTask: "idle",
-      lastGridX: startX,
-      lastGridY: startY,
-      targetGridX: startX,
-      targetGridY: startY,
-      visualProgress: 1,
     };
-  }
-
-  private updateWorkerPosition(
-    group: WorkerMeshGroup,
-    gridX: number,
-    gridY: number,
-    nextX: number | null,
-    nextY: number | null,
-    deltaMs: number
-  ): void {
-    const isMoving = nextX !== null && nextY !== null;
-    const targetX = isMoving ? nextX : gridX;
-    const targetY = isMoving ? nextY : gridY;
-
-    if (targetX !== group.targetGridX || targetY !== group.targetGridY) {
-      group.lastGridX = group.targetGridX;
-      group.lastGridY = group.targetGridY;
-      group.targetGridX = targetX;
-      group.targetGridY = targetY;
-      group.visualProgress = 0;
-    }
-
-    if (group.visualProgress < 1) {
-      group.visualProgress = Math.min(1, group.visualProgress + deltaMs / MOVE_DURATION_MS);
-    }
-
-    const startElevation = this.elevationProvider.getElevationAt(group.lastGridX, group.lastGridY, 0);
-    const startPos = gridTo3D(group.lastGridX + 0.5, group.lastGridY + 0.5, startElevation);
-
-    const endElevation = this.elevationProvider.getElevationAt(group.targetGridX, group.targetGridY, 0);
-    const endPos = gridTo3D(group.targetGridX + 0.5, group.targetGridY + 0.5, endElevation);
-
-    const t = group.visualProgress;
-    const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-    const x = startPos.x + (endPos.x - startPos.x) * easeT;
-    const y = startPos.y + (endPos.y - startPos.y) * easeT;
-    const z = startPos.z + (endPos.z - startPos.z) * easeT;
-
-    group.container.position = new Vector3(x, y, z);
   }
 
   private updateWorkerTask(group: WorkerMeshGroup, task: EmployeeTask): void {
     if (group.currentTask === task) return;
 
     group.currentTask = task;
-    const bodyMat = this.materials.get(`body_${task}`);
+    const bodyMat = this.taskMaterials.get(`body_${task}`);
     if (bodyMat) {
       group.body.material = bodyMat;
     }
@@ -234,7 +137,7 @@ export class EmployeeVisualSystem {
   }
 
   private createEquipmentMesh(parent: Mesh, task: EmployeeTask): Mesh {
-    const equipMat = this.materials.get(`equip_${task}`);
+    const equipMat = this.taskMaterials.get(`equip_${task}`);
     let equipment: Mesh;
 
     switch (task) {
@@ -292,7 +195,7 @@ export class EmployeeVisualSystem {
     if (group.equipment) {
       group.equipment.dispose();
     }
-    group.container.dispose();
+    disposeEntityMesh(group);
   }
 
   public getWorkerCount(): number {
@@ -305,9 +208,9 @@ export class EmployeeVisualSystem {
     }
     this.workerMeshes.clear();
 
-    for (const mat of this.materials.values()) {
+    for (const mat of this.taskMaterials.values()) {
       mat.dispose();
     }
-    this.materials.clear();
+    this.taskMaterials.clear();
   }
 }
