@@ -819,6 +819,7 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [ ] E2E test: Complete tutorial scenario
 - [ ] E2E test: Fail scenario by running out of time
 - [ ] E2E test: Fail scenario by going bankrupt
+- [x] E2E test: Management panels open with keyboard shortcuts (tests/management-panels.spec.ts)
 - [ ] E2E test: Hire and fire employees
 - [ ] E2E test: Complete a research item
 - [ ] E2E test: Progress persistence across sessions
