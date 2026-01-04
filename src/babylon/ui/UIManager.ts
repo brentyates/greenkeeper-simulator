@@ -811,7 +811,7 @@ export class UIManager {
   private createControlsHelp(): void {
     const panel = new Rectangle('helpPanel');
     panel.width = '160px';
-    panel.height = '155px';
+    panel.height = '170px';
     panel.cornerRadius = 5;
     panel.color = '#3a5a4a';
     panel.thickness = 1;
@@ -835,6 +835,7 @@ export class UIManager {
       'H: Employees | Y: Research',
       'G: TeeSheet | K: Marketing',
       'B: Equipment | U: Amenities',
+      'O: Walk-On Queue',
     ];
 
     for (const line of lines) {
