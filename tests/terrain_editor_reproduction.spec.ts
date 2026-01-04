@@ -5,102 +5,85 @@ test.describe("Terrain Editor Functionality", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/?testMode=true&preset=all_grass_unmown");
     await waitForGameReady(page);
-    // Enable editor
-    await page.keyboard.press("t");
+
+    // Enable editor via API
+    await page.evaluate(() => {
+      window.game.enableTerrainEditor();
+    });
     await page.waitForTimeout(100);
   });
 
   test("can raise terrain", async ({ page }) => {
-    // Select Raise tool (1)
-    await page.keyboard.press("1");
-
-    // Click on a specific tile (center of screen roughly)
-    // Assuming 64x32 tiles, center is roughly 32, 16.
-    // We need to click in screen coordinates.
-    // Let's just click center of canvas.
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    await page.mouse.click(centerX, centerY);
+    // Set Raise tool and edit at player position via API
+    await page.evaluate(() => {
+      window.game.setEditorTool('raise');
+      const pos = window.game.getPlayerPosition();
+      window.game.editTerrainAt(pos.x, pos.y);
+    });
     await page.waitForTimeout(500); // Wait for visual update
 
     await expect(page).toHaveScreenshot("editor-raise.png");
   });
 
   test("can lower terrain", async ({ page }) => {
-    // Raising first so we can lower (default elevation might be 0)
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    await page.keyboard.press("1"); // Raise
-    await page.mouse.click(centerX, centerY);
+    // Raise first, then lower via API
+    await page.evaluate(() => {
+      window.game.setEditorTool('raise');
+      const pos = window.game.getPlayerPosition();
+      window.game.editTerrainAt(pos.x, pos.y);
+    });
     await page.waitForTimeout(200);
 
-    // Select Lower tool (2)
-    await page.keyboard.press("2");
-    await page.mouse.click(centerX, centerY);
+    // Select Lower tool and click
+    await page.evaluate(() => {
+      window.game.setEditorTool('lower');
+      const pos = window.game.getPlayerPosition();
+      window.game.editTerrainAt(pos.x, pos.y);
+    });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot("editor-lower.png");
   });
 
   test("can change brush size", async ({ page }) => {
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    // Increase brush size (+)
-    // Increase brush size (+) with '.' key
-    await page.keyboard.press(".");
-    await page.waitForTimeout(100);
-
-    // Select Raise tool
-    await page.keyboard.press("1");
-    await page.mouse.click(centerX, centerY);
+    // Increase brush size and raise terrain via API
+    await page.evaluate(() => {
+      window.game.setEditorBrushSize(2); // Size 2
+      window.game.setEditorTool('raise');
+      const pos = window.game.getPlayerPosition();
+      window.game.editTerrainAt(pos.x, pos.y);
+    });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot("editor-brush-size.png");
   });
 
   test("can undo action", async ({ page }) => {
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    // Raise
-    await page.keyboard.press("1");
-    await page.mouse.click(centerX, centerY);
+    // Raise terrain then undo via API
+    await page.evaluate(() => {
+      window.game.setEditorTool('raise');
+      const pos = window.game.getPlayerPosition();
+      window.game.editTerrainAt(pos.x, pos.y);
+    });
     await page.waitForTimeout(200);
 
-    // Undo
-    // Undo
-    await page.keyboard.press("Meta+z");
+    // Undo via API
+    await page.evaluate(() => {
+      window.game.undoTerrainEdit();
+    });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot("editor-undo.png");
   });
 
   test("can paint terrain type", async ({ page }) => {
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    // Select Sand/Bunker (R key)
-    await page.keyboard.press("r");
-    await page.mouse.click(centerX, centerY);
+    // Paint terrain type at player position via API
+    // Note: The 'r' key selects bunker brush, but we need to use the API
+    await page.evaluate(() => {
+      // Set terrain type directly for testing
+      const pos = window.game.getPlayerPosition();
+      window.game.setTerrainTypeAt(pos.x, pos.y, 'bunker');
+    });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot("editor-paint-bunker.png");

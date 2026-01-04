@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { waitForGameReady, waitForPlayerIdle } from './utils/test-helpers';
+import { waitForGameReady } from './utils/test-helpers';
 
 test.describe('Mowing Functionality', () => {
   test('mowing changes grass state', async ({ page }) => {
@@ -9,19 +9,21 @@ test.describe('Mowing Functionality', () => {
 
     await expect(page).toHaveScreenshot('mowing-before.png');
 
-    await page.keyboard.press('1');
-    await page.waitForTimeout(100);
+    // Use public API instead of keyboard
+    await page.evaluate(() => {
+      window.game.selectEquipment(1);  // Select mower
+      window.game.toggleEquipment(true);  // Turn on
+      window.game.movePlayer('right');
+      window.game.movePlayer('right');
+      window.game.movePlayer('right');
+    });
 
-    await page.keyboard.down('Space');
+    // Wait for movements to complete
+    await page.evaluate(() => window.game.waitForPlayerIdle());
 
-    await page.keyboard.press('ArrowRight');
-    await waitForPlayerIdle(page);
-    await page.keyboard.press('ArrowRight');
-    await waitForPlayerIdle(page);
-    await page.keyboard.press('ArrowRight');
-    await waitForPlayerIdle(page);
-
-    await page.keyboard.up('Space');
+    await page.evaluate(() => {
+      window.game.toggleEquipment(false);  // Turn off
+    });
     await page.waitForTimeout(100);
 
     await expect(page).toHaveScreenshot('mowing-after.png');

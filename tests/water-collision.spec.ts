@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { waitForGameReady, waitForPlayerIdle, pressKey } from './utils/test-helpers';
+import { waitForGameReady } from './utils/test-helpers';
 
 test.describe('Water Tile Collision', () => {
   test('player cannot walk onto water tiles', async ({ page }) => {
@@ -9,10 +9,13 @@ test.describe('Water Tile Collision', () => {
 
     await expect(page).toHaveScreenshot('water-collision-initial.png');
 
-    for (let i = 0; i < 5; i++) {
-      await pressKey(page, 'ArrowLeft');
-      await waitForPlayerIdle(page);
-    }
+    // Use public API for movement
+    await page.evaluate(() => {
+      for (let i = 0; i < 5; i++) {
+        window.game.movePlayer('left');
+      }
+    });
+    await page.evaluate(() => window.game.waitForPlayerIdle());
 
     await expect(page).toHaveScreenshot('water-collision-after-left.png');
   });
@@ -24,14 +27,16 @@ test.describe('Water Tile Collision', () => {
 
     await expect(page).toHaveScreenshot('water-collision-initial.png');
 
-    for (let i = 0; i < 5; i++) {
-      await pressKey(page, 'ArrowRight');
-      await waitForPlayerIdle(page);
-    }
-    for (let i = 0; i < 5; i++) {
-      await pressKey(page, 'ArrowDown');
-      await waitForPlayerIdle(page);
-    }
+    // Use public API
+    await page.evaluate(() => {
+      for (let i = 0; i < 5; i++) {
+        window.game.movePlayer('right');
+      }
+      for (let i = 0; i < 5; i++) {
+        window.game.movePlayer('down');
+      }
+    });
+    await page.evaluate(() => window.game.waitForPlayerIdle());
 
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('water-collision-moved-away.png');

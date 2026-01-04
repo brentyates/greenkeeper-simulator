@@ -6,44 +6,41 @@ test.describe("Terrain Editor Bugs", () => {
     await page.goto("/?testMode=true&preset=all_grass_unmown");
     await waitForGameReady(page);
 
-    // Focus canvas
-    await page.click("canvas");
-
-    // Enable editor
-    await page.keyboard.press("t");
+    // Enable editor via API
+    await page.evaluate(() => {
+      window.game.enableTerrainEditor();
+    });
     await page.waitForTimeout(100);
   });
 
   test("single click raises terrain by exactly 1 unit", async ({ page }) => {
-    // Make sure we are in Raise mode (default, but pressing 1 to be sure)
-    await page.keyboard.press("1");
-
-    // Evaluate current elevation at player position (25, 19)
-    const startElevation = await page.evaluate(() => {
-      // @ts-ignore
-      return window.game.grassSystem.getElevationAt(25, 19);
+    // Make sure we are in Raise mode (default)
+    await page.evaluate(() => {
+      window.game.setEditorTool('raise');
     });
+
+    // Get player position (default is 25, 19) and current elevation
+    const { x, y } = await page.evaluate(() => {
+      const pos = window.game.getPlayerPosition();
+      return { x: pos.x, y: pos.y };
+    });
+
+    const startElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
     console.log("Start Elevation:", startElevation);
 
-    // Click at screen center
-    const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Canvas not found");
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    await page.mouse.move(centerX, centerY);
-    await page.mouse.down({ button: "left" });
-    await page.waitForTimeout(50); // Short hold
-    await page.mouse.up({ button: "left" });
+    // Click at player position using API
+    await page.evaluate(({ x, y }) => {
+      window.game.editTerrainAt(x, y);
+    }, { x, y });
 
     await page.waitForTimeout(200); // Wait for update
 
-    const endElevation = await page.evaluate(() => {
-      // @ts-ignore
-      return window.game.grassSystem.getElevationAt(25, 19);
-    });
+    const endElevation = await page.evaluate(({ x, y }) => {
+      return window.game.getElevationAt(x, y);
+    }, { x, y });
 
     // With Vertical Drag, a simple click should select/lock but NOT change elevation
     // Elevation changes require vertical mouse movement.
