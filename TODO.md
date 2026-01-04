@@ -225,6 +225,14 @@ Employees should be visible on the course while working. This creates a living, 
 - [x] Golfer-specific: currentHole, satisfaction, isWalking (GolferEntity)
 - [x] Benefits: shared movement types, consistent interpolation, type guards for entity discrimination
 - [x] Fixed employees racing to same work areas via claimedTargets tracking
+- [x] Fixed visual timing: both player and employees use 150ms real-time interpolation
+- [x] Fixed MOVE_SPEED: changed from 12 to 3 tiles/min per spec
+
+#### Visual System Unification (Future)
+- [ ] Create shared EntityVisualSystem for rendering any MovableEntity
+- [ ] Move player mesh creation from BabylonMain to shared system
+- [ ] Unify equipment rendering between player and employees
+- [ ] Add camera following as a flag on the rendered entity
 
 ### 5.5 Employee Autonomous Work Behavior
 
