@@ -25,6 +25,11 @@ interface WorkerMeshGroup {
   hat: Mesh;
   equipment: Mesh | null;
   currentTask: EmployeeTask;
+  currentGridX: number;
+  currentGridY: number;
+  moveStartPos: Vector3 | null;
+  moveEndPos: Vector3 | null;
+  moveProgress: number;
 }
 
 const TASK_COLORS: Record<EmployeeTask, { body: Color3; equipment: Color3 | null }> = {
@@ -42,6 +47,7 @@ export class EmployeeVisualSystem {
   private elevationProvider: ElevationProvider;
   private workerMeshes: Map<string, WorkerMeshGroup> = new Map();
   private materials: Map<string, StandardMaterial> = new Map();
+  private readonly MOVE_DURATION: number = 150;
 
   constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
@@ -81,7 +87,7 @@ export class EmployeeVisualSystem {
     }
   }
 
-  public update(positions: readonly EmployeePosition[]): void {
+  public update(positions: readonly EmployeePosition[], deltaMs: number = 16): void {
     const currentIds = new Set(positions.map(p => p.employeeId));
 
     for (const [id, group] of this.workerMeshes) {
@@ -102,6 +108,8 @@ export class EmployeeVisualSystem {
       this.updateWorkerPosition(group, pos.gridX, pos.gridY);
       this.updateWorkerTask(group, pos.task);
     }
+
+    this.updateMovements(deltaMs);
   }
 
   private createWorkerMesh(employeeId: string): WorkerMeshGroup {
@@ -156,17 +164,58 @@ export class EmployeeVisualSystem {
       hat,
       equipment: null,
       currentTask: "idle",
+      currentGridX: 0,
+      currentGridY: 0,
+      moveStartPos: null,
+      moveEndPos: null,
+      moveProgress: 0,
     };
   }
 
   private updateWorkerPosition(group: WorkerMeshGroup, gridX: number, gridY: number): void {
-    const elevation = this.elevationProvider.getElevationAt(
-      Math.floor(gridX),
-      Math.floor(gridY),
-      0
-    );
-    const pos = gridTo3D(gridX + 0.5, gridY + 0.5, elevation);
-    group.container.position = new Vector3(pos.x, pos.y, pos.z);
+    const targetGridX = Math.floor(gridX);
+    const targetGridY = Math.floor(gridY);
+
+    if (targetGridX === group.currentGridX && targetGridY === group.currentGridY) {
+      return;
+    }
+
+    const elevation = this.elevationProvider.getElevationAt(targetGridX, targetGridY, 0);
+    const targetPos = gridTo3D(targetGridX + 0.5, targetGridY + 0.5, elevation);
+
+    if (group.currentGridX === 0 && group.currentGridY === 0 && !group.moveStartPos) {
+      group.container.position = new Vector3(targetPos.x, targetPos.y, targetPos.z);
+      group.currentGridX = targetGridX;
+      group.currentGridY = targetGridY;
+      return;
+    }
+
+    group.moveStartPos = group.container.position.clone();
+    group.moveEndPos = new Vector3(targetPos.x, targetPos.y, targetPos.z);
+    group.moveProgress = 0;
+    group.currentGridX = targetGridX;
+    group.currentGridY = targetGridY;
+  }
+
+  private updateMovements(deltaMs: number): void {
+    for (const group of this.workerMeshes.values()) {
+      if (!group.moveStartPos || !group.moveEndPos) continue;
+
+      group.moveProgress += deltaMs;
+      const t = Math.min(1, group.moveProgress / this.MOVE_DURATION);
+      const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+      const x = group.moveStartPos.x + (group.moveEndPos.x - group.moveStartPos.x) * easeT;
+      const y = group.moveStartPos.y + (group.moveEndPos.y - group.moveStartPos.y) * easeT;
+      const z = group.moveStartPos.z + (group.moveEndPos.z - group.moveStartPos.z) * easeT;
+
+      group.container.position = new Vector3(x, y, z);
+
+      if (t >= 1) {
+        group.moveStartPos = null;
+        group.moveEndPos = null;
+      }
+    }
   }
 
   private updateWorkerTask(group: WorkerMeshGroup, task: EmployeeTask): void {
