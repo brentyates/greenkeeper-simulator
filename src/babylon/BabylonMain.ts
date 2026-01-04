@@ -2911,6 +2911,10 @@ export class BabylonMain {
     else if (lowerKey === 'p' || lowerKey === 'escape') this.handlePause();
     else if (lowerKey === 'm') this.handleMute();
     else if (lowerKey === 't') this.handleEditorToggle();
+    else if (lowerKey === 'h') this.handleEmployeePanel();
+    else if (lowerKey === 'y') this.handleResearchPanel();
+    else if (lowerKey === 'g') this.handleTeeSheetPanel();
+    else if (lowerKey === 'k') this.handleMarketingPanel();
   }
 
   /**
@@ -2933,6 +2937,47 @@ export class BabylonMain {
   /**
    * Get full game state for testing.
    */
+  /**
+   * Toggle employee panel visibility.
+   */
+  public toggleEmployeePanel(): void {
+    this.handleEmployeePanel();
+  }
+
+  /**
+   * Get employee roster state.
+   */
+  public getEmployeeState(): {
+    employees: readonly Employee[];
+    count: number;
+    maxEmployees: number;
+    totalHourlyWages: number;
+  } {
+    return {
+      employees: this.employeeRoster.employees,
+      count: this.employeeRoster.employees.length,
+      maxEmployees: this.employeeRoster.maxEmployees,
+      totalHourlyWages: this.employeeRoster.employees.reduce((sum, e) => sum + e.hourlyWage, 0)
+    };
+  }
+
+  /**
+   * Get job application state.
+   */
+  public getApplicationState(): {
+    applications: readonly Employee[];
+    nextApplicationTime: number;
+    activeJobPostings: number;
+    totalReceived: number;
+  } {
+    return {
+      applications: this.applicationState.applications,
+      nextApplicationTime: this.applicationState.nextApplicationTime,
+      activeJobPostings: this.applicationState.activeJobPostings.length,
+      totalReceived: this.applicationState.totalApplicationsReceived
+    };
+  }
+
   public getFullGameState(): {
     player: { x: number; y: number; isMoving: boolean };
     equipment: ReturnType<BabylonMain['getEquipmentState']>;
