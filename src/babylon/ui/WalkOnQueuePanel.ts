@@ -50,9 +50,8 @@ export class WalkOnQueuePanel {
     this.overlay.addControl(this.panel);
 
     const mainStack = new StackPanel('walkOnStack');
+    mainStack.width = '420px';
     mainStack.paddingTop = '15px';
-    mainStack.paddingLeft = '15px';
-    mainStack.paddingRight = '15px';
     this.panel.addControl(mainStack);
 
     this.createHeader(mainStack);

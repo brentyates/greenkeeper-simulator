@@ -96,9 +96,8 @@ export class ResearchPanel {
     this.advancedTexture.addControl(this.panel);
 
     const stack = new StackPanel('researchStack');
+    stack.width = '396px';
     stack.paddingTop = '12px';
-    stack.paddingLeft = '12px';
-    stack.paddingRight = '12px';
     stack.paddingBottom = '12px';
     this.panel.addControl(stack);
 

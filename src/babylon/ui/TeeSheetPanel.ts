@@ -65,9 +65,8 @@ export class TeeSheetPanel {
     this.overlay.addControl(this.panel);
 
     const mainStack = new StackPanel('teeSheetStack');
+    mainStack.width = '470px';
     mainStack.paddingTop = '15px';
-    mainStack.paddingLeft = '15px';
-    mainStack.paddingRight = '15px';
     this.panel.addControl(mainStack);
 
     this.createHeader(mainStack);

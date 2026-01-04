@@ -88,9 +88,8 @@ export class DaySummaryPopup {
     this.overlay.addControl(this.panel);
 
     const stack = new StackPanel('summaryStack');
+    stack.width = '420px';
     stack.paddingTop = '15px';
-    stack.paddingLeft = '15px';
-    stack.paddingRight = '15px';
     stack.paddingBottom = '15px';
     this.panel.addControl(stack);
 

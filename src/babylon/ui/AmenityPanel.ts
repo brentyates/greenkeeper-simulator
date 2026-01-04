@@ -65,9 +65,8 @@ export class AmenityPanel {
     this.advancedTexture.addControl(this.panel);
 
     const stack = new StackPanel('amenityStack');
+    stack.width = '456px';
     stack.paddingTop = '12px';
-    stack.paddingLeft = '12px';
-    stack.paddingRight = '12px';
     stack.paddingBottom = '12px';
     this.panel.addControl(stack);
 
