@@ -293,8 +293,10 @@ When hosting a tournament, the game enters a special "Tournament Mode" for the e
 
 ```typescript
 interface TournamentPreparation {
-  // Course preparation
-  requiredHealthLevel: 95;           // All areas must be pristine
+  // Course preparation (see COURSE_MAINTENANCE_SPEC.md for health calculation)
+  requiredHealthLevel: 85;           // Minimum average health across all grass tiles
+  targetHealthLevel: 90;             // Target for tournament-ready condition
+  requiredGreenHealth: 90;           // Greens must be near-perfect
   requiredGreenSpeed: 12.5;          // Stimpmeter reading
   requiredFairwayHeight: 0.5;        // Inches
 
@@ -316,6 +318,25 @@ interface TournamentPreparation {
   dailyInspections: InspectionResult[];
   passedInspection: boolean;
 }
+
+/**
+ * Why 85% Average Health is Achievable:
+ *
+ * Health = 30% moisture + 30% nutrients + 40% height
+ *
+ * With active maintenance:
+ * - Moisture: 80-100 (keep irrigated) = 24-30 points
+ * - Nutrients: 80-100 (keep fertilized) = 24-30 points
+ * - Height: 60-80 (freshly mown areas pulling average down) = 24-32 points
+ * - Total: 72-92 health typical across course
+ *
+ * Tournament prep focuses on:
+ * - Mowing in strategic waves to maintain average height score
+ * - Ensuring all areas well-watered and fertilized
+ * - Greens get priority (90+ health required)
+ * - Achieving 85% average is challenging but realistic
+ * - 90%+ average requires excellent planning and full staff
+ */
 ```
 
 ### During Tournament
@@ -585,12 +606,13 @@ interface TournamentOffer {
 │                                                                          │
 │  COURSE CONDITIONS                           Target │ Current │ Status  │
 │  ───────────────────────────────────────────────────────────────────    │
-│  Green Health                                  95%  │   97%   │   ✓     │
+│  Average Course Health                         85%  │   87%   │   ✓     │
+│  Green Health                                  90%  │   92%   │   ✓     │
 │  Green Speed (Stimp)                          12.5  │   11.8  │   ⚠     │
-│  Fairway Health                                95%  │   94%   │   ⚠     │
+│  Fairway Health                                85%  │   84%   │   ⚠     │
 │  Fairway Height                               0.5"  │  0.55"  │   ⚠     │
-│  Bunker Condition                              90%  │   92%   │   ✓     │
-│  Rough Consistency                             85%  │   88%   │   ✓     │
+│  Bunker Condition                              85%  │   88%   │   ✓     │
+│  Rough Consistency                             80%  │   83%   │   ✓     │
 │                                                                          │
 │  INFRASTRUCTURE SETUP                                          Progress │
 │  ───────────────────────────────────────────────────────────────────    │

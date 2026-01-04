@@ -34,22 +34,42 @@ The Research Tree is the primary progression system that unlocks new equipment, 
 
 ### Funding Levels
 
-| Level | Points/Minute | Cost/Minute | Description |
-|-------|---------------|-------------|-------------|
-| None | 0 | $0 | No research progress |
-| Minimum | 1 | $50 | Slow but affordable |
-| Normal | 3 | $150 | Balanced approach |
-| Maximum | 6 | $400 | Fast but expensive |
+All rates are in **game time** (see GAME_OVERVIEW.md for time scale).
+
+| Level | Points/Min | Cost/Day (game) | Cost/Month (game) | Description |
+|-------|------------|-----------------|-------------------|-------------|
+| None | 0 | $0 | $0 | No research progress |
+| Minimum | 1 | $72 | $2,160 | Slow but affordable |
+| Normal | 3 | $216 | $6,480 | Balanced approach |
+| Maximum | 6 | $432 | $12,960 | Fast but expensive |
+
+**Cost Calculation:**
+- Points/minute × Cost per point = Total cost/minute
+- Example: Normal funding = 3 pts/min × $0.05/pt = $0.15/game minute
+- Per day: $0.15/min × 1,440 min/day = $216/game day
+- Per month: $216/day × 30 days = $6,480/game month
+
+**At 5x speed:** Maximum funding ($12,960/month) costs ~2.4 real hours to complete a month.
 
 ### Research Points
 
 Each research item requires a certain number of points to complete. Higher-tier items cost significantly more points.
 
 ```
-Time to Complete = Research Points / Points per Minute
+Time to Complete (game time) = Research Points / Points per Minute
 ```
 
-Example: A 1,200-point item at Normal funding takes 400 minutes (6.67 hours game time).
+**Examples:**
+
+| Research Item | Points | At Minimum | At Normal | At Maximum | Real Time (5x speed) |
+|---------------|--------|------------|-----------|------------|---------------------|
+| Tier 2 item | 400 | 400 min (6.7 hrs) | 133 min (2.2 hrs) | 67 min (1.1 hrs) | 13 min |
+| Tier 3 item | 1,200 | 1,200 min (20 hrs) | 400 min (6.7 hrs) | 200 min (3.3 hrs) | 40 min |
+| Tier 4 item | 2,500 | 2,500 min (41.7 hrs) | 833 min (13.9 hrs) | 417 min (6.9 hrs) | 1.4 hrs |
+| Tier 5 robot | 7,000 | 7,000 min (116.7 hrs) | 2,333 min (38.9 hrs) | 1,167 min (19.4 hrs) | 3.9 hrs |
+| UltraGreen Genesis | 10,000 | 10,000 min (166.7 hrs) | 3,333 min (55.6 hrs) | 1,667 min (27.8 hrs) | 5.6 hrs |
+
+**Design Intent:** Major research projects take meaningful game time (hours to days) but are achievable in reasonable real-world play sessions at faster speeds.
 
 ---
 
@@ -111,47 +131,49 @@ Robots represent a significant upfront investment but dramatically reduce ongoin
 - **Research Cost:** 6,000 points
 - **Prerequisites:** Fairway Mower, Smart Irrigation
 - **Purchase:** $45,000
-- **Operating:** $2.50/hour
-- **Breakdown Rate:** 2%/hour
-- **Repair Time:** 60 minutes
+- **Operating:** $2.50/hour (game time)
+- **Breakdown Rate:** 2% per 100 operating hours (~4 breakdowns/month with 24/7 operation)
+- **Repair Time:** 60 game minutes (1 real second)
 
 #### RoboMow Precision Greens
 - **Research Cost:** 7,000 points
 - **Prerequisites:** Greens Mower, Precision Greens Complex
 - **Purchase:** $65,000
-- **Operating:** $3.00/hour
-- **Breakdown Rate:** 2.5%/hour
-- **Repair Time:** 90 minutes
+- **Operating:** $3.00/hour (game time)
+- **Breakdown Rate:** 2.5% per 100 operating hours (~5 breakdowns/month)
+- **Repair Time:** 90 game minutes (1.5 real seconds)
 
 #### AutoSpray Irrigation Robot
 - **Research Cost:** 5,500 points
 - **Prerequisites:** Smart Irrigation
 - **Purchase:** $38,000
-- **Operating:** $2.00/hour
-- **Breakdown Rate:** 1.5%/hour
-- **Repair Time:** 45 minutes
+- **Operating:** $2.00/hour (game time)
+- **Breakdown Rate:** 1.5% per 100 operating hours (~3 breakdowns/month)
+- **Repair Time:** 45 game minutes (0.75 real seconds)
 
 #### NutriBot Spreader
 - **Research Cost:** 5,000 points
 - **Prerequisites:** Slow-Release Fertilizer, Smart Irrigation
 - **Purchase:** $35,000
-- **Operating:** $1.80/hour
-- **Breakdown Rate:** 1.8%/hour
-- **Repair Time:** 50 minutes
+- **Operating:** $1.80/hour (game time)
+- **Breakdown Rate:** 1.8% per 100 operating hours (~4 breakdowns/month)
+- **Repair Time:** 50 game minutes (0.83 real seconds)
 
 #### SandBot Bunker Groomer
 - **Research Cost:** 4,500 points
 - **Prerequisites:** Bunker Rake Machine
 - **Purchase:** $28,000
-- **Operating:** $1.50/hour
-- **Breakdown Rate:** 3%/hour (sand is harsh)
-- **Repair Time:** 40 minutes
+- **Operating:** $1.50/hour (game time)
+- **Breakdown Rate:** 3% per 100 operating hours (sand is harsh, ~6 breakdowns/month)
+- **Repair Time:** 40 game minutes (0.67 real seconds)
 
 #### Fleet Management AI
 - **Research Cost:** 8,000 points
 - **Prerequisites:** RoboMow Fairway, AutoSpray
-- **Benefit:** Reduces all robot breakdown rates by 40%
+- **Benefit:** Reduces all robot breakdown rates by 40% (e.g., 2% becomes 1.2%)
 - **Purchase:** $50,000 (one-time)
+
+**Note on Time Scale:** All rates use game time as defined in GAME_OVERVIEW.md (1 real second = 1 game minute). Robot breakdown rates are realistic - premium robots operating 24/7 require periodic maintenance, averaging 2-6 service events per month depending on model.
 
 ### Robot Operations
 
@@ -161,17 +183,27 @@ interface RobotOperationState {
   status: 'idle' | 'operating' | 'broken' | 'repairing';
 
   // Operating stats
+  totalOperatingHours: number;     // Lifetime hours
   hoursOperatedToday: number;
   tilesProcessedToday: number;
 
   // Breakdown tracking
+  hoursSinceLastBreakdown: number; // For breakdown probability calculation
   lastBreakdown: GameTime | null;
   breakdownsThisMonth: number;
-  currentRepairProgress: number;  // 0-100%
+  currentRepairProgress: number;   // 0-100%
 
   // Cost tracking
   operatingCostToday: number;
   repairCostToday: number;
+}
+
+// Breakdown probability check (called every game hour)
+function checkBreakdown(robot: RobotOperationState, breakdownRate: number): boolean {
+  // breakdownRate is "per 100 hours" (e.g., 2.0 = 2% per 100 hours)
+  // Convert to hourly probability: 2% / 100 = 0.02% per hour = 0.0002
+  const hourlyProbability = breakdownRate / 100 / 100;
+  return Math.random() < hourlyProbability;
 }
 ```
 

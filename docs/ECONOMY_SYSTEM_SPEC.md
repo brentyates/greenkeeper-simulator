@@ -139,6 +139,8 @@ function recordExpense(
 
 ## Revenue Streams
 
+**Note on Memberships:** For detailed membership tiers, benefits, and pricing, see PRESTIGE_SYSTEM_SPEC.md - Component 5: Exclusivity section. Membership revenue is a significant income source for 4-5★ courses.
+
 ### Green Fees
 
 Primary income source, scales with prestige and golfer volume.
@@ -228,13 +230,31 @@ See [Tournament System Spec](TOURNAMENT_SYSTEM_SPEC.md) for full details:
 
 ### Revenue by Game Stage
 
-| Stage | Primary Revenue | Monthly Range |
-|-------|-----------------|---------------|
-| Starter (3-hole) | Green fees only | $2,000-5,000 |
-| Growing (9-hole) | Green fees + pro shop | $8,000-15,000 |
-| Established (18-hole) | Full operations | $25,000-50,000 |
-| Premium (18-hole 5★) | All + memberships | $60,000-100,000 |
-| Resort (27+ hole) | All + tournaments | $150,000-500,000 |
+| Stage | Primary Revenue | Monthly Range | Notes |
+|-------|-----------------|---------------|-------|
+| Starter (3-hole) | Green fees only | $2,000-5,000 | Low prestige, few golfers |
+| Growing (9-hole) | Green fees + pro shop | $8,000-15,000 | Building reputation |
+| Established (18-hole) | Full operations | $25,000-50,000 | 15-25% utilization |
+| Premium (18-hole 5★) | All + memberships | $60,000-100,000 | 30-40% utilization |
+| Resort (27+ hole) | All + tournaments | $150,000-500,000 | Higher capacity + events |
+
+**Understanding Utilization:**
+- **Theoretical Maximum:** 60 tee times/day × 4 golfers × $55 fee × 30 days = $396,000/month
+- **Actual Revenue:** Depends on tee time utilization rate (see TEE_TIME_SYSTEM_SPEC.md)
+- **Typical Utilization:** 15-40% depending on prestige, marketing, and seasonality
+- **Example (Established 18-hole):**
+  - Available: 60 slots/day × 30 days = 1,800 slots/month
+  - Filled: 20% utilization = 360 slots
+  - Revenue: 360 slots × 3.5 avg players × $55 = $69,300 green fees
+  - Plus pro shop, cart fees, F&B = $25k-50k total range
+
+**Key Factors Affecting Utilization:**
+- Prestige/star rating (see PRESTIGE_SYSTEM_SPEC.md)
+- Marketing campaigns (see TEE_TIME_SYSTEM_SPEC.md - Marketing section)
+- Pricing vs tolerance (overpriced courses see turn-aways)
+- Season and weather
+- Day of week (weekends fill better)
+- Competition from nearby courses (future feature)
 
 ---
 

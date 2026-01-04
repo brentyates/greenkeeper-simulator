@@ -54,6 +54,28 @@ const EQUIPMENT_CONFIGS: Record<EquipmentType, EquipmentConfig> = {
 };
 ```
 
+**Design Intent - Forcing Delegation:**
+
+Equipment capacity is calibrated to make solo maintenance progressively impractical:
+
+| Course Size | Grass Tiles | Mower Refills Needed | Solo Playability |
+|-------------|-------------|----------------------|------------------|
+| 3-hole starter | ~700 | 3-4 refills | ✓ Manageable solo |
+| 9-hole | ~2,600 | 13 refills | ⚠ Tedious solo, encourages first hire |
+| 18-hole | ~6,000 | 30 refills | ✗ Impractical solo, requires team |
+| 27-hole resort | ~7,700 | 38 refills | ✗ Impossible solo, requires large team or robots |
+
+**Calculation Example (Mower on 9-hole course):**
+- Mower capacity: 100 resource
+- Use rate: 0.5 per second (game time) = 200 seconds = 3.33 game minutes of use
+- Coverage: ~200 tiles per tank
+- 9-hole course: ~2,600 grass tiles
+- Refills needed: 2,600 / 200 = 13 refills
+- Cost: 13 × $10 = $130 per complete mow
+- Time: 13 trips to refill stations + mowing time = significant overhead
+
+This design ensures players MUST hire employees or research better equipment to progress beyond starter courses. See EMPLOYEE_SYSTEM_SPEC.md and RESEARCH_TREE_SPEC.md for scaling solutions.
+
 ---
 
 ## Equipment State

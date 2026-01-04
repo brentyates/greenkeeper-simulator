@@ -121,9 +121,9 @@ interface SpacingConfiguration {
   maxDailyTeeTimes: number;          // Based on operating hours
 
   // Impact modifiers
-  paceOfPlayPenalty: number;         // 0-1, affects satisfaction
-  backupRiskMultiplier: number;      // Chance of course backup
-  reputationModifier: number;        // Affects prestige over time
+  paceOfPlayPenalty: number;         // 0-1, affects satisfaction per round
+  backupRiskMultiplier: number;      // Multiplier on course backup probability
+  reputationModifier: number;        // Prestige points per game month (see GAME_OVERVIEW.md for time scale)
 
   // Revenue
   revenueMultiplier: number;         // vs standard spacing
@@ -134,9 +134,9 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     spacing: 'packed',
     minutesBetween: 6,
     maxDailyTeeTimes: 100,           // ~10 hour window
-    paceOfPlayPenalty: 0.35,         // Significant slowdown
-    backupRiskMultiplier: 2.5,       // Very high backup risk
-    reputationModifier: -0.15,       // Hurts prestige
+    paceOfPlayPenalty: 0.35,         // Adds 35% to round time
+    backupRiskMultiplier: 2.5,       // 2.5x higher backup probability
+    reputationModifier: -15,         // -15 prestige points per game month
     revenueMultiplier: 1.67,         // 67% more revenue potential
   },
 
@@ -146,7 +146,7 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     maxDailyTeeTimes: 75,
     paceOfPlayPenalty: 0.20,
     backupRiskMultiplier: 1.8,
-    reputationModifier: -0.08,
+    reputationModifier: -8,          // -8 prestige points per game month
     revenueMultiplier: 1.25,
   },
 
@@ -156,7 +156,7 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     maxDailyTeeTimes: 60,
     paceOfPlayPenalty: 0.0,          // Baseline
     backupRiskMultiplier: 1.0,       // Baseline
-    reputationModifier: 0.0,         // Neutral
+    reputationModifier: 0,           // Neutral
     revenueMultiplier: 1.0,          // Baseline
   },
 
@@ -164,9 +164,9 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     spacing: 'comfortable',
     minutesBetween: 12,
     maxDailyTeeTimes: 50,
-    paceOfPlayPenalty: -0.10,        // Actually improves pace
+    paceOfPlayPenalty: -0.10,        // Reduces round time by 10%
     backupRiskMultiplier: 0.6,
-    reputationModifier: 0.05,        // Slight prestige boost
+    reputationModifier: +5,          // +5 prestige points per game month
     revenueMultiplier: 0.83,
   },
 
@@ -174,9 +174,9 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     spacing: 'relaxed',
     minutesBetween: 15,
     maxDailyTeeTimes: 40,
-    paceOfPlayPenalty: -0.20,        // Much better pace
+    paceOfPlayPenalty: -0.20,        // Reduces round time by 20%
     backupRiskMultiplier: 0.3,
-    reputationModifier: 0.12,        // Good prestige boost
+    reputationModifier: +12,         // +12 prestige points per game month
     revenueMultiplier: 0.67,
   },
 
@@ -184,9 +184,9 @@ const SPACING_CONFIGS: Record<TeeTimeSpacing, SpacingConfiguration> = {
     spacing: 'exclusive',
     minutesBetween: 20,
     maxDailyTeeTimes: 30,
-    paceOfPlayPenalty: -0.30,        // Excellent pace
+    paceOfPlayPenalty: -0.30,        // Reduces round time by 30%
     backupRiskMultiplier: 0.1,       // Almost no backups
-    reputationModifier: 0.20,        // Strong prestige boost
+    reputationModifier: +20,         // +20 prestige points per game month
     revenueMultiplier: 0.50,
   },
 };
@@ -296,6 +296,26 @@ const defaultBookingConfig: BookingWindowConfig = {
   noShowCountForBlacklist: 3,
 };
 ```
+
+### Utilization Rates
+
+**Critical Concept:** Not all tee time slots will be filled.
+
+Utilization rate = (Booked slots / Available slots) determines actual revenue vs theoretical maximum.
+
+| Course Status | Typical Utilization | Example (60 slots/day) |
+|---------------|---------------------|------------------------|
+| Low prestige (1-2★) | 10-15% | 6-9 tee times/day |
+| Established (3★) | 20-30% | 12-18 tee times/day |
+| Premium (4★) | 35-50% | 21-30 tee times/day |
+| Championship (5★) | 50-70% | 30-42 tee times/day |
+| 5★ + Active marketing | 70-90% | 42-54 tee times/day |
+| Weekends (any rating) | +50% relative | Higher than weekday |
+
+**Revenue Impact Example:**
+- **Theoretical Max:** 60 slots × 4 golfers × $55 × 30 days = $396,000/month
+- **Actual (3★ course at 25%):** 15 slots × 3.5 golfers × $55 × 30 days = $86,625/month
+- **See ECONOMY_SYSTEM_SPEC.md** for complete revenue projections by game stage
 
 ### Reservation Demand Calculation
 
@@ -622,9 +642,9 @@ interface GreenFeeStructure {
   // Time-based pricing
   primeMorningPremium: number;       // e.g., 1.2 = 20% more for 7-10 AM
 
-  // Membership pricing
-  memberRate: number;                // Discount for members
-  guestOfMemberRate: number;         // Guest discount
+  // Membership pricing (see PRESTIGE_SYSTEM_SPEC.md - Membership Tiers for full details)
+  memberRate: number;                // Discount for members (typically 20-40% off public rate)
+  guestOfMemberRate: number;         // Guest discount (typically 10-20% off public rate)
 
   // Dynamic pricing (optional advanced feature)
   dynamicPricingEnabled: boolean;
