@@ -42,7 +42,7 @@ This file tracks the work needed to integrate all economy/management systems int
 
 **Remaining (Nice-to-Have):**
 - [x] Golfer satisfaction display (in economy panel)
-- [x] Keyboard shortcuts for panels (G=TeeSheet, K=Marketing, H=Employees, Y=Research, B=Equipment Store, U=Amenities)
+- [x] Keyboard shortcuts for panels (G=TeeSheet, K=Marketing, H=Employees, Y=Research, B=Equipment Store, U=Amenities, O=Walk-On Queue)
 - [x] Save/load game state (auto-save at end of each day)
 
 ---
@@ -638,12 +638,12 @@ The Tee Time System is the primary revenue driver and scheduling backbone. Golfe
 - [x] Assign walk-ons to available slots
 - [x] Apply walk-on premium/discount pricing
 
-#### T4.3 Walk-On Queue UI
-- [ ] Create walk-on queue display panel
-- [ ] Show waiting golfers with wait times
-- [ ] Add assign/turn away buttons
-- [ ] Display next available slot and estimated wait
-- [ ] Show daily walk-on metrics (served, turned away)
+#### T4.3 Walk-On Queue UI ✅
+- [x] Create walk-on queue display panel (WalkOnQueuePanel.ts, keyboard: O)
+- [x] Show waiting golfers with wait times (color-coded by urgency)
+- [x] Add assign/turn away buttons
+- [ ] Display next available slot and estimated wait (future)
+- [x] Show daily walk-on metrics (served, turned away, gave up)
 
 #### T4.4 Walk-On Visual Feedback
 - [ ] Show NPCs waiting at pro shop

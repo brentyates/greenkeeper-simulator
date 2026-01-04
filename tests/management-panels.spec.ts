@@ -47,4 +47,10 @@ test.describe('Management Panel Tests', () => {
     await page.waitForTimeout(300);
     await expect(page).toHaveScreenshot('tee-sheet-spacing-default.png');
   });
+
+  test('walk-on queue panel opens with O key', async ({ page }) => {
+    await page.keyboard.press('o');
+    await page.waitForTimeout(300);
+    await expect(page).toHaveScreenshot('walk-on-queue-open.png');
+  });
 });
