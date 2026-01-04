@@ -11,15 +11,17 @@ import {
   Employee,
   EmployeeRole,
   EmployeeRoster,
-  HiringPool,
+  ApplicationState,
   SkillLevel,
+  PrestigeTier,
+  PRESTIGE_HIRING_CONFIG,
 } from '../../core/employees';
 
 export interface EmployeePanelCallbacks {
   onHire: (employee: Employee) => void;
   onFire: (employeeId: string) => void;
   onClose: () => void;
-  onRefreshPool: () => void;
+  onPostJobOpening: () => void;
 }
 
 const ROLE_ICONS: Record<EmployeeRole, string> = {
@@ -53,11 +55,14 @@ export class EmployeePanel {
 
   private panel: Rectangle | null = null;
   private employeeListContainer: StackPanel | null = null;
-  private hiringPoolContainer: StackPanel | null = null;
+  private applicationsContainer: StackPanel | null = null;
   private payrollText: TextBlock | null = null;
   private employeeCountText: TextBlock | null = null;
-  private hiringView: Rectangle | null = null;
+  private applicationsView: Rectangle | null = null;
   private mainView: Rectangle | null = null;
+  private nextApplicationText: TextBlock | null = null;
+  private postingCountText: TextBlock | null = null;
+  private postJobButton: Button | null = null;
 
   private selectedEmployeeId: string | null = null;
 
@@ -85,7 +90,7 @@ export class EmployeePanel {
     this.advancedTexture.addControl(this.panel);
 
     this.createMainView();
-    this.createHiringView();
+    this.createApplicationsView();
   }
 
   private createMainView(): void {
@@ -319,7 +324,7 @@ export class EmployeePanel {
     grid.addColumnDefinition(0.5);
     buttonContainer.addControl(grid);
 
-    const hireBtn = Button.CreateSimpleButton('hireBtn', '➕ Hire');
+    const hireBtn = Button.CreateSimpleButton('hireBtn', '📋 Applications');
     hireBtn.width = '150px';
     hireBtn.height = '35px';
     hireBtn.cornerRadius = 6;
@@ -327,7 +332,7 @@ export class EmployeePanel {
     hireBtn.color = '#88ff88';
     hireBtn.thickness = 2;
     hireBtn.fontSize = 14;
-    hireBtn.onPointerClickObservable.add(() => this.showHiringView());
+    hireBtn.onPointerClickObservable.add(() => this.showApplicationsView());
     hireBtn.onPointerEnterObservable.add(() => { hireBtn.background = '#3a9a5a'; });
     hireBtn.onPointerOutObservable.add(() => { hireBtn.background = '#2a7a4a'; });
     grid.addControl(hireBtn, 0, 0);
@@ -351,31 +356,31 @@ export class EmployeePanel {
     grid.addControl(fireBtn, 0, 1);
   }
 
-  private createHiringView(): void {
-    this.hiringView = new Rectangle('hiringView');
-    this.hiringView.width = '100%';
-    this.hiringView.height = '100%';
-    this.hiringView.thickness = 0;
-    this.hiringView.background = 'transparent';
-    this.hiringView.isVisible = false;
-    this.panel!.addControl(this.hiringView);
+  private createApplicationsView(): void {
+    this.applicationsView = new Rectangle('applicationsView');
+    this.applicationsView.width = '100%';
+    this.applicationsView.height = '100%';
+    this.applicationsView.thickness = 0;
+    this.applicationsView.background = 'transparent';
+    this.applicationsView.isVisible = false;
+    this.panel!.addControl(this.applicationsView);
 
-    const stack = new StackPanel('hiringStack');
+    const stack = new StackPanel('applicationsStack');
     stack.paddingTop = '12px';
     stack.paddingLeft = '12px';
     stack.paddingRight = '12px';
     stack.paddingBottom = '12px';
-    this.hiringView.addControl(stack);
+    this.applicationsView.addControl(stack);
 
-    const headerContainer = new Rectangle('hiringHeaderContainer');
+    const headerContainer = new Rectangle('applicationsHeaderContainer');
     headerContainer.height = '36px';
     headerContainer.width = '336px';
     headerContainer.thickness = 0;
     headerContainer.background = 'transparent';
     stack.addControl(headerContainer);
 
-    const title = new TextBlock('hiringTitle');
-    title.text = '📋 HIRING POOL';
+    const title = new TextBlock('applicationsTitle');
+    title.text = '📋 JOB APPLICATIONS';
     title.color = '#ffcc00';
     title.fontSize = 16;
     title.fontWeight = 'bold';
@@ -392,47 +397,87 @@ export class EmployeePanel {
     backBtn.thickness = 0;
     backBtn.fontSize = 12;
     backBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    backBtn.onPointerClickObservable.add(() => this.hideHiringView());
+    backBtn.onPointerClickObservable.add(() => this.hideApplicationsView());
     backBtn.onPointerEnterObservable.add(() => { backBtn.background = '#5a7a6a'; });
     backBtn.onPointerOutObservable.add(() => { backBtn.background = '#4a6a5a'; });
     headerContainer.addControl(backBtn);
 
-    const poolContainer = new Rectangle('poolContainer');
-    poolContainer.height = '350px';
-    poolContainer.width = '336px';
-    poolContainer.cornerRadius = 4;
-    poolContainer.background = 'rgba(15, 35, 25, 0.8)';
-    poolContainer.thickness = 1;
-    poolContainer.color = '#3a5a4a';
-    poolContainer.paddingTop = '8px';
-    stack.addControl(poolContainer);
+    // Status info
+    const statusContainer = new Rectangle('statusContainer');
+    statusContainer.height = '60px';
+    statusContainer.width = '336px';
+    statusContainer.cornerRadius = 4;
+    statusContainer.background = 'rgba(30, 60, 45, 0.8)';
+    statusContainer.thickness = 1;
+    statusContainer.color = '#3a5a4a';
+    statusContainer.paddingTop = '8px';
+    stack.addControl(statusContainer);
 
-    const scrollViewer = new ScrollViewer('poolScroll');
+    const statusStack = new StackPanel('statusStack');
+    statusStack.paddingLeft = '12px';
+    statusStack.paddingRight = '12px';
+    statusContainer.addControl(statusStack);
+
+    const nextAppLabel = new TextBlock('nextAppLabel');
+    nextAppLabel.text = 'Next Application:';
+    nextAppLabel.color = '#888888';
+    nextAppLabel.fontSize = 10;
+    nextAppLabel.height = '14px';
+    nextAppLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    statusStack.addControl(nextAppLabel);
+
+    this.nextApplicationText = new TextBlock('nextApplicationText');
+    this.nextApplicationText.text = 'Loading...';
+    this.nextApplicationText.color = '#ffcc00';
+    this.nextApplicationText.fontSize = 14;
+    this.nextApplicationText.height = '18px';
+    this.nextApplicationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    statusStack.addControl(this.nextApplicationText);
+
+    this.postingCountText = new TextBlock('postingCountText');
+    this.postingCountText.text = 'No active job postings';
+    this.postingCountText.color = '#888888';
+    this.postingCountText.fontSize = 10;
+    this.postingCountText.height = '16px';
+    this.postingCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    statusStack.addControl(this.postingCountText);
+
+    const applicationsListContainer = new Rectangle('applicationsListContainer');
+    applicationsListContainer.height = '280px';
+    applicationsListContainer.width = '336px';
+    applicationsListContainer.cornerRadius = 4;
+    applicationsListContainer.background = 'rgba(15, 35, 25, 0.8)';
+    applicationsListContainer.thickness = 1;
+    applicationsListContainer.color = '#3a5a4a';
+    applicationsListContainer.paddingTop = '8px';
+    stack.addControl(applicationsListContainer);
+
+    const scrollViewer = new ScrollViewer('applicationsScroll');
     scrollViewer.width = '320px';
-    scrollViewer.height = '340px';
+    scrollViewer.height = '270px';
     scrollViewer.thickness = 0;
     scrollViewer.barSize = 8;
     scrollViewer.barColor = '#4a8a5a';
     scrollViewer.barBackground = 'rgba(0,0,0,0.3)';
-    poolContainer.addControl(scrollViewer);
+    applicationsListContainer.addControl(scrollViewer);
 
-    this.hiringPoolContainer = new StackPanel('hiringPoolStack');
-    this.hiringPoolContainer.width = '100%';
-    scrollViewer.addControl(this.hiringPoolContainer);
+    this.applicationsContainer = new StackPanel('applicationsListStack');
+    this.applicationsContainer.width = '100%';
+    scrollViewer.addControl(this.applicationsContainer);
 
-    const refreshBtn = Button.CreateSimpleButton('refreshBtn', '🔄 Refresh Pool');
-    refreshBtn.width = '336px';
-    refreshBtn.height = '35px';
-    refreshBtn.cornerRadius = 6;
-    refreshBtn.background = '#3a6a8a';
-    refreshBtn.color = '#88ccff';
-    refreshBtn.thickness = 2;
-    refreshBtn.fontSize = 14;
-    refreshBtn.paddingTop = '8px';
-    refreshBtn.onPointerClickObservable.add(() => this.callbacks.onRefreshPool());
-    refreshBtn.onPointerEnterObservable.add(() => { refreshBtn.background = '#4a7a9a'; });
-    refreshBtn.onPointerOutObservable.add(() => { refreshBtn.background = '#3a6a8a'; });
-    stack.addControl(refreshBtn);
+    this.postJobButton = Button.CreateSimpleButton('postJobBtn', '📢 Post Job Opening ($500)');
+    this.postJobButton.width = '336px';
+    this.postJobButton.height = '35px';
+    this.postJobButton.cornerRadius = 6;
+    this.postJobButton.background = '#3a6a8a';
+    this.postJobButton.color = '#88ccff';
+    this.postJobButton.thickness = 2;
+    this.postJobButton.fontSize = 14;
+    this.postJobButton.paddingTop = '8px';
+    this.postJobButton.onPointerClickObservable.add(() => this.callbacks.onPostJobOpening());
+    this.postJobButton.onPointerEnterObservable.add(() => { this.postJobButton!.background = '#4a7a9a'; });
+    this.postJobButton.onPointerOutObservable.add(() => { this.postJobButton!.background = '#3a6a8a'; });
+    stack.addControl(this.postJobButton);
   }
 
   private createCandidateRow(candidate: Employee): Rectangle {
@@ -509,7 +554,7 @@ export class EmployeePanel {
     hireBtn.fontSize = 11;
     hireBtn.onPointerClickObservable.add(() => {
       this.callbacks.onHire(candidate);
-      this.hideHiringView();
+      this.hideApplicationsView();
     });
     hireBtn.onPointerEnterObservable.add(() => { hireBtn.background = '#3a9a5a'; });
     hireBtn.onPointerOutObservable.add(() => { hireBtn.background = '#2a7a4a'; });
@@ -518,15 +563,14 @@ export class EmployeePanel {
     return row;
   }
 
-  private showHiringView(): void {
+  private showApplicationsView(): void {
     this.mainView!.isVisible = false;
-    this.hiringView!.isVisible = true;
-    this.callbacks.onRefreshPool();
+    this.applicationsView!.isVisible = true;
   }
 
-  private hideHiringView(): void {
+  private hideApplicationsView(): void {
     this.mainView!.isVisible = true;
-    this.hiringView!.isVisible = false;
+    this.applicationsView!.isVisible = false;
   }
 
   private refreshEmployeeList(): void {
@@ -567,27 +611,56 @@ export class EmployeePanel {
     this.payrollText.text = `$${hourlyPayroll}/hr`;
   }
 
-  public updateHiringPool(pool: HiringPool): void {
-    if (!this.hiringPoolContainer) return;
+  public updateApplications(state: ApplicationState, prestigeTier: PrestigeTier, currentGameTime: number): void {
+    if (!this.applicationsContainer) return;
 
-    const children = [...this.hiringPoolContainer.children];
+    // Update status text
+    const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
+    const minutesUntilNext = Math.max(0, state.nextApplicationTime - currentGameTime);
+    const hoursUntilNext = minutesUntilNext / 60;
+
+    if (minutesUntilNext < 1) {
+      this.nextApplicationText!.text = 'Soon...';
+    } else if (hoursUntilNext < 1) {
+      this.nextApplicationText!.text = `${Math.ceil(minutesUntilNext)} minutes`;
+    } else {
+      this.nextApplicationText!.text = `${hoursUntilNext.toFixed(1)} hours`;
+    }
+
+    // Update posting count
+    const postingCount = state.activeJobPostings.length;
+    if (postingCount === 0) {
+      this.postingCountText!.text = 'No active job postings';
+      this.postingCountText!.color = '#888888';
+    } else {
+      this.postingCountText!.text = `${postingCount} active job posting${postingCount > 1 ? 's' : ''}`;
+      this.postingCountText!.color = '#44aa44';
+    }
+
+    // Update post job button text with current cost
+    this.postJobButton!.textBlock!.text = `📢 Post Job Opening ($${config.postingCost})`;
+
+    // Update applications list
+    const children = [...this.applicationsContainer.children];
     for (const child of children) {
-      this.hiringPoolContainer.removeControl(child);
+      this.applicationsContainer.removeControl(child);
     }
 
-    for (const candidate of pool.candidates) {
-      const row = this.createCandidateRow(candidate);
-      this.hiringPoolContainer.addControl(row);
+    for (const application of state.applications) {
+      const row = this.createCandidateRow(application);
+      this.applicationsContainer.addControl(row);
     }
 
-    if (pool.candidates.length === 0) {
-      const emptyText = new TextBlock('emptyPoolText');
-      emptyText.text = 'No candidates available.\nClick "Refresh Pool" to find new candidates.';
+    if (state.applications.length === 0) {
+      const emptyText = new TextBlock('emptyApplicationsText');
+      const tierName = prestigeTier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      emptyText.text = `No applications yet.\n\n${tierName} courses receive applications every ${config.applicationRate} hours.\n\nPost a job opening to speed up the process!`;
       emptyText.color = '#888888';
-      emptyText.fontSize = 12;
-      emptyText.height = '60px';
+      emptyText.fontSize = 11;
+      emptyText.height = '100px';
       emptyText.textWrapping = true;
-      this.hiringPoolContainer.addControl(emptyText);
+      emptyText.lineSpacing = '3px';
+      this.applicationsContainer.addControl(emptyText);
     }
   }
 
@@ -595,7 +668,7 @@ export class EmployeePanel {
     if (this.panel) {
       this.panel.isVisible = true;
       this.mainView!.isVisible = true;
-      this.hiringView!.isVisible = false;
+      this.applicationsView!.isVisible = false;
     }
   }
 

@@ -75,6 +75,25 @@ export interface HiringPool {
   readonly refreshTime: number;
 }
 
+export interface ApplicationState {
+  readonly applications: readonly Employee[];
+  readonly lastApplicationTime: number;
+  readonly nextApplicationTime: number;
+  readonly activeJobPostings: readonly JobPosting[];
+  readonly totalApplicationsReceived: number;
+}
+
+export interface JobPosting {
+  readonly id: string;
+  readonly role: EmployeeRole | "any";
+  readonly postedTime: number;
+  readonly expiresAt: number;
+  readonly cost: number;
+  readonly targetSkillLevel?: SkillLevel;
+}
+
+export type PrestigeTier = 'municipal' | 'public' | 'semi_private' | 'private_club' | 'championship';
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -154,6 +173,57 @@ export const DEFAULT_MAX_EMPLOYEES = 20;
 export const PAYROLL_INTERVAL_MINUTES = 60; // Pay every game hour
 export const HIRING_POOL_SIZE = 5;
 export const HIRING_POOL_REFRESH_INTERVAL = 480; // 8 game hours
+
+// Prestige-based hiring configuration
+export const PRESTIGE_HIRING_CONFIG: Record<PrestigeTier, {
+  applicationRate: number;          // Game hours between natural applications
+  maxApplications: number;          // Max pending applications at once
+  skillDistribution: Record<SkillLevel, number>;  // Probability weights
+  postingCost: number;             // Cost to post a job opening
+  postingDuration: number;         // Hours posting stays active
+  postingApplicationRate: number;  // Hours between applications when posting is active
+}> = {
+  municipal: {
+    applicationRate: 48,  // 2 game days between natural applications
+    maxApplications: 2,
+    skillDistribution: { novice: 85, trained: 13, experienced: 2, expert: 0 },
+    postingCost: 500,
+    postingDuration: 72,  // 3 game days
+    postingApplicationRate: 24  // 1 per day while posted
+  },
+  public: {
+    applicationRate: 24,  // 1 game day
+    maxApplications: 3,
+    skillDistribution: { novice: 60, trained: 28, experienced: 10, expert: 2 },
+    postingCost: 350,
+    postingDuration: 48,  // 2 game days
+    postingApplicationRate: 12  // 2 per day while posted
+  },
+  semi_private: {
+    applicationRate: 12,  // Half game day
+    maxApplications: 5,
+    skillDistribution: { novice: 30, trained: 40, experienced: 23, expert: 7 },
+    postingCost: 250,
+    postingDuration: 36,  // 1.5 game days
+    postingApplicationRate: 8   // 3 per day while posted
+  },
+  private_club: {
+    applicationRate: 6,   // Quarter game day
+    maxApplications: 7,
+    skillDistribution: { novice: 12, trained: 33, experienced: 38, expert: 17 },
+    postingCost: 150,
+    postingDuration: 24,  // 1 game day
+    postingApplicationRate: 6   // 4 per day while posted
+  },
+  championship: {
+    applicationRate: 3,   // Very frequent
+    maxApplications: 10,
+    skillDistribution: { novice: 3, trained: 17, experienced: 42, expert: 38 },
+    postingCost: 100,
+    postingDuration: 24,  // 1 game day
+    postingApplicationRate: 4   // 6 per day while posted
+  }
+};
 
 // First names for random generation
 const FIRST_NAMES = [
@@ -708,4 +778,189 @@ export function formatWage(hourlyWage: number): string {
 
 export function resetEmployeeCounter(): void {
   employeeIdCounter = 0;
+}
+
+// ============================================================================
+// Prestige-Based Hiring Functions
+// ============================================================================
+
+let jobPostingIdCounter = 0;
+
+export function createInitialApplicationState(currentTime: number = 0, prestigeTier: PrestigeTier = 'municipal'): ApplicationState {
+  const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
+  return {
+    applications: [],
+    lastApplicationTime: currentTime,
+    nextApplicationTime: currentTime + config.applicationRate * 60,
+    activeJobPostings: [],
+    totalApplicationsReceived: 0
+  };
+}
+
+export function resetJobPostingCounter(): void {
+  jobPostingIdCounter = 0;
+}
+
+function selectSkillLevelByPrestige(prestigeTier: PrestigeTier, targetSkillLevel?: SkillLevel): SkillLevel {
+  const distribution = PRESTIGE_HIRING_CONFIG[prestigeTier].skillDistribution;
+
+  // If there's a target skill level from a job posting, bias towards it
+  if (targetSkillLevel) {
+    const roll = Math.random() * 100;
+    // 60% chance to match target skill level, 40% use normal distribution
+    if (roll < 60) {
+      return targetSkillLevel;
+    }
+  }
+
+  // Weighted random selection
+  const totalWeight = distribution.novice + distribution.trained + distribution.experienced + distribution.expert;
+  const roll = Math.random() * totalWeight;
+
+  let cumulative = 0;
+  if ((cumulative += distribution.novice) >= roll) return 'novice';
+  if ((cumulative += distribution.trained) >= roll) return 'trained';
+  if ((cumulative += distribution.experienced) >= roll) return 'experienced';
+  return 'expert';
+}
+
+function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
+  if (posting && posting.role !== 'any') {
+    return posting.role;
+  }
+
+  // Default weighted role distribution
+  const roles: EmployeeRole[] = [
+    'groundskeeper', 'groundskeeper', 'groundskeeper',  // Most common
+    'mechanic', 'irrigator',
+    'pro_shop_staff', 'caddy',
+    'manager'  // Least common
+  ];
+
+  return roles[Math.floor(Math.random() * roles.length)];
+}
+
+export function generateApplication(
+  currentTime: number,
+  prestigeTier: PrestigeTier,
+  targetPosting?: JobPosting
+): Employee {
+  const role = selectRoleForApplication(targetPosting);
+  const skillLevel = selectSkillLevelByPrestige(prestigeTier, targetPosting?.targetSkillLevel);
+
+  return createEmployee(role, skillLevel, currentTime);
+}
+
+export function tickApplications(
+  state: ApplicationState,
+  currentTime: number,
+  prestigeTier: PrestigeTier
+): ApplicationState {
+  const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
+  let newState = { ...state };
+
+  // Remove expired job postings
+  newState = {
+    ...newState,
+    activeJobPostings: state.activeJobPostings.filter(p => p.expiresAt > currentTime)
+  };
+
+  // Check if we should generate a new application
+  if (currentTime >= state.nextApplicationTime && state.applications.length < config.maxApplications) {
+    // Determine if this application comes from a job posting
+    const activePosting = newState.activeJobPostings.length > 0
+      ? newState.activeJobPostings[Math.floor(Math.random() * newState.activeJobPostings.length)]
+      : undefined;
+
+    const newApplication = generateApplication(currentTime, prestigeTier, activePosting);
+
+    // Calculate next application time
+    const hasActivePostings = newState.activeJobPostings.length > 0;
+    const nextInterval = hasActivePostings
+      ? Math.min(config.applicationRate, config.postingApplicationRate)
+      : config.applicationRate;
+
+    newState = {
+      ...newState,
+      applications: [...state.applications, newApplication],
+      lastApplicationTime: currentTime,
+      nextApplicationTime: currentTime + nextInterval * 60,
+      totalApplicationsReceived: state.totalApplicationsReceived + 1
+    };
+  }
+
+  return newState;
+}
+
+export function postJobOpening(
+  state: ApplicationState,
+  currentTime: number,
+  prestigeTier: PrestigeTier,
+  role: EmployeeRole | 'any' = 'any',
+  targetSkillLevel?: SkillLevel
+): { state: ApplicationState; posting: JobPosting } | null {
+  const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
+
+  const posting: JobPosting = {
+    id: `posting_${++jobPostingIdCounter}`,
+    role,
+    postedTime: currentTime,
+    expiresAt: currentTime + config.postingDuration * 60,
+    cost: config.postingCost,
+    targetSkillLevel
+  };
+
+  const newState: ApplicationState = {
+    ...state,
+    activeJobPostings: [...state.activeJobPostings, posting],
+    // Recalculate next application time with posting bonus
+    nextApplicationTime: Math.min(
+      state.nextApplicationTime,
+      currentTime + config.postingApplicationRate * 60
+    )
+  };
+
+  return { state: newState, posting };
+}
+
+export function acceptApplication(
+  state: ApplicationState,
+  applicationId: string
+): ApplicationState | null {
+  const application = state.applications.find(a => a.id === applicationId);
+  if (!application) return null;
+
+  return {
+    ...state,
+    applications: state.applications.filter(a => a.id !== applicationId)
+  };
+}
+
+export function rejectApplication(
+  state: ApplicationState,
+  applicationId: string
+): ApplicationState | null {
+  const application = state.applications.find(a => a.id === applicationId);
+  if (!application) return null;
+
+  return {
+    ...state,
+    applications: state.applications.filter(a => a.id !== applicationId)
+  };
+}
+
+export function getTimeUntilNextApplication(state: ApplicationState, currentTime: number): number {
+  return Math.max(0, state.nextApplicationTime - currentTime);
+}
+
+export function getActivePostingsCount(state: ApplicationState): number {
+  return state.activeJobPostings.length;
+}
+
+export function hasActivePosting(state: ApplicationState, role: EmployeeRole): boolean {
+  return state.activeJobPostings.some(p => p.role === role || p.role === 'any');
+}
+
+export function getPostingCost(prestigeTier: PrestigeTier): number {
+  return PRESTIGE_HIRING_CONFIG[prestigeTier].postingCost;
 }
