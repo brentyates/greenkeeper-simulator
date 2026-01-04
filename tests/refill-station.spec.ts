@@ -9,7 +9,8 @@ test.describe('Refill Station', () => {
 
     await expect(page).toHaveScreenshot('refill-near-station-before.png');
 
-    await page.keyboard.press('e');
+    // Use public API for refill
+    await page.evaluate(() => window.game.pressKey('e'));
     await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-near-station-after.png');
@@ -22,7 +23,8 @@ test.describe('Refill Station', () => {
 
     await expect(page).toHaveScreenshot('refill-far-from-station-before.png');
 
-    await page.keyboard.press('e');
+    // Use public API
+    await page.evaluate(() => window.game.pressKey('e'));
     await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-far-from-station-after.png');
@@ -33,7 +35,8 @@ test.describe('Refill Station', () => {
     await waitForGameReady(page);
     await page.waitForTimeout(200);
 
-    await page.keyboard.press('e');
+    // Use public API
+    await page.evaluate(() => window.game.pressKey('e'));
     await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('refill-all-resources-100.png');

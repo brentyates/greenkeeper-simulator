@@ -994,6 +994,10 @@ export class GrassSystem {
     return this.cells[y]?.[x] ?? null;
   }
 
+  public getTerrainTypeAt(x: number, y: number): string | undefined {
+    return this.cells[y]?.[x]?.type;
+  }
+
   public getAllCells(): CellState[][] {
     return this.cells;
   }

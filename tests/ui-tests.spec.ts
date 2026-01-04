@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { waitForGameReady, waitForPlayerIdle } from './utils/test-helpers';
+import { waitForGameReady } from './utils/test-helpers';
 
 test.describe('UI Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,19 +11,20 @@ test.describe('UI Tests', () => {
   test('overlay mode cycles correctly', async ({ page }) => {
     await expect(page).toHaveScreenshot('overlay-normal.png');
 
-    await page.keyboard.press('Tab');
+    // Use public API for Tab key
+    await page.evaluate(() => window.game.pressKey('Tab'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('overlay-moisture.png');
 
-    await page.keyboard.press('Tab');
+    await page.evaluate(() => window.game.pressKey('Tab'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('overlay-nutrients.png');
 
-    await page.keyboard.press('Tab');
+    await page.evaluate(() => window.game.pressKey('Tab'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('overlay-height.png');
 
-    await page.keyboard.press('Tab');
+    await page.evaluate(() => window.game.pressKey('Tab'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('overlay-back-to-normal.png');
   });
@@ -31,11 +32,12 @@ test.describe('UI Tests', () => {
   test('pause menu appears when P pressed', async ({ page }) => {
     await expect(page).toHaveScreenshot('pause-game-running.png');
 
-    await page.keyboard.press('p');
+    // Use public API
+    await page.evaluate(() => window.game.pressKey('p'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('pause-menu-visible.png');
 
-    await page.keyboard.press('p');
+    await page.evaluate(() => window.game.pressKey('p'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('pause-game-resumed.png');
   });
@@ -43,32 +45,38 @@ test.describe('UI Tests', () => {
   test('camera zoom works', async ({ page }) => {
     await expect(page).toHaveScreenshot('zoom-default.png');
 
-    await page.keyboard.press(']');
+    // Use public API - note: zoom doesn't have dedicated API yet, using pressKey
+    await page.evaluate(() => window.game.pressKey(']'));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('zoom-in.png');
 
-    await page.keyboard.press('[');
+    await page.evaluate(() => window.game.pressKey('['));
     await page.waitForTimeout(100);
-    await page.keyboard.press('[');
+    await page.evaluate(() => window.game.pressKey('['));
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('zoom-out.png');
   });
 
   test('game state freezes when paused', async ({ page }) => {
-    await page.keyboard.press('1');
-    await page.waitForTimeout(100);
-    await page.keyboard.down('Space');
+    // Use public API
+    await page.evaluate(() => {
+      window.game.selectEquipment(1);
+      window.game.toggleEquipment(true);
+      window.game.movePlayer('right');
+    });
 
-    await page.keyboard.press('ArrowRight');
-    await waitForPlayerIdle(page);
+    await page.evaluate(() => window.game.waitForPlayerIdle());
 
-    await page.keyboard.up('Space');
-    await page.keyboard.press('p');
+    await page.evaluate(() => {
+      window.game.toggleEquipment(false);
+      window.game.pressKey('p');  // Pause
+    });
     await page.waitForTimeout(100);
 
     await expect(page).toHaveScreenshot('pause-freeze-initial.png');
 
-    await page.keyboard.press('ArrowRight');
+    // Try to move while paused - should not work
+    await page.evaluate(() => window.game.movePlayer('right'));
     await page.waitForTimeout(200);
 
     await expect(page).toHaveScreenshot('pause-freeze-after-input.png');
