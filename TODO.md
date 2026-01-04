@@ -60,7 +60,7 @@ npm run build && firebase deploy --only hosting
 
 The core logic modules are complete and tested. This TODO covers wiring them into `BabylonMain` and creating the UI layers.
 
-### Core Logic Summary (1627 tests passing)
+### Core Logic Summary (1668 tests passing)
 
 | Module | File | Tests | Description |
 |--------|------|-------|-------------|
@@ -198,18 +198,19 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 - [x] Deduct wages from economy
 - [x] Apply manager bonus to golfer experience
 
-### 5.4 Employee Visual Representation
+### 5.4 Employee Visual Representation ✅
 
 Employees should be visible on the course while working. This creates a living, dynamic environment.
 
 #### Sprite System
-- [ ] Create EmployeeVisualSystem in src/babylon/systems/
-- [ ] Load employee sprite assets (groundskeeper, irrigator, mechanic, etc.)
+- [x] Create EmployeeVisualSystem in src/babylon/systems/
+- [x] Sync visual position with employee grid position
+- [x] Show work equipment (mower, rake, tools) when actively working
+- [x] Different body colors based on current task
+- [ ] Load employee sprite assets (groundskeeper, irrigator, mechanic, etc.) - using 3D meshes instead
 - [ ] Implement sprite animation state machine (idle, walking, working, on_break)
-- [ ] Sync visual position with employee grid position
-- [ ] Show work equipment (mower, rake, tools) when actively working
 
-#### Visual Feedback
+#### Visual Feedback (Future)
 - [ ] Show speech bubbles for employee alerts (tired, needs supplies)
 - [ ] Display work trail showing recently maintained areas
 - [ ] Indicate fatigue through slower movement animation
@@ -363,11 +364,16 @@ Employees work independently based on their role and assigned area.
 - [x] Weather effects on grass simulation (rain adds moisture, heat increases loss)
 
 ### 10.4 Equipment-Based Overlay Modes
-- [ ] Auto-switch to relevant overlay when equipment selected (fertilizer → nutrients, sprinkler → moisture)
-- [ ] Show color-coded need levels when equipment is active (green=OK, yellow=needs attention, red=critical)
-- [ ] Allow manual override to keep specific overlay while using equipment
-- [ ] Display legend for current overlay colors
+- [x] Auto-switch to relevant overlay when equipment selected (mower → height, sprinkler → moisture, spreader → nutrients)
+- [x] Show color-coded need levels when equipment is active (green=OK, yellow=needs attention, red=critical) - uses existing overlay colors
+- [x] Allow manual override to keep specific overlay while using equipment (Tab cycles overlay, clears auto-switch)
+- [x] Restore normal view when equipment is turned off (if auto-switched)
+- [x] Display legend for current overlay colors
 - [ ] Add quick-action from overlay (click tile to target equipment at that location)
+
+### 10.5 UI Polish
+- [x] Main menu should use full screen without scrollbars (refactored LaunchScreen to use Grid layout)
+- [ ] Ensure responsive layout for different screen sizes
 
 ---
 

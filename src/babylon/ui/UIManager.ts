@@ -59,6 +59,8 @@ export class UIManager {
 
   private minimapContainer!: Rectangle;
   private minimapPlayerDot!: Ellipse;
+  private minimapMapArea!: Rectangle;
+  private minimapWorkerDots: Ellipse[] = [];
 
   private notificationContainer!: StackPanel;
 
@@ -76,6 +78,12 @@ export class UIManager {
 
   private currentPriceText!: TextBlock;
 
+  private overlayLegend!: Rectangle;
+  private overlayLegendTitle!: TextBlock;
+  private overlayLegendGradient!: Rectangle;
+  private overlayLegendLowLabel!: TextBlock;
+  private overlayLegendHighLabel!: TextBlock;
+
   constructor(scene: Scene) {
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI', true, scene);
 
@@ -91,6 +99,7 @@ export class UIManager {
     this.createNotificationArea();
     this.createControlsHelp();
     this.createPauseOverlay();
+    this.createOverlayLegend();
   }
 
   private createCourseStatusPanel(): void {
@@ -773,14 +782,14 @@ export class UIManager {
     headerText.fontFamily = 'Arial, sans-serif';
     header.addControl(headerText);
 
-    const mapArea = new Rectangle('mapArea');
-    mapArea.width = '140px';
-    mapArea.height = '96px';
-    mapArea.background = '#228B22';
-    mapArea.cornerRadius = 3;
-    mapArea.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    mapArea.top = '-8px';
-    this.minimapContainer.addControl(mapArea);
+    this.minimapMapArea = new Rectangle('mapArea');
+    this.minimapMapArea.width = '140px';
+    this.minimapMapArea.height = '96px';
+    this.minimapMapArea.background = '#228B22';
+    this.minimapMapArea.cornerRadius = 3;
+    this.minimapMapArea.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.minimapMapArea.top = '-8px';
+    this.minimapContainer.addControl(this.minimapMapArea);
 
     this.minimapPlayerDot = new Ellipse('playerDot');
     this.minimapPlayerDot.width = '10px';
@@ -788,7 +797,7 @@ export class UIManager {
     this.minimapPlayerDot.background = 'white';
     this.minimapPlayerDot.color = '#7FFF7F';
     this.minimapPlayerDot.thickness = 2;
-    mapArea.addControl(this.minimapPlayerDot);
+    this.minimapMapArea.addControl(this.minimapPlayerDot);
   }
 
   private createNotificationArea(): void {
@@ -1015,6 +1024,99 @@ export class UIManager {
 
   private updateSpeedDisplay(): void {
     // Speed display will be updated by BabylonMain calling showPauseMenu with currentSpeed
+  }
+
+  private createOverlayLegend(): void {
+    this.overlayLegend = new Rectangle('overlayLegend');
+    this.overlayLegend.width = '160px';
+    this.overlayLegend.height = '60px';
+    this.overlayLegend.cornerRadius = 5;
+    this.overlayLegend.color = '#4a8a5a';
+    this.overlayLegend.thickness = 2;
+    this.overlayLegend.background = 'rgba(26, 58, 42, 0.95)';
+    this.overlayLegend.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.overlayLegend.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.overlayLegend.left = '10px';
+    this.overlayLegend.top = '-10px';
+    this.overlayLegend.isVisible = false;
+    this.advancedTexture.addControl(this.overlayLegend);
+
+    const stack = new StackPanel();
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    stack.paddingRight = '8px';
+    this.overlayLegend.addControl(stack);
+
+    this.overlayLegendTitle = new TextBlock('overlayTitle');
+    this.overlayLegendTitle.text = 'MOISTURE VIEW';
+    this.overlayLegendTitle.color = '#aaccff';
+    this.overlayLegendTitle.fontSize = 10;
+    this.overlayLegendTitle.height = '14px';
+    this.overlayLegendTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.overlayLegendTitle);
+
+    const gradientRow = new StackPanel();
+    gradientRow.isVertical = false;
+    gradientRow.height = '20px';
+    gradientRow.paddingTop = '4px';
+    stack.addControl(gradientRow);
+
+    this.overlayLegendLowLabel = new TextBlock('lowLabel');
+    this.overlayLegendLowLabel.text = 'Dry';
+    this.overlayLegendLowLabel.color = '#888888';
+    this.overlayLegendLowLabel.fontSize = 9;
+    this.overlayLegendLowLabel.width = '30px';
+    this.overlayLegendLowLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    gradientRow.addControl(this.overlayLegendLowLabel);
+
+    this.overlayLegendGradient = new Rectangle('gradient');
+    this.overlayLegendGradient.width = '80px';
+    this.overlayLegendGradient.height = '12px';
+    this.overlayLegendGradient.cornerRadius = 2;
+    this.overlayLegendGradient.thickness = 1;
+    this.overlayLegendGradient.color = '#555555';
+    gradientRow.addControl(this.overlayLegendGradient);
+
+    this.overlayLegendHighLabel = new TextBlock('highLabel');
+    this.overlayLegendHighLabel.text = 'Wet';
+    this.overlayLegendHighLabel.color = '#888888';
+    this.overlayLegendHighLabel.fontSize = 9;
+    this.overlayLegendHighLabel.width = '30px';
+    this.overlayLegendHighLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    gradientRow.addControl(this.overlayLegendHighLabel);
+  }
+
+  public updateOverlayLegend(mode: 'normal' | 'moisture' | 'nutrients' | 'height'): void {
+    if (mode === 'normal') {
+      this.overlayLegend.isVisible = false;
+      return;
+    }
+
+    this.overlayLegend.isVisible = true;
+
+    switch (mode) {
+      case 'moisture':
+        this.overlayLegendTitle.text = 'MOISTURE VIEW';
+        this.overlayLegendTitle.color = '#88ccff';
+        this.overlayLegendLowLabel.text = 'Dry';
+        this.overlayLegendHighLabel.text = 'Wet';
+        this.overlayLegendGradient.background = 'linear-gradient(90deg, #cc6644 0%, #4488cc 100%)';
+        break;
+      case 'nutrients':
+        this.overlayLegendTitle.text = 'NUTRIENTS VIEW';
+        this.overlayLegendTitle.color = '#88ff88';
+        this.overlayLegendLowLabel.text = 'Low';
+        this.overlayLegendHighLabel.text = 'High';
+        this.overlayLegendGradient.background = 'linear-gradient(90deg, #cc8844 0%, #66cc44 100%)';
+        break;
+      case 'height':
+        this.overlayLegendTitle.text = 'HEIGHT VIEW';
+        this.overlayLegendTitle.color = '#ffcc88';
+        this.overlayLegendLowLabel.text = 'Short';
+        this.overlayLegendHighLabel.text = 'Tall';
+        this.overlayLegendGradient.background = 'linear-gradient(90deg, #44aa44 0%, #cc6644 100%)';
+        break;
+    }
   }
 
   private createMenuButton(label: string, onClick: () => void): Rectangle {
@@ -1310,6 +1412,54 @@ export class UIManager {
     const relY = (y / mapHeight) * 96 - 48;
     this.minimapPlayerDot.left = `${relX}px`;
     this.minimapPlayerDot.top = `${relY}px`;
+  }
+
+  public updateMinimapWorkers(
+    workers: readonly { gridX: number; gridY: number; task: string }[],
+    mapWidth: number,
+    mapHeight: number
+  ): void {
+    // Remove excess dots
+    while (this.minimapWorkerDots.length > workers.length) {
+      const dot = this.minimapWorkerDots.pop();
+      if (dot) {
+        this.minimapMapArea.removeControl(dot);
+      }
+    }
+
+    // Add new dots if needed
+    while (this.minimapWorkerDots.length < workers.length) {
+      const dot = new Ellipse(`workerDot_${this.minimapWorkerDots.length}`);
+      dot.width = '6px';
+      dot.height = '6px';
+      dot.background = '#ff9933';
+      dot.color = '#cc6600';
+      dot.thickness = 1;
+      this.minimapMapArea.addControl(dot);
+      this.minimapWorkerDots.push(dot);
+    }
+
+    // Update positions
+    workers.forEach((worker, i) => {
+      const dot = this.minimapWorkerDots[i];
+      const relX = (worker.gridX / mapWidth) * 140 - 70;
+      const relY = (worker.gridY / mapHeight) * 96 - 48;
+      dot.left = `${relX}px`;
+      dot.top = `${relY}px`;
+
+      // Color based on task
+      if (worker.task === 'idle') {
+        dot.background = '#666666';
+      } else if (worker.task === 'mow_grass') {
+        dot.background = '#44aa44';
+      } else if (worker.task === 'water_area') {
+        dot.background = '#4488cc';
+      } else if (worker.task === 'fertilize_area') {
+        dot.background = '#cc8844';
+      } else {
+        dot.background = '#ff9933';
+      }
+    });
   }
 
   public dispose(): void {

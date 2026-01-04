@@ -3,6 +3,7 @@ import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
+import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { EmployeePanel } from "./ui/EmployeePanel";
@@ -50,6 +51,7 @@ import {
   createInitialWorkSystemState,
   tickEmployeeWork,
   syncWorkersWithRoster,
+  getWorkerPositions,
   TASK_EXPERIENCE_REWARDS,
   TASK_SUPPLY_COSTS,
 } from "../core/employee-work";
@@ -167,6 +169,7 @@ export class BabylonMain {
   private timeScale: number = 1;
   private isPaused: boolean = false;
   private isMuted: boolean = false;
+  private overlayAutoSwitched: boolean = false;
 
   private playerX: number = 25;
   private playerY: number = 19;
@@ -186,6 +189,7 @@ export class BabylonMain {
   private terrainEditorSystem: TerrainEditorSystem | null = null;
   private terrainEditorUI: TerrainEditorUI | null = null;
   private editorUITexture: AdvancedDynamicTexture | null = null;
+  private employeeVisualSystem: EmployeeVisualSystem | null = null;
 
   private employeePanel: EmployeePanel | null = null;
   private hiringPool: HiringPool = { candidates: [], refreshTime: 0 };
@@ -299,6 +303,10 @@ export class BabylonMain {
     this.inputManager = new InputManager(this.babylonEngine.getScene());
     this.grassSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
+    this.employeeVisualSystem = new EmployeeVisualSystem(
+      this.babylonEngine.getScene(),
+      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
+    );
     this.uiManager = new UIManager(this.babylonEngine.getScene());
 
     this.setupInputCallbacks();
@@ -1465,6 +1473,18 @@ export class BabylonMain {
     this.equipmentManager.selectBySlot(slot);
     const names = ["Mower", "Sprinkler", "Spreader"];
     this.uiManager.showNotification(`${names[slot - 1]} selected`);
+
+    const overlayMap: Record<EquipmentSlot, import("./systems/GrassSystem").OverlayMode> = {
+      1: "height",
+      2: "moisture",
+      3: "nutrients",
+    };
+    const targetOverlay = overlayMap[slot];
+    if (targetOverlay && this.grassSystem.getOverlayMode() !== targetOverlay) {
+      this.grassSystem.setOverlayMode(targetOverlay);
+      this.uiManager.updateOverlayLegend(targetOverlay);
+      this.overlayAutoSwitched = true;
+    }
   }
 
   private handleEquipmentToggle(): void {
@@ -1479,6 +1499,12 @@ export class BabylonMain {
     this.uiManager.showNotification(
       `${names[type]} ${isActive ? "ON" : "OFF"}`
     );
+
+    if (!isActive && this.overlayAutoSwitched) {
+      this.grassSystem.setOverlayMode("normal");
+      this.uiManager.updateOverlayLegend("normal");
+      this.overlayAutoSwitched = false;
+    }
   }
 
   private handleRefill(): void {
@@ -1522,6 +1548,8 @@ export class BabylonMain {
       height: "Height View",
     };
     this.uiManager.showNotification(modeNames[mode]);
+    this.uiManager.updateOverlayLegend(mode);
+    this.overlayAutoSwitched = false;
   }
 
   private handlePause(): void {
@@ -2288,6 +2316,11 @@ export class BabylonMain {
           this.dailyStats.expenses.supplies += supplyCost;
         }
       }
+    }
+
+    // Update employee visual positions
+    if (this.employeeVisualSystem) {
+      this.employeeVisualSystem.update(getWorkerPositions(this.employeeWorkState));
     }
 
     // Tick research (only charge funding if there's active research)

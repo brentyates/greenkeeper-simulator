@@ -44,30 +44,39 @@ export class LaunchScreen {
   }
 
   private buildUI(): void {
-    // Main layout
-    const mainStack = new StackPanel('mainStack');
-    mainStack.width = '100%';
-    mainStack.height = '100%';
-    mainStack.paddingTop = '20px';
-    this.container.addControl(mainStack);
+    // Main layout using Grid for proper height distribution
+    const mainGrid = new Grid('mainGrid');
+    mainGrid.width = '100%';
+    mainGrid.height = '100%';
+    mainGrid.paddingTop = '20px';
+    mainGrid.paddingBottom = '10px';
+
+    // Define rows: title (120px), header (40px), content (flex), action bar (80px)
+    mainGrid.addRowDefinition(120, true);
+    mainGrid.addRowDefinition(40, true);
+    mainGrid.addRowDefinition(1.0);
+    mainGrid.addRowDefinition(80, true);
+    mainGrid.addColumnDefinition(1.0);
+
+    this.container.addControl(mainGrid);
 
     // Title section
-    this.createTitleSection(mainStack);
+    this.createTitleSection(mainGrid);
 
     // Scenario selection area
-    this.createScenarioSection(mainStack);
+    this.createScenarioSection(mainGrid);
 
     // Bottom action bar
-    this.createActionBar(mainStack);
+    this.createActionBar(mainGrid);
   }
 
-  private createTitleSection(parent: StackPanel): void {
+  private createTitleSection(parent: Grid): void {
     const titleContainer = new Rectangle('titleContainer');
     titleContainer.width = '100%';
-    titleContainer.height = '120px';
+    titleContainer.height = '100%';
     titleContainer.thickness = 0;
     titleContainer.background = 'transparent';
-    parent.addControl(titleContainer);
+    parent.addControl(titleContainer, 0, 0);
 
     const titleStack = new StackPanel('titleStack');
     titleContainer.addControl(titleStack);
@@ -98,14 +107,14 @@ export class LaunchScreen {
     titleStack.addControl(subtitle);
   }
 
-  private createScenarioSection(parent: StackPanel): void {
-    // Section header
+  private createScenarioSection(parent: Grid): void {
+    // Section header in row 1
     const headerContainer = new Rectangle('headerContainer');
     headerContainer.width = '100%';
-    headerContainer.height = '40px';
+    headerContainer.height = '100%';
     headerContainer.thickness = 0;
     headerContainer.background = 'transparent';
-    parent.addControl(headerContainer);
+    parent.addControl(headerContainer, 1, 0);
 
     const header = new TextBlock('scenarioHeader');
     header.text = 'SELECT SCENARIO';
@@ -114,13 +123,13 @@ export class LaunchScreen {
     header.fontFamily = 'Arial, sans-serif';
     headerContainer.addControl(header);
 
-    // Scrollable scenario container
+    // Scrollable scenario container in row 2 (flexible height)
     const scrollContainer = new Rectangle('scrollContainer');
     scrollContainer.width = '100%';
-    scrollContainer.height = '380px';
+    scrollContainer.height = '100%';
     scrollContainer.thickness = 0;
     scrollContainer.background = 'transparent';
-    parent.addControl(scrollContainer);
+    parent.addControl(scrollContainer, 2, 0);
 
     const scrollViewer = new ScrollViewer('scenarioScroll');
     scrollViewer.width = '95%';
@@ -354,14 +363,13 @@ export class LaunchScreen {
     }
   }
 
-  private createActionBar(parent: StackPanel): void {
+  private createActionBar(parent: Grid): void {
     const actionBar = new Rectangle('actionBar');
     actionBar.width = '100%';
-    actionBar.height = '80px';
+    actionBar.height = '100%';
     actionBar.thickness = 0;
     actionBar.background = 'rgba(26, 58, 42, 0.5)';
-    actionBar.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    parent.addControl(actionBar);
+    parent.addControl(actionBar, 3, 0);
 
     const buttonRow = new StackPanel('buttonRow');
     buttonRow.isVertical = false;
