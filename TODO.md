@@ -217,12 +217,14 @@ Employees should be visible on the course while working. This creates a living, 
 - [ ] Indicate fatigue through slower movement animation
 - [ ] Show break location icons when employees on break
 
-#### Architecture Refactoring (Future)
-- [ ] Unify player and employee into shared GroundskeeperEntity base type
-- [ ] Common fields: position, path, movement, efficiency, equipment state
-- [ ] Player-specific: input handling, camera following, playable controls
-- [ ] Employee-specific: task prioritization, autonomous work logic, assigned areas
-- [ ] Benefits: shared movement/pathfinding code, consistent collision, potential to control any employee
+#### Architecture Refactoring ✅
+- [x] Unify player and employee into shared MovableEntity base type (src/core/movable-entity.ts)
+- [x] Common fields: gridX, gridY, path, moveProgress, efficiency
+- [x] Player-specific: pendingDirection, equipmentSlot, equipmentActive (PlayerEntity)
+- [x] Employee-specific: currentTask, targetX/Y, workProgress, assignedAreaId (EmployeeEntity)
+- [x] Golfer-specific: currentHole, satisfaction, isWalking (GolferEntity)
+- [x] Benefits: shared movement types, consistent interpolation, type guards for entity discrimination
+- [x] Fixed employees racing to same work areas via claimedTargets tracking
 
 ### 5.5 Employee Autonomous Work Behavior
 
