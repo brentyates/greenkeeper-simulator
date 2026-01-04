@@ -31,10 +31,8 @@ export class LaunchScreen {
   private continueButton: AccessibleButton | null = null;
   private quickPlayButton: AccessibleButton | null = null;
   private focusManager: FocusManager;
-  private scene: Scene;
 
   constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks) {
-    this.scene = scene;
     this.callbacks = callbacks;
     this.progressManager = getProgressManager();
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('LaunchScreenUI', true, scene);

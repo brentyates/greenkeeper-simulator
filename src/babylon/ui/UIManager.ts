@@ -15,7 +15,6 @@ import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 
 export class UIManager {
   private advancedTexture: AdvancedDynamicTexture;
-  private scene: Scene;
   private focusManager: FocusManager;
   private pauseMenuButtons: AccessibleButton[] = [];
 
@@ -90,7 +89,6 @@ export class UIManager {
   private overlayLegendHighLabel!: TextBlock;
 
   constructor(scene: Scene) {
-    this.scene = scene;
     this.advancedTexture = AdvancedDynamicTexture.CreateFullscreenUI('UI', true, scene);
     this.focusManager = new FocusManager(scene);
 
