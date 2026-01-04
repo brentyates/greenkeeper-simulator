@@ -217,6 +217,13 @@ Employees should be visible on the course while working. This creates a living, 
 - [ ] Indicate fatigue through slower movement animation
 - [ ] Show break location icons when employees on break
 
+#### Architecture Refactoring (Future)
+- [ ] Unify player and employee into shared GroundskeeperEntity base type
+- [ ] Common fields: position, path, movement, efficiency, equipment state
+- [ ] Player-specific: input handling, camera following, playable controls
+- [ ] Employee-specific: task prioritization, autonomous work logic, assigned areas
+- [ ] Benefits: shared movement/pathfinding code, consistent collision, potential to control any employee
+
 ### 5.5 Employee Autonomous Work Behavior
 
 Employees work independently based on their role and assigned area.
