@@ -2319,9 +2319,17 @@ export class BabylonMain {
     }
 
     // Update employee visual positions
+    const workerPositions = getWorkerPositions(this.employeeWorkState);
     if (this.employeeVisualSystem) {
-      this.employeeVisualSystem.update(getWorkerPositions(this.employeeWorkState));
+      this.employeeVisualSystem.update(workerPositions);
     }
+
+    // Update minimap worker dots
+    this.uiManager.updateMinimapWorkers(
+      workerPositions,
+      this.currentCourse.width,
+      this.currentCourse.height
+    );
 
     // Tick research (only charge funding if there's active research)
     if (this.researchState.currentResearch) {

@@ -166,6 +166,7 @@ The core logic modules are complete and tested. This TODO covers wiring them int
 ### 4.3 Golfer UI Indicators
 - [x] Show current golfer count on course (in economy panel)
 - [x] Display average satisfaction rating (in economy panel with color coding)
+- [x] Show workers as colored dots on minimap (color indicates task)
 - [ ] Show golfers as small markers on minimap (optional)
 - [x] Add notification when golfers arrive/depart - shows count and revenue/tips
 
