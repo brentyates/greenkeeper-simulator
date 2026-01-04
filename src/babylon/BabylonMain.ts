@@ -2208,11 +2208,13 @@ export class BabylonMain {
 
     // Tick employee autonomous work
     const cells = this.grassSystem.getAllCells();
+    const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
     const workResult = tickEmployeeWork(
       this.employeeWorkState,
       this.employeeRoster.employees,
       cells,
-      gameMinutes
+      gameMinutes,
+      absoluteGameTime
     );
     this.employeeWorkState = workResult.state;
 
@@ -2226,6 +2228,8 @@ export class BabylonMain {
       } else if (effect.type === 'fertilize') {
         this.grassSystem.fertilizeArea(effect.gridX, effect.gridY, 0, 25, effect.efficiency);
         this.dailyStats.maintenance.tilesFertilized++;
+      } else if (effect.type === 'rake') {
+        this.grassSystem.rakeAt(effect.gridX, effect.gridY);
       }
     }
 

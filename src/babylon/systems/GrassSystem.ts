@@ -931,6 +931,14 @@ export class GrassSystem {
     return true;
   }
 
+  public rakeAt(gridX: number, gridY: number): boolean {
+    const cell = this.getCell(gridX, gridY);
+    if (!cell || cell.type !== 'bunker') return false;
+
+    cell.lastMowed = this.gameTime;
+    return true;
+  }
+
   public waterArea(
     centerX: number,
     centerY: number,

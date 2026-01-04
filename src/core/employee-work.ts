@@ -41,7 +41,7 @@ export interface EmployeeWorkSystemState {
 export interface WorkEffect {
   readonly gridX: number;
   readonly gridY: number;
-  readonly type: 'mow' | 'water' | 'fertilize';
+  readonly type: 'mow' | 'water' | 'fertilize' | 'rake';
   readonly efficiency: number;
 }
 
@@ -202,6 +202,7 @@ function findBestWorkTarget(
   role: EmployeeRole,
   assignedArea: CourseArea | null,
   claimedTargets: ReadonlySet<string>,
+  gameTime: number = 0,
   maxDistance: number = 100
 ): WorkTarget | null {
   const priorities = getTaskPriorityForRole(role);
@@ -221,7 +222,7 @@ function findBestWorkTarget(
 
       for (let priorityIndex = 0; priorityIndex < priorities.length; priorityIndex++) {
         const task = priorities[priorityIndex];
-        const need = getTaskNeed(cell, task);
+        const need = getTaskNeed(cell, task, gameTime);
 
         if (need > 0) {
           const score = (priorities.length - priorityIndex) * 1000 + need * 10 - distance;
@@ -238,7 +239,7 @@ function findBestWorkTarget(
   return bestTarget;
 }
 
-function getTaskNeed(cell: CellState, task: EmployeeTask): number {
+function getTaskNeed(cell: CellState, task: EmployeeTask, gameTime: number = 0): number {
   switch (task) {
     case 'mow_grass':
       if (cell.type === 'fairway' || cell.type === 'green' || cell.type === 'rough') {
@@ -275,7 +276,10 @@ function getTaskNeed(cell: CellState, task: EmployeeTask): number {
 
     case 'rake_bunker':
       if (cell.type === 'bunker') {
-        return 10;
+        const timeSinceRake = gameTime - cell.lastMowed;
+        if (cell.lastMowed === 0 || timeSinceRake >= BUNKER_RAKE_COOLDOWN) {
+          return 10;
+        }
       }
       return 0;
 
@@ -372,7 +376,7 @@ function findPath(
   return [];
 }
 
-function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | null {
+function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | 'rake' | null {
   switch (task) {
     case 'mow_grass':
       return 'mow';
@@ -380,16 +384,21 @@ function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | null
       return 'water';
     case 'fertilize_area':
       return 'fertilize';
+    case 'rake_bunker':
+      return 'rake';
     default:
       return null;
   }
 }
 
+const BUNKER_RAKE_COOLDOWN = 60;
+
 export function tickEmployeeWork(
   state: EmployeeWorkSystemState,
   employees: readonly Employee[],
   cells: CellState[][],
-  deltaMinutes: number
+  deltaMinutes: number,
+  gameTime: number = 0
 ): EmployeeWorkTickResult {
   const effects: WorkEffect[] = [];
   const completions: TaskCompletion[] = [];
@@ -471,7 +480,7 @@ export function tickEmployeeWork(
     if (currentCell && (workerOwnsClaim || !claimedTargets.has(`${currentX},${currentY}`))) {
       const priorities = getTaskPriorityForRole(employee.role);
       for (const task of priorities) {
-        const need = getTaskNeed(currentCell, task);
+        const need = getTaskNeed(currentCell, task, gameTime);
         if (need > 0) {
           claimedTargets.add(`${currentX},${currentY}`);
           return {
@@ -495,7 +504,8 @@ export function tickEmployeeWork(
       currentY,
       employee.role,
       assignedArea,
-      claimedTargets
+      claimedTargets,
+      gameTime
     );
 
     if (target) {
