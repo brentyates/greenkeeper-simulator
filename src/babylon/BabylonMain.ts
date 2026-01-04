@@ -716,7 +716,7 @@ export class BabylonMain {
     this.pauseGame();
   }
 
-  private saveCurrentGame(): void {
+  public saveCurrentGame(): void {
     if (!this.currentScenario || !this.scenarioManager) return;
 
     const cells = this.grassSystem.getAllCells();
@@ -2325,6 +2325,61 @@ export class BabylonMain {
 
   public stop(): void {
     this.babylonEngine.stop();
+  }
+
+  public getScenarioState(): { progress: number; completed: boolean; failed: boolean; message?: string } | null {
+    if (!this.scenarioManager) return null;
+    const result = this.scenarioManager.checkObjective();
+    return {
+      progress: result.progress,
+      completed: result.completed,
+      failed: result.failed,
+      message: result.message
+    };
+  }
+
+  public getEconomyState(): { cash: number; earned: number; spent: number } {
+    return {
+      cash: this.economyState.cash,
+      earned: this.economyState.totalEarned,
+      spent: this.economyState.totalSpent
+    };
+  }
+
+  public getGameDay(): number {
+    return this.gameDay;
+  }
+
+  public getGameTime(): { hours: number; minutes: number } {
+    return {
+      hours: Math.floor(this.gameTime / 60),
+      minutes: Math.floor(this.gameTime % 60)
+    };
+  }
+
+  public setCash(amount: number): void {
+    const diff = amount - this.economyState.cash;
+    const timestamp = Date.now();
+    if (diff > 0) {
+      this.economyState = addIncome(this.economyState, diff, 'other_income', 'Test adjustment', timestamp);
+    } else if (diff < 0) {
+      const result = addExpense(this.economyState, -diff, 'other_expense', 'Test adjustment', timestamp, true);
+      if (result) {
+        this.economyState = result;
+      }
+    }
+    this.uiManager.updateEconomy(
+      this.economyState.cash,
+      getActiveGolferCount(this.golferPool),
+      getAverageSatisfaction(this.golferPool)
+    );
+  }
+
+  public advanceDay(): void {
+    this.gameDay++;
+    if (this.scenarioManager) {
+      this.scenarioManager.incrementDay();
+    }
   }
 
   public dispose(): void {

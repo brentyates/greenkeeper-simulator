@@ -2,7 +2,8 @@ import { BabylonMain, startBabylonGame } from './babylon/BabylonMain';
 import { getPreset, listPresets } from './data/testPresets';
 import { GameStateSerializer } from './systems/GameStateSerializer';
 import { GameState } from './systems/GameState';
-import { ScenarioDefinition } from './data/scenarioData';
+import { ScenarioDefinition, getScenarioById, SCENARIOS } from './data/scenarioData';
+import { hasSave, deleteSave } from './core/save-game';
 import { getProgressManager } from './systems/ProgressManager';
 import { LaunchScreen } from './babylon/ui/LaunchScreen';
 import { Engine } from '@babylonjs/core/Engines/engine';
@@ -18,6 +19,8 @@ export interface StartupParams {
   testMode?: boolean;
   scene?: string;
   skipMenu?: boolean;
+  scenario?: ScenarioDefinition;
+  loadFromSave?: boolean;
 }
 
 function parseURLParams(): StartupParams {
@@ -73,6 +76,23 @@ function parseURLParams(): StartupParams {
     console.log('Skipping menu');
   }
 
+  const scenarioId = params.get('scenario');
+  if (scenarioId) {
+    const scenario = getScenarioById(scenarioId);
+    if (scenario) {
+      result.scenario = scenario;
+      result.skipMenu = true;
+      console.log(`Loaded scenario: ${scenarioId}`);
+    } else {
+      console.warn(`Unknown scenario: ${scenarioId}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
+    }
+  }
+
+  const loadFromSave = params.get('loadFromSave');
+  if (loadFromSave === 'true' || loadFromSave === '1') {
+    result.loadFromSave = true;
+  }
+
   return result;
 }
 
@@ -84,6 +104,16 @@ declare global {
     exportGameState: () => void;
     loadPreset: (name: string) => void;
     listPresets: () => string[];
+    listScenarios: () => string[];
+    loadScenario: (id: string) => void;
+    getScenarioState: () => { progress: number; completed: boolean; failed: boolean; message?: string } | null;
+    getEconomyState: () => { cash: number; earned: number; spent: number } | null;
+    setCash: (amount: number) => void;
+    advanceDay: () => void;
+    getGameDay: () => number | null;
+    saveGame: () => void;
+    hasSave: (scenarioId: string) => boolean;
+    clearSave: (scenarioId: string) => void;
     app: GameApp;
   }
 }
@@ -107,6 +137,12 @@ class GameApp {
   }
 
   public async start(): Promise<void> {
+    // If we have a scenario from URL, start it directly
+    if (this.startupParams.scenario) {
+      this.startGame(this.startupParams.scenario, this.startupParams.loadFromSave ?? false);
+      return;
+    }
+
     // If we have preset/state or skipMenu, go straight to game
     if (this.startupParams.skipMenu) {
       this.startGameDirectly();
@@ -222,9 +258,8 @@ window.loadPreset = (name: string) => {
 // Create and start the app
 const app = new GameApp('renderCanvas', startupParams);
 window.app = app;
-app.start();
-
 window.game = null; // Will be set when game starts
+app.start();
 
 window.captureScreenshot = async (): Promise<string> => {
   return new Promise((resolve) => {
@@ -246,4 +281,62 @@ window.captureScreenshot = async (): Promise<string> => {
 
 window.exportGameState = () => {
   console.log('Game state export not yet implemented for Babylon.js version');
+};
+
+window.listScenarios = () => SCENARIOS.map(s => s.id);
+
+window.loadScenario = (id: string) => {
+  const scenario = getScenarioById(id);
+  if (scenario) {
+    window.location.search = `?scenario=${id}`;
+  } else {
+    console.warn(`Unknown scenario: ${id}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
+  }
+};
+
+window.getScenarioState = () => {
+  if (window.game) {
+    return window.game.getScenarioState();
+  }
+  return null;
+};
+
+window.getEconomyState = () => {
+  if (window.game) {
+    return window.game.getEconomyState();
+  }
+  return null;
+};
+
+window.setCash = (amount: number) => {
+  if (window.game) {
+    window.game.setCash(amount);
+  }
+};
+
+window.advanceDay = () => {
+  if (window.game) {
+    window.game.advanceDay();
+  }
+};
+
+window.getGameDay = () => {
+  if (window.game) {
+    return window.game.getGameDay();
+  }
+  return null;
+};
+
+window.saveGame = () => {
+  if (window.game) {
+    window.game.saveCurrentGame();
+  }
+};
+
+window.hasSave = (scenarioId: string) => {
+  return hasSave(scenarioId);
+};
+
+window.clearSave = (scenarioId: string) => {
+  deleteSave(scenarioId);
 };
