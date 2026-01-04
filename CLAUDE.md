@@ -12,6 +12,7 @@ npm run test:watch    # Run unit tests in watch mode
 npm run test:coverage # Run with coverage report
 npm run test:e2e      # Run Playwright E2E tests
 npm run test:e2e:update # Update Playwright snapshots
+firebase deploy --only hosting  # Deploy to https://greenkeeper-96a0b.web.app
 ```
 
 Run specific tests:
