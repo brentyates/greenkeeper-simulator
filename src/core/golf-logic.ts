@@ -77,9 +77,9 @@ export function calculate3DDistance(
 
 /**
  * Convert grid distance to yards
- * Assumes 1 grid unit = 2 yards (configurable)
+ * Assumes 1 grid unit = 20 yards (configurable)
  */
-export function gridToYards(gridDistance: number, yardsPerGrid: number = 2): number {
+export function gridToYards(gridDistance: number, yardsPerGrid: number = 20): number {
   return Math.round(gridDistance * yardsPerGrid);
 }
 
@@ -91,7 +91,7 @@ export function getYardageToPin(
   fromY: number,
   fromElevation: number,
   pinPosition: PinPosition,
-  yardsPerGrid: number = 2
+  yardsPerGrid: number = 20
 ): number {
   const distance = calculate3DDistance(
     fromX,
@@ -113,7 +113,7 @@ export function getYardagesToGreen(
   fromElevation: number,
   green: GreenInfo,
   pinElevation: number,
-  yardsPerGrid: number = 2
+  yardsPerGrid: number = 20
 ): { front: number; center: number; back: number } {
   const frontDist = calculate3DDistance(
     fromX,

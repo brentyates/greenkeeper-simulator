@@ -28,481 +28,336 @@ const B = 3; // Bunker
 const W = 4; // Water
 const T = 5; // Tee
 
-export const COURSE_HOLE_1: CourseData = {
-  name: 'Sunrise Valley - Hole 1',
+function generateRow(width: number, pattern: Array<[number, number, number?]>): number[] {
+  const row: number[] = new Array(width).fill(R);
+  for (const [start, end, terrain] of pattern) {
+    const t = terrain ?? F;
+    for (let x = start; x <= end; x++) {
+      if (x >= 0 && x < width) row[x] = t;
+    }
+  }
+  return row;
+}
+
+// ============================================================================
+// 3-HOLE STARTER COURSE
+// ============================================================================
+// Scale: 20 yards per tile
+// Map: 50 wide × 55 tall (1000 × 1100 yards of property)
+//
+// LAYOUT:
+//   ┌─────────────────────────────────────────────────┐
+//   │                  EXPANSION SPACE                │
+//   │                                                 │
+//   │      [H1 GREEN]                                 │
+//   │          ↑                                      │
+//   │       fairway            [H2 GREEN]             │
+//   │          ↑                   ↑                  │
+//   │       [TEE 1]             fairway               │
+//   │                              ↑                  │
+//   │                           [TEE 2]               │
+//   │                              ↑                  │
+//   │    [H3 GREEN] ← fairway ← [TEE 3]               │
+//   │                                                 │
+//   │   [CLUBHOUSE]           EXPANSION               │
+//   │      AREA                 SPACE                 │
+//   └─────────────────────────────────────────────────┘
+//
+// Hole 1 (Par 3, ~150 yds = 7 tiles): Plays NORTH from near clubhouse
+// Hole 2 (Par 4, ~380 yds = 19 tiles): Plays NORTH on right side
+// Hole 3 (Par 3, ~140 yds = 7 tiles): Plays WEST back toward clubhouse
+//
+// ============================================================================
+
+function generate3HoleCourse(): { layout: number[][], elevation: number[][] } {
+  const WIDTH = 50;
+  const HEIGHT = 55;
+
+  const layout: number[][] = [];
+  const elevation: number[][] = [];
+
+  for (let y = 0; y < HEIGHT; y++) {
+    layout.push(new Array(WIDTH).fill(R));
+    elevation.push(new Array(WIDTH).fill(0));
+  }
+
+  // Helper to set terrain
+  const setTerrain = (x: number, y: number, terrain: number) => {
+    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+      layout[y][x] = terrain;
+    }
+  };
+
+  const setElevation = (x: number, y: number, elev: number) => {
+    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+      elevation[y][x] = elev;
+    }
+  };
+
+  const fillRect = (x1: number, y1: number, x2: number, y2: number, terrain: number) => {
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        setTerrain(x, y, terrain);
+      }
+    }
+  };
+
+  const fillElevRect = (x1: number, y1: number, x2: number, y2: number, elev: number) => {
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        setElevation(x, y, elev);
+      }
+    }
+  };
+
+  const fillCircle = (cx: number, cy: number, radius: number, terrain: number) => {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          setTerrain(cx + dx, cy + dy, terrain);
+        }
+      }
+    }
+  };
+
+  const fillElevCircle = (cx: number, cy: number, radius: number, elev: number) => {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          setElevation(cx + dx, cy + dy, elev);
+        }
+      }
+    }
+  };
+
+  // ========== HOLE 1: Par 3, 160 yards (8 tiles), plays NORTH ==========
+  // Tee: (12, 28), Green center: (12, 20)
+
+  // Tee box (2x2)
+  fillRect(11, 28, 12, 29, T);
+  setTerrain(10, 29, F); setTerrain(13, 29, F);
+
+  // Fairway - single tile strip (par 3, no need for wide landing area)
+  for (let y = 23; y <= 27; y++) {
+    setTerrain(12, y, F);
+  }
+
+  // Green (circular, radius 2 = ~80 yard diameter)
+  fillCircle(12, 20, 2, G);
+  fillElevCircle(12, 20, 2, 1);
+
+  // Bunkers flanking green
+  setTerrain(9, 20, B);
+  setTerrain(9, 21, B);
+  setTerrain(15, 19, B);
+  setTerrain(15, 20, B);
+
+  // ========== HOLE 2: Par 4, 380 yards (19 tiles), plays NORTH ==========
+  // Tee: (35, 40), Green center: (35, 21)
+
+  // Tee box (2x2)
+  fillRect(34, 40, 35, 41, T);
+  setTerrain(33, 40, F); setTerrain(36, 41, F);
+
+  // Fairway - variable width: wider landing zone, narrower approach
+  // Landing zone (y 34-39) - 2 tiles wide
+  for (let y = 34; y <= 39; y++) {
+    setTerrain(34, y, F);
+    setTerrain(35, y, F);
+  }
+  // Narrower approach (y 24-33) - 1-2 tiles
+  for (let y = 24; y <= 33; y++) {
+    setTerrain(35, y, F);
+    if (y >= 28) setTerrain(34, y, F); // widens slightly mid-fairway
+  }
+
+  // Water hazard on left side mid-fairway
+  setTerrain(32, 30, W);
+  setTerrain(32, 31, W);
+  setElevation(32, 30, -1);
+  setElevation(32, 31, -1);
+
+  // Fairway bunker on right
+  setTerrain(37, 32, B);
+
+  // Green (circular, radius 2)
+  fillCircle(35, 21, 2, G);
+  fillElevCircle(35, 21, 2, 1);
+
+  // Greenside bunkers
+  setTerrain(32, 21, B);
+  setTerrain(38, 20, B);
+
+  // ========== HOLE 3: Par 3, 140 yards (7 tiles), plays WEST ==========
+  // Tee: (32, 45), Green center: (12, 45)
+
+  // Tee box (2x2)
+  fillRect(32, 44, 33, 45, T);
+  setTerrain(31, 45, F); setTerrain(34, 44, F);
+
+  // Fairway - single tile strip (par 3)
+  for (let x = 15; x <= 30; x++) {
+    setTerrain(x, 45, F);
+  }
+
+  // Green (circular, radius 2)
+  fillCircle(12, 45, 2, G);
+  fillElevCircle(12, 45, 2, 1);
+
+  // Bunkers
+  setTerrain(12, 42, B);
+  setTerrain(11, 48, B);
+
+  // ========== TERRAIN FEATURES ==========
+
+  // Hills in corners for visual interest
+  fillElevRect(0, 0, 5, 5, 1);
+  fillElevRect(44, 0, 49, 5, 1);
+  fillElevRect(44, 50, 49, 54, 1);
+
+  // Slight mounding between holes
+  fillElevRect(20, 25, 25, 35, 1);
+
+  return { layout, elevation };
+}
+
+const { layout: course3Layout, elevation: course3Elevation } = generate3HoleCourse();
+
+export const COURSE_3_HOLE: CourseData = {
+  name: 'Sunrise Valley - 3 Hole',
   width: 50,
-  height: 38,
-  par: 4,
-  layout: [
-    // Row 0-2: Top rough with green
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,G,G,G,G,G,G,G,G,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,G,G,G,G,G,G,G,G,G,G,G,G,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 3-5: Green and surrounding bunkers
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,B,G,G,G,G,G,G,G,G,G,G,G,G,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,B,G,G,G,G,G,G,G,G,G,G,G,G,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,G,G,G,G,G,G,G,G,G,G,G,G,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 6-8: Transition to fairway
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 9-14: Main fairway with water hazard on left
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,W,W,W,R,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,W,W,W,W,W,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,B,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,W,W,W,W,W,R,R,R,F,F,F,F,F,F,F,F,F,R,R,R,B,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,W,W,W,W,W,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,W,W,W,R,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 15-20: Fairway continues
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 21-26: Fairway with bunkers on sides
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,B,B,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,B,B,F,F,F,F,F,F,F,F,F,F,F,F,F,B,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,B,B,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 27-32: Fairway widens towards tee
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    // Row 33-37: Tee box area
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,F,T,T,T,T,T,T,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,T,T,T,T,T,T,T,T,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,F,F,F,F,T,T,T,T,T,F,F,F,F,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-    [R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R,R],
-  ],
-  elevation: [
-    // Row 0-2: Green area elevated, hills on sides
-    [0,0,1,1,2,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2,2,1,1,0,0,0,0,0],
-    [0,0,1,2,2,3,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,2,3,3,2,2,1,0,0,0,0,0],
-    [0,0,1,2,3,3,3,2,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,2,3,3,3,2,1,0,0,0,0,0],
-    // Row 3-5: Green center elevated, hills continue
-    [0,0,1,1,2,3,2,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,2,3,2,1,1,0,0,0,0,0],
-    [0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0],
-    [0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0],
-    // Row 6-8: Transition slope, hills taper off
-    [0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    // Row 9-14: Water below ground, hill on right, FAIRWAY HILL in middle
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,0,1,1,2,2,2,1,1,0,0,0,0,0,0,1,1,2,2,1,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,1,1,2,2,3,2,2,1,1,0,0,0,0,0,1,2,2,2,2,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,-1,0,0,0,1,1,2,2,3,2,2,1,1,0,0,0,0,0,1,2,2,2,2,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,1,1,2,2,2,1,1,0,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
-    // Row 15-20: Rolling hills on left side, depression on right side
-    [0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0],
-    [0,0,1,1,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-2,-1,-1,0,0,0,0,0],
-    [0,0,1,2,3,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-2,-2,-2,-1,0,0,0,0,0],
-    [0,0,1,2,3,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-2,-2,-2,-1,0,0,0,0,0],
-    [0,0,1,1,2,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-2,-1,-1,0,0,0,0,0],
-    [0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0],
-    // Row 21-26: Hill on right side near bunkers, fairway mound
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,1,1,2,2,1,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2,2,1,1,0,0,0,0,0,1,2,3,3,2,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2,2,1,1,0,0,0,0,0,1,2,3,3,2,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,1,1,2,2,1,1,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
-    // Row 27-32: Gentle hill near tee on left, rise on right, valley in middle
-    [0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-2,-1,-1,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,1,2,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-2,-2,-2,-1,0,0,0,0,0,0,1,2,2,2,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,1,2,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-2,-2,-2,-1,0,0,0,0,0,0,1,2,2,2,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-2,-1,-1,0,0,0,0,0,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    // Row 33-37: Tee area with slight depression
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  ],
+  height: 55,
+  par: 10, // Par 3 + Par 4 + Par 3
+  layout: course3Layout,
+  elevation: course3Elevation,
   obstacles: [
-    // Trees on left hills near green (rows 0-5)
-    { x: 4, y: 1, type: 2 },
-    { x: 6, y: 2, type: 1 },
-    { x: 5, y: 4, type: 2 },
-    // Trees on right hills near green
-    { x: 41, y: 1, type: 1 },
-    { x: 43, y: 2, type: 2 },
-    { x: 42, y: 4, type: 1 },
-    // Trees on right hill near water (rows 10-14)
-    { x: 36, y: 11, type: 2 },
-    { x: 38, y: 12, type: 1 },
-    { x: 37, y: 13, type: 2 },
-    // Trees on left rolling hills (rows 15-20)
-    { x: 4, y: 16, type: 1 },
-    { x: 5, y: 17, type: 2 },
-    { x: 6, y: 18, type: 1 },
-    { x: 4, y: 19, type: 2 },
-    // Trees on right hill (rows 21-26)
-    { x: 36, y: 22, type: 2 },
-    { x: 37, y: 23, type: 1 },
-    { x: 38, y: 24, type: 2 },
-    { x: 36, y: 25, type: 1 },
-    // Trees on left hill near tee (rows 27-32)
-    { x: 6, y: 28, type: 1 },
-    { x: 7, y: 29, type: 2 },
-    { x: 6, y: 30, type: 1 },
-    { x: 7, y: 31, type: 2 },
+    // Trees around Hole 1
+    { x: 7, y: 19, type: 2 },   // Left of green
+    { x: 17, y: 20, type: 1 },  // Right of green
+    { x: 9, y: 25, type: 1 },   // Left of fairway
+    { x: 15, y: 26, type: 2 },  // Right of fairway
+
+    // Trees around Hole 2
+    { x: 30, y: 22, type: 2 },  // Left of green
+    { x: 40, y: 21, type: 1 },  // Right of green
+    { x: 30, y: 35, type: 1 },  // Near water
+    { x: 40, y: 37, type: 2 },  // Right side
+
+    // Trees around Hole 3
+    { x: 8, y: 43, type: 2 },   // Above green
+    { x: 8, y: 48, type: 1 },   // Below green
+    { x: 22, y: 42, type: 1 },  // Mid fairway
+    { x: 36, y: 43, type: 2 },  // Near tee
+
+    // Expansion area trees (sparse)
+    { x: 5, y: 8, type: 1 },
+    { x: 25, y: 5, type: 2 },
+    { x: 45, y: 10, type: 1 },
+    { x: 3, y: 35, type: 2 },
+    { x: 45, y: 48, type: 1 },
   ],
-  yardsPerGrid: 2,
+  yardsPerGrid: 20,
   holeData: {
     holeNumber: 1,
-    par: 4,
+    par: 3,
     teeBoxes: [
-      {
-        name: 'Championship',
-        x: 25,
-        y: 34,
-        elevation: -1,
-        yardage: 410,
-        par: 4,
-      },
-      {
-        name: 'Back',
-        x: 24,
-        y: 34,
-        elevation: -1,
-        yardage: 385,
-        par: 4,
-      },
-      {
-        name: 'Middle',
-        x: 25,
-        y: 35,
-        elevation: -1,
-        yardage: 350,
-        par: 4,
-      },
-      {
-        name: 'Forward',
-        x: 24,
-        y: 35,
-        elevation: 0,
-        yardage: 310,
-        par: 4,
-      },
+      { name: 'Championship', x: 12, y: 29, elevation: 0, yardage: 160, par: 3 },
+      { name: 'Forward', x: 12, y: 28, elevation: 0, yardage: 140, par: 3 },
     ],
-    pinPosition: {
-      x: 25,
-      y: 3,
-      elevation: 1,
-    },
+    pinPosition: { x: 12, y: 20, elevation: 1 },
     green: {
-      frontEdge: { x: 25, y: 5 },
-      center: { x: 25, y: 3 },
-      backEdge: { x: 25, y: 1 },
+      frontEdge: { x: 12, y: 22 },
+      center: { x: 12, y: 20 },
+      backEdge: { x: 12, y: 18 },
     },
     idealPath: [
-      { x: 25, y: 34, description: 'Tee shot' },
-      { x: 24, y: 25, description: 'Landing zone - avoid water left' },
-      { x: 24, y: 15, description: 'Lay-up position' },
-      { x: 25, y: 6, description: 'Approach to green' },
-      { x: 25, y: 3, description: 'Pin position' },
+      { x: 12, y: 29, description: 'Tee shot' },
+      { x: 12, y: 20, description: 'Green' },
     ],
     hazards: [
       {
-        type: 'water',
-        name: 'Left pond',
-        positions: [
-          { x: 13, y: 9 },
-          { x: 14, y: 9 },
-          { x: 15, y: 9 },
-          { x: 12, y: 10 },
-          { x: 13, y: 10 },
-          { x: 14, y: 10 },
-          { x: 15, y: 10 },
-          { x: 16, y: 10 },
-          { x: 12, y: 11 },
-          { x: 13, y: 11 },
-          { x: 14, y: 11 },
-          { x: 15, y: 11 },
-          { x: 16, y: 11 },
-          { x: 12, y: 12 },
-          { x: 13, y: 12 },
-          { x: 14, y: 12 },
-          { x: 15, y: 12 },
-          { x: 16, y: 12 },
-          { x: 13, y: 13 },
-          { x: 14, y: 13 },
-          { x: 15, y: 13 },
-        ],
+        type: 'bunker',
+        name: 'Left greenside',
+        positions: [{ x: 9, y: 20 }, { x: 9, y: 21 }],
       },
       {
         type: 'bunker',
-        name: 'Green side bunkers',
-        positions: [
-          { x: 18, y: 3 },
-          { x: 18, y: 4 },
-          { x: 31, y: 3 },
-          { x: 31, y: 4 },
-        ],
-      },
-      {
-        type: 'bunker',
-        name: 'Fairway bunkers right',
-        positions: [
-          { x: 32, y: 10 },
-          { x: 33, y: 10 },
-          { x: 32, y: 11 },
-          { x: 33, y: 11 },
-        ],
+        name: 'Right greenside',
+        positions: [{ x: 15, y: 19 }, { x: 15, y: 20 }],
       },
     ],
   },
 };
 
-
-// 3-hole beginner course - "Pine Valley Starter"
-export const COURSE_3_HOLE: CourseData = {
-  name: 'Pine Valley Starter',
-  width: 30,
-  height: 50,
-  par: 12, // 3 holes: Par 4, Par 3, Par 5
-  layout: Array(50).fill(null).map(() => Array(30).fill(R)),
-  elevation: Array(50).fill(null).map(() => Array(30).fill(0)),
-  obstacles: []
+// Simple test hole
+export const COURSE_HOLE_1: CourseData = {
+  name: 'Test Hole',
+  width: 12,
+  height: 25,
+  par: 4,
+  layout: (() => {
+    const W = 12, H = 25;
+    const layout: number[][] = [];
+    for (let y = 0; y < H; y++) {
+      if (y <= 1) layout.push(new Array(W).fill(R));
+      else if (y <= 4) layout.push(generateRow(W, [[4, 8, G]]));
+      else if (y <= 18) layout.push(generateRow(W, [[3, 9]]));
+      else if (y <= 20) layout.push(generateRow(W, [[4, 8], [5, 6, T]]));
+      else layout.push(new Array(W).fill(R));
+    }
+    return layout;
+  })(),
+  elevation: Array(25).fill(null).map(() => Array(12).fill(0)),
+  obstacles: [],
+  yardsPerGrid: 20,
 };
 
-// Initialize 3-hole layout
-for (let y = 0; y < 50; y++) {
-  for (let x = 0; x < 30; x++) {
-    // Hole 1 (Par 4): Rows 0-15
-    if (y < 3 && x >= 12 && x <= 18) {
-      COURSE_3_HOLE.layout[y][x] = G; // Green
-    } else if (y >= 3 && y < 15 && x >= 10 && x <= 20) {
-      COURSE_3_HOLE.layout[y][x] = F; // Fairway
-    } else if (y >= 5 && y < 8 && x >= 4 && x <= 7) {
-      COURSE_3_HOLE.layout[y][x] = W; // Water hazard
-    } else if (y === 10 && x >= 8 && x <= 9) {
-      COURSE_3_HOLE.layout[y][x] = B; // Bunker
-    }
-    // Hole 2 (Par 3): Rows 18-28
-    else if (y >= 18 && y < 21 && x >= 10 && x <= 16) {
-      COURSE_3_HOLE.layout[y][x] = G; // Green
-    } else if (y >= 21 && y < 28 && x >= 12 && x <= 18) {
-      COURSE_3_HOLE.layout[y][x] = F; // Fairway
-    } else if (y >= 22 && y < 24 && x >= 8 && x <= 10) {
-      COURSE_3_HOLE.layout[y][x] = B; // Bunker
-    }
-    // Hole 3 (Par 5): Rows 31-49
-    else if (y >= 31 && y < 34 && x >= 14 && x <= 20) {
-      COURSE_3_HOLE.layout[y][x] = G; // Green
-    } else if (y >= 34 && y < 49 && x >= 10 && x <= 22) {
-      COURSE_3_HOLE.layout[y][x] = F; // Fairway
-    } else if (y >= 38 && y < 42 && x >= 5 && x <= 8) {
-      COURSE_3_HOLE.layout[y][x] = W; // Water
-    } else if (y >= 40 && y < 42 && x >= 23 && x <= 25) {
-      COURSE_3_HOLE.layout[y][x] = B; // Bunker
-    }
-  }
+// Tiny test course
+export const COURSE_TEST: CourseData = {
+  name: 'Test Course',
+  width: 15,
+  height: 15,
+  par: 3,
+  layout: Array(15).fill(null).map(() => Array(15).fill(F)),
+  elevation: Array(15).fill(null).map(() => Array(15).fill(0)),
+  yardsPerGrid: 20,
+};
+
+// Refill stations
+export interface RefillStation {
+  x: number;
+  y: number;
+  name: string;
 }
 
-COURSE_3_HOLE.obstacles = [
-  { x: 5, y: 10, type: 1 }, { x: 25, y: 12, type: 2 },
-  { x: 8, y: 25, type: 2 }, { x: 20, y: 26, type: 1 },
-  { x: 6, y: 40, type: 1 }, { x: 24, y: 42, type: 2 }
+export const REFILL_STATIONS: RefillStation[] = [
+  { x: 8, y: 50, name: 'Maintenance Shed' },
 ];
 
-// 9-hole course - "Meadowbrook Nine"
-export const COURSE_9_HOLE: CourseData = {
-  name: 'Meadowbrook Nine',
-  width: 60,
-  height: 80,
-  par: 36, // Standard 9-hole par
-  layout: Array(80).fill(null).map(() => Array(60).fill(R)),
-  elevation: Array(80).fill(null).map(() => Array(60).fill(0)),
-  obstacles: []
-};
+// Course registry
+export type CourseId =
+  | 'sunrise_valley_1'
+  | 'sunrise_valley_3'
+  | 'test_course'
+  | '3_hole'
+  | '9_hole'
+  | '18_hole_championship'
+  | '18_hole_original'
+  | '27_hole';
 
-// Initialize 9-hole layout with varied terrain
-for (let y = 0; y < 80; y++) {
-  for (let x = 0; x < 60; x++) {
-    const holeNum = Math.floor(y / 9);
-    const localY = y % 9;
-
-    if (holeNum < 9) {
-      const centerX = 30 + (holeNum % 3) * 10 - 10;
-      const dist = Math.abs(x - centerX);
-
-      if (localY < 2 && dist < 4) {
-        COURSE_9_HOLE.layout[y][x] = G;
-      } else if (localY >= 2 && dist < 8) {
-        COURSE_9_HOLE.layout[y][x] = F;
-      }
-
-      // Add hazards every 3rd hole
-      if (holeNum % 3 === 0 && localY === 5 && dist === 10) {
-        COURSE_9_HOLE.layout[y][x] = W;
-      }
-      if (holeNum % 3 === 1 && localY === 4 && dist === 9) {
-        COURSE_9_HOLE.layout[y][x] = B;
-      }
-    }
-  }
-}
-
-// Add some elevation variety to 9-hole
-for (let y = 10; y < 20; y++) {
-  for (let x = 20; x < 40; x++) {
-    COURSE_9_HOLE.elevation[y][x] = 2;
-  }
-}
-
-COURSE_9_HOLE.obstacles = Array(20).fill(null).map((_, i) => ({
-  x: 5 + (i % 6) * 10,
-  y: 5 + Math.floor(i / 6) * 18,
-  type: (i % 3) + 1
-}));
-
-// 18-hole championship course - "Royal Highlands"
-export const COURSE_18_HOLE_CHAMPIONSHIP: CourseData = {
-  name: 'Royal Highlands Championship',
-  width: 90,
-  height: 120,
-  par: 72, // Championship par
-  layout: Array(120).fill(null).map(() => Array(90).fill(R)),
-  elevation: Array(120).fill(null).map(() => Array(90).fill(0)),
-  obstacles: []
-};
-
-// Initialize championship 18-hole layout
-for (let y = 0; y < 120; y++) {
-  for (let x = 0; x < 90; x++) {
-    const holeNum = Math.floor(y / 6.5);
-    const localY = y % 7;
-
-    if (holeNum < 18) {
-      const centerX = 45 + Math.sin(holeNum * 0.5) * 20;
-      const dist = Math.abs(x - centerX);
-
-      if (localY < 1 && dist < 5) {
-        COURSE_18_HOLE_CHAMPIONSHIP.layout[y][x] = G;
-      } else if (localY >= 1 && dist < 12) {
-        COURSE_18_HOLE_CHAMPIONSHIP.layout[y][x] = F;
-      }
-
-      // Water hazards on holes 3, 7, 12, 15
-      if ([3, 7, 12, 15].includes(holeNum) && localY === 4 && dist > 15 && dist < 20) {
-        COURSE_18_HOLE_CHAMPIONSHIP.layout[y][x] = W;
-      }
-
-      // Bunkers scattered around greens
-      if (localY === 1 && dist >= 5 && dist < 7) {
-        COURSE_18_HOLE_CHAMPIONSHIP.layout[y][x] = B;
-      }
-    }
-  }
-}
-
-// Add varied elevation
-for (let y = 0; y < 120; y++) {
-  for (let x = 0; x < 90; x++) {
-    const wave = Math.sin(x / 10) * Math.cos(y / 15);
-    COURSE_18_HOLE_CHAMPIONSHIP.elevation[y][x] = Math.floor(wave * 3);
-  }
-}
-
-COURSE_18_HOLE_CHAMPIONSHIP.obstacles = Array(40).fill(null).map((_, i) => ({
-  x: 8 + (i % 8) * 11,
-  y: 8 + Math.floor(i / 8) * 28,
-  type: ((i % 4) === 0 ? 2 : 1) // Mix of pine and regular trees
-}));
-
-// 27-hole finale course - "Grand Summit Resort"
-export const COURSE_27_HOLE: CourseData = {
-  name: 'Grand Summit Resort',
-  width: 100,
-  height: 140,
-  par: 108, // 27 holes
-  layout: Array(140).fill(null).map(() => Array(100).fill(R)),
-  elevation: Array(140).fill(null).map(() => Array(100).fill(0)),
-  obstacles: []
-};
-
-// Initialize massive 27-hole layout
-for (let y = 0; y < 140; y++) {
-  for (let x = 0; x < 100; x++) {
-    const holeNum = Math.floor(y / 5.2);
-    const localY = y % 6;
-
-    if (holeNum < 27) {
-      const centerX = 50 + Math.sin(holeNum * 0.3) * 25;
-      const dist = Math.abs(x - centerX);
-
-      if (localY < 1 && dist < 6) {
-        COURSE_27_HOLE.layout[y][x] = G;
-      } else if (localY >= 1 && dist < 14) {
-        COURSE_27_HOLE.layout[y][x] = F;
-      }
-
-      // Major water features on signature holes
-      if ([5, 9, 14, 18, 23, 26].includes(holeNum) && localY === 3 && dist > 16 && dist < 22) {
-        COURSE_27_HOLE.layout[y][x] = W;
-      }
-
-      // Strategic bunker placement
-      if (localY === 2 && dist >= 6 && dist < 9 && holeNum % 2 === 0) {
-        COURSE_27_HOLE.layout[y][x] = B;
-      }
-    }
-  }
-}
-
-// Dramatic elevation changes
-for (let y = 0; y < 140; y++) {
-  for (let x = 0; x < 100; x++) {
-    const mountainEffect = Math.sin(x / 8) * Math.cos(y / 12) * 4;
-    const valleyEffect = Math.sin((x + 50) / 15) * 2;
-    COURSE_27_HOLE.elevation[y][x] = Math.floor(mountainEffect + valleyEffect);
-  }
-}
-
-COURSE_27_HOLE.obstacles = Array(60).fill(null).map((_, i) => ({
-  x: 10 + (i % 10) * 9,
-  y: 10 + Math.floor(i / 10) * 23,
-  type: (i % 4) + 1 // All obstacle types
-}));
-
-export function getObstacleTexture(type: ObstacleType): string | null {
-  switch (type) {
-    case 'tree': return 'iso_tree';
-    case 'pine_tree': return 'iso_pine_tree';
-    case 'shrub': return 'iso_shrub';
-    case 'bush': return 'iso_bush';
-    default: return null;
-  }
-}
-
-export const REFILL_STATIONS = [
-  { x: 24, y: 35 },
-  { x: 10, y: 20 }
-];
-
-// Course registry for easy access
-export const ALL_COURSES = {
+const COURSE_REGISTRY: Partial<Record<CourseId, CourseData>> = {
+  'sunrise_valley_1': COURSE_HOLE_1,
+  'sunrise_valley_3': COURSE_3_HOLE,
+  'test_course': COURSE_TEST,
   '3_hole': COURSE_3_HOLE,
-  '9_hole': COURSE_9_HOLE,
-  '18_hole_original': COURSE_HOLE_1,
-  '18_hole_championship': COURSE_18_HOLE_CHAMPIONSHIP,
-  '27_hole': COURSE_27_HOLE,
-} as const;
+  '9_hole': COURSE_3_HOLE,
+  '18_hole_championship': COURSE_3_HOLE,
+  '18_hole_original': COURSE_3_HOLE,
+  '27_hole': COURSE_3_HOLE,
+};
 
-export type CourseId = keyof typeof ALL_COURSES;
-
-export function getCourseById(courseId: CourseId): CourseData | undefined {
-  return ALL_COURSES[courseId];
+export function getCourseById(courseId: string): CourseData | undefined {
+  return COURSE_REGISTRY[courseId as CourseId];
 }
+
+export const DEFAULT_COURSE = COURSE_3_HOLE;

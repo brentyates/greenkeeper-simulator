@@ -432,8 +432,8 @@ describe('Constants', () => {
     expect(TILE_HEIGHT).toBe(32);
   });
 
-  it('ELEVATION_HEIGHT is 16', () => {
-    expect(ELEVATION_HEIGHT).toBe(16);
+  it('ELEVATION_HEIGHT is 4', () => {
+    expect(ELEVATION_HEIGHT).toBe(4);
   });
 
   it('MOVE_SPEED is 150', () => {

@@ -27,7 +27,7 @@ export interface CourseLayout {
 
 export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
-export const ELEVATION_HEIGHT = 16;
+export const ELEVATION_HEIGHT = 4;
 
 export const TERRAIN_CODES = {
   FAIRWAY: 0,

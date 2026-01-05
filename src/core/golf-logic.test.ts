@@ -45,19 +45,19 @@ describe('golf-logic', () => {
   });
 
   describe('gridToYards', () => {
-    it('converts grid distance to yards with default scale', () => {
-      expect(gridToYards(10)).toBe(20);
-      expect(gridToYards(5)).toBe(10);
+    it('converts grid distance to yards with default scale (20 yards/tile)', () => {
+      expect(gridToYards(10)).toBe(200);
+      expect(gridToYards(5)).toBe(100);
     });
 
     it('uses custom yards per grid', () => {
-      expect(gridToYards(10, 3)).toBe(30);
+      expect(gridToYards(10, 2)).toBe(20);
       expect(gridToYards(5, 1)).toBe(5);
     });
 
     it('rounds to nearest yard', () => {
-      expect(gridToYards(10.4)).toBe(21);
-      expect(gridToYards(10.6)).toBe(21);
+      expect(gridToYards(10.4)).toBe(208);
+      expect(gridToYards(10.6)).toBe(212);
     });
   });
 

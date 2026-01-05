@@ -9,7 +9,7 @@ import { Camera } from "@babylonjs/core/Cameras/camera";
 import { SceneOptimizer, SceneOptimizerOptions } from "@babylonjs/core/Misc/sceneOptimizer";
 
 export const TILE_SIZE = 1;
-export const HEIGHT_UNIT = 0.5;
+export const HEIGHT_UNIT = 0.125;
 
 export function gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
   return new Vector3(gridX * TILE_SIZE, elevation * HEIGHT_UNIT, gridY * TILE_SIZE);
