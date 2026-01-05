@@ -1,7 +1,4 @@
 import { Scene } from '@babylonjs/core/scene';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
@@ -23,7 +20,6 @@ export class EquipmentManager {
   private scene: Scene;
   private equipment: Map<EquipmentType, EquipmentState> = new Map();
   private currentEquipment: EquipmentType = 'mower';
-  private equipmentMesh: Mesh | null = null;
   private particleSystem: ParticleSystem | null = null;
 
   constructor(scene: Scene) {
@@ -35,44 +31,6 @@ export class EquipmentManager {
     this.equipment.set('mower', createEquipmentState('mower'));
     this.equipment.set('sprinkler', createEquipmentState('sprinkler'));
     this.equipment.set('spreader', createEquipmentState('spreader'));
-    this.createEquipmentMesh();
-  }
-
-  private createEquipmentMesh(): void {
-    if (this.equipmentMesh) {
-      this.equipmentMesh.dispose();
-    }
-
-    const type = this.currentEquipment;
-    let mesh: Mesh;
-
-    switch (type) {
-      case 'mower':
-        mesh = MeshBuilder.CreateBox('equipment', { width: 12, height: 6, depth: 0.1 }, this.scene);
-        break;
-      case 'sprinkler':
-        mesh = MeshBuilder.CreateCylinder('equipment', { height: 8, diameter: 6 }, this.scene);
-        break;
-      case 'spreader':
-        mesh = MeshBuilder.CreateBox('equipment', { width: 10, height: 8, depth: 0.1 }, this.scene);
-        break;
-    }
-
-    const material = new StandardMaterial('equipmentMat', this.scene);
-    material.diffuseColor = this.getEquipmentColor(type);
-    material.emissiveColor = this.getEquipmentColor(type).scale(0.3);
-    mesh.material = material;
-    mesh.isVisible = false;
-
-    this.equipmentMesh = mesh;
-  }
-
-  private getEquipmentColor(type: EquipmentType): Color3 {
-    switch (type) {
-      case 'mower': return new Color3(0.2, 0.6, 0.2);
-      case 'sprinkler': return new Color3(0.2, 0.4, 0.8);
-      case 'spreader': return new Color3(0.7, 0.5, 0.2);
-    }
   }
 
   public selectEquipment(type: EquipmentType): void {
@@ -84,7 +42,6 @@ export class EquipmentManager {
     }
 
     this.currentEquipment = type;
-    this.createEquipmentMesh();
   }
 
   public selectBySlot(slot: 1 | 2 | 3): void {
@@ -110,9 +67,6 @@ export class EquipmentManager {
     const newState = activateEquipment(state);
     this.equipment.set(this.currentEquipment, newState);
 
-    if (this.equipmentMesh) {
-      this.equipmentMesh.isVisible = true;
-    }
     this.startParticles();
   }
 
@@ -123,9 +77,6 @@ export class EquipmentManager {
     const newState = deactivateEquipment(state);
     this.equipment.set(this.currentEquipment, newState);
 
-    if (this.equipmentMesh) {
-      this.equipmentMesh.isVisible = false;
-    }
     this.stopParticles();
   }
 
@@ -149,14 +100,6 @@ export class EquipmentManager {
       if (newState.resourceCurrent <= 0) {
         this.deactivate();
       }
-    }
-
-    if (this.equipmentMesh && state.isActive) {
-      this.equipmentMesh.position.set(
-        playerPosition.x + 10,
-        playerPosition.y - 5,
-        playerPosition.z - 0.5
-      );
     }
 
     if (this.particleSystem && this.particleSystem.emitter instanceof Vector3) {
@@ -234,8 +177,5 @@ export class EquipmentManager {
 
   public dispose(): void {
     this.stopParticles();
-    if (this.equipmentMesh) {
-      this.equipmentMesh.dispose();
-    }
   }
 }
