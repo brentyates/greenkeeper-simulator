@@ -46,6 +46,10 @@ export const OBSTACLE_CODES = {
   BUSH: 4,
 } as const;
 
+export function isNonRough(type: TerrainType): boolean {
+  return type !== 'rough';
+}
+
 export function getTerrainType(code: number): TerrainType {
   switch (code) {
     case 0:

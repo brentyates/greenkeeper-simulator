@@ -481,18 +481,232 @@ export class GrassSystem {
     return { nw, ne, se, sw };
   }
 
+  private getNeighborType(x: number, y: number): string | null {
+    const { width, height } = this.courseData;
+    if (x < 0 || x >= width || y < 0 || y >= height) return null;
+    const cell = this.cells[y]?.[x];
+    return cell ? cell.type : null;
+  }
+
+  private getCornerRounding(
+    cell: CellState
+  ): { nw: number; ne: number; se: number; sw: number } {
+    if (cell.type === "rough") {
+      return { nw: 0, ne: 0, se: 0, sw: 0 };
+    }
+
+    const x = cell.x;
+    const y = cell.y;
+    const myType = cell.type;
+
+    const nType = this.getNeighborType(x, y - 1);
+    const sType = this.getNeighborType(x, y + 1);
+    const eType = this.getNeighborType(x + 1, y);
+    const wType = this.getNeighborType(x - 1, y);
+
+    const nDiff = nType !== null && nType !== myType;
+    const sDiff = sType !== null && sType !== myType;
+    const eDiff = eType !== null && eType !== myType;
+    const wDiff = wType !== null && wType !== myType;
+
+    return {
+      nw: nDiff && wDiff && nType === wType ? 1 : 0,
+      ne: nDiff && eDiff && nType === eType ? 1 : 0,
+      se: sDiff && eDiff && sType === eType ? 1 : 0,
+      sw: sDiff && wDiff && sType === wType ? 1 : 0,
+    };
+  }
+
+  private getCornerFillType(
+    cell: CellState,
+    corner: "nw" | "ne" | "se" | "sw"
+  ): string {
+    const x = cell.x;
+    const y = cell.y;
+
+    switch (corner) {
+      case "nw":
+        return this.getNeighborType(x, y - 1) || "rough";
+      case "ne":
+        return this.getNeighborType(x + 1, y) || "rough";
+      case "se":
+        return this.getNeighborType(x, y + 1) || "rough";
+      case "sw":
+        return this.getNeighborType(x - 1, y) || "rough";
+    }
+  }
+
+  private needsRounding(rounding: {
+    nw: number;
+    ne: number;
+    se: number;
+    sw: number;
+  }): boolean {
+    return rounding.nw > 0 || rounding.ne > 0 || rounding.se > 0 || rounding.sw > 0;
+  }
+
+  private createRoundedTileMesh(
+    cell: CellState,
+    baseColor: Color3,
+    corners: { nw: number; ne: number; se: number; sw: number },
+    rounding: { nw: number; ne: number; se: number; sw: number },
+    existingMesh?: Mesh,
+    isWater: boolean = false
+  ): Mesh {
+    const nw3d = gridTo3D(cell.x, cell.y, corners.nw);
+    const ne3d = gridTo3D(cell.x + 1, cell.y, corners.ne);
+    const se3d = gridTo3D(cell.x + 1, cell.y + 1, corners.se);
+    const sw3d = gridTo3D(cell.x, cell.y + 1, corners.sw);
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const normals: number[] = [];
+    const colors: number[] = [];
+
+    const INSET = 0.3;
+
+    const getColorForType = (type: string): Color3 => {
+      switch (type) {
+        case "fairway": return new Color3(0.4, 0.7, 0.3);
+        case "rough": return new Color3(0.35, 0.55, 0.25);
+        case "green": return new Color3(0.3, 0.8, 0.35);
+        case "bunker": return new Color3(0.85, 0.75, 0.5);
+        case "water": return new Color3(0.2, 0.4, 0.65);
+        default: return new Color3(0.35, 0.55, 0.25);
+      }
+    };
+
+    const nwFillColor = getColorForType(this.getCornerFillType(cell, "nw"));
+    const neFillColor = getColorForType(this.getCornerFillType(cell, "ne"));
+    const seFillColor = getColorForType(this.getCornerFillType(cell, "se"));
+    const swFillColor = getColorForType(this.getCornerFillType(cell, "sw"));
+
+    const insetNW = rounding.nw > 0 ? INSET * rounding.nw : 0;
+    const insetNE = rounding.ne > 0 ? INSET * rounding.ne : 0;
+    const insetSE = rounding.se > 0 ? INSET * rounding.se : 0;
+    const insetSW = rounding.sw > 0 ? INSET * rounding.sw : 0;
+
+    positions.push(nw3d.x, nw3d.y, nw3d.z);
+    positions.push(ne3d.x, ne3d.y, ne3d.z);
+    positions.push(se3d.x, se3d.y, se3d.z);
+    positions.push(sw3d.x, sw3d.y, sw3d.z);
+
+    indices.push(0, 1, 2);
+    indices.push(0, 2, 3);
+
+    const alpha = isWater ? 0.7 : 1;
+    for (let i = 0; i < 4; i++) {
+      const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.06;
+      colors.push(
+        clamp01(baseColor.r + variance),
+        clamp01(baseColor.g + variance * 1.2),
+        clamp01(baseColor.b + variance * 0.5),
+        alpha
+      );
+    }
+
+    let vertexIndex = 4;
+
+    const yOffset = 0.002;
+
+    if (rounding.nw > 0) {
+      const v = vertexIndex;
+      positions.push(nw3d.x, nw3d.y + yOffset, nw3d.z);
+      positions.push(nw3d.x, nw3d.y + yOffset, nw3d.z + insetNW);
+      positions.push(nw3d.x + insetNW, nw3d.y + yOffset, nw3d.z);
+
+      indices.push(v, v + 1, v + 2);
+
+      for (let i = 0; i < 3; i++) {
+        colors.push(nwFillColor.r, nwFillColor.g, nwFillColor.b, 1);
+      }
+      vertexIndex += 3;
+    }
+
+    if (rounding.ne > 0) {
+      const v = vertexIndex;
+      positions.push(ne3d.x, ne3d.y + yOffset, ne3d.z);
+      positions.push(ne3d.x - insetNE, ne3d.y + yOffset, ne3d.z);
+      positions.push(ne3d.x, ne3d.y + yOffset, ne3d.z + insetNE);
+
+      indices.push(v, v + 1, v + 2);
+
+      for (let i = 0; i < 3; i++) {
+        colors.push(neFillColor.r, neFillColor.g, neFillColor.b, 1);
+      }
+      vertexIndex += 3;
+    }
+
+    if (rounding.se > 0) {
+      const v = vertexIndex;
+      positions.push(se3d.x, se3d.y + yOffset, se3d.z);
+      positions.push(se3d.x, se3d.y + yOffset, se3d.z - insetSE);
+      positions.push(se3d.x - insetSE, se3d.y + yOffset, se3d.z);
+
+      indices.push(v, v + 1, v + 2);
+
+      for (let i = 0; i < 3; i++) {
+        colors.push(seFillColor.r, seFillColor.g, seFillColor.b, 1);
+      }
+      vertexIndex += 3;
+    }
+
+    if (rounding.sw > 0) {
+      const v = vertexIndex;
+      positions.push(sw3d.x, sw3d.y + yOffset, sw3d.z);
+      positions.push(sw3d.x + insetSW, sw3d.y + yOffset, sw3d.z);
+      positions.push(sw3d.x, sw3d.y + yOffset, sw3d.z - insetSW);
+
+      indices.push(v, v + 1, v + 2);
+
+      for (let i = 0; i < 3; i++) {
+        colors.push(swFillColor.r, swFillColor.g, swFillColor.b, 1);
+      }
+      vertexIndex += 3;
+    }
+
+    VertexData.ComputeNormals(positions, indices, normals);
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.normals = normals;
+    vertexData.colors = colors;
+
+    if (existingMesh) {
+      existingMesh.dispose();
+    }
+
+    const mesh = new Mesh(`tile_${cell.x}_${cell.y}`, this.scene);
+    vertexData.applyToMesh(mesh, true);
+    mesh.material = isWater ? this.waterMaterial : this.tileMaterial;
+    mesh.useVertexColors = true;
+    if (isWater) {
+      mesh.hasVertexAlpha = true;
+    }
+    mesh.alwaysSelectAsActiveMesh = true;
+    mesh.freezeWorldMatrix();
+
+    return mesh;
+  }
+
   private createTileMesh(cell: CellState, existingMesh?: Mesh): Mesh {
     const corners = this.getCornerHeights(cell.x, cell.y, cell.elevation);
-
     const color = this.getCellColor(cell);
-    const shouldStripe = this.shouldShowStripes(cell);
+    const rounding = this.getCornerRounding(cell);
 
-    if (shouldStripe) {
-      return this.createStripedTile(cell, color, corners, existingMesh);
+    if (this.needsRounding(rounding)) {
+      const isWater = cell.type === "water";
+      return this.createRoundedTileMesh(cell, color, corners, rounding, existingMesh, isWater);
     }
 
     if (cell.type === "water") {
       return this.createWaterTile(cell, color, corners, existingMesh);
+    }
+
+    const shouldStripe = this.shouldShowStripes(cell);
+    if (shouldStripe) {
+      return this.createStripedTile(cell, color, corners, existingMesh);
     }
 
     const positions: number[] = [];
