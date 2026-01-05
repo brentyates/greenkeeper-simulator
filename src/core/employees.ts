@@ -193,7 +193,7 @@ export interface ApplicationState {
 
 export interface JobPosting {
   readonly id: string;
-  readonly role: EmployeeRole | "any";
+  readonly role: EmployeeRole;
   readonly postedTime: number;
   readonly expiresAt: number;
   readonly cost: number;
@@ -939,10 +939,6 @@ function selectSkillLevelByPrestige(prestigeTier: PrestigeTier, targetSkillLevel
 }
 
 function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
-  if (posting && posting.role !== 'any') {
-    return posting.role;
-  }
-
   // Default weighted role distribution
   const roles: EmployeeRole[] = [
     'groundskeeper', 'groundskeeper', 'groundskeeper',  // Most common
@@ -950,6 +946,15 @@ function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
     'pro_shop_staff', 'caddy',
     'manager'  // Least common
   ];
+
+  // If there's a job posting, boost chance of that role
+  if (posting) {
+    const roll = Math.random() * 100;
+    // 65% chance to match posted role, 35% use natural distribution
+    if (roll < 65) {
+      return posting.role;
+    }
+  }
 
   return roles[Math.floor(Math.random() * roles.length)];
 }
@@ -1008,7 +1013,7 @@ export function postJobOpening(
   state: ApplicationState,
   currentTime: number,
   prestigeTier: PrestigeTier,
-  role: EmployeeRole | 'any' = 'any',
+  role: EmployeeRole,
   targetSkillLevel?: SkillLevel
 ): { state: ApplicationState; posting: JobPosting } | null {
   const config = PRESTIGE_HIRING_CONFIG[prestigeTier];
@@ -1070,7 +1075,7 @@ export function getActivePostingsCount(state: ApplicationState): number {
 }
 
 export function hasActivePosting(state: ApplicationState, role: EmployeeRole): boolean {
-  return state.activeJobPostings.some(p => p.role === role || p.role === 'any');
+  return state.activeJobPostings.some(p => p.role === role);
 }
 
 export function getPostingCost(prestigeTier: PrestigeTier): number {

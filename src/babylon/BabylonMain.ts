@@ -41,6 +41,8 @@ import {
 } from "../core/economy";
 import {
   EmployeeRoster,
+  EmployeeRole,
+  EMPLOYEE_ROLE_INFO,
   createInitialRoster,
   tickEmployees,
   processPayroll,
@@ -469,7 +471,7 @@ export class BabylonMain {
       onClose: () => {
         this.employeePanel?.hide();
       },
-      onPostJobOpening: () => {
+      onPostJobOpening: (role: EmployeeRole) => {
         const cost = getPostingCost(this.prestigeState.tier);
         if (this.economyState.cash < cost) {
           this.uiManager.showNotification(`⚠️ Not enough cash! Need $${cost}`, '#ff4444');
@@ -477,7 +479,7 @@ export class BabylonMain {
         }
 
         const currentTime = this.gameTime + this.gameDay * 24 * 60;
-        const result = postJobOpening(this.applicationState, currentTime, this.prestigeState.tier);
+        const result = postJobOpening(this.applicationState, currentTime, this.prestigeState.tier, role);
 
         if (result) {
           this.applicationState = result.state;
@@ -495,7 +497,8 @@ export class BabylonMain {
             this.dailyStats.expenses.other += cost;
           }
 
-          this.uiManager.showNotification(`📢 Job opening posted! Cost: $${cost}`);
+          const roleInfo = EMPLOYEE_ROLE_INFO[role];
+          this.uiManager.showNotification(`📢 Hiring ${roleInfo.name}! Cost: $${cost}`);
           this.employeePanel?.updateApplications(
             this.applicationState,
             this.prestigeState.tier,

@@ -95,7 +95,7 @@ describe('Prestige-Based Hiring System', () => {
       let state = createInitialApplicationState(0, 'public');
 
       // Post a job
-      const result = postJobOpening(state, 0, 'public');
+      const result = postJobOpening(state, 0, 'public', 'groundskeeper');
       if (!result) throw new Error('Failed to post job');
       state = result.state;
 
@@ -112,20 +112,21 @@ describe('Prestige-Based Hiring System', () => {
   describe('postJobOpening', () => {
     it('should create active job posting with correct cost', () => {
       const state = createInitialApplicationState(0, 'semi_private');
-      const result = postJobOpening(state, 0, 'semi_private');
+      const result = postJobOpening(state, 0, 'semi_private', 'mechanic');
 
       expect(result).not.toBeNull();
       if (!result) return;
 
       expect(result.state.activeJobPostings).toHaveLength(1);
       expect(result.posting.cost).toBe(PRESTIGE_HIRING_CONFIG.semi_private.postingCost);
+      expect(result.posting.role).toBe('mechanic');
     });
 
     it('should speed up next application time when posting is active', () => {
       let state = createInitialApplicationState(0, 'public');
       const originalNextTime = state.nextApplicationTime;
 
-      const result = postJobOpening(state, 0, 'public');
+      const result = postJobOpening(state, 0, 'public', 'irrigator');
       if (!result) throw new Error('Failed to post job');
       state = result.state;
 

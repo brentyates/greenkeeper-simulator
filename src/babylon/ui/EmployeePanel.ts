@@ -10,6 +10,7 @@ import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils
 
 import {
   Employee,
+  EmployeeRole,
   EmployeeRoster,
   ApplicationState,
   SkillLevel,
@@ -22,7 +23,7 @@ export interface EmployeePanelCallbacks {
   onHire: (employee: Employee) => void;
   onFire: (employeeId: string) => void;
   onClose: () => void;
-  onPostJobOpening: () => void;
+  onPostJobOpening: (role: EmployeeRole) => void;
 }
 
 const SKILL_COLORS: Record<SkillLevel, string> = {
@@ -49,6 +50,8 @@ export class EmployeePanel {
   private hasActivePosting: boolean = false;
 
   private selectedEmployeeId: string | null = null;
+  private selectedPostingRole: EmployeeRole = 'groundskeeper';
+  private roleButtons: Map<EmployeeRole, Button> = new Map();
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: EmployeePanelCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -368,8 +371,11 @@ export class EmployeePanel {
     this.postingCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     statusStack.addControl(this.postingCountText);
 
+    // Role selection for job posting
+    this.createRoleSelectionRow(stack);
+
     const applicationsListContainer = new Rectangle('applicationsListContainer');
-    applicationsListContainer.height = '280px';
+    applicationsListContainer.height = '215px';
     applicationsListContainer.width = '336px';
     applicationsListContainer.cornerRadius = 4;
     applicationsListContainer.background = 'rgba(15, 35, 25, 0.8)';
@@ -380,7 +386,7 @@ export class EmployeePanel {
 
     const scrollViewer = new ScrollViewer('applicationsScroll');
     scrollViewer.width = '320px';
-    scrollViewer.height = '270px';
+    scrollViewer.height = '205px';
     scrollViewer.thickness = 0;
     scrollViewer.barSize = 8;
     scrollViewer.barColor = '#4a8a5a';
@@ -400,7 +406,7 @@ export class EmployeePanel {
     this.postJobButton.thickness = 2;
     this.postJobButton.fontSize = 14;
     this.postJobButton.paddingTop = '8px';
-    this.postJobButton.onPointerClickObservable.add(() => this.callbacks.onPostJobOpening());
+    this.postJobButton.onPointerClickObservable.add(() => this.callbacks.onPostJobOpening(this.selectedPostingRole));
     this.postJobButton.onPointerEnterObservable.add(() => {
       this.postJobButton!.background = this.hasActivePosting ? '#3a6a4a' : '#4a7a9a';
     });
@@ -408,6 +414,70 @@ export class EmployeePanel {
       this.postJobButton!.background = this.hasActivePosting ? '#2a5a3a' : '#3a6a8a';
     });
     stack.addControl(this.postJobButton);
+  }
+
+  private createRoleSelectionRow(parent: StackPanel): void {
+    const container = new Rectangle('roleSelectionContainer');
+    container.height = '65px';
+    container.width = '336px';
+    container.cornerRadius = 4;
+    container.background = 'rgba(30, 50, 60, 0.8)';
+    container.thickness = 1;
+    container.color = '#3a5a6a';
+    container.paddingTop = '8px';
+    parent.addControl(container);
+
+    const innerStack = new StackPanel('roleSelectionStack');
+    innerStack.paddingLeft = '8px';
+    innerStack.paddingRight = '8px';
+    container.addControl(innerStack);
+
+    const label = new TextBlock('roleLabel');
+    label.text = 'Post for role:';
+    label.color = '#aaaaaa';
+    label.fontSize = 10;
+    label.height = '14px';
+    label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    innerStack.addControl(label);
+
+    const roles = Object.keys(EMPLOYEE_ROLE_INFO) as EmployeeRole[];
+
+    const buttonRow = new Grid('roleButtonRow');
+    buttonRow.height = '40px';
+    buttonRow.width = '320px';
+    roles.forEach(() => buttonRow.addColumnDefinition(1 / roles.length));
+    innerStack.addControl(buttonRow);
+    roles.forEach((role, index) => {
+      const btn = Button.CreateSimpleButton(`role_${role}`, EMPLOYEE_ROLE_INFO[role].icon);
+      btn.width = '45px';
+      btn.height = '32px';
+      btn.cornerRadius = 4;
+      btn.fontSize = 16;
+      btn.thickness = 2;
+      this.updateRoleButtonStyle(btn, role === this.selectedPostingRole);
+      btn.onPointerClickObservable.add(() => this.selectPostingRole(role));
+      buttonRow.addControl(btn, 0, index);
+      this.roleButtons.set(role, btn);
+    });
+  }
+
+  private updateRoleButtonStyle(btn: Button, isSelected: boolean): void {
+    btn.background = isSelected ? '#4a8a9a' : '#2a4a5a';
+    btn.color = isSelected ? '#ffffff' : '#88aacc';
+  }
+
+  private selectPostingRole(role: EmployeeRole): void {
+    this.selectedPostingRole = role;
+    this.roleButtons.forEach((btn, r) => {
+      this.updateRoleButtonStyle(btn, r === role);
+    });
+    this.updatePostJobButtonText();
+  }
+
+  private updatePostJobButtonText(): void {
+    if (!this.postJobButton || this.hasActivePosting) return;
+    const roleInfo = EMPLOYEE_ROLE_INFO[this.selectedPostingRole];
+    this.postJobButton.textBlock!.text = `📢 Post for ${roleInfo.name}`;
   }
 
   private createCandidateRow(candidate: Employee): Rectangle {
@@ -564,20 +634,21 @@ export class EmployeePanel {
     if (postingCount === 0) {
       this.postingCountText!.text = 'No active job postings';
       this.postingCountText!.color = '#888888';
-      this.postJobButton!.textBlock!.text = `📢 Post Job Opening ($${config.postingCost})`;
+      this.updatePostJobButtonText();
       this.postJobButton!.background = '#3a6a8a';
       this.postJobButton!.color = '#88ccff';
       this.postJobButton!.isEnabled = true;
     } else {
       const posting = state.activeJobPostings[0];
+      const roleInfo = EMPLOYEE_ROLE_INFO[posting.role];
       const expiresInMinutes = Math.max(0, posting.expiresAt - currentGameTime);
       const expiresInHours = expiresInMinutes / 60;
       const expiresText = expiresInHours >= 1
         ? `${expiresInHours.toFixed(1)}h left`
         : `${Math.ceil(expiresInMinutes)}m left`;
-      this.postingCountText!.text = `✓ Active posting (${expiresText})`;
+      this.postingCountText!.text = `✓ Hiring ${roleInfo.name} (${expiresText})`;
       this.postingCountText!.color = '#44ff44';
-      this.postJobButton!.textBlock!.text = `⏳ Posting Active (${expiresText})`;
+      this.postJobButton!.textBlock!.text = `⏳ ${roleInfo.icon} Posting Active`;
       this.postJobButton!.background = '#444444';
       this.postJobButton!.color = '#888888';
       this.postJobButton!.isEnabled = false;
