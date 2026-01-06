@@ -6,13 +6,24 @@ import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Camera } from "@babylonjs/core/Cameras/camera";
-import { SceneOptimizer, SceneOptimizerOptions } from "@babylonjs/core/Misc/sceneOptimizer";
+import {
+  SceneOptimizer,
+  SceneOptimizerOptions,
+} from "@babylonjs/core/Misc/sceneOptimizer";
 
 export const TILE_SIZE = 1;
 export const HEIGHT_UNIT = 0.125;
 
-export function gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
-  return new Vector3(gridX * TILE_SIZE, elevation * HEIGHT_UNIT, gridY * TILE_SIZE);
+export function gridTo3D(
+  gridX: number,
+  gridY: number,
+  elevation: number
+): Vector3 {
+  return new Vector3(
+    gridX * TILE_SIZE,
+    elevation * HEIGHT_UNIT,
+    gridY * TILE_SIZE
+  );
 }
 
 export class BabylonEngine {
@@ -158,8 +169,8 @@ export class BabylonEngine {
     return this.canvas;
   }
 
-  public setZoomLevel(level: "close" | "far"): void {
-    const orthoSize = level === "close" ? 8 : 35;
+  public setZoomLevel(level: "close" | "far" | "tight"): void {
+    const orthoSize = level === "tight" ? 0.8 : level === "close" ? 8 : 35;
     const aspectRatio = this.canvas.width / this.canvas.height;
 
     this.camera.orthoTop = orthoSize;

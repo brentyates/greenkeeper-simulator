@@ -1,5 +1,6 @@
 import { TerrainType, OverlayMode } from '../core/terrain';
 import { EquipmentType, Direction } from '../core/movement';
+import { IrrigationSystem, createInitialIrrigationSystem } from '../core/irrigation';
 
 export type { OverlayMode };
 export type ObjectiveType = 'mow_percentage' | 'maintain_health' | 'water_coverage' | 'complete_hole';
@@ -80,6 +81,7 @@ export interface GameState {
   camera: CameraState;
   progress: GameProgressState;
   ui: UIState;
+  irrigationSystem?: IrrigationSystem;
 }
 
 export function createDefaultGameState(): GameState {
@@ -124,6 +126,7 @@ export function createDefaultGameState(): GameState {
     ui: {
       overlayMode: 'normal',
       isPaused: false
-    }
+    },
+    irrigationSystem: createInitialIrrigationSystem()
   };
 }

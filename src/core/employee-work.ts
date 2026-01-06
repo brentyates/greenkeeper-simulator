@@ -188,8 +188,6 @@ function getTaskPriorityForRole(role: EmployeeRole): EmployeeTask[] {
   switch (role) {
     case 'groundskeeper':
       return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
-    case 'irrigator':
-      return ['water_area', 'patrol'];
     default:
       return ['patrol'];
   }
@@ -419,7 +417,7 @@ export function tickEmployeeWork(
       return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], moveProgress: 0 };
     }
 
-    if (employee.role !== 'groundskeeper' && employee.role !== 'irrigator') {
+    if (employee.role !== 'groundskeeper') {
       return worker;
     }
 
@@ -539,7 +537,7 @@ export function syncWorkersWithRoster(
   employees: readonly Employee[]
 ): EmployeeWorkSystemState {
   const groundskeepers = employees.filter(
-    e => e.role === 'groundskeeper' || e.role === 'irrigator'
+    e => e.role === 'groundskeeper'
   );
 
   let newState = state;

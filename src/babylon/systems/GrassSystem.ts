@@ -119,6 +119,9 @@ export class GrassSystem {
     this.tileMaterial.emissiveColor = new Color3(1, 1, 1);
     this.tileMaterial.disableLighting = true;
     this.tileMaterial.backFaceCulling = false;
+    this.tileMaterial.needAlphaBlending = () =>
+      this.overlayMode === "irrigation";
+    this.tileMaterial.needAlphaTesting = () => false;
     this.tileMaterial.freeze();
 
     this.waterMaterial = new StandardMaterial("waterMat", this.scene);
@@ -427,7 +430,6 @@ export class GrassSystem {
     }
   }
 
-
   private cellHash(cellX: number, cellY: number, n: number): number {
     const seed = cellX * 12345 + cellY * 67890;
     const x = Math.sin(seed + n * 9999) * 10000;
@@ -488,9 +490,12 @@ export class GrassSystem {
     return cell ? cell.type : null;
   }
 
-  private getCornerRounding(
-    cell: CellState
-  ): { nw: number; ne: number; se: number; sw: number } {
+  private getCornerRounding(cell: CellState): {
+    nw: number;
+    ne: number;
+    se: number;
+    sw: number;
+  } {
     if (cell.type === "rough") {
       return { nw: 0, ne: 0, se: 0, sw: 0 };
     }
@@ -542,7 +547,9 @@ export class GrassSystem {
     se: number;
     sw: number;
   }): boolean {
-    return rounding.nw > 0 || rounding.ne > 0 || rounding.se > 0 || rounding.sw > 0;
+    return (
+      rounding.nw > 0 || rounding.ne > 0 || rounding.se > 0 || rounding.sw > 0
+    );
   }
 
   private createRoundedTileMesh(
@@ -567,12 +574,18 @@ export class GrassSystem {
 
     const getColorForType = (type: string): Color3 => {
       switch (type) {
-        case "fairway": return new Color3(0.4, 0.7, 0.3);
-        case "rough": return new Color3(0.35, 0.55, 0.25);
-        case "green": return new Color3(0.3, 0.8, 0.35);
-        case "bunker": return new Color3(0.85, 0.75, 0.5);
-        case "water": return new Color3(0.2, 0.4, 0.65);
-        default: return new Color3(0.35, 0.55, 0.25);
+        case "fairway":
+          return new Color3(0.4, 0.7, 0.3);
+        case "rough":
+          return new Color3(0.35, 0.55, 0.25);
+        case "green":
+          return new Color3(0.3, 0.8, 0.35);
+        case "bunker":
+          return new Color3(0.85, 0.75, 0.5);
+        case "water":
+          return new Color3(0.2, 0.4, 0.65);
+        default:
+          return new Color3(0.35, 0.55, 0.25);
       }
     };
 
@@ -594,15 +607,24 @@ export class GrassSystem {
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
 
-    const alpha = isWater ? 0.7 : 1;
+    const alpha = isWater ? 0.7 : this.overlayMode === "irrigation" ? 0.2 : 1;
+
+    // In irrigation mode, use white for the schematic view
+    const isIrrigation = this.overlayMode === "irrigation";
+
     for (let i = 0; i < 4; i++) {
       const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.06;
-      colors.push(
-        clamp01(baseColor.r + variance),
-        clamp01(baseColor.g + variance * 1.2),
-        clamp01(baseColor.b + variance * 0.5),
-        alpha
-      );
+      if (isIrrigation) {
+        // Very light sand color for maximum visibility
+        colors.push(0.92, 0.9, 0.88, 0.2);
+      } else {
+        colors.push(
+          clamp01(baseColor.r + variance),
+          clamp01(baseColor.g + variance * 1.2),
+          clamp01(baseColor.b + variance * 0.5),
+          alpha
+        );
+      }
     }
 
     let vertexIndex = 4;
@@ -617,8 +639,13 @@ export class GrassSystem {
 
       indices.push(v, v + 1, v + 2);
 
+      const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
+      const isIrrigation = this.overlayMode === "irrigation";
+      const r = isIrrigation ? 0.92 : nwFillColor.r;
+      const g = isIrrigation ? 0.9 : nwFillColor.g;
+      const b = isIrrigation ? 0.88 : nwFillColor.b;
       for (let i = 0; i < 3; i++) {
-        colors.push(nwFillColor.r, nwFillColor.g, nwFillColor.b, 1);
+        colors.push(r, g, b, alpha);
       }
       vertexIndex += 3;
     }
@@ -631,8 +658,13 @@ export class GrassSystem {
 
       indices.push(v, v + 1, v + 2);
 
+      const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
+      const isIrrigation = this.overlayMode === "irrigation";
+      const r = isIrrigation ? 0.92 : neFillColor.r;
+      const g = isIrrigation ? 0.9 : neFillColor.g;
+      const b = isIrrigation ? 0.88 : neFillColor.b;
       for (let i = 0; i < 3; i++) {
-        colors.push(neFillColor.r, neFillColor.g, neFillColor.b, 1);
+        colors.push(r, g, b, alpha);
       }
       vertexIndex += 3;
     }
@@ -645,8 +677,13 @@ export class GrassSystem {
 
       indices.push(v, v + 1, v + 2);
 
+      const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
+      const isIrrigation = this.overlayMode === "irrigation";
+      const r = isIrrigation ? 0.92 : seFillColor.r;
+      const g = isIrrigation ? 0.9 : seFillColor.g;
+      const b = isIrrigation ? 0.88 : seFillColor.b;
       for (let i = 0; i < 3; i++) {
-        colors.push(seFillColor.r, seFillColor.g, seFillColor.b, 1);
+        colors.push(r, g, b, alpha);
       }
       vertexIndex += 3;
     }
@@ -659,8 +696,13 @@ export class GrassSystem {
 
       indices.push(v, v + 1, v + 2);
 
+      const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
+      const isIrrigation = this.overlayMode === "irrigation";
+      const r = isIrrigation ? 0.92 : swFillColor.r;
+      const g = isIrrigation ? 0.9 : swFillColor.g;
+      const b = isIrrigation ? 0.88 : swFillColor.b;
       for (let i = 0; i < 3; i++) {
-        colors.push(swFillColor.r, swFillColor.g, swFillColor.b, 1);
+        colors.push(r, g, b, alpha);
       }
       vertexIndex += 3;
     }
@@ -681,9 +723,7 @@ export class GrassSystem {
     vertexData.applyToMesh(mesh, true);
     mesh.material = isWater ? this.waterMaterial : this.tileMaterial;
     mesh.useVertexColors = true;
-    if (isWater) {
-      mesh.hasVertexAlpha = true;
-    }
+    mesh.hasVertexAlpha = isWater || this.overlayMode === "irrigation";
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.freezeWorldMatrix();
 
@@ -697,7 +737,14 @@ export class GrassSystem {
 
     if (this.needsRounding(rounding)) {
       const isWater = cell.type === "water";
-      return this.createRoundedTileMesh(cell, color, corners, rounding, existingMesh, isWater);
+      return this.createRoundedTileMesh(
+        cell,
+        color,
+        corners,
+        rounding,
+        existingMesh,
+        isWater
+      );
     }
 
     if (cell.type === "water") {
@@ -727,9 +774,15 @@ export class GrassSystem {
     indices.push(0, 1, 2);
     indices.push(0, 2, 3);
 
+    const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
     const cornerColors = this.getCornerColorVariations(cell, color);
+    const isIrrigation = this.overlayMode === "irrigation";
+    const baseR = isIrrigation ? 0.92 : null;
+    const baseG = isIrrigation ? 0.9 : null;
+    const baseB = isIrrigation ? 0.88 : null;
+
     for (const c of cornerColors) {
-      colors.push(c.r, c.g, c.b, 1);
+      colors.push(baseR ?? c.r, baseG ?? c.g, baseB ?? c.b, alpha);
     }
 
     VertexData.ComputeNormals(positions, indices, normals);
@@ -753,6 +806,7 @@ export class GrassSystem {
     vertexData.applyToMesh(mesh, true);
     mesh.material = this.tileMaterial;
     mesh.useVertexColors = true;
+    mesh.hasVertexAlpha = this.overlayMode === "irrigation";
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.freezeWorldMatrix();
 
@@ -790,7 +844,9 @@ export class GrassSystem {
       const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.06;
       const cornerWave = Math.sin(wavePhase + i * 0.7) * 0.02;
       const r = clamp01(baseColor.r + variance + waveIntensity + cornerWave);
-      const g = clamp01(baseColor.g + variance * 0.8 + waveIntensity * 0.6 + cornerWave);
+      const g = clamp01(
+        baseColor.g + variance * 0.8 + waveIntensity * 0.6 + cornerWave
+      );
       const b = clamp01(baseColor.b + variance * 0.5 + cornerWave * 0.3);
       colors.push(r, g, b, 0.7);
     }
@@ -869,14 +925,21 @@ export class GrassSystem {
       indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2);
       indices.push(vertexIndex, vertexIndex + 2, vertexIndex + 3);
 
+      const alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
       const stripeColor = i % 2 === 0 ? lightColor : darkColor;
+
+      const r = this.overlayMode === "irrigation" ? 1 : stripeColor.r;
+      const g = this.overlayMode === "irrigation" ? 1 : stripeColor.g;
+      const b = this.overlayMode === "irrigation" ? 1 : stripeColor.b;
+
       for (let j = 0; j < 4; j++) {
-        const variance = (this.cellHash(cell.x, cell.y, i * 4 + j) - 0.5) * 0.06;
+        const variance =
+          (this.cellHash(cell.x, cell.y, i * 4 + j) - 0.5) * 0.06;
         colors.push(
-          clamp01(stripeColor.r + variance),
-          clamp01(stripeColor.g + variance * 1.2),
-          clamp01(stripeColor.b + variance * 0.5),
-          1
+          this.overlayMode === "irrigation" ? r : clamp01(r + variance),
+          this.overlayMode === "irrigation" ? g : clamp01(g + variance * 1.2),
+          this.overlayMode === "irrigation" ? b : clamp01(b + variance * 0.5),
+          alpha
         );
       }
 
@@ -904,6 +967,7 @@ export class GrassSystem {
     vertexData.applyToMesh(mesh, true);
     mesh.material = this.tileMaterial;
     mesh.useVertexColors = true;
+    mesh.hasVertexAlpha = this.overlayMode === "irrigation";
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.freezeWorldMatrix();
 
@@ -970,7 +1034,8 @@ export class GrassSystem {
     if (cell.type === "bunker") {
       for (let i = 0; i < 4; i++) {
         const lumVariance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.15;
-        const warmVariance = (this.cellHash(cell.x, cell.y, i + 5) - 0.5) * 0.08;
+        const warmVariance =
+          (this.cellHash(cell.x, cell.y, i + 5) - 0.5) * 0.08;
         variations.push(
           new Color3(
             clamp01(baseColor.r + lumVariance + warmVariance),
@@ -1019,6 +1084,10 @@ export class GrassSystem {
       return this.getTerrainBaseColor(cell);
     }
 
+    if (this.overlayMode === "irrigation") {
+      return this.getTerrainBaseColor(cell);
+    }
+
     let value = 0;
     switch (this.overlayMode) {
       case "moisture":
@@ -1044,7 +1113,11 @@ export class GrassSystem {
     }
   }
 
-  public update(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void {
+  public update(
+    deltaMs: number,
+    gameTimeMinutes: number,
+    weather?: WeatherEffect
+  ): void {
     this.gameTime = gameTimeMinutes;
     this.waterTime += deltaMs / 1000;
 
@@ -1152,7 +1225,7 @@ export class GrassSystem {
 
   public rakeAt(gridX: number, gridY: number): boolean {
     const cell = this.getCell(gridX, gridY);
-    if (!cell || cell.type !== 'bunker') return false;
+    if (!cell || cell.type !== "bunker") return false;
 
     cell.lastMowed = this.gameTime;
     return true;
@@ -1223,7 +1296,11 @@ export class GrassSystem {
 
   public restoreCells(savedCells: CellState[][]): void {
     for (let y = 0; y < savedCells.length && y < this.cells.length; y++) {
-      for (let x = 0; x < savedCells[y].length && x < this.cells[y].length; x++) {
+      for (
+        let x = 0;
+        x < savedCells[y].length && x < this.cells[y].length;
+        x++
+      ) {
         const saved = savedCells[y][x];
         this.cells[y][x] = { ...saved };
       }
@@ -1241,9 +1318,23 @@ export class GrassSystem {
   }
 
   public cycleOverlayMode(): OverlayMode {
-    const modes: OverlayMode[] = ["normal", "moisture", "nutrients", "height"];
+    const modes: OverlayMode[] = [
+      "normal",
+      "moisture",
+      "nutrients",
+      "height",
+      "irrigation",
+    ];
     const currentIndex = modes.indexOf(this.overlayMode);
     this.overlayMode = modes[(currentIndex + 1) % modes.length];
+    if (this.tileMaterial) {
+      this.tileMaterial.unfreeze();
+      this.tileMaterial.needAlphaBlending = () =>
+        this.overlayMode === "irrigation";
+      this.tileMaterial.backFaceCulling = this.overlayMode === "irrigation";
+      this.tileMaterial.alpha = this.overlayMode === "irrigation" ? 0.2 : 1;
+      this.tileMaterial.freeze();
+    }
     this.updateAllTileVisuals();
     return this.overlayMode;
   }
@@ -1254,6 +1345,13 @@ export class GrassSystem {
 
   public setOverlayMode(mode: OverlayMode): void {
     this.overlayMode = mode;
+    if (this.tileMaterial) {
+      this.tileMaterial.unfreeze();
+      this.tileMaterial.needAlphaBlending = () => mode === "irrigation";
+      this.tileMaterial.backFaceCulling = mode === "irrigation";
+      this.tileMaterial.alpha = mode === "irrigation" ? 0.2 : 1;
+      this.tileMaterial.freeze();
+    }
     this.updateAllTileVisuals();
   }
 
@@ -1327,7 +1425,9 @@ export class GrassSystem {
   }
 
   public getLayoutGrid(): number[][] {
-    return this.cells.map((row) => row.map((cell) => getTerrainCode(cell.type)));
+    return this.cells.map((row) =>
+      row.map((cell) => getTerrainCode(cell.type))
+    );
   }
 
   public getElevationGrid(): number[][] {

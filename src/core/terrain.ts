@@ -1,6 +1,6 @@
 export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water" | "tee";
 export type ObstacleType = "none" | "tree" | "pine_tree" | "shrub" | "bush";
-export type OverlayMode = "normal" | "moisture" | "nutrients" | "height";
+export type OverlayMode = "normal" | "moisture" | "nutrients" | "height" | "irrigation";
 
 export interface CellState {
   x: number;

@@ -126,7 +126,7 @@ describe('Prestige-Based Hiring System', () => {
       let state = createInitialApplicationState(0, 'public');
       const originalNextTime = state.nextApplicationTime;
 
-      const result = postJobOpening(state, 0, 'public', 'irrigator');
+      const result = postJobOpening(state, 0, 'public', 'groundskeeper');
       if (!result) throw new Error('Failed to post job');
       state = result.state;
 

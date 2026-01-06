@@ -310,7 +310,7 @@ describe('employee-work', () => {
     it('adds new groundskeepers to work system', () => {
       const state = createInitialWorkSystemState();
       const emp1 = createEmployee('groundskeeper', 'novice', 0);
-      const emp2 = createEmployee('irrigator', 'trained', 0);
+      const emp2 = createEmployee('groundskeeper', 'trained', 0);
 
       const newState = syncWorkersWithRoster(state, [emp1, emp2]);
 

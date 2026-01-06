@@ -12,6 +12,7 @@ import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
 import { WeatherState } from './weather';
+import { IrrigationSystem } from './irrigation';
 
 export interface SaveGameState {
   version: number;
@@ -37,6 +38,7 @@ export interface SaveGameState {
   scenarioProgress: ScenarioProgress;
   autonomousState: AutonomousEquipmentState;
   weatherState: WeatherState;
+  irrigationSystem?: IrrigationSystem;
 
   cells: CellState[][];
 }
@@ -64,7 +66,8 @@ export function createSaveState(
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
-  cells: CellState[][]
+  cells: CellState[][],
+  irrigationSystem?: IrrigationSystem
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -88,6 +91,7 @@ export function createSaveState(
     scenarioProgress,
     autonomousState,
     weatherState,
+    irrigationSystem,
     cells,
   };
 }

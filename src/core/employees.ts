@@ -16,7 +16,6 @@
 export type EmployeeRole =
   | "groundskeeper"
   | "mechanic"
-  | "irrigator"
   | "pro_shop_staff"
   | "manager"
   | "caddy";
@@ -37,11 +36,12 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
     id: "groundskeeper",
     name: "Groundskeeper",
     icon: "🌿",
-    description: "The backbone of course maintenance. Groundskeepers handle mowing, general upkeep, and ensure the playing surface stays in top condition.",
+    description: "The backbone of course maintenance. Groundskeepers handle mowing, watering, general upkeep, and ensure the playing surface stays in top condition.",
     duties: [
       "Mow fairways, greens, and rough",
+      "Water areas without irrigation pipes",
       "Perform general course cleanup",
-      "Assist with equipment as needed"
+      "Assist with equipment and pipe installation as needed"
     ],
     benefits: [
       "Essential for daily maintenance",
@@ -53,9 +53,11 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
     id: "mechanic",
     name: "Mechanic",
     icon: "🔧",
-    description: "Keeps your equipment running smoothly. Mechanics repair broken mowers, maintain vehicles, and reduce equipment downtime.",
+    description: "Keeps your equipment running smoothly. Mechanics repair broken mowers, maintain vehicles, install and repair irrigation pipes, and reduce equipment downtime.",
     duties: [
       "Repair broken equipment",
+      "Install irrigation pipes (with groundskeeper)",
+      "Repair leaking pipes",
       "Perform preventive maintenance",
       "Manage equipment inventory"
     ],
@@ -63,22 +65,6 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
       "Reduces equipment repair costs",
       "Faster equipment turnaround",
       "Extends equipment lifespan"
-    ]
-  },
-  irrigator: {
-    id: "irrigator",
-    name: "Irrigator",
-    icon: "💧",
-    description: "Specialist in water management. Irrigators optimize watering schedules, maintain sprinkler systems, and ensure proper moisture levels.",
-    duties: [
-      "Manage irrigation schedules",
-      "Repair sprinkler systems",
-      "Monitor soil moisture levels"
-    ],
-    benefits: [
-      "Improved turf health",
-      "Water cost savings",
-      "Automated moisture management"
     ]
   },
   pro_shop_staff: {
@@ -230,15 +216,6 @@ export const EMPLOYEE_CONFIGS: Record<EmployeeRole, EmployeeConfig> = {
     breakThreshold: 75,
     fatigueRecoveryRate: 1.5,
     fatigueAccrualRate: 0.4
-  },
-  irrigator: {
-    baseWage: 15,
-    wageMultipliers: { novice: 1.0, trained: 1.25, experienced: 1.5, expert: 1.9 },
-    baseEfficiency: 1.0,
-    experienceToLevel: 1200,
-    breakThreshold: 85,
-    fatigueRecoveryRate: 2.0,
-    fatigueAccrualRate: 0.35
   },
   pro_shop_staff: {
     baseWage: 10,
@@ -428,7 +405,7 @@ export function generateHiringPool(
 ): HiringPool {
   const candidates: Employee[] = [];
   const roles: EmployeeRole[] = [
-    "groundskeeper", "groundskeeper", "mechanic", "irrigator",
+    "groundskeeper", "groundskeeper", "mechanic",
     "pro_shop_staff", "caddy", "manager"
   ];
 
@@ -868,7 +845,6 @@ export function getRoleName(role: EmployeeRole): string {
   const names: Record<EmployeeRole, string> = {
     groundskeeper: "Groundskeeper",
     mechanic: "Mechanic",
-    irrigator: "Irrigator",
     pro_shop_staff: "Pro Shop Staff",
     manager: "Manager",
     caddy: "Caddy"
@@ -942,7 +918,7 @@ function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
   // Default weighted role distribution
   const roles: EmployeeRole[] = [
     'groundskeeper', 'groundskeeper', 'groundskeeper',  // Most common
-    'mechanic', 'irrigator',
+    'mechanic',
     'pro_shop_staff', 'caddy',
     'manager'  // Least common
   ];

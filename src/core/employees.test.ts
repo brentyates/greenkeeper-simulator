@@ -115,7 +115,7 @@ describe("Employee System", () => {
   describe("Constants", () => {
     it("has configs for all employee roles", () => {
       const roles: EmployeeRole[] = [
-        "groundskeeper", "mechanic", "irrigator",
+        "groundskeeper", "mechanic",
         "pro_shop_staff", "manager", "caddy"
       ];
 
@@ -1178,7 +1178,7 @@ describe("Employee System", () => {
     it("returns display names for all roles", () => {
       expect(getRoleName("groundskeeper")).toBe("Groundskeeper");
       expect(getRoleName("mechanic")).toBe("Mechanic");
-      expect(getRoleName("irrigator")).toBe("Irrigator");
+      expect(getRoleName("groundskeeper")).toBe("Groundskeeper");
       expect(getRoleName("pro_shop_staff")).toBe("Pro Shop Staff");
       expect(getRoleName("manager")).toBe("Manager");
       expect(getRoleName("caddy")).toBe("Caddy");

@@ -10,6 +10,7 @@ import { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
+import { OverlayMode } from '../../core/terrain';
 import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 
@@ -1128,7 +1129,7 @@ export class UIManager {
     gradientRow.addControl(this.overlayLegendHighLabel);
   }
 
-  public updateOverlayLegend(mode: 'normal' | 'moisture' | 'nutrients' | 'height'): void {
+  public updateOverlayLegend(mode: OverlayMode): void {
     if (mode === 'normal') {
       this.overlayLegend.isVisible = false;
       return;

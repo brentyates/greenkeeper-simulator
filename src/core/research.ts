@@ -154,6 +154,19 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
     }
   },
   {
+    id: "piped_irrigation_basic",
+    name: "Piped Irrigation System",
+    description: "Install underground pipes and sprinkler heads",
+    category: "irrigation",
+    baseCost: 800,
+    prerequisites: ["basic_sprinkler"],
+    tier: 2,
+    unlocks: {
+      type: "feature",
+      featureId: "pipe_system_pvc"
+    }
+  },
+  {
     id: "basic_fertilizer",
     name: "Standard Fertilizer",
     description: "General-purpose lawn fertilizer",
@@ -195,6 +208,32 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
       type: "equipment",
       equipmentId: "sprinkler_auto",
       stats: { efficiency: 1.3, speed: 1.5, fuelCapacity: 200, fuelEfficiency: 0.8, durability: 300 }
+    }
+  },
+  {
+    id: "sprinkler_rotary",
+    name: "Rotary Sprinkler Heads",
+    description: "Larger coverage area with circular pattern",
+    category: "irrigation",
+    baseCost: 1200,
+    prerequisites: ["piped_irrigation_basic"],
+    tier: 3,
+    unlocks: {
+      type: "feature",
+      featureId: "sprinkler_rotary"
+    }
+  },
+  {
+    id: "metal_pipes",
+    name: "Metal Pipe Infrastructure",
+    description: "More durable pipes with higher capacity",
+    category: "irrigation",
+    baseCost: 1500,
+    prerequisites: ["piped_irrigation_basic"],
+    tier: 3,
+    unlocks: {
+      type: "feature",
+      featureId: "pipe_metal"
     }
   },
   {
@@ -267,6 +306,33 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
       type: "equipment",
       equipmentId: "sprinkler_smart",
       stats: { efficiency: 1.8, speed: 2.0, fuelCapacity: 300, fuelEfficiency: 0.6, durability: 400 }
+    }
+  },
+  {
+    id: "smart_irrigation_controller",
+    name: "Smart Irrigation Controller",
+    description: "Automated scheduling with weather integration",
+    category: "irrigation",
+    baseCost: 2000,
+    prerequisites: ["sprinkler_rotary", "metal_pipes"],
+    tier: 4,
+    unlocks: {
+      type: "upgrade",
+      upgradeId: "smart_watering",
+      bonus: { type: "efficiency", value: 0.3 }
+    }
+  },
+  {
+    id: "industrial_pipes",
+    name: "Industrial Pipe System",
+    description: "High-capacity, ultra-durable infrastructure",
+    category: "irrigation",
+    baseCost: 3000,
+    prerequisites: ["metal_pipes"],
+    tier: 4,
+    unlocks: {
+      type: "feature",
+      featureId: "pipe_industrial"
     }
   },
   {
@@ -352,6 +418,19 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
     unlocks: {
       type: "feature",
       featureId: "weather_prediction"
+    }
+  },
+  {
+    id: "precision_sprinklers",
+    name: "Precision Spray Technology",
+    description: "Programmable coverage with maximum efficiency",
+    category: "irrigation",
+    baseCost: 3500,
+    prerequisites: ["smart_irrigation_controller"],
+    tier: 5,
+    unlocks: {
+      type: "feature",
+      featureId: "sprinkler_precision"
     }
   },
   {
