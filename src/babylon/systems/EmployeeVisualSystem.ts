@@ -31,11 +31,26 @@ interface WorkerMeshGroup extends EntityVisualState {
   currentTask: EmployeeTask;
 }
 
-const TASK_COLORS: Record<EmployeeTask, { body: Color3; equipment: Color3 | null }> = {
-  mow_grass: { body: new Color3(0.6, 0.4, 0.2), equipment: new Color3(0.3, 0.5, 0.3) },
-  water_area: { body: new Color3(0.2, 0.4, 0.6), equipment: new Color3(0.3, 0.4, 0.7) },
-  fertilize_area: { body: new Color3(0.5, 0.35, 0.2), equipment: new Color3(0.6, 0.5, 0.3) },
-  rake_bunker: { body: new Color3(0.55, 0.45, 0.35), equipment: new Color3(0.6, 0.4, 0.2) },
+const TASK_COLORS: Record<
+  EmployeeTask,
+  { body: Color3; equipment: Color3 | null }
+> = {
+  mow_grass: {
+    body: new Color3(0.6, 0.4, 0.2),
+    equipment: new Color3(0.3, 0.5, 0.3),
+  },
+  water_area: {
+    body: new Color3(0.2, 0.4, 0.6),
+    equipment: new Color3(0.3, 0.4, 0.7),
+  },
+  fertilize_area: {
+    body: new Color3(0.5, 0.35, 0.2),
+    equipment: new Color3(0.6, 0.5, 0.3),
+  },
+  rake_bunker: {
+    body: new Color3(0.55, 0.45, 0.35),
+    equipment: new Color3(0.6, 0.4, 0.2),
+  },
   patrol: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
   return_to_base: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
   idle: { body: new Color3(0.35, 0.3, 0.25), equipment: null },
@@ -55,14 +70,14 @@ export class EmployeeVisualSystem {
 
   private createTaskMaterials(): void {
     for (const [task, colors] of Object.entries(TASK_COLORS)) {
-      const bodyMat = new StandardMaterial(`workerBody_${task}`, this.scene);
-      bodyMat.diffuseColor = colors.body;
-      bodyMat.emissiveColor = colors.body.scale(0.5);
-      bodyMat.freeze();
-      this.taskMaterials.set(`body_${task}`, bodyMat);
+      // Body materials are no longer used with sprites
+      // but we keep the loop for equipment materials
 
       if (colors.equipment) {
-        const equipMat = new StandardMaterial(`workerEquip_${task}`, this.scene);
+        const equipMat = new StandardMaterial(
+          `workerEquip_${task}`,
+          this.scene
+        );
         equipMat.diffuseColor = colors.equipment;
         equipMat.emissiveColor = colors.equipment.scale(0.4);
         equipMat.freeze();
@@ -72,7 +87,7 @@ export class EmployeeVisualSystem {
   }
 
   public update(positions: readonly EmployeePosition[], deltaMs: number): void {
-    const currentIds = new Set(positions.map(p => p.employeeId));
+    const currentIds = new Set(positions.map((p) => p.employeeId));
 
     for (const [id, group] of this.workerMeshes) {
       if (!currentIds.has(id)) {
@@ -102,7 +117,11 @@ export class EmployeeVisualSystem {
     }
   }
 
-  private createWorkerMesh(employeeId: string, startX: number, startY: number): WorkerMeshGroup {
+  private createWorkerMesh(
+    employeeId: string,
+    startX: number,
+    startY: number
+  ): WorkerMeshGroup {
     const baseState = createEntityMesh(
       this.scene,
       employeeId,
@@ -122,10 +141,7 @@ export class EmployeeVisualSystem {
     if (group.currentTask === task) return;
 
     group.currentTask = task;
-    const bodyMat = this.taskMaterials.get(`body_${task}`);
-    if (bodyMat) {
-      group.body.material = bodyMat;
-    }
+    // Sprite handles body visualization, so we don't change body material here.
 
     if (group.equipment) {
       group.equipment.dispose();

@@ -1406,15 +1406,7 @@ export class BabylonMain {
 
     const wasMoving = this.isPlayerMoving();
 
-    updateEntityVisualPosition(
-      this.playerVisual,
-      this.player.gridX,
-      this.player.gridY,
-      null,
-      null,
-      deltaMs,
-      this.grassSystem
-    );
+    this.updatePlayerVisualProgress(deltaMs);
 
     if (this.cameraFollowPlayer) {
       this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
@@ -1425,6 +1417,24 @@ export class BabylonMain {
     } else if (!wasMoving) {
       this.checkContinuousMovement();
     }
+  }
+
+  private updatePlayerVisualProgress(deltaMs: number): void {
+    if (!this.playerVisual) return;
+
+    const isMoving = this.playerVisual.visualProgress < 1 ||
+      this.playerVisual.targetGridX !== this.player.gridX ||
+      this.playerVisual.targetGridY !== this.player.gridY;
+
+    updateEntityVisualPosition(
+      this.playerVisual,
+      this.playerVisual.targetGridX,
+      this.playerVisual.targetGridY,
+      isMoving ? this.player.gridX : null,
+      isMoving ? this.player.gridY : null,
+      deltaMs,
+      this.grassSystem
+    );
   }
 
   private checkContinuousMovement(): void {
@@ -1487,16 +1497,16 @@ export class BabylonMain {
 
     switch (direction) {
       case "up":
-        newY--;
-        break;
-      case "down":
-        newY++;
-        break;
-      case "left":
         newX--;
         break;
-      case "right":
+      case "down":
         newX++;
+        break;
+      case "left":
+        newY--;
+        break;
+      case "right":
+        newY++;
         break;
     }
 

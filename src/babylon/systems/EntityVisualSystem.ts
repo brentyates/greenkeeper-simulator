@@ -1,11 +1,15 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { SpriteManager, Sprite } from "@babylonjs/core/Sprites";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
+
+export const SPRITE_FRAMES_PER_DIRECTION = 6;
+export const SPRITE_ANIMATION_SPEED_MS = 150;
+
 
 export interface EntityAppearance {
   readonly bodyColor: Color3;
@@ -18,15 +22,14 @@ export interface EntityAppearance {
 
 export interface EntityVisualState {
   container: Mesh;
-  body: Mesh;
-  head: Mesh;
-  hat: Mesh;
-  hatBrim: Mesh | null;
+  sprite: Sprite;
   lastGridX: number;
   lastGridY: number;
   targetGridX: number;
   targetGridY: number;
   visualProgress: number;
+  direction: number; // 0-7: S, N, W, E, SE, SW, NE, NW
+  isAnimating: boolean;
 }
 
 export interface ElevationProvider {
@@ -34,22 +37,24 @@ export interface ElevationProvider {
 }
 
 export const PLAYER_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.11, 0.48, 0.24),
+  bodyColor: new Color3(0.11, 0.48, 0.24), // Ignored by sprite
   bodyEmissive: new Color3(0.06, 0.24, 0.12),
   hatColor: new Color3(0.9, 0.9, 0.85),
   hatEmissive: new Color3(0.45, 0.45, 0.42),
-  scale: 1.0,
+  scale: 0.5,
   hasHatBrim: true,
 };
 
 export const EMPLOYEE_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.4, 0.35, 0.3),
+  bodyColor: new Color3(0.4, 0.35, 0.3), // Ignored by sprite
   bodyEmissive: new Color3(0.2, 0.17, 0.15),
   hatColor: new Color3(0.7, 0.5, 0.2),
   hatEmissive: new Color3(0.35, 0.25, 0.1),
-  scale: 0.8,
+  scale: 0.4,
   hasHatBrim: false,
 };
+
+let sharedSpriteManager: SpriteManager | null = null;
 
 export function createEntityMesh(
   scene: Scene,
@@ -60,88 +65,62 @@ export function createEntityMesh(
 ): EntityVisualState {
   const scale = appearance.scale;
 
-  const container = MeshBuilder.CreateBox(
-    `entity_${id}`,
-    { size: 0.01 },
-    scene
-  );
-  container.isVisible = false;
-
-  const shadow = MeshBuilder.CreateDisc(
-    `shadow_${id}`,
-    { radius: 0.2 * scale, tessellation: 16 },
-    scene
-  );
-  shadow.rotation.x = Math.PI / 2;
-  shadow.position.y = 0.01;
-  const shadowMat = new StandardMaterial(`shadowMat_${id}`, scene);
-  shadowMat.diffuseColor = new Color3(0, 0, 0);
-  shadowMat.alpha = 0.3;
-  shadowMat.disableLighting = true;
-  shadow.material = shadowMat;
-  shadow.parent = container;
-
-  const body = MeshBuilder.CreateCylinder(
-    `body_${id}`,
-    { height: 0.4 * scale, diameterTop: 0.16 * scale, diameterBottom: 0.2 * scale },
-    scene
-  );
-  body.position.y = 0.2 * scale;
-  const bodyMat = new StandardMaterial(`bodyMat_${id}`, scene);
-  bodyMat.diffuseColor = appearance.bodyColor;
-  bodyMat.emissiveColor = appearance.bodyEmissive;
-  body.material = bodyMat;
-  body.parent = container;
-
-  const head = MeshBuilder.CreateSphere(
-    `head_${id}`,
-    { diameter: 0.2 * scale },
-    scene
-  );
-  head.position.y = 0.5 * scale;
-  const headMat = new StandardMaterial(`headMat_${id}`, scene);
-  headMat.diffuseColor = new Color3(0.94, 0.82, 0.69);
-  headMat.emissiveColor = new Color3(0.47, 0.41, 0.35);
-  head.material = headMat;
-  head.parent = container;
-
-  const hat = MeshBuilder.CreateCylinder(
-    `hat_${id}`,
-    { height: 0.1 * scale, diameterTop: 0.16 * scale, diameterBottom: 0.24 * scale },
-    scene
-  );
-  hat.position.y = 0.65 * scale;
-  const hatMat = new StandardMaterial(`hatMat_${id}`, scene);
-  hatMat.diffuseColor = appearance.hatColor;
-  hatMat.emissiveColor = appearance.hatEmissive;
-  hat.material = hatMat;
-  hat.parent = container;
-
-  let hatBrim: Mesh | null = null;
-  if (appearance.hasHatBrim) {
-    hatBrim = MeshBuilder.CreateDisc(
-      `hatBrim_${id}`,
-      { radius: 0.16 * scale, tessellation: 16 },
+  if (!sharedSpriteManager || sharedSpriteManager.scene !== scene) {
+    sharedSpriteManager = new SpriteManager(
+      "greenskeeperManager",
+      "/assets/textures/greenkeeper_pixellab.png",
+      200,
+      { width: 48, height: 48 },
       scene
     );
-    hatBrim.rotation.x = Math.PI / 2;
-    hatBrim.position.y = 0.6 * scale;
-    hatBrim.material = hatMat;
-    hatBrim.parent = container;
+    (sharedSpriteManager as unknown as { billboardMode: number }).billboardMode = 2;
+    sharedSpriteManager.isPickable = true;
   }
+
+  const container = MeshBuilder.CreateBox(`entity_${id}`, { size: 0.01 }, scene);
+  container.isVisible = false;
+
+  const sprite = new Sprite(`sprite_${id}`, sharedSpriteManager);
+  sprite.height = 1.8 * scale;
+  sprite.width = 1.8 * scale;
+  sprite.cellIndex = 0;
 
   return {
     container,
-    body,
-    head,
-    hat,
-    hatBrim,
+    sprite,
     lastGridX: startX,
     lastGridY: startY,
     targetGridX: startX,
     targetGridY: startY,
     visualProgress: 1,
+    direction: 0,
+    isAnimating: false,
   };
+}
+
+export function getIsometricDirectionIndex(dx: number, dy: number, currentDir: number): number {
+  if (dx === 0 && dy === 0) return currentDir;
+
+  // Sprite sheet rows: S=0, N=1, W=2, E=3, SE=4, SW=5, NE=6, NW=7
+  // Screen directions: NE=top-right, NW=top-left, SE=bottom-right, SW=bottom-left
+  // Grid movement: dx- = screen top-right, dx+ = screen bottom-left
+  //                dy- = screen top-left, dy+ = screen bottom-right
+  const DIR_S = 0, DIR_N = 1, DIR_W = 2, DIR_E = 3;
+  const DIR_SE = 4, DIR_SW = 5, DIR_NE = 6, DIR_NW = 7;
+
+  // Cardinal directions (one axis only)
+  if (dx < 0 && dy === 0) return DIR_NE;  // up key → top-right
+  if (dx > 0 && dy === 0) return DIR_SW;  // down key → bottom-left
+  if (dy < 0 && dx === 0) return DIR_NW;  // left key → top-left
+  if (dy > 0 && dx === 0) return DIR_SE;  // right key → bottom-right
+
+  // Diagonal directions (both axes)
+  if (dx < 0 && dy < 0) return DIR_N;   // up+left → top
+  if (dx > 0 && dy > 0) return DIR_S;   // down+right → bottom
+  if (dx < 0 && dy > 0) return DIR_E;   // up+right → right
+  if (dx > 0 && dy < 0) return DIR_W;   // down+left → left
+
+  return currentDir;
 }
 
 export function updateEntityVisualPosition(
@@ -158,6 +137,18 @@ export function updateEntityVisualPosition(
   const targetY = isMoving ? nextY : gridY;
 
   if (targetX !== state.targetGridX || targetY !== state.targetGridY) {
+    const dx = targetX - gridX;
+    const dy = targetY - gridY;
+    const newDir = getIsometricDirectionIndex(dx, dy, state.direction);
+
+    if (newDir !== state.direction || !state.isAnimating) {
+      state.direction = newDir;
+      const startFrame = state.direction * SPRITE_FRAMES_PER_DIRECTION;
+      const endFrame = startFrame + SPRITE_FRAMES_PER_DIRECTION - 1;
+      state.sprite.playAnimation(startFrame, endFrame, true, SPRITE_ANIMATION_SPEED_MS);
+      state.isAnimating = true;
+    }
+
     state.lastGridX = state.targetGridX;
     state.lastGridY = state.targetGridY;
     state.targetGridX = targetX;
@@ -166,29 +157,50 @@ export function updateEntityVisualPosition(
   }
 
   if (state.visualProgress < 1) {
-    state.visualProgress = Math.min(1, state.visualProgress + deltaMs / MOVE_DURATION_MS);
+    state.visualProgress = Math.min(
+      1,
+      state.visualProgress + deltaMs / MOVE_DURATION_MS
+    );
+  } else if (state.isAnimating) {
+    state.sprite.stopAnimation();
+    state.sprite.cellIndex = state.direction * SPRITE_FRAMES_PER_DIRECTION;
+    state.isAnimating = false;
   }
 
-  const startElevation = elevationProvider.getElevationAt(state.lastGridX, state.lastGridY, 0);
-  const startPos = gridTo3D(state.lastGridX + 0.5, state.lastGridY + 0.5, startElevation);
+  const startElevation = elevationProvider.getElevationAt(
+    state.lastGridX,
+    state.lastGridY,
+    0
+  );
+  const startPos = gridTo3D(
+    state.lastGridX + 0.5,
+    state.lastGridY + 0.5,
+    startElevation
+  );
 
-  const endElevation = elevationProvider.getElevationAt(state.targetGridX, state.targetGridY, 0);
-  const endPos = gridTo3D(state.targetGridX + 0.5, state.targetGridY + 0.5, endElevation);
+  const endElevation = elevationProvider.getElevationAt(
+    state.targetGridX,
+    state.targetGridY,
+    0
+  );
+  const endPos = gridTo3D(
+    state.targetGridX + 0.5,
+    state.targetGridY + 0.5,
+    endElevation
+  );
 
   const t = state.visualProgress;
-  const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-  const x = startPos.x + (endPos.x - startPos.x) * easeT;
-  const y = startPos.y + (endPos.y - startPos.y) * easeT;
-  const z = startPos.z + (endPos.z - startPos.z) * easeT;
+  const x = startPos.x + (endPos.x - startPos.x) * t;
+  const y = startPos.y + (endPos.y - startPos.y) * t;
+  const z = startPos.z + (endPos.z - startPos.z) * t;
 
   state.container.position.set(x, y, z);
+  state.sprite.position.copyFrom(state.container.position);
+  state.sprite.position.y += state.sprite.height / 2 + 0.15;
 }
 
 export function disposeEntityMesh(state: EntityVisualState): void {
-  if (state.hatBrim) {
-    state.hatBrim.dispose();
-  }
+  state.sprite.dispose();
   state.container.dispose();
 }
 
