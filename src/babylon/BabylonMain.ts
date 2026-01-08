@@ -10,6 +10,9 @@ import {
   PLAYER_APPEARANCE,
   createEntityMesh,
   updateEntityVisualPosition,
+  setEntityAnimationType,
+  ANIM_TYPE_WALK,
+  ANIM_TYPE_PUSHING,
 } from "./systems/EntityVisualSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
@@ -1414,8 +1417,6 @@ export class BabylonMain {
 
     if (wasMoving && !this.isPlayerMoving()) {
       this.checkContinuousMovement();
-    } else if (!wasMoving) {
-      this.checkContinuousMovement();
     }
   }
 
@@ -1737,9 +1738,9 @@ export class BabylonMain {
   }
 
   private applyEquipmentEffect(x: number, y: number): void {
-    const type = this.equipmentManager.getCurrentType();
+    const type = this.equipmentManager.getSelected();
     const state = this.equipmentManager.getCurrentState();
-    if (!state) return;
+    if (!type || !state) return;
 
     switch (type) {
       case "mower":
@@ -1763,34 +1764,6 @@ export class BabylonMain {
     }
   }
 
-  private handleEquipmentSelect(slot: EquipmentSlot): void {
-    this.equipmentManager.selectBySlot(slot);
-
-    const overlayMap: Record<EquipmentSlot, OverlayMode> = {
-      1: "height",
-      2: "moisture",
-      3: "nutrients",
-    };
-    const targetOverlay = overlayMap[slot];
-    if (targetOverlay && this.grassSystem.getOverlayMode() !== targetOverlay) {
-      this.grassSystem.setOverlayMode(targetOverlay);
-      this.uiManager.updateOverlayLegend(targetOverlay);
-      this.overlayAutoSwitched = true;
-      this.updateIrrigationVisibility();
-    }
-  }
-
-  private handleEquipmentToggle(): void {
-    this.equipmentManager.toggle();
-    const isActive = this.equipmentManager.isActive();
-
-    if (!isActive && this.overlayAutoSwitched) {
-      this.grassSystem.setOverlayMode("normal");
-      this.uiManager.updateOverlayLegend("normal");
-      this.overlayAutoSwitched = false;
-      this.updateIrrigationVisibility();
-    }
-  }
 
   private handleRefill(): void {
     const nearStation = REFILL_STATIONS.some((station) => {
@@ -2132,10 +2105,19 @@ export class BabylonMain {
       this.updateMovement(deltaMs);
 
       if (this.playerVisual) {
-        this.equipmentManager.update(
+        const wasDeactivated = this.equipmentManager.update(
           deltaMs,
           this.playerVisual.container.position
         );
+        if (wasDeactivated) {
+          this.updatePlayerAnimationType();
+          if (this.overlayAutoSwitched) {
+            this.grassSystem.setOverlayMode("normal");
+            this.uiManager.updateOverlayLegend("normal");
+            this.overlayAutoSwitched = false;
+            this.updateIrrigationVisibility();
+          }
+        }
       }
 
       this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
@@ -2183,7 +2165,7 @@ export class BabylonMain {
       this.uiManager.updateTime(hours, minutes, this.gameDay, season);
       this.uiManager.updateWeather(this.weather.type, this.weather.temperature);
       this.uiManager.updateEquipment(
-        this.equipmentManager.getCurrentType(),
+        this.equipmentManager.getSelected(),
         this.equipmentManager.isActive()
       );
 
@@ -3231,29 +3213,69 @@ export class BabylonMain {
   }
 
   /**
-   * Select equipment by slot number.
+   * Handle equipment button press. Unified control:
+   * - Press when nothing selected: select and activate
+   * - Press different equipment: switch to it
+   * - Press same equipment: deselect
    * @param slot - 1 (mower), 2 (sprinkler), 3 (spreader)
    */
   public selectEquipment(slot: 1 | 2 | 3): void {
-    this.handleEquipmentSelect(slot);
+    const wasSelected = this.equipmentManager.getSelected();
+    this.equipmentManager.handleSlot(slot);
+    const nowSelected = this.equipmentManager.getSelected();
+
+    this.updatePlayerAnimationType();
+
+    if (nowSelected !== null && nowSelected !== wasSelected) {
+      const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
+        1: null,        // mower - no overlay, stripes show mowing status
+        2: "moisture",  // sprinkler - show moisture levels
+        3: "nutrients", // spreader - show nutrient levels
+      };
+      const targetOverlay = overlayMap[slot];
+      if (targetOverlay && this.grassSystem.getOverlayMode() !== targetOverlay) {
+        this.grassSystem.setOverlayMode(targetOverlay);
+        this.uiManager.updateOverlayLegend(targetOverlay);
+        this.overlayAutoSwitched = true;
+        this.updateIrrigationVisibility();
+      } else if (targetOverlay === null && this.grassSystem.getOverlayMode() !== "normal") {
+        this.grassSystem.setOverlayMode("normal");
+        this.uiManager.updateOverlayLegend("normal");
+        this.overlayAutoSwitched = false;
+        this.updateIrrigationVisibility();
+      }
+    } else if (nowSelected === null && this.overlayAutoSwitched) {
+      this.grassSystem.setOverlayMode("normal");
+      this.uiManager.updateOverlayLegend("normal");
+      this.overlayAutoSwitched = false;
+      this.updateIrrigationVisibility();
+    }
   }
 
   /**
-   * Toggle equipment on/off.
-   * @param active - true to turn on, false to turn off, undefined to toggle
+   * Toggle equipment on/off (alias for selectEquipment with current selection).
+   * @deprecated Use selectEquipment instead - pressing same slot toggles
    */
-  public toggleEquipment(active?: boolean): void {
-    const currentType = this.equipmentManager.getCurrentType();
-    const state = this.equipmentManager.getState(currentType);
-    if (!state) return;
+  public toggleEquipment(): void {
+    const selected = this.equipmentManager.getSelected();
+    if (selected === null) return;
 
-    if (active === undefined) {
-      this.equipmentManager.toggle();
-    } else if (active && !state.isActive) {
-      this.equipmentManager.activate();
-    } else if (!active && state.isActive) {
-      this.equipmentManager.deactivate();
-    }
+    const slotMap: Record<string, 1 | 2 | 3> = {
+      mower: 1,
+      sprinkler: 2,
+      spreader: 3,
+    };
+    this.selectEquipment(slotMap[selected]);
+  }
+
+  private updatePlayerAnimationType(): void {
+    if (!this.playerVisual) return;
+
+    const isUsingEquipment = this.equipmentManager.isActive();
+    setEntityAnimationType(
+      this.playerVisual,
+      isUsingEquipment ? ANIM_TYPE_PUSHING : ANIM_TYPE_WALK
+    );
   }
 
   /**
@@ -3269,7 +3291,7 @@ export class BabylonMain {
     const sprinklerState = this.equipmentManager.getState("sprinkler");
     const spreaderState = this.equipmentManager.getState("spreader");
 
-    const currentType = this.equipmentManager.getCurrentType();
+    const selected = this.equipmentManager.getSelected();
     const slotMap: Record<string, number> = {
       mower: 0,
       sprinkler: 1,
@@ -3277,24 +3299,24 @@ export class BabylonMain {
     };
 
     return {
-      selectedSlot: slotMap[currentType] ?? null,
+      selectedSlot: selected ? slotMap[selected] : null,
       mower: mowerState
         ? {
-            active: mowerState.isActive,
+            active: selected === "mower",
             resource: mowerState.resourceCurrent,
             max: mowerState.resourceMax,
           }
         : null,
       sprinkler: sprinklerState
         ? {
-            active: sprinklerState.isActive,
+            active: selected === "sprinkler",
             resource: sprinklerState.resourceCurrent,
             max: sprinklerState.resourceMax,
           }
         : null,
       spreader: spreaderState
         ? {
-            active: spreaderState.isActive,
+            active: selected === "spreader",
             resource: spreaderState.resourceCurrent,
             max: spreaderState.resourceMax,
           }
@@ -3533,11 +3555,11 @@ export class BabylonMain {
       this.handleMove("left");
     else if (lowerKey === "arrowright" || lowerKey === "d")
       this.handleMove("right");
-    else if (lowerKey === "1") this.handleEquipmentSelect(1);
-    else if (lowerKey === "2") this.handleEquipmentSelect(2);
-    else if (lowerKey === "3") this.handleEquipmentSelect(3);
+    else if (lowerKey === "1") this.selectEquipment(1);
+    else if (lowerKey === "2") this.selectEquipment(2);
+    else if (lowerKey === "3") this.selectEquipment(3);
     else if (lowerKey === " " || lowerKey === "space")
-      this.handleEquipmentToggle();
+      this.toggleEquipment();
     else if (lowerKey === "e") this.handleRefill();
     else if (lowerKey === "tab") this.handleOverlayCycle();
     else if (lowerKey === "p" || lowerKey === "escape") this.handlePause();

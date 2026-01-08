@@ -7,8 +7,6 @@ import {
   EquipmentType,
   EquipmentState,
   createEquipmentState,
-  activateEquipment,
-  deactivateEquipment,
   consumeResource,
   canActivate,
   getResourcePercent,
@@ -16,14 +14,24 @@ import {
   calculateRefillCost,
 } from '../../core/equipment-logic';
 
+import {
+  EquipmentSelectionState,
+  createInitialSelectionState,
+  handleEquipmentButton,
+  slotToEquipmentType,
+  isEquipmentActive,
+  isMowerActive,
+} from '../../core/equipment-selection';
+
 export class EquipmentManager {
   private scene: Scene;
   private equipment: Map<EquipmentType, EquipmentState> = new Map();
-  private currentEquipment: EquipmentType = 'mower';
+  private selection: EquipmentSelectionState;
   private particleSystem: ParticleSystem | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
+    this.selection = createInitialSelectionState();
     this.initializeEquipment();
   }
 
@@ -33,51 +41,35 @@ export class EquipmentManager {
     this.equipment.set('spreader', createEquipmentState('spreader'));
   }
 
-  public selectEquipment(type: EquipmentType): void {
-    if (type === this.currentEquipment) return;
+  public handleButton(type: EquipmentType): void {
+    const wasSelected = this.selection.selected;
+    this.selection = handleEquipmentButton(this.selection, type);
+    const nowSelected = this.selection.selected;
 
-    const currentState = this.getCurrentState();
-    if (currentState?.isActive) {
-      this.deactivate();
-    }
-
-    this.currentEquipment = type;
-  }
-
-  public selectBySlot(slot: 1 | 2 | 3): void {
-    const types: EquipmentType[] = ['mower', 'sprinkler', 'spreader'];
-    this.selectEquipment(types[slot - 1]);
-  }
-
-  public toggle(): void {
-    const state = this.getCurrentState();
-    if (!state) return;
-
-    if (state.isActive) {
-      this.deactivate();
-    } else {
-      this.activate();
+    if (wasSelected !== nowSelected) {
+      if (wasSelected !== null) {
+        this.stopParticles();
+      }
+      if (nowSelected !== null) {
+        const state = this.equipment.get(nowSelected);
+        if (state && canActivate(state)) {
+          this.startParticles(nowSelected);
+        } else {
+          this.selection = { selected: null };
+        }
+      }
     }
   }
 
-  public activate(): void {
-    const state = this.getCurrentState();
-    if (!state || !canActivate(state)) return;
-
-    const newState = activateEquipment(state);
-    this.equipment.set(this.currentEquipment, newState);
-
-    this.startParticles();
+  public handleSlot(slot: 1 | 2 | 3): void {
+    this.handleButton(slotToEquipmentType(slot));
   }
 
-  public deactivate(): void {
-    const state = this.getCurrentState();
-    if (!state) return;
-
-    const newState = deactivateEquipment(state);
-    this.equipment.set(this.currentEquipment, newState);
-
-    this.stopParticles();
+  public deselect(): void {
+    if (this.selection.selected !== null) {
+      this.stopParticles();
+      this.selection = { selected: null };
+    }
   }
 
   public refill(): number {
@@ -89,17 +81,19 @@ export class EquipmentManager {
     return Math.round(totalCost * 100) / 100;
   }
 
-  public update(deltaMs: number, playerPosition: Vector3): void {
-    const state = this.getCurrentState();
-    if (!state) return;
+  public update(deltaMs: number, playerPosition: Vector3): boolean {
+    const selected = this.selection.selected;
+    if (selected === null) return false;
 
-    if (state.isActive) {
-      const newState = consumeResource(state, deltaMs);
-      this.equipment.set(this.currentEquipment, newState);
+    const state = this.equipment.get(selected);
+    if (!state) return false;
 
-      if (newState.resourceCurrent <= 0) {
-        this.deactivate();
-      }
+    const newState = consumeResource(state, deltaMs);
+    this.equipment.set(selected, newState);
+
+    if (newState.resourceCurrent <= 0) {
+      this.deselect();
+      return true;
     }
 
     if (this.particleSystem && this.particleSystem.emitter instanceof Vector3) {
@@ -109,9 +103,11 @@ export class EquipmentManager {
         playerPosition.z - 0.5
       );
     }
+
+    return false;
   }
 
-  private startParticles(): void {
+  private startParticles(type: EquipmentType): void {
     if (this.particleSystem) {
       this.particleSystem.dispose();
     }
@@ -126,7 +122,7 @@ export class EquipmentManager {
     ps.emitRate = 20;
     ps.gravity = new Vector3(0, -20, 0);
 
-    switch (this.currentEquipment) {
+    switch (type) {
       case 'mower':
         ps.color1 = new Color3(0.2, 0.5, 0.1).toColor4(1);
         ps.color2 = new Color3(0.3, 0.6, 0.2).toColor4(1);
@@ -154,21 +150,26 @@ export class EquipmentManager {
     }
   }
 
-  public getCurrentState(): EquipmentState | undefined {
-    return this.equipment.get(this.currentEquipment);
+  public getSelected(): EquipmentType | null {
+    return this.selection.selected;
   }
 
-  public getCurrentType(): EquipmentType {
-    return this.currentEquipment;
+  public isActive(): boolean {
+    return isEquipmentActive(this.selection);
+  }
+
+  public isMowerActive(): boolean {
+    return isMowerActive(this.selection);
+  }
+
+  public getCurrentState(): EquipmentState | undefined {
+    const selected = this.selection.selected;
+    return selected ? this.equipment.get(selected) : undefined;
   }
 
   public getResourcePercent(): number {
     const state = this.getCurrentState();
     return state ? getResourcePercent(state) : 0;
-  }
-
-  public isActive(): boolean {
-    return this.getCurrentState()?.isActive ?? false;
   }
 
   public getState(type: EquipmentType): EquipmentState | undefined {

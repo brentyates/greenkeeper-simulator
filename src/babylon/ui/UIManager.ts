@@ -1262,7 +1262,17 @@ export class UIManager {
     bar.background = color;
   }
 
-  public updateEquipment(type: EquipmentType, isActive: boolean): void {
+  public updateEquipment(type: EquipmentType | null, isActive: boolean): void {
+    if (type === null) {
+      this.equipmentSlots.forEach((slot) => {
+        slot.color = '#666666';
+        slot.thickness = 1;
+        slot.background = '#1a3a2a';
+        slot.alpha = 0.7;
+      });
+      return;
+    }
+
     const typeIndex: Record<EquipmentType, number> = {
       mower: 0,
       sprinkler: 1,

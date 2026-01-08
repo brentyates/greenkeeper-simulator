@@ -8,7 +8,11 @@ import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
 
 export const SPRITE_FRAMES_PER_DIRECTION = 6;
+export const SPRITE_DIRECTIONS_COUNT = 8;
 export const SPRITE_ANIMATION_SPEED_MS = 150;
+
+export const ANIM_TYPE_WALK = 0;
+export const ANIM_TYPE_PUSHING = 1;
 
 
 export interface EntityAppearance {
@@ -29,6 +33,7 @@ export interface EntityVisualState {
   targetGridY: number;
   visualProgress: number;
   direction: number; // 0-7: S, N, W, E, SE, SW, NE, NW
+  animationType: number; // 0=walk, 1=pushing
   isAnimating: boolean;
 }
 
@@ -94,6 +99,7 @@ export function createEntityMesh(
     targetGridY: startY,
     visualProgress: 1,
     direction: 0,
+    animationType: ANIM_TYPE_WALK,
     isAnimating: false,
   };
 }
@@ -143,7 +149,8 @@ export function updateEntityVisualPosition(
 
     if (newDir !== state.direction || !state.isAnimating) {
       state.direction = newDir;
-      const startFrame = state.direction * SPRITE_FRAMES_PER_DIRECTION;
+      const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
+      const startFrame = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
       const endFrame = startFrame + SPRITE_FRAMES_PER_DIRECTION - 1;
       state.sprite.playAnimation(startFrame, endFrame, true, SPRITE_ANIMATION_SPEED_MS);
       state.isAnimating = true;
@@ -163,7 +170,8 @@ export function updateEntityVisualPosition(
     );
   } else if (state.isAnimating) {
     state.sprite.stopAnimation();
-    state.sprite.cellIndex = state.direction * SPRITE_FRAMES_PER_DIRECTION;
+    const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
+    state.sprite.cellIndex = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
     state.isAnimating = false;
   }
 
@@ -206,4 +214,19 @@ export function disposeEntityMesh(state: EntityVisualState): void {
 
 export function getEntityWorldPosition(state: EntityVisualState): Vector3 {
   return state.container.position.clone();
+}
+
+export function setEntityAnimationType(state: EntityVisualState, animationType: number): void {
+  if (state.animationType === animationType) return;
+
+  state.animationType = animationType;
+  const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
+
+  if (state.isAnimating) {
+    const startFrame = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
+    const endFrame = startFrame + SPRITE_FRAMES_PER_DIRECTION - 1;
+    state.sprite.playAnimation(startFrame, endFrame, true, SPRITE_ANIMATION_SPEED_MS);
+  } else {
+    state.sprite.cellIndex = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
+  }
 }
