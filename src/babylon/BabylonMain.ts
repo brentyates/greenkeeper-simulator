@@ -3884,7 +3884,12 @@ export class BabylonMain {
    */
   public advanceTimeByMinutes(minutes: number): void {
     const deltaMs = minutes * 60 * 1000 / this.timeScale;
-    this.updateGameTime(deltaMs);
+    // Update game time
+    this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
+    if (this.gameTime >= 24 * 60) {
+      this.gameTime -= 24 * 60;
+      this.gameDay++;
+    }
     this.grassSystem.update(deltaMs, this.gameTime / 60);
     this.updateEconomySystems(deltaMs);
   }
@@ -3906,7 +3911,7 @@ export class BabylonMain {
   } {
     return {
       active: getActiveGolferCount(this.golferPool),
-      served: this.golferPool.totalGolfersServed,
+      served: this.golferPool.totalVisitorsToday,
       avgSatisfaction: getAverageSatisfaction(this.golferPool),
     };
   }
@@ -3915,18 +3920,17 @@ export class BabylonMain {
    * Get scenario progress (if in scenario mode).
    */
   public getScenarioProgress(): {
-    objectives: Array<{ description: string; progress: number; target: number; completed: boolean }>;
-    daysRemaining: number;
-    status: "active" | "won" | "lost";
+    daysElapsed: number;
+    currentCash: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    totalGolfers: number;
+    currentHealth: number;
+    currentRating: number;
   } | null {
     if (!this.scenarioManager) return null;
 
-    const progress = this.scenarioManager.getProgress();
-    return {
-      objectives: progress.objectives,
-      daysRemaining: progress.daysRemaining,
-      status: progress.status,
-    };
+    return this.scenarioManager.getProgress();
   }
 
   /**
