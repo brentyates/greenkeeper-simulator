@@ -74,6 +74,7 @@ export class UIManager {
   private onResume?: () => void;
   private onRestart?: () => void;
   private onMainMenu?: () => void;
+  private onSave?: () => void;
   private onEmployees?: () => void;
   private onResearch?: () => void;
   private onTeeSheet?: () => void;
@@ -907,6 +908,18 @@ export class UIManager {
     stack.addControl(resumeBtn.control);
     this.pauseMenuButtons.push(resumeBtn);
 
+    const saveBtn = createAccessibleButton({
+      label: '💾 Quick Save',
+      onClick: () => {
+        this.onSave?.();
+        this.showNotification('Game saved!');
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    saveBtn.control.paddingTop = '10px';
+    stack.addControl(saveBtn.control);
+    this.pauseMenuButtons.push(saveBtn);
+
     const restartBtn = createAccessibleButton({
       label: '🔄 Restart',
       onClick: () => this.onRestart?.(),
@@ -1167,6 +1180,7 @@ export class UIManager {
     onResume: () => void,
     onRestart: () => void,
     onMainMenu?: () => void,
+    onSave?: () => void,
     onEmployees?: () => void,
     onResearch?: () => void,
     onTeeSheet?: () => void,
@@ -1177,6 +1191,7 @@ export class UIManager {
     this.onResume = onResume;
     this.onRestart = onRestart;
     this.onMainMenu = onMainMenu;
+    this.onSave = onSave;
     this.onEmployees = onEmployees;
     this.onResearch = onResearch;
     this.onTeeSheet = onTeeSheet;

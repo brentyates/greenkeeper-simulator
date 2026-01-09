@@ -29,6 +29,7 @@ export default defineConfig({
             reports: [
               ['v8'],
               ['html', { subdir: 'html' }],
+              ['json-summary', { file: 'coverage-summary.json' }],
               ['text-summary']
             ]
           }

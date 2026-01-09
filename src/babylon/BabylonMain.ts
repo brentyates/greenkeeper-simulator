@@ -173,11 +173,24 @@ import {
   createInitialWalkOnState,
   processWalkOns,
   resetDailyWalkOnMetrics,
+  getWalkOnSummary,
+  getQueueLength,
+  getEstimatedWaitTime,
+  updateWalkOnPolicy,
+  addWalkOnToQueue,
+  createWalkOnGolfer,
 } from "../core/walk-ons";
 import {
   RevenueState,
   createInitialRevenueState,
   finalizeDailyRevenue,
+  getRevenueSummary,
+  calculateGreenFee,
+  calculateCartFee,
+  calculateAverageRevenue,
+  isWeekend,
+  isPrimeMorning,
+  isTwilightHour,
 } from "../core/tee-revenue";
 import {
   MarketingState,
@@ -193,6 +206,9 @@ import {
   saveGame,
   loadGame,
   hasSave,
+  deleteSave,
+  getSaveInfo,
+  listSaves,
 } from "../core/save-game";
 import {
   AutonomousEquipmentState,
@@ -212,6 +228,14 @@ import {
   getWeatherImpactDescription,
   getSeasonFromDay,
 } from "../core/weather";
+import {
+  ReputationState,
+  createInitialReputationState,
+  getReputationSummary,
+  calculateReputationScore,
+  trackGolferVisit,
+  trackTurnAway,
+} from "../core/reputation";
 
 export interface GameOptions {
   scenario?: ScenarioDefinition;
@@ -292,6 +316,7 @@ export class BabylonMain {
   private greenFees: GreenFeeStructure = { ...DEFAULT_GREEN_FEES };
   private lastPayrollHour: number = -1;
   private lastArrivalHour: number = -1;
+  private lastAutoSaveHour: number = -1;
   private accumulatedResearchTime: number = 0;
   private prestigeState: PrestigeState;
   private lastPrestigeUpdateHour: number = -1;
@@ -300,6 +325,7 @@ export class BabylonMain {
   private revenueState: RevenueState;
   private marketingState: MarketingState;
   private autonomousState: AutonomousEquipmentState;
+  private reputationState: ReputationState = createInitialReputationState();
   private lastTeeTimeUpdateHour: number = -1;
   private shownTutorialHints: Set<string> = new Set();
 
@@ -1909,6 +1935,7 @@ export class BabylonMain {
       () => this.resumeGame(),
       () => this.restartGame(),
       this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined,
+      () => this.saveCurrentGame(),
       () => this.handleEmployeePanel(),
       () => this.handleResearchPanel(),
       () => this.handleTeeSheetPanel(),
@@ -2344,6 +2371,12 @@ export class BabylonMain {
           this.dailyStats.expenses.wages += payrollResult.totalPaid;
         }
       }
+    }
+
+    // Hourly auto-save
+    if (hours !== this.lastAutoSaveHour) {
+      this.lastAutoSaveHour = hours;
+      this.saveCurrentGame();
     }
 
     // Hourly prestige update
@@ -4511,6 +4544,240 @@ export class BabylonMain {
       }
     }
     return Array.from(types);
+  }
+
+  // ============================================================================
+  // Save Game APIs
+  // ============================================================================
+
+  public deleteSaveGame(scenarioId: string): boolean {
+    return deleteSave(scenarioId);
+  }
+
+  public getSaveGameInfo(scenarioId?: string): { savedAt: number; gameDay: number } | null {
+    const id = scenarioId || this.currentScenario?.id || 'sandbox';
+    return getSaveInfo(id);
+  }
+
+  public listSaveGames(): Array<{ scenarioId: string; savedAt: number; gameDay: number }> {
+    return listSaves();
+  }
+
+  // ============================================================================
+  // Reputation APIs
+  // ============================================================================
+
+  public getReputationSummaryData(): {
+    score: number;
+    starRating: number;
+    trend: string;
+    totalTurnAways: number;
+    returnRate: number;
+  } {
+    const summary = getReputationSummary(this.reputationState);
+    return {
+      score: calculateReputationScore(this.reputationState),
+      starRating: summary.starRating,
+      trend: summary.trend,
+      totalTurnAways: this.reputationState.totalTurnAways,
+      returnRate: summary.returnRate,
+    };
+  }
+
+  public trackGolferVisitForReputation(golferId: string, isReturning: boolean): void {
+    this.reputationState = trackGolferVisit(
+      this.reputationState,
+      golferId,
+      isReturning
+    );
+  }
+
+  public trackTurnAwayForReputation(): void {
+    this.reputationState = trackTurnAway(this.reputationState);
+  }
+
+  // ============================================================================
+  // Walk-On APIs
+  // ============================================================================
+
+  public getWalkOnSummary(): {
+    queueLength: number;
+    served: number;
+    turnedAway: number;
+    gaveUp: number;
+    avgWait: number;
+    estimatedWait: number;
+  } {
+    const summary = getWalkOnSummary(this.walkOnState);
+    return {
+      queueLength: getQueueLength(this.walkOnState),
+      served: summary.served,
+      turnedAway: summary.turnedAway,
+      gaveUp: summary.gaveUp,
+      avgWait: summary.averageWait,
+      estimatedWait: getEstimatedWaitTime(this.walkOnState),
+    };
+  }
+
+  public updateWalkOnPolicy(maxWaitMinutes?: number, maxQueueSize?: number): void {
+    const updates: Partial<{ maxWaitMinutes: number; maxQueueSize: number }> = {};
+    if (maxWaitMinutes !== undefined) updates.maxWaitMinutes = maxWaitMinutes;
+    if (maxQueueSize !== undefined) updates.maxQueueSize = maxQueueSize;
+    this.walkOnState = updateWalkOnPolicy(this.walkOnState, updates);
+  }
+
+  public addWalkOnGolfer(): boolean {
+    const currentTime: GameTime = {
+      day: this.gameDay,
+      hour: Math.floor(this.gameTime / 60),
+      minute: this.gameTime % 60,
+    };
+    const golfer = createWalkOnGolfer(
+      `walkon_${Date.now()}`,
+      `Walk-On ${Date.now() % 1000}`,
+      currentTime
+    );
+    const result = addWalkOnToQueue(this.walkOnState, golfer);
+    this.walkOnState = result.state;
+    return result.accepted;
+  }
+
+  // ============================================================================
+  // Revenue APIs
+  // ============================================================================
+
+  public getRevenueSummaryData(): {
+    todaysGross: number;
+    todaysNet: number;
+    weeklyAvg: number;
+    monthlyAvg: number;
+    topRevenueSource: string;
+  } {
+    const summary = getRevenueSummary(this.revenueState);
+    const sources: Array<{ name: string; value: number }> = [
+      { name: 'greenFees', value: summary.today.greenFees },
+      { name: 'cartFees', value: summary.today.cartFees },
+      { name: 'proShop', value: summary.today.proShop },
+      { name: 'foodAndBeverage', value: summary.today.foodAndBeverage },
+    ];
+    const topSource = sources.reduce((a, b) => a.value > b.value ? a : b);
+    return {
+      todaysGross: summary.today.grossRevenue,
+      todaysNet: summary.today.netRevenue,
+      weeklyAvg: summary.weeklyAverage.grossRevenue,
+      monthlyAvg: summary.monthlyAverage.grossRevenue,
+      topRevenueSource: topSource.name,
+    };
+  }
+
+  public calculateGreenFeeForGolfer(
+    membershipType: 'public' | 'member' | 'guest_of_member' = 'public'
+  ): number {
+    const hour = Math.floor(this.gameTime / 60);
+    const dayOfWeek = this.gameDay % 7;
+    return calculateGreenFee(
+      this.revenueState.greenFeeStructure,
+      dayOfWeek,
+      hour,
+      membershipType
+    );
+  }
+
+  public calculateCartFeeForGolfer(): number {
+    const hour = Math.floor(this.gameTime / 60);
+    return calculateCartFee(this.revenueState.cartFeeStructure, isTwilightHour(hour));
+  }
+
+  public getAverageRevenue(days: number = 7): number {
+    const avgRevenue = calculateAverageRevenue(this.revenueState, days);
+    return avgRevenue.grossRevenue;
+  }
+
+  // ============================================================================
+  // Autonomous Robot APIs
+  // ============================================================================
+
+  public purchaseRobotUnit(equipmentId: string): boolean {
+    const availableRobots = getAvailableRobotsToPurchase(this.researchState, this.autonomousState);
+    const robot = availableRobots.find(r => r.equipmentId === equipmentId);
+    if (!robot) return false;
+
+    const result = purchaseRobot(this.autonomousState, equipmentId, robot.stats);
+    if (!result) return false;
+
+    if (result.cost > this.economyState.cash) return false;
+
+    this.autonomousState = result.state;
+    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+    const expenseResult = addExpense(
+      this.economyState,
+      result.cost,
+      'equipment_purchase',
+      `Robot purchase: ${equipmentId}`,
+      timestamp
+    );
+    if (expenseResult) {
+      this.economyState = expenseResult;
+    }
+    return true;
+  }
+
+  public sellRobotUnit(robotId: string): boolean {
+    const result = sellRobot(this.autonomousState, robotId);
+    if (!result) return false;
+
+    this.autonomousState = result.state;
+    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+    const incomeResult = addIncome(
+      this.economyState,
+      result.refund,
+      'equipment_purchase',
+      `Robot sale: ${robotId}`,
+      timestamp
+    );
+    this.economyState = incomeResult;
+    return true;
+  }
+
+  public getRobotList(): Array<{ id: string; type: string; state: string; battery: number }> {
+    return this.autonomousState.robots.map(r => ({
+      id: r.id,
+      type: r.type,
+      state: r.state,
+      battery: r.resourceCurrent,
+    }));
+  }
+
+  // ============================================================================
+  // Time Utility APIs (for tee-revenue coverage)
+  // ============================================================================
+
+  public isCurrentTimeWeekend(): boolean {
+    return isWeekend(this.gameDay % 7);
+  }
+
+  public isCurrentTimePrimeMorning(): boolean {
+    return isPrimeMorning(Math.floor(this.gameTime / 60));
+  }
+
+  public isCurrentTimeTwilight(): boolean {
+    return isTwilightHour(Math.floor(this.gameTime / 60));
+  }
+
+  // ============================================================================
+  // Weather Helper APIs
+  // ============================================================================
+
+  public getWeatherDescription(): string {
+    return getWeatherDescription(this.weatherState.current);
+  }
+
+  public getWeatherImpact(): string {
+    return getWeatherImpactDescription(this.weatherState.current);
+  }
+
+  public getCurrentSeason(): string {
+    return getSeasonFromDay(this.gameDay).season;
   }
 }
 
