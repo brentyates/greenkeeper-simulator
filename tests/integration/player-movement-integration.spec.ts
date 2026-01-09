@@ -107,7 +107,7 @@ test.describe('Player Movement Integration', () => {
 
   test.describe('Boundary Collisions', () => {
     test('player stops at map boundaries', async ({ page }) => {
-      const getPos = () => page.evaluate(() => window.game.getPlayerPosition();
+      const getPos = () => page.evaluate(() => window.game.getPlayerPosition());
 
       // Move to corner
       await page.evaluate(() => {
