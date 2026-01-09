@@ -350,3 +350,117 @@ The economy/management systems are **integrated and running**. See `SCENARIOS.md
 - Updates scenario progress
 
 `checkScenarioCompletion()` checks win/lose conditions and triggers callbacks.
+
+## PixelLab MCP Integration
+
+This project uses **PixelLab MCP** to generate pixel art sprites for characters and equipment.
+
+### Generated Assets
+
+| Asset | Location | Description |
+|-------|----------|-------------|
+| Greenkeeper sprite | `public/assets/textures/greenkeeper_pixellab.png` | Player character with 8 directions × 2 animations |
+| Push mower | `public/assets/textures/push_mower.png` | Equipment sprite (48×48) |
+
+### Character Sprite Sheet Structure
+
+The greenkeeper sprite sheet is organized as:
+- **8 directions**: S, N, W, E, SE, SW, NE, NW (rows 0-7 for walk, 8-15 for pushing)
+- **6 frames per direction**: Animation frames per row
+- **2 animation types**: Walk (rows 0-7) and Pushing (rows 8-15)
+- **Frame size**: 48×48 pixels per frame
+
+```
+Row Layout:
+0-7:   Walk animation (S, N, W, E, SE, SW, NE, NW)
+8-15:  Pushing animation (S, N, W, E, SE, SW, NE, NW)
+```
+
+### Creating Characters with PixelLab
+
+Use the `mcp__pixellab__create_character` tool:
+
+```javascript
+// Create 8-directional character
+{
+  description: "golf course groundskeeper with green polo shirt and khaki pants",
+  n_directions: 8,
+  size: 48,
+  view: "high top-down",
+  detail: "medium detail",
+  shading: "basic shading",
+  outline: "single color black outline"
+}
+```
+
+Then add animations with `mcp__pixellab__animate_character`:
+
+```javascript
+// Add walk animation
+{
+  character_id: "<from create_character>",
+  template_animation_id: "walking",
+  animation_name: "walk"
+}
+
+// Add pushing animation (for mower/equipment)
+{
+  character_id: "<from create_character>",
+  template_animation_id: "pushing",
+  animation_name: "pushing"
+}
+```
+
+### Creating Equipment with PixelLab
+
+Use `mcp__pixellab__create_map_object` for equipment sprites:
+
+```javascript
+{
+  description: "red push lawn mower seen from above",
+  width: 48,
+  height: 48,
+  view: "high top-down",
+  detail: "medium detail",
+  shading: "medium shading"
+}
+```
+
+### Sprite Integration in Code
+
+**EntityVisualSystem.ts** handles sprite rendering:
+- `sharedSpriteManager`: Character sprites (greenkeeper)
+- `equipmentSpriteManager`: Equipment sprites (mower, etc.)
+- `showEquipmentSprite()` / `hideEquipmentSprite()`: Toggle equipment visibility
+- `updateEquipmentSpritePosition()`: Position equipment based on player direction
+
+**Animation constants**:
+```typescript
+SPRITE_FRAMES_PER_DIRECTION = 6  // Frames per animation row
+SPRITE_DIRECTIONS_COUNT = 8      // S, N, W, E, SE, SW, NE, NW
+ANIM_TYPE_WALK = 0               // Walk animation (rows 0-7)
+ANIM_TYPE_PUSHING = 1            // Pushing animation (rows 8-15)
+```
+
+**Direction mapping** (sprite sheet row order):
+```typescript
+DIR_S = 0, DIR_N = 1, DIR_W = 2, DIR_E = 3
+DIR_SE = 4, DIR_SW = 5, DIR_NE = 6, DIR_NW = 7
+```
+
+### Future PixelLab Assets Needed
+
+| Asset | Tool | Description |
+|-------|------|-------------|
+| Sprinkler tank | `create_map_object` | Water tank on wheels for sprinkler equipment |
+| Spreader | `create_map_object` | Fertilizer spreader for spreader equipment |
+| Employee sprites | `create_character` | Different colored uniforms for employees |
+| Golfer sprites | `create_character` | Golfers with golf bags |
+
+### Tips for PixelLab Generation
+
+1. **Use "high top-down" view** for isometric games
+2. **Match size to existing sprites** (48×48 for characters)
+3. **Use consistent shading/outline** across all assets
+4. **Download ZIP** after generation to get all directions/frames
+5. **Check job status** with `get_character` - generation takes 2-5 minutes

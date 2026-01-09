@@ -11,6 +11,8 @@ import {
   createEntityMesh,
   updateEntityVisualPosition,
   setEntityAnimationType,
+  showEquipmentSprite,
+  hideEquipmentSprite,
   ANIM_TYPE_WALK,
   ANIM_TYPE_PUSHING,
 } from "./systems/EntityVisualSystem";
@@ -3276,6 +3278,12 @@ export class BabylonMain {
       this.playerVisual,
       isUsingEquipment ? ANIM_TYPE_PUSHING : ANIM_TYPE_WALK
     );
+
+    if (isUsingEquipment) {
+      showEquipmentSprite(this.playerVisual, this.babylonEngine.getScene());
+    } else {
+      hideEquipmentSprite(this.playerVisual);
+    }
   }
 
   /**

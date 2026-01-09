@@ -27,6 +27,7 @@ export interface EntityAppearance {
 export interface EntityVisualState {
   container: Mesh;
   sprite: Sprite;
+  equipmentSprite: Sprite | null;
   lastGridX: number;
   lastGridY: number;
   targetGridX: number;
@@ -60,6 +61,21 @@ export const EMPLOYEE_APPEARANCE: EntityAppearance = {
 };
 
 let sharedSpriteManager: SpriteManager | null = null;
+let equipmentSpriteManager: SpriteManager | null = null;
+
+function getEquipmentSpriteManager(scene: Scene): SpriteManager {
+  if (!equipmentSpriteManager || equipmentSpriteManager.scene !== scene) {
+    equipmentSpriteManager = new SpriteManager(
+      "equipmentManager",
+      "/assets/textures/push_mower.png",
+      50,
+      { width: 48, height: 48 },
+      scene
+    );
+    (equipmentSpriteManager as unknown as { billboardMode: number }).billboardMode = 2;
+  }
+  return equipmentSpriteManager;
+}
 
 export function createEntityMesh(
   scene: Scene,
@@ -93,6 +109,7 @@ export function createEntityMesh(
   return {
     container,
     sprite,
+    equipmentSprite: null,
     lastGridX: startX,
     lastGridY: startY,
     targetGridX: startX,
@@ -205,9 +222,13 @@ export function updateEntityVisualPosition(
   state.container.position.set(x, y, z);
   state.sprite.position.copyFrom(state.container.position);
   state.sprite.position.y += state.sprite.height / 2 + 0.15;
+  updateEquipmentSpritePosition(state);
 }
 
 export function disposeEntityMesh(state: EntityVisualState): void {
+  if (state.equipmentSprite) {
+    state.equipmentSprite.dispose();
+  }
   state.sprite.dispose();
   state.container.dispose();
 }
@@ -229,4 +250,44 @@ export function setEntityAnimationType(state: EntityVisualState, animationType: 
   } else {
     state.sprite.cellIndex = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
   }
+}
+
+const EQUIPMENT_OFFSET_BY_DIRECTION: Record<number, { x: number; z: number }> = {
+  0: { x: 0, z: 0.4 },      // S - in front
+  1: { x: 0, z: -0.4 },     // N - in front
+  2: { x: -0.4, z: 0 },     // W - in front
+  3: { x: 0.4, z: 0 },      // E - in front
+  4: { x: 0.3, z: 0.3 },    // SE - diagonal front
+  5: { x: -0.3, z: 0.3 },   // SW - diagonal front
+  6: { x: 0.3, z: -0.3 },   // NE - diagonal front
+  7: { x: -0.3, z: -0.3 },  // NW - diagonal front
+};
+
+export function showEquipmentSprite(state: EntityVisualState, scene: Scene): void {
+  if (state.equipmentSprite) return;
+
+  const manager = getEquipmentSpriteManager(scene);
+  const equipSprite = new Sprite(`equipment_${state.container.name}`, manager);
+  equipSprite.width = 0.7;
+  equipSprite.height = 0.7;
+  equipSprite.cellIndex = 0;
+  state.equipmentSprite = equipSprite;
+  updateEquipmentSpritePosition(state);
+}
+
+export function hideEquipmentSprite(state: EntityVisualState): void {
+  if (!state.equipmentSprite) return;
+  state.equipmentSprite.dispose();
+  state.equipmentSprite = null;
+}
+
+export function updateEquipmentSpritePosition(state: EntityVisualState): void {
+  if (!state.equipmentSprite) return;
+
+  const offset = EQUIPMENT_OFFSET_BY_DIRECTION[state.direction] || { x: 0, z: 0.4 };
+  state.equipmentSprite.position.set(
+    state.container.position.x + offset.x,
+    state.container.position.y + 0.35,
+    state.container.position.z + offset.z
+  );
 }
