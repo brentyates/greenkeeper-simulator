@@ -3829,35 +3829,6 @@ export class BabylonMain {
   }
 
   /**
-   * Teleport player to a grid position (for testing).
-   * @param x - Grid X coordinate
-   * @param y - Grid Y coordinate
-   */
-  public teleport(x: number, y: number): void {
-    this.player = teleportEntity(this.player, x, y);
-    if (this.playerVisual) {
-      updateEntityVisualPosition(
-        this.playerVisual,
-        x,
-        y,
-        this.grassSystem.getElevationAt(x, y) ?? 0
-      );
-    }
-    const course = this.currentCourse;
-    this.babylonEngine.setCameraTargetGrid(
-      x,
-      y,
-      this.grassSystem.getElevationAt(x, y) ?? 0
-    );
-    this.uiManager.updateMinimapPlayerPosition(
-      x,
-      y,
-      course.width,
-      course.height
-    );
-  }
-
-  /**
    * Get terrain/grass state at a specific position.
    */
   public getTerrainAt(x: number, y: number): {
@@ -3909,33 +3880,6 @@ export class BabylonMain {
   }
 
   /**
-   * Set cash amount (for testing).
-   */
-  public setCash(amount: number): void {
-    this.economyState = { ...this.economyState, cash: amount };
-    this.uiManager.updateCash(amount);
-  }
-
-  /**
-   * Get economy state.
-   */
-  public getEconomyState(): EconomyState {
-    return this.economyState;
-  }
-
-  /**
-   * Get current game time.
-   */
-  public getGameTime(): { day: number; hours: number; minutes: number; totalMinutes: number } {
-    return {
-      day: this.gameDay,
-      hours: Math.floor(this.gameTime / 60),
-      minutes: this.gameTime % 60,
-      totalMinutes: this.gameTime,
-    };
-  }
-
-  /**
    * Advance game time by specified minutes (for testing).
    */
   public advanceTimeByMinutes(minutes: number): void {
@@ -3950,13 +3894,6 @@ export class BabylonMain {
    */
   public getResearchState(): ResearchState {
     return this.researchState;
-  }
-
-  /**
-   * Get prestige state.
-   */
-  public getPrestigeState(): PrestigeState {
-    return this.prestigeState;
   }
 
   /**
