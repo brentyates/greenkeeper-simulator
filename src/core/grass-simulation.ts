@@ -59,9 +59,8 @@ export function simulateGrowth(
   }
 
   let growthRate = 0.1;
-  if (cell.moisture > 50) growthRate += 0.05;
-  if (cell.nutrients > 50) growthRate += 0.1;
-  if (cell.health < 30) growthRate -= 0.05;
+  if (cell.moisture > 50) growthRate += 0.02;
+  if (cell.nutrients > 50) growthRate += 0.03;
 
   const weatherEffect = getWeatherMoistureEffect(weather);
   const moistureLoss = 0.05 * deltaMinutes * weatherEffect.lossMultiplier;
@@ -69,7 +68,7 @@ export function simulateGrowth(
 
   const newHeight = Math.min(100, cell.height + growthRate * deltaMinutes);
   const newMoisture = Math.min(100, Math.max(0, cell.moisture - moistureLoss + moistureGain));
-  const newNutrients = Math.max(0, cell.nutrients - 0.02 * deltaMinutes);
+  const newNutrients = Math.max(0, cell.nutrients - 0.003 * deltaMinutes);
 
   const updatedCell = {
     ...cell,

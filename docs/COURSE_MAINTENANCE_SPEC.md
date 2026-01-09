@@ -163,8 +163,9 @@ function simulateGrowth(cell: CellState, deltaMinutes: number): GrowthResult {
   const newHeight = Math.min(100, cell.height + growthRate * deltaMinutes);
 
   // Decay moisture and nutrients (adjusted by grass variety needs)
+  // Note: Nutrients decay MUCH slower than moisture - fertilizing is occasional, not constant
   const moistureDecayRate = 0.05 * cell.waterNeedMultiplier;
-  const nutrientDecayRate = 0.02 * cell.fertilizerNeedMultiplier;
+  const nutrientDecayRate = 0.003 * cell.fertilizerNeedMultiplier;
 
   const newMoisture = Math.max(0, cell.moisture - moistureDecayRate * deltaMinutes);
   const newNutrients = Math.max(0, cell.nutrients - nutrientDecayRate * deltaMinutes);
@@ -180,11 +181,16 @@ function simulateGrowth(cell: CellState, deltaMinutes: number): GrowthResult {
 
 ### Decay Rates
 
-| Resource | Decay Rate | Time to Empty | Notes |
-|----------|------------|---------------|-------|
-| Moisture | 0.05/min × variety multiplier | ~33 hours (baseline) | Modified by grass variety; faster in hot weather (future) |
-| Nutrients | 0.02/min × variety multiplier | ~83 hours (baseline) | Modified by grass variety; slower, longer-lasting |
+| Resource | Decay Rate | Time to Critical | Notes |
+|----------|------------|------------------|-------|
+| Moisture | 0.05/min × variety multiplier | ~10 hours (60→30) | Modified by grass variety; faster in hot weather (future) |
+| Nutrients | 0.003/min × variety multiplier | ~230 hours / ~10 days (70→30) | Modified by grass variety; very slow, occasional maintenance |
 | Height | +0.1/min (growth) × variety multiplier | Mow every ~6-8 hours (baseline) | Modified by grass variety; varies by conditions |
+
+**Design rationale:** Nutrient decay is intentionally ~17x slower than moisture decay. Real golf courses fertilize a few times per season, not constantly. In-game, this translates to fertilizing being an occasional task (weekly) rather than part of the daily routine. This creates a clear maintenance hierarchy:
+1. **Mowing** - constant attention (hourly)
+2. **Watering** - regular attention (daily)
+3. **Fertilizing** - periodic attention (every 5-10 days)
 
 **Note:** Grass variety multipliers from RESEARCH_TREE_SPEC.md Turf Science section. For example, UltraGreen Genesis has 0.5× water and fertilizer needs, reducing maintenance costs by 50%.
 
@@ -290,7 +296,7 @@ function applyFertilizing(cell: CellState, amount: number): CellState | null {
 - Effect: +25 nutrients per application (default)
 - Radius: 2 tiles
 - Resource: Fertilizer
-- Frequency: Every 6-8 game hours for optimal nutrients
+- Frequency: Every 5-10 game days for optimal nutrients (occasional, not constant)
 
 ---
 
@@ -645,13 +651,18 @@ interface GameState {
 
 For optimal health, the player should:
 
-| Action | Frequency | Coverage |
-|--------|-----------|----------|
-| Mowing | Every 6-8 game hours | Full course |
-| Watering | Every 3-4 game hours | Full course |
-| Fertilizing | Every 6-8 game hours | Full course |
+| Action | Frequency | Coverage | Priority |
+|--------|-----------|----------|----------|
+| Mowing | Every 6-8 game hours | Full course | Primary (constant) |
+| Watering | Every 8-12 game hours | Full course | Secondary (daily) |
+| Fertilizing | Every 5-10 game days | Full course | Tertiary (occasional) |
 
-This creates a satisfying maintenance rhythm without being overwhelming.
+This creates a clear maintenance hierarchy inspired by real groundskeeping:
+- **Mowing** is the core loop - grass grows fast, keeping it trim is constant work
+- **Watering** is regular but not overwhelming - check it daily, address problem areas
+- **Fertilizing** is a periodic task - plan it, execute it, then forget about it for a week
+
+This avoids the "plate spinning" problem where all three systems demand equal constant attention.
 
 ### Resource Economy
 

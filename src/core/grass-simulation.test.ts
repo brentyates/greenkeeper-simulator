@@ -67,7 +67,7 @@ describe('Grass Growth Simulation', () => {
       expect(result.nutrients).toBeLessThan(50);
     });
 
-    it('grows faster with high moisture (> 50)', () => {
+    it('grows slightly faster with high moisture (> 50) - subtle effect', () => {
       const lowMoisture = makeCell({ height: 10, moisture: 30, nutrients: 30, health: 50 });
       const highMoisture = makeCell({ height: 10, moisture: 60, nutrients: 30, health: 50 });
 
@@ -75,9 +75,10 @@ describe('Grass Growth Simulation', () => {
       const highResult = simulateGrowth(highMoisture, 60);
 
       expect(highResult.height).toBeGreaterThan(lowResult.height);
+      expect(highResult.height - lowResult.height).toBeLessThanOrEqual(2);
     });
 
-    it('grows faster with high nutrients (> 50)', () => {
+    it('grows slightly faster with high nutrients (> 50) - subtle effect', () => {
       const lowNutrients = makeCell({ height: 10, moisture: 30, nutrients: 30, health: 50 });
       const highNutrients = makeCell({ height: 10, moisture: 30, nutrients: 60, health: 50 });
 
@@ -85,16 +86,17 @@ describe('Grass Growth Simulation', () => {
       const highResult = simulateGrowth(highNutrients, 60);
 
       expect(highResult.height).toBeGreaterThan(lowResult.height);
+      expect(highResult.height - lowResult.height).toBeLessThanOrEqual(2);
     });
 
-    it('grows slower with low health (< 30)', () => {
+    it('growth rate is independent of health', () => {
       const lowHealth = makeCell({ height: 10, moisture: 30, nutrients: 30, health: 20 });
       const normalHealth = makeCell({ height: 10, moisture: 30, nutrients: 30, health: 50 });
 
       const lowResult = simulateGrowth(lowHealth, 60);
       const normalResult = simulateGrowth(normalHealth, 60);
 
-      expect(lowResult.height).toBeLessThan(normalResult.height);
+      expect(lowResult.height).toBe(normalResult.height);
     });
 
     it('caps height at 100', () => {
@@ -134,10 +136,38 @@ describe('Grass Growth Simulation', () => {
       expect(result.moisture).toBeCloseTo(95, 1);
     });
 
-    it('nutrients decay at 0.02 per minute', () => {
+    it('nutrients decay at 0.003 per minute (much slower than moisture)', () => {
       const cell = makeCell({ moisture: 30, nutrients: 100, health: 50 });
       const result = simulateGrowth(cell, 100);
-      expect(result.nutrients).toBeCloseTo(98, 1);
+      // 100 - (0.003 * 100) = 99.7
+      expect(result.nutrients).toBeCloseTo(99.7, 1);
+    });
+
+    it('nutrients take about 10 days to reach critical levels (design intent)', () => {
+      // Starting at 70 nutrients (fairway default), should take ~230 hours to reach 30
+      // 70 - 30 = 40 nutrients to lose
+      // At 0.003/min: 40 / 0.003 = ~13,333 minutes = ~222 hours = ~9.3 days
+      const cell = makeCell({ moisture: 50, nutrients: 70, health: 50 });
+
+      // After 1 day (1440 minutes): 70 - (0.003 * 1440) = 70 - 4.32 = 65.68
+      const afterOneDay = simulateGrowth(cell, 1440);
+      expect(afterOneDay.nutrients).toBeCloseTo(65.7, 0);
+      expect(afterOneDay.nutrients).toBeGreaterThan(30); // Still above critical
+
+      // After 5 days (7200 minutes): 70 - (0.003 * 7200) = 70 - 21.6 = 48.4
+      const afterFiveDays = simulateGrowth(cell, 7200);
+      expect(afterFiveDays.nutrients).toBeCloseTo(48.4, 0);
+      expect(afterFiveDays.nutrients).toBeGreaterThan(30); // Still above critical
+    });
+
+    it('nutrient decay is much slower than moisture decay', () => {
+      const cell = makeCell({ moisture: 70, nutrients: 70, health: 50 });
+      const result = simulateGrowth(cell, 1440); // 1 day
+
+      // Moisture: 70 - (0.05 * 1440) = 70 - 72 = 0 (capped)
+      // Nutrients: 70 - (0.003 * 1440) = 70 - 4.32 = 65.68
+      expect(result.moisture).toBe(0); // Moisture depleted in ~1 day
+      expect(result.nutrients).toBeGreaterThan(60); // Nutrients barely touched
     });
 
     describe('weather effects', () => {

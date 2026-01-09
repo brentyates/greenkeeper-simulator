@@ -52,6 +52,14 @@ import {
   createInitialEconomyState,
   addIncome,
   addExpense,
+  takeLoan,
+  makeLoanPayment,
+  payOffLoan,
+  getTotalDebt,
+  getNetWorth,
+  DEFAULT_LOAN_TERMS,
+  getTransactionsInRange,
+  calculateFinancialSummary,
 } from "../core/economy";
 import {
   IrrigationSystem,
@@ -94,6 +102,7 @@ import {
   getPostingCost,
   Employee,
   awardExperience,
+  createEmployee,
 } from "../core/employees";
 import {
   EmployeeWorkSystemState,
@@ -138,6 +147,11 @@ import {
   getBestFertilizerEffectiveness,
   getEquipmentEfficiencyBonus,
   describeResearchUnlock,
+  completeResearchInstantly,
+  getAvailableResearch as getAvailableResearchItems,
+  getPrerequisiteChain,
+  getResearchStatus,
+  getResearchProgress,
 } from "../core/research";
 import { ScenarioManager } from "../core/scenario";
 import {
@@ -1075,6 +1089,7 @@ export class BabylonMain {
       this.score,
       this.economyState,
       this.employeeRoster,
+      this.employeeWorkState,
       this.golferPool,
       this.researchState,
       this.prestigeState,
@@ -1107,6 +1122,14 @@ export class BabylonMain {
     this.score = saved.score;
     this.economyState = saved.economyState;
     this.employeeRoster = saved.employeeRoster;
+    if (saved.employeeWorkState) {
+      this.employeeWorkState = saved.employeeWorkState;
+    } else {
+      this.employeeWorkState = syncWorkersWithRoster(
+        this.employeeWorkState,
+        this.employeeRoster.employees
+      );
+    }
     this.golferPool = saved.golferPool;
     this.researchState = saved.researchState;
     this.prestigeState = saved.prestigeState;
@@ -1199,7 +1222,7 @@ export class BabylonMain {
 
       // Terrain editor - use public API where available
       onEditorToggle: () => {
-        this.toggleTerrainEditor();
+        this.setTerrainEditor(!this.isTerrainEditorEnabled());
       },
 
       onEditorToolSelect: (tool: number) => this.handleEditorToolNumber(tool),
@@ -3008,12 +3031,12 @@ export class BabylonMain {
     }
   }
 
-  public start(): void {
-    this.babylonEngine.start();
-  }
-
-  public stop(): void {
-    this.babylonEngine.stop();
+  public setRunning(running: boolean): void {
+    if (running) {
+      this.babylonEngine.start();
+    } else {
+      this.babylonEngine.stop();
+    }
   }
 
   public getScenarioState(): {
@@ -3380,36 +3403,15 @@ export class BabylonMain {
     };
   }
 
-  /**
-   * Enable terrain editor.
-   */
-  public enableTerrainEditor(): void {
-    if (this.terrainEditorSystem && !this.terrainEditorSystem.isEnabled()) {
+  public setTerrainEditor(enabled: boolean): void {
+    if (!this.terrainEditorSystem) return;
+    if (enabled) {
       this.terrainEditorSystem.enable();
-    }
-  }
-
-  /**
-   * Disable terrain editor.
-   */
-  public disableTerrainEditor(): void {
-    if (this.terrainEditorSystem && this.terrainEditorSystem.isEnabled()) {
+    } else {
       this.terrainEditorSystem.disable();
     }
   }
 
-  /**
-   * Toggle terrain editor on/off.
-   */
-  public toggleTerrainEditor(): void {
-    if (this.terrainEditorSystem) {
-      this.terrainEditorSystem.toggle();
-    }
-  }
-
-  /**
-   * Check if terrain editor is enabled.
-   */
   public isTerrainEditorEnabled(): boolean {
     return this.terrainEditorSystem?.isEnabled() ?? false;
   }
@@ -3599,37 +3601,6 @@ export class BabylonMain {
   }
 
   /**
-   * Simulate a key press.
-   * @param key - Key to press (e.g., 'ArrowUp', '1', ' ', 't', 'p')
-   */
-  public pressKey(key: string): void {
-    // Map key to callback
-    const lowerKey = key.toLowerCase();
-
-    if (lowerKey === "arrowup" || lowerKey === "w") this.handleMove("up");
-    else if (lowerKey === "arrowdown" || lowerKey === "s")
-      this.handleMove("down");
-    else if (lowerKey === "arrowleft" || lowerKey === "a")
-      this.handleMove("left");
-    else if (lowerKey === "arrowright" || lowerKey === "d")
-      this.handleMove("right");
-    else if (lowerKey === "1") this.selectEquipment(1);
-    else if (lowerKey === "2") this.selectEquipment(2);
-    else if (lowerKey === "3") this.selectEquipment(3);
-    else if (lowerKey === " " || lowerKey === "space")
-      this.toggleEquipment();
-    else if (lowerKey === "e") this.handleRefill();
-    else if (lowerKey === "tab") this.handleOverlayCycle();
-    else if (lowerKey === "p" || lowerKey === "escape") this.handlePause();
-    else if (lowerKey === "m") this.handleMute();
-    else if (lowerKey === "t") this.handleEditorToggle();
-    else if (lowerKey === "h") this.handleEmployeePanel();
-    else if (lowerKey === "y") this.handleResearchPanel();
-    else if (lowerKey === "g") this.handleTeeSheetPanel();
-    else if (lowerKey === "k") this.handleMarketingPanel();
-  }
-
-  /**
    * Wait for player movement to complete.
    * @returns Promise that resolves when player is idle
    */
@@ -3654,6 +3625,48 @@ export class BabylonMain {
    */
   public toggleEmployeePanel(): void {
     this.handleEmployeePanel();
+  }
+
+  /**
+   * Toggle research panel visibility.
+   */
+  public toggleResearchPanel(): void {
+    this.handleResearchPanel();
+  }
+
+  /**
+   * Toggle tee sheet panel visibility.
+   */
+  public toggleTeeSheetPanel(): void {
+    this.handleTeeSheetPanel();
+  }
+
+  /**
+   * Toggle marketing panel visibility.
+   */
+  public toggleMarketingPanel(): void {
+    this.handleMarketingPanel();
+  }
+
+  /**
+   * Cycle to the next overlay mode.
+   */
+  public cycleOverlay(): void {
+    this.handleOverlayCycle();
+  }
+
+  /**
+   * Refill equipment at current position.
+   */
+  public refillEquipment(): void {
+    this.handleRefill();
+  }
+
+  /**
+   * Toggle audio mute.
+   */
+  public toggleMute(): void {
+    this.handleMute();
   }
 
   /**
@@ -4217,23 +4230,6 @@ export class BabylonMain {
     };
   }
 
-  /**
-   * Pause the game.
-   */
-  public pause(): void {
-    this.pauseGame();
-  }
-
-  /**
-   * Unpause the game.
-   */
-  public unpause(): void {
-    this.resumeGame();
-  }
-
-  /**
-   * Set pause state directly.
-   */
   public setPaused(paused: boolean): void {
     if (paused) {
       this.pauseGame();
@@ -4291,9 +4287,11 @@ export class BabylonMain {
 
   /**
    * Manually trigger grass growth (for testing).
+   * Simulates the specified number of game minutes of grass growth.
+   * Note: GrassSystem.update uses deltaMinutes = (deltaMs/1000) * 2, so we account for that.
    */
   public forceGrassGrowth(minutes: number): void {
-    const deltaMs = minutes * 60 * 1000;
+    const deltaMs = minutes * 500;
     this.grassSystem.update(deltaMs, this.gameTime / 60);
   }
 
@@ -4787,6 +4785,306 @@ export class BabylonMain {
   public getCurrentSeason(): string {
     return getSeasonFromDay(this.gameDay).season;
   }
+
+  // ============================================================================
+  // Test/Debug APIs for E2E Coverage
+  // ============================================================================
+
+  public completeResearch(itemId: string): boolean {
+    const newState = completeResearchInstantly(this.researchState, itemId);
+    if (!newState) return false;
+    this.researchState = newState;
+    return true;
+  }
+
+  public completeResearchWithPrerequisites(itemId: string): boolean {
+    const chain = getPrerequisiteChain(itemId);
+    for (const prereqId of chain) {
+      if (!this.researchState.completedResearch.includes(prereqId)) {
+        const result = completeResearchInstantly(this.researchState, prereqId);
+        if (result) {
+          this.researchState = result;
+        }
+      }
+    }
+    return this.completeResearch(itemId);
+  }
+
+  public getResearchDetails(itemId: string): {
+    status: string;
+    progress: number;
+    prerequisites: string[];
+  } {
+    return {
+      status: getResearchStatus(this.researchState, itemId),
+      progress: getResearchProgress(this.researchState),
+      prerequisites: getPrerequisiteChain(itemId) as string[],
+    };
+  }
+
+  public takeLoan(size: "small" | "medium" | "large"): boolean {
+    const terms = DEFAULT_LOAN_TERMS[size];
+    const result = takeLoan(this.economyState, terms, this.gameTime);
+    if (!result) return false;
+    this.economyState = result;
+    return true;
+  }
+
+  public makeLoanPayment(loanId: string): boolean {
+    const result = makeLoanPayment(this.economyState, loanId, this.gameTime);
+    if (!result) return false;
+    this.economyState = result;
+    return true;
+  }
+
+  public payOffLoan(loanId: string): boolean {
+    const result = payOffLoan(this.economyState, loanId, this.gameTime);
+    if (!result) return false;
+    this.economyState = result;
+    return true;
+  }
+
+  public getLoanState(): {
+    loans: Array<{
+      id: string;
+      principal: number;
+      remainingBalance: number;
+      interestRate: number;
+      monthlyPayment: number;
+    }>;
+    totalDebt: number;
+    netWorth: number;
+    canTakeLoan: boolean;
+  } {
+    return {
+      loans: this.economyState.loans.map((l) => ({
+        id: l.id,
+        principal: l.principal,
+        remainingBalance: l.remainingBalance,
+        interestRate: l.interestRate,
+        monthlyPayment: l.monthlyPayment,
+      })),
+      totalDebt: getTotalDebt(this.economyState),
+      netWorth: getNetWorth(this.economyState),
+      canTakeLoan: this.economyState.loans.length < 3,
+    };
+  }
+
+  public getTransactionHistory(
+    startTime?: number,
+    endTime?: number
+  ): Array<{
+    id: string;
+    amount: number;
+    category: string;
+    description: string;
+    timestamp: number;
+  }> {
+    const start = startTime ?? 0;
+    const end = endTime ?? this.gameTime;
+    return getTransactionsInRange(this.economyState, start, end).map((t) => ({
+      id: t.id,
+      amount: t.amount,
+      category: t.category,
+      description: t.description,
+      timestamp: t.timestamp,
+    }));
+  }
+
+  public getFinancialSummary(): {
+    totalIncome: number;
+    totalExpenses: number;
+    netProfit: number;
+  } {
+    const summary = calculateFinancialSummary(this.economyState.transactions);
+    return {
+      totalIncome: summary.totalIncome,
+      totalExpenses: summary.totalExpenses,
+      netProfit: summary.netProfit,
+    };
+  }
+
+  public forceHireGroundskeeper(): string | null {
+    const employee = createEmployee("groundskeeper", "novice", this.gameTime);
+    this.employeeRoster = {
+      ...this.employeeRoster,
+      employees: [...this.employeeRoster.employees, employee],
+    };
+    this.employeeWorkState = syncWorkersWithRoster(
+      this.employeeWorkState,
+      this.employeeRoster.employees
+    );
+    return employee.id;
+  }
+
+  public getWorkerDetails(): Array<{
+    employeeId: string;
+    gridX: number;
+    gridY: number;
+    task: string;
+    targetX: number | null;
+    targetY: number | null;
+  }> {
+    return getWorkerPositions(this.employeeWorkState).map((w) => ({
+      employeeId: w.employeeId,
+      gridX: w.gridX,
+      gridY: w.gridY,
+      task: w.task,
+      targetX: w.nextX,
+      targetY: w.nextY,
+    }));
+  }
+
+  public getRobotDetails(): Array<{
+    id: string;
+    type: string;
+    state: string;
+    battery: number;
+    gridX: number;
+    gridY: number;
+    targetX: number | null;
+    targetY: number | null;
+    breakdownTimeRemaining: number;
+  }> {
+    return this.autonomousState.robots.map((r) => ({
+      id: r.id,
+      type: r.type,
+      state: r.state,
+      battery: Math.round((r.resourceCurrent / r.resourceMax) * 100),
+      gridX: Math.round(r.gridX),
+      gridY: Math.round(r.gridY),
+      targetX: r.targetX,
+      targetY: r.targetY,
+      breakdownTimeRemaining: r.breakdownTimeRemaining,
+    }));
+  }
+
+  public getScenarioObjective(): {
+    type: string;
+    description: string;
+    timeLimitDays?: number;
+  } | null {
+    if (!this.scenarioManager) return null;
+    const objective = this.scenarioManager.getObjective();
+    const conditions = this.scenarioManager.getConditions();
+    return {
+      type: objective.type,
+      description: this.scenarioManager.getObjectiveDescription(),
+      timeLimitDays: conditions.timeLimitDays,
+    };
+  }
+
+  public forceScenarioProgress(updates: {
+    daysElapsed?: number;
+    totalRevenue?: number;
+    totalExpenses?: number;
+    totalGolfers?: number;
+    totalRounds?: number;
+    currentHealth?: number;
+    currentRating?: number;
+    daysAtTargetRating?: number;
+  }): void {
+    if (!this.scenarioManager) return;
+    this.scenarioManager.updateProgress(updates);
+  }
+
+  public checkScenarioObjective(): {
+    completed: boolean;
+    failed: boolean;
+    progress: number;
+    message?: string;
+  } {
+    if (!this.scenarioManager) {
+      return { completed: false, failed: false, progress: 0 };
+    }
+    return this.scenarioManager.checkObjective();
+  }
+
+  public addRevenue(amount: number, category: string = "green_fees"): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.addRevenue(amount);
+    }
+    this.economyState = addIncome(
+      this.economyState,
+      amount,
+      category as any,
+      "Test revenue",
+      this.gameTime
+    );
+  }
+
+  public addExpenseAmount(amount: number, category: string = "supplies"): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.addExpense(amount);
+    }
+    const result = addExpense(
+      this.economyState,
+      amount,
+      category as any,
+      "Test expense",
+      this.gameTime,
+      true
+    );
+    if (result) {
+      this.economyState = result;
+    }
+  }
+
+  public incrementScenarioDay(): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.incrementDay();
+    }
+  }
+
+  public updateCourseHealthForScenario(): void {
+    if (this.scenarioManager && this.grassSystem) {
+      this.scenarioManager.updateCourseHealth(this.grassSystem.getAllCells());
+    }
+  }
+
+  public checkSatisfactionStreak(targetRating: number): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.checkSatisfactionStreak(targetRating);
+    }
+  }
+
+  public addGolferCount(count: number): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.addGolfers(count);
+    }
+  }
+
+  public addRoundCount(): void {
+    if (this.scenarioManager) {
+      this.scenarioManager.addRound();
+    }
+  }
+
+  public getDetailedResearchState(): {
+    completedResearch: string[];
+    currentResearch: { itemId: string; progress: number } | null;
+    researchQueue: string[];
+    fundingLevel: string;
+    availableResearch: string[];
+  } {
+    const available = getAvailableResearchItems(this.researchState);
+    return {
+      completedResearch: [...this.researchState.completedResearch],
+      currentResearch: this.researchState.currentResearch
+        ? {
+            itemId: this.researchState.currentResearch.itemId,
+            progress: Math.round(
+              (this.researchState.currentResearch.pointsEarned /
+                this.researchState.currentResearch.pointsRequired) *
+                100
+            ),
+          }
+        : null,
+      researchQueue: [...this.researchState.researchQueue],
+      fundingLevel: this.researchState.fundingLevel,
+      availableResearch: available.map((r) => r.id),
+    };
+  }
 }
 
 export function startBabylonGame(
@@ -4794,6 +5092,6 @@ export function startBabylonGame(
   options: GameOptions = {}
 ): BabylonMain {
   const game = new BabylonMain(canvasId, options);
-  game.start();
+  game.setRunning(true);
   return game;
 }
