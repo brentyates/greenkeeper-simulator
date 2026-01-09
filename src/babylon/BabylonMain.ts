@@ -151,7 +151,7 @@ import {
   resetDailyStats as resetPrestigeDailyStats,
   upgradeAmenity,
 } from "../core/prestige";
-import { AmenityUpgrade, getUpgradeCost } from "../core/amenities";
+import { AmenityUpgrade, getUpgradeCost, getAvailableUpgrades, getUpgradeName } from "../core/amenities";
 import {
   TeeTimeSystemState,
   TeeTimeSpacing,
@@ -163,6 +163,7 @@ import {
   resetDailyMetrics as resetTeeTimeDailyMetrics,
   checkInTeeTime,
   cancelTeeTime,
+  bookTeeTime,
   markNoShow,
   updateSpacing,
   type GameTime,
@@ -199,6 +200,9 @@ import {
   tickAutonomousEquipment,
   purchaseRobot,
   sellRobot,
+  countWorkingRobots,
+  countBrokenRobots,
+  getAvailableRobotsToPurchase,
 } from "../core/autonomous-equipment";
 import {
   WeatherState,
@@ -2098,11 +2102,14 @@ export class BabylonMain {
     );
 
     this.babylonEngine.getScene().onBeforeRenderObservable.add(() => {
+      if (this.isPaused) {
+        this.lastTime = performance.now();
+        return;
+      }
+
       const now = performance.now();
       const deltaMs = now - this.lastTime;
       this.lastTime = now;
-
-      if (this.isPaused) return;
 
       this.updateMovement(deltaMs);
 
@@ -3240,7 +3247,7 @@ export class BabylonMain {
         this.uiManager.updateOverlayLegend(targetOverlay);
         this.overlayAutoSwitched = true;
         this.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.grassSystem.getOverlayMode() !== "normal") {
+      } else if (targetOverlay === null && this.overlayAutoSwitched) {
         this.grassSystem.setOverlayMode("normal");
         this.uiManager.updateOverlayLegend("normal");
         this.overlayAutoSwitched = false;
@@ -3409,8 +3416,10 @@ export class BabylonMain {
       return;
     }
 
-    // Simulate mouse move to the position, then click
-    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    // Create world position that will trigger corner detection (NW corner)
+    // TILE_SIZE is 1, CORNER_THRESHOLD is 0.25, so we use 0.1 to be safely in the corner
+    const worldPos = new Vector3(gridX + 0.1, 0, gridY + 0.1);
+    this.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
     this.terrainEditorSystem.handleClick();
   }
 
@@ -3910,6 +3919,203 @@ export class BabylonMain {
   }
 
   /**
+   * Start researching an item.
+   */
+  public startResearchItem(itemId: string): boolean {
+    const currentTime = this.gameDay * 24 * 60 + this.gameTime;
+    const result = startResearch(this.researchState, itemId, currentTime);
+    if (result) {
+      this.researchState = result;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Cancel current research.
+   */
+  public cancelCurrentResearch(): void {
+    this.researchState = cancelResearch(this.researchState);
+  }
+
+  /**
+   * Set research funding level.
+   */
+  public setResearchFunding(level: FundingLevel): void {
+    this.researchState = setFundingLevel(this.researchState, level);
+  }
+
+  /**
+   * Queue a research item.
+   */
+  public queueResearch(itemId: string): void {
+    this.researchState = {
+      ...this.researchState,
+      researchQueue: [...this.researchState.researchQueue, itemId],
+    };
+  }
+
+  /**
+   * Check if a research item is completed.
+   */
+  public isResearchCompleted(itemId: string): boolean {
+    return this.researchState.completedResearch.includes(itemId);
+  }
+
+  /**
+   * Get available research items (not completed and unlocked).
+   */
+  public getAvailableResearch(): string[] {
+    return RESEARCH_ITEMS
+      .filter((item) => {
+        if (this.researchState.completedResearch.includes(item.id)) return false;
+        return item.prerequisites.every((prereq) =>
+          this.researchState.completedResearch.includes(prereq)
+        );
+      })
+      .map((item) => item.id);
+  }
+
+  /**
+   * Hire an employee from applications.
+   */
+  public hireEmployee(applicationIndex: number): boolean {
+    if (
+      applicationIndex < 0 ||
+      applicationIndex >= this.applicationState.applications.length
+    ) {
+      return false;
+    }
+    const application = this.applicationState.applications[applicationIndex];
+    const result = hireEmployee(this.employeeRoster, application);
+    if (result) {
+      this.employeeRoster = result;
+      this.applicationState = {
+        ...this.applicationState,
+        applications: this.applicationState.applications.filter((_, i) => i !== applicationIndex),
+      };
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fire an employee.
+   */
+  public fireEmployee(employeeId: string): boolean {
+    const result = fireEmployee(this.employeeRoster, employeeId);
+    if (result) {
+      this.employeeRoster = result;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Get tee sheet for a specific day.
+   */
+  public getTeeSheet(day?: number): Array<{
+    id: string;
+    time: string;
+    status: string;
+    playerCount: number;
+  }> {
+    const targetDay = day ?? this.gameDay;
+    const teeTimes = this.teeTimeState.teeTimes.get(targetDay) ?? [];
+    return teeTimes.map((tt) => ({
+      id: tt.id,
+      time: `${tt.scheduledTime.hour}:${String(tt.scheduledTime.minute).padStart(2, "0")}`,
+      status: tt.status,
+      playerCount: tt.golfers?.length ?? 0,
+    }));
+  }
+
+  /**
+   * Book a tee time.
+   */
+  public bookTeeTime(teeTimeId: string, players: number = 4): boolean {
+    const golferBookings = Array.from({ length: players }, (_, i) => ({
+      golferId: `golfer_${Date.now()}_${i}`,
+      name: `Golfer ${i + 1}`,
+      membershipStatus: 'public' as const,
+      greenFee: this.prestigeState.greenFee || 50,
+      cartFee: 0,
+      addOns: [],
+    }));
+    const currentTime: GameTime = {
+      day: this.gameDay,
+      hour: Math.floor(this.gameTime / 60),
+      minute: this.gameTime % 60,
+    };
+    const result = bookTeeTime(this.teeTimeState, teeTimeId, golferBookings, 'reservation', currentTime);
+    if (result !== this.teeTimeState) {
+      this.teeTimeState = result;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check in a tee time.
+   */
+  public checkInTeeTime(teeTimeId: string): boolean {
+    const result = checkInTeeTime(this.teeTimeState, teeTimeId);
+    this.teeTimeState = result;
+    return true;
+  }
+
+  /**
+   * Cancel a tee time booking.
+   */
+  public cancelTeeTimeBooking(teeTimeId: string): boolean {
+    const result = cancelTeeTime(this.teeTimeState, teeTimeId);
+    this.teeTimeState = result;
+    return true;
+  }
+
+  /**
+   * Get active marketing campaigns.
+   */
+  public getActiveCampaigns(): Array<{
+    campaignId: string;
+    daysRemaining: number;
+  }> {
+    return this.marketingState.activeCampaigns
+      .filter(c => c.status === 'active')
+      .map((c) => ({
+        campaignId: c.campaignId,
+        daysRemaining: c.plannedDuration - c.elapsedDays,
+      }));
+  }
+
+  /**
+   * End a marketing campaign early.
+   */
+  public endMarketingCampaign(campaignId: string): boolean {
+    const result = stopCampaign(this.marketingState, campaignId, this.gameDay);
+    this.marketingState = result;
+    return true;
+  }
+
+  /**
+   * Get available amenity upgrades.
+   */
+  public getAvailableAmenities(): Array<{
+    id: string;
+    name: string;
+    cost: number;
+    purchased: boolean;
+  }> {
+    const available = getAvailableUpgrades(this.prestigeState.amenities);
+    return available.map((upgrade, index) => ({
+      id: `amenity_${index}`,
+      name: getUpgradeName(upgrade),
+      cost: getUpgradeCost(this.prestigeState.amenities, upgrade),
+      purchased: false,
+    }));
+  }
+
+  /**
    * Get golfer pool state.
    */
   public getGolferState(): {
@@ -3968,6 +4174,31 @@ export class BabylonMain {
       overlayMode: this.grassSystem.getOverlayMode(),
       notificationCount: 0, // Can be expanded if UIManager tracks this
     };
+  }
+
+  /**
+   * Pause the game.
+   */
+  public pause(): void {
+    this.pauseGame();
+  }
+
+  /**
+   * Unpause the game.
+   */
+  public unpause(): void {
+    this.resumeGame();
+  }
+
+  /**
+   * Set pause state directly.
+   */
+  public setPaused(paused: boolean): void {
+    if (paused) {
+      this.pauseGame();
+    } else {
+      this.resumeGame();
+    }
   }
 
   /**
@@ -4130,6 +4361,156 @@ export class BabylonMain {
         "#ffaa44"
       );
     }
+  }
+
+  /**
+   * Get autonomous robot state.
+   */
+  public getRobotState(): {
+    totalRobots: number;
+    workingRobots: number;
+    brokenRobots: number;
+  } {
+    return {
+      totalRobots: this.autonomousState.robots.length,
+      workingRobots: countWorkingRobots(this.autonomousState),
+      brokenRobots: countBrokenRobots(this.autonomousState),
+    };
+  }
+
+  /**
+   * Get available robots for purchase.
+   */
+  public getAvailableRobots(): Array<{ equipmentId: string; ownedCount: number }> {
+    return getAvailableRobotsToPurchase(this.researchState, this.autonomousState);
+  }
+
+  /**
+   * Get walk-on queue state.
+   */
+  public getWalkOnState(): {
+    queueLength: number;
+    totalServed: number;
+    totalTurnedAway: number;
+  } {
+    return {
+      queueLength: this.walkOnState.queue.length,
+      totalServed: this.walkOnState.metrics.walkOnsServedToday,
+      totalTurnedAway: this.walkOnState.metrics.walkOnsTurnedAwayToday,
+    };
+  }
+
+  /**
+   * Get revenue state.
+   */
+  public getRevenueState(): {
+    greenFees: number;
+    cartFees: number;
+    proShopSales: number;
+    foodBeverage: number;
+  } {
+    return {
+      greenFees: this.revenueState.todaysRevenue.greenFees,
+      cartFees: this.revenueState.todaysRevenue.cartFees,
+      proShopSales: this.revenueState.todaysRevenue.proShop,
+      foodBeverage: this.revenueState.todaysRevenue.foodAndBeverage,
+    };
+  }
+
+  /**
+   * Get weather state.
+   */
+  public getWeatherState(): {
+    condition: string;
+    temperature: number;
+    windSpeed: number;
+  } {
+    return {
+      condition: this.weatherState.current.type,
+      temperature: this.weatherState.current.temperature,
+      windSpeed: this.weatherState.current.windSpeed,
+    };
+  }
+
+  /**
+   * Set weather condition type (for testing).
+   */
+  public setWeatherCondition(type: "sunny" | "cloudy" | "rainy" | "stormy"): void {
+    const newCondition: WeatherCondition = {
+      type,
+      temperature: this.weatherState.current.temperature,
+      windSpeed: this.weatherState.current.windSpeed,
+    };
+    this.weatherState = {
+      ...this.weatherState,
+      current: newCondition,
+    };
+  }
+
+  /**
+   * Get employee work state.
+   */
+  public getEmployeeWorkState(): {
+    workerCount: number;
+    activeWorkers: number;
+    idleWorkers: number;
+  } {
+    const workers = this.employeeWorkState.workers;
+    const activeCount = workers.filter(w => w.currentTask !== 'idle').length;
+    return {
+      workerCount: workers.length,
+      activeWorkers: activeCount,
+      idleWorkers: workers.length - activeCount,
+    };
+  }
+
+  /**
+   * Get terrain grid dimensions.
+   */
+  public getTerrainDimensions(): { width: number; height: number } {
+    const cells = this.grassSystem.getAllCells();
+    return {
+      width: cells[0]?.length ?? 0,
+      height: cells.length,
+    };
+  }
+
+  /**
+   * Get terrain cell data at position.
+   */
+  public getTerrainCellData(x: number, y: number): {
+    type: string;
+    elevation: number;
+    moisture: number;
+    nutrients: number;
+    height: number;
+    health: number;
+  } | null {
+    const cell = this.grassSystem.getCell(x, y);
+    if (!cell) return null;
+
+    return {
+      type: cell.type,
+      elevation: cell.elevation,
+      moisture: cell.moisture,
+      nutrients: cell.nutrients,
+      height: cell.height,
+      health: cell.health,
+    };
+  }
+
+  /**
+   * Get all terrain types present.
+   */
+  public getTerrainTypes(): string[] {
+    const types = new Set<string>();
+    const cells = this.grassSystem.getAllCells();
+    for (const row of cells) {
+      for (const cell of row) {
+        types.add(cell.type);
+      }
+    }
+    return Array.from(types);
   }
 }
 

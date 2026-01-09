@@ -49,10 +49,15 @@ export class EquipmentManager {
     if (wasSelected !== nowSelected) {
       if (wasSelected !== null) {
         this.stopParticles();
+        const prevState = this.equipment.get(wasSelected);
+        if (prevState) {
+          this.equipment.set(wasSelected, { ...prevState, isActive: false });
+        }
       }
       if (nowSelected !== null) {
         const state = this.equipment.get(nowSelected);
         if (state && canActivate(state)) {
+          this.equipment.set(nowSelected, { ...state, isActive: true });
           this.startParticles(nowSelected);
         } else {
           this.selection = { selected: null };
@@ -68,6 +73,10 @@ export class EquipmentManager {
   public deselect(): void {
     if (this.selection.selected !== null) {
       this.stopParticles();
+      const state = this.equipment.get(this.selection.selected);
+      if (state) {
+        this.equipment.set(this.selection.selected, { ...state, isActive: false });
+      }
       this.selection = { selected: null };
     }
   }

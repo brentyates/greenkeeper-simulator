@@ -2,8 +2,8 @@
  * Terrain Editor Integration Tests
  */
 
-import { test, expect } from '@playwright/test';
-import { waitForGameReady } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
+
 
 test.describe('Terrain Editor Integration', () => {
   test.beforeEach(async ({ page }) => {

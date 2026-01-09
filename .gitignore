@@ -9,3 +9,5 @@ dist/
 .DS_Store
 playwright-report/
 test-results/
+coverage/
+coverage-e2e/

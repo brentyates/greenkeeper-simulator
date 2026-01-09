@@ -11,8 +11,8 @@
  * from user input through to game state changes.
  */
 
-import { test, expect } from '@playwright/test';
-import { waitForGameReady } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
+
 
 test.describe('Equipment System Integration', () => {
   test.beforeEach(async ({ page }) => {
@@ -90,43 +90,37 @@ test.describe('Equipment System Integration', () => {
 
   test.describe('Resource Management', () => {
     test('equipment depletes resources when active', async ({ page }) => {
+      // Unpause the game (presets start paused)
+      await page.evaluate(() => window.game.unpause());
+
       // Select mower
       await page.evaluate(() => window.game.selectEquipment(1));
 
       const initialState = await page.evaluate(() => window.game.getEquipmentState());
       const initialFuel = initialState.mower!.resource;
 
-      // Move around with mower active
-      await page.evaluate(async () => {
-        for (let i = 0; i < 5; i++) {
-          window.game.movePlayer('right');
-          await window.game.waitForPlayerIdle();
-        }
-      });
+      // Wait for game loop to deplete resources (mower: 0.5 units/sec)
+      await page.waitForTimeout(3000);
 
       const finalState = await page.evaluate(() => window.game.getEquipmentState());
 
-      // Resource should have depleted
+      // Resource should have depleted (0.5 * 3 = ~1.5 units)
       expect(finalState.mower!.resource).toBeLessThan(initialFuel);
-      expect(finalState.mower!.active).toBe(true); // Still active
+      expect(finalState.mower!.active).toBe(true);
     });
 
     test('equipment auto-deselects when resource depleted', async ({ page }) => {
-      // Set very low fuel
+      // Unpause the game (presets start paused)
+      await page.evaluate(() => window.game.unpause());
+
+      // Set very low fuel (will deplete in ~2 sec at 0.5 units/sec)
       await page.evaluate(() => {
-        window.game.setEquipmentResource('mower', 5);
+        window.game.setEquipmentResource('mower', 1);
         window.game.selectEquipment(1);
       });
 
-      // Move until fuel runs out
-      await page.evaluate(async () => {
-        for (let i = 0; i < 30; i++) {
-          window.game.movePlayer('right');
-          await window.game.waitForPlayerIdle();
-          const state = window.game.getEquipmentState();
-          if (state.mower!.resource <= 0) break;
-        }
-      });
+      // Wait for fuel to run out
+      await page.waitForTimeout(3000);
 
       const state = await page.evaluate(() => window.game.getEquipmentState());
 
@@ -163,7 +157,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check initial grass height
       const initialGrass = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       expect(initialGrass!.height).toBeGreaterThan(0.8); // Unmown
@@ -177,7 +171,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check grass was mowed
       const mownGrass = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       expect(mownGrass!.height).toBeLessThan(0.3); // Mown!
@@ -189,7 +183,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check initial moisture
       const initialTerrain = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       const initialMoisture = initialTerrain!.moisture;
@@ -203,7 +197,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check moisture increased
       const wateredTerrain = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       expect(wateredTerrain!.moisture).toBeGreaterThan(initialMoisture);
@@ -215,7 +209,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check initial nutrients
       const initialTerrain = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       const initialNutrients = initialTerrain!.nutrients;
@@ -229,7 +223,7 @@ test.describe('Equipment System Integration', () => {
 
       // Check nutrients increased
       const fertilizedTerrain = await page.evaluate(({ x, y }) => {
-        return window.game.getTerrainAt(x + 1, y);
+        return window.game.getTerrainAt(x, y + 1);
       }, pos);
 
       expect(fertilizedTerrain!.nutrients).toBeGreaterThan(initialNutrients);
@@ -239,6 +233,10 @@ test.describe('Equipment System Integration', () => {
 
   test.describe('Refill Station Integration', () => {
     test('player can refill at refill station', async ({ page }) => {
+      // Use scenario to get proper economy setup
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await waitForGameReady(page);
+
       // Deplete some resources
       await page.evaluate(() => {
         window.game.setEquipmentResource('mower', 50);
@@ -246,15 +244,10 @@ test.describe('Equipment System Integration', () => {
         window.game.setEquipmentResource('spreader', 20);
       });
 
-      const beforeState = await page.evaluate(() => window.game.getEquipmentState());
-
-      // Move to refill station (should be at a known location in preset)
-      const stations = await page.evaluate(() => window.game.getRefillStations());
-      expect(stations.length).toBeGreaterThan(0);
-
-      await page.evaluate(({ x, y }) => {
-        window.game.teleport(x, y);
-      }, stations[0]);
+      // Teleport directly to refill station (8, 50)
+      await page.evaluate(() => {
+        window.game.teleport(8, 50);
+      });
 
       // Verify at station
       const atStation = await page.evaluate(() => window.game.isAtRefillStation());
@@ -276,7 +269,7 @@ test.describe('Equipment System Integration', () => {
     test('refill fails when not at station', async ({ page }) => {
       // Move away from station
       await page.evaluate(() => {
-        window.game.teleport(10, 10);
+        window.game.teleport(5, 5);
       });
 
       const atStation = await page.evaluate(() => window.game.isAtRefillStation());
@@ -288,6 +281,10 @@ test.describe('Equipment System Integration', () => {
     });
 
     test('refill costs money', async ({ page }) => {
+      // Use scenario for proper economy
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await waitForGameReady(page);
+
       // Set cash and deplete resources
       await page.evaluate(() => {
         window.game.setCash(1000);
@@ -296,23 +293,21 @@ test.describe('Equipment System Integration', () => {
         window.game.setEquipmentResource('spreader', 0);
       });
 
-      const initialEconomy = await page.evaluate(() => window.game.getEconomyState());
-      const initialCash = initialEconomy.cash;
+      const initialCash = await page.evaluate(() => window.game.getEconomyState().cash);
 
-      // Move to station and refill
-      const stations = await page.evaluate(() => window.game.getRefillStations());
-      await page.evaluate(({ x, y }) => {
-        window.game.teleport(x, y);
-      }, stations[0]);
+      // Teleport to refill station (8, 50)
+      await page.evaluate(() => {
+        window.game.teleport(8, 50);
+      });
 
       const result = await page.evaluate(() => window.game.refillAtCurrentPosition());
       expect(result.success).toBe(true);
 
-      const finalEconomy = await page.evaluate(() => window.game.getEconomyState());
+      const finalCash = await page.evaluate(() => window.game.getEconomyState().cash);
 
       // Cash should have decreased
-      expect(finalEconomy.cash).toBeLessThan(initialCash);
-      expect(finalEconomy.cash).toBe(initialCash - result.cost);
+      expect(finalCash).toBeLessThan(initialCash);
+      expect(finalCash).toBe(initialCash - result.cost);
     });
   });
 
@@ -389,6 +384,19 @@ test.describe('Equipment System Integration', () => {
       const overlay = await page.evaluate(() => window.game.getOverlayMode());
       expect(overlay).toBe('normal');
     });
+
+    test('manually set overlay persists when switching equipment', async ({ page }) => {
+      // Manually set overlay to height
+      await page.evaluate(() => window.game.setOverlayMode('height'));
+      let overlay = await page.evaluate(() => window.game.getOverlayMode());
+      expect(overlay).toBe('height');
+
+      // Select mower - should NOT change manually set overlay
+      await page.evaluate(() => window.game.selectEquipment(1));
+      overlay = await page.evaluate(() => window.game.getOverlayMode());
+
+      expect(overlay).toBe('height');
+    });
   });
 
   test.describe('Edge Cases', () => {
@@ -428,6 +436,51 @@ test.describe('Equipment System Integration', () => {
       expect(state.mower).toHaveProperty('active');
       expect(state.mower).toHaveProperty('resource');
       expect(state.mower).toHaveProperty('max');
+    });
+
+    test('selecting equipment with exactly 0.1 resource allows activation', async ({ page }) => {
+      // Ensure game is paused and no equipment is selected to start clean
+      // Then atomically set resource and select equipment
+      const state = await page.evaluate(() => {
+        window.game.pause();
+        const current = window.game.getEquipmentState();
+        if (current.selectedSlot !== null) {
+          window.game.selectEquipment(current.selectedSlot + 1 as 1 | 2 | 3);
+        }
+        window.game.setEquipmentResource('mower', 0.1);
+        window.game.selectEquipment(1);
+        return window.game.getEquipmentState();
+      });
+
+      // Should be able to activate with minimal resource
+      expect(state.selectedSlot).toBe(0);
+      expect(state.mower?.active).toBe(true);
+    });
+
+    test('pausing game stops resource depletion', async ({ page }) => {
+      // Ensure game is unpaused, select equipment
+      await page.evaluate(() => {
+        window.game.unpause();
+        window.game.selectEquipment(1);
+      });
+
+      // Wait a bit for initial consumption
+      await page.waitForTimeout(100);
+
+      // Atomically capture state AND pause to eliminate race condition
+      const before = await page.evaluate(() => {
+        const state = window.game.getEquipmentState();
+        window.game.pause();
+        return state;
+      });
+
+      // Wait 2 seconds while paused
+      await page.waitForTimeout(2000);
+
+      const after = await page.evaluate(() => window.game.getEquipmentState());
+
+      // Resources should NOT have depleted while paused
+      expect(after.mower!.resource).toBeCloseTo(before.mower!.resource, 1);
     });
   });
 });

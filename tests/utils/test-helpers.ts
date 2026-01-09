@@ -1,5 +1,8 @@
 import { Page } from '@playwright/test';
 
+// Re-export coverage-enabled test and expect
+export { test, expect } from '../fixtures/coverage';
+
 /**
  * Wait for the game to be ready and API to be available.
  */

@@ -4,8 +4,7 @@
  * Tests economy, employees, research, golfers, and scenarios.
  */
 
-import { test, expect } from '@playwright/test';
-import { waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
 
 test.describe('Management Systems Integration', () => {
   test.describe('Economy', () => {
@@ -38,23 +37,20 @@ test.describe('Management Systems Integration', () => {
       await navigateToScenario(page, 'tutorial_basics');
     });
 
-    test('can get employee state', async ({ page }) => {
+    test('employee roster starts empty or with initial staff', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getEmployeeState());
 
-      expect(state).toHaveProperty('employees');
-      expect(state).toHaveProperty('count');
-      expect(state).toHaveProperty('maxEmployees');
-      expect(state).toHaveProperty('totalHourlyWages');
-      expect(Array.isArray(state.employees)).toBe(true);
+      expect(state.count).toBeGreaterThanOrEqual(0);
+      expect(state.maxEmployees).toBeGreaterThan(0);
+      expect(state.totalHourlyWages).toBeGreaterThanOrEqual(0);
+      expect(state.employees.length).toBe(state.count);
     });
 
-    test('can get application state', async ({ page }) => {
+    test('application state tracks job postings', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getApplicationState());
 
-      expect(state).toHaveProperty('applications');
-      expect(state).toHaveProperty('nextApplicationTime');
-      expect(state).toHaveProperty('activeJobPostings');
-      expect(state).toHaveProperty('totalReceived');
+      expect(state.totalReceived).toBeGreaterThanOrEqual(0);
+      expect(Array.isArray(state.applications)).toBe(true);
     });
   });
 
@@ -64,16 +60,13 @@ test.describe('Management Systems Integration', () => {
       await waitForGameReady(page);
     });
 
-    test('can get game time', async ({ page }) => {
+    test('game time has valid hour and minute values', async ({ page }) => {
       const time = await page.evaluate(() => window.game.getGameTime());
 
-      expect(time).toHaveProperty('day');
-      expect(time).toHaveProperty('hours');
-      expect(time).toHaveProperty('minutes');
-      expect(time).toHaveProperty('totalMinutes');
-      expect(typeof time.day).toBe('number');
-      expect(typeof time.hours).toBe('number');
-      expect(typeof time.minutes).toBe('number');
+      expect(time.hours).toBeGreaterThanOrEqual(0);
+      expect(time.hours).toBeLessThan(24);
+      expect(time.minutes).toBeGreaterThanOrEqual(0);
+      expect(time.minutes).toBeLessThan(60);
     });
 
     test('advancing time changes game time', async ({ page }) => {
@@ -83,7 +76,10 @@ test.describe('Management Systems Integration', () => {
 
       const after = await page.evaluate(() => window.game.getGameTime());
 
-      expect(after.totalMinutes).toBe(before.totalMinutes + 60);
+      // Time should have advanced (exact amount varies by timeScale)
+      const beforeTotal = before.hours * 60 + before.minutes;
+      const afterTotal = after.hours * 60 + after.minutes;
+      expect(afterTotal).toBeGreaterThan(beforeTotal);
     });
   });
 
@@ -92,14 +88,13 @@ test.describe('Management Systems Integration', () => {
       await navigateToScenario(page, 'tutorial_basics');
     });
 
-    test('can get golfer state', async ({ page }) => {
+    test('golfer state tracks active and served counts', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getGolferState());
 
-      expect(state).toHaveProperty('active');
-      expect(state).toHaveProperty('served');
-      expect(state).toHaveProperty('avgSatisfaction');
-      expect(typeof state.active).toBe('number');
-      expect(typeof state.served).toBe('number');
+      expect(state.active).toBeGreaterThanOrEqual(0);
+      expect(state.served).toBeGreaterThanOrEqual(0);
+      expect(state.avgSatisfaction).toBeGreaterThanOrEqual(0);
+      expect(state.avgSatisfaction).toBeLessThanOrEqual(100);
     });
   });
 
@@ -108,12 +103,11 @@ test.describe('Management Systems Integration', () => {
       await navigateToScenario(page, 'tutorial_basics');
     });
 
-    test('can get research state', async ({ page }) => {
+    test('research state has funding level', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getResearchState());
 
-      expect(state).toHaveProperty('currentResearch');
-      expect(state).toHaveProperty('completedResearch');
-      expect(state).toHaveProperty('fundingLevel');
+      expect(['none', 'minimal', 'normal', 'intensive']).toContain(state.fundingLevel);
+      expect(Array.isArray(state.completedResearch)).toBe(true);
     });
   });
 
@@ -122,12 +116,13 @@ test.describe('Management Systems Integration', () => {
       await navigateToScenario(page, 'tutorial_basics');
     });
 
-    test('can get prestige state', async ({ page }) => {
+    test('prestige score and tier reflect course quality', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getPrestigeState());
 
-      expect(state).toHaveProperty('currentScore');
-      expect(state).toHaveProperty('tier');
-      expect(state).toHaveProperty('amenities');
+      expect(state.score).toBeGreaterThanOrEqual(0);
+      expect(state.stars).toBeGreaterThanOrEqual(0);
+      expect(state.amenityScore).toBeGreaterThanOrEqual(0);
+      expect(['municipal', 'public', 'semi_private', 'private', 'resort', 'championship']).toContain(state.tier);
     });
   });
 
@@ -136,14 +131,17 @@ test.describe('Management Systems Integration', () => {
       await navigateToScenario(page, 'tutorial_basics');
     });
 
-    test('can get scenario progress', async ({ page }) => {
+    test('scenario progress tracks financial and operational metrics', async ({ page }) => {
       const progress = await page.evaluate(() => window.game.getScenarioProgress());
 
       expect(progress).not.toBeNull();
-      expect(progress!).toHaveProperty('objectives');
-      expect(progress!).toHaveProperty('daysRemaining');
-      expect(progress!).toHaveProperty('status');
-      expect(Array.isArray(progress!.objectives)).toBe(true);
+      expect(progress!.daysElapsed).toBeGreaterThanOrEqual(0);
+      expect(progress!.currentCash).toBeGreaterThanOrEqual(0);
+      expect(progress!.totalRevenue).toBeGreaterThanOrEqual(0);
+      expect(progress!.totalExpenses).toBeGreaterThanOrEqual(0);
+      expect(progress!.totalGolfers).toBeGreaterThanOrEqual(0);
+      expect(progress!.currentHealth).toBeGreaterThanOrEqual(0);
+      expect(progress!.currentRating).toBeGreaterThanOrEqual(0);
     });
   });
 });

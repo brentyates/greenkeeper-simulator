@@ -4,8 +4,8 @@
  * Tests GrassSystem integration with core logic.
  */
 
-import { test, expect } from '@playwright/test';
-import { waitForGameReady } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
+
 
 test.describe('Terrain and Grass Integration', () => {
   test.beforeEach(async ({ page }) => {

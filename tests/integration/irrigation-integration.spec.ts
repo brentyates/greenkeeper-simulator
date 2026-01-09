@@ -4,8 +4,7 @@
  * Tests irrigation system state management without visual assertions.
  */
 
-import { test, expect } from '@playwright/test';
-import { waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
 
 test.describe('Irrigation System Integration', () => {
   test.beforeEach(async ({ page }) => {
