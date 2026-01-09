@@ -176,6 +176,20 @@ export class EquipmentManager {
     return this.equipment.get(type);
   }
 
+  public setResource(type: EquipmentType, amount: number): void {
+    const state = this.equipment.get(type);
+    if (state) {
+      this.equipment.set(type, {
+        ...state,
+        resourceCurrent: Math.max(0, Math.min(amount, state.resourceMax)),
+      });
+    }
+  }
+
+  public hasParticles(): boolean {
+    return this.particleSystem !== null;
+  }
+
   public dispose(): void {
     this.stopParticles();
   }

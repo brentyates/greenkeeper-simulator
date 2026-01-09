@@ -115,6 +115,10 @@ export class TerrainEditorSystem {
     return this.state.activeTool;
   }
 
+  public getCurrentTool(): EditorTool {
+    return this.state.activeTool;
+  }
+
   public setBrushSize(size: number): void {
     const newSize = Math.max(1, Math.min(3, size));
     if (this.state.brushSize === newSize) return;

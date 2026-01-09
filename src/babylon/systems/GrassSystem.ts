@@ -60,6 +60,7 @@ export class GrassSystem {
   private gameTime: number = 0;
   private waterTime: number = 0;
   private dirtyTiles: Set<string> = new Set();
+  private updateCount: number = 0;
   private static readonly VISUAL_UPDATE_THRESHOLD = 0.5;
 
   constructor(scene: Scene, courseData: CourseData) {
@@ -1208,6 +1209,7 @@ export class GrassSystem {
     if (newMesh !== oldMesh) {
       this.tileMeshes.set(key, newMesh);
     }
+    this.updateCount++;
   }
 
   public mowAt(gridX: number, gridY: number): boolean {
@@ -1432,6 +1434,10 @@ export class GrassSystem {
 
   public getElevationGrid(): number[][] {
     return this.cells.map((row) => row.map((cell) => cell.elevation));
+  }
+
+  public getUpdateCount(): number {
+    return this.updateCount;
   }
 
   public dispose(): void {

@@ -3836,6 +3836,224 @@ export class BabylonMain {
     );
   }
 
+  /**
+   * Get terrain/grass state at a specific position.
+   */
+  public getTerrainAt(x: number, y: number): {
+    type: string;
+    elevation: number;
+    height: number;
+    moisture: number;
+    nutrients: number;
+    health: number;
+    lastMowed: number;
+    lastWatered: number;
+    lastFertilized: number;
+  } | null {
+    const cell = this.grassSystem.getCell(x, y);
+    if (!cell) return null;
+    return {
+      type: cell.type,
+      elevation: cell.elevation,
+      height: cell.height,
+      moisture: cell.moisture,
+      nutrients: cell.nutrients,
+      health: cell.health,
+      lastMowed: cell.lastMowed,
+      lastWatered: cell.lastWatered,
+      lastFertilized: cell.lastFertilized,
+    };
+  }
+
+  /**
+   * Get overall course statistics.
+   */
+  public getCourseStats(): {
+    health: number;
+    moisture: number;
+    nutrients: number;
+    height: number;
+  } {
+    return this.grassSystem.getCourseStats();
+  }
+
+  /**
+   * Set equipment resource level (for testing).
+   */
+  public setEquipmentResource(
+    type: "mower" | "sprinkler" | "spreader",
+    amount: number
+  ): void {
+    this.equipmentManager.setResource(type, amount);
+  }
+
+  /**
+   * Advance game time by specified minutes (for testing).
+   */
+  public advanceTimeByMinutes(minutes: number): void {
+    const deltaMs = minutes * 60 * 1000 / this.timeScale;
+    // Update game time
+    this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
+    if (this.gameTime >= 24 * 60) {
+      this.gameTime -= 24 * 60;
+      this.gameDay++;
+    }
+    this.grassSystem.update(deltaMs, this.gameTime / 60);
+    this.updateEconomySystems(deltaMs);
+  }
+
+  /**
+   * Get research state.
+   */
+  public getResearchState(): ResearchState {
+    return this.researchState;
+  }
+
+  /**
+   * Get golfer pool state.
+   */
+  public getGolferState(): {
+    active: number;
+    served: number;
+    avgSatisfaction: number;
+  } {
+    return {
+      active: getActiveGolferCount(this.golferPool),
+      served: this.golferPool.totalVisitorsToday,
+      avgSatisfaction: getAverageSatisfaction(this.golferPool),
+    };
+  }
+
+  /**
+   * Get scenario progress (if in scenario mode).
+   */
+  public getScenarioProgress(): {
+    daysElapsed: number;
+    currentCash: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    totalGolfers: number;
+    currentHealth: number;
+    currentRating: number;
+  } | null {
+    if (!this.scenarioManager) return null;
+
+    return this.scenarioManager.getProgress();
+  }
+
+  /**
+   * Check if equipment has active particle effects.
+   */
+  public hasActiveParticles(): boolean {
+    return this.equipmentManager.hasParticles();
+  }
+
+  /**
+   * Get count of visual updates to grass rendering (for testing visual updates).
+   */
+  public getGrassRenderUpdateCount(): number {
+    return this.grassSystem.getUpdateCount();
+  }
+
+  /**
+   * Get UI state for testing.
+   */
+  public getUIState(): {
+    isPaused: boolean;
+    overlayMode: string;
+    notificationCount: number;
+  } {
+    return {
+      isPaused: this.isPaused,
+      overlayMode: this.grassSystem.getOverlayMode(),
+      notificationCount: 0, // Can be expanded if UIManager tracks this
+    };
+  }
+
+  /**
+   * Trigger a refill manually (for testing).
+   */
+  public refillAtCurrentPosition(): { success: boolean; cost: number } {
+    const playerPos = { x: this.player.gridX, y: this.player.gridY };
+    const isAtStation = REFILL_STATIONS.some(
+      (station) => station.x === playerPos.x && station.y === playerPos.y
+    );
+
+    if (!isAtStation) {
+      return { success: false, cost: 0 };
+    }
+
+    const cost = this.equipmentManager.refill();
+    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+    const expenseResult = addExpense(
+      this.economyState,
+      cost,
+      "supplies",
+      "Equipment refill",
+      timestamp,
+      false
+    );
+    if (expenseResult) {
+      this.economyState = expenseResult;
+    }
+
+    return { success: true, cost };
+  }
+
+  /**
+   * Check if player is at a refill station.
+   */
+  public isAtRefillStation(): boolean {
+    const playerPos = { x: this.player.gridX, y: this.player.gridY };
+    return REFILL_STATIONS.some(
+      (station) => station.x === playerPos.x && station.y === playerPos.y
+    );
+  }
+
+  /**
+   * Get list of all refill station positions.
+   */
+  public getRefillStations(): Array<{ x: number; y: number }> {
+    return REFILL_STATIONS.map(s => ({ x: s.x, y: s.y }));
+  }
+
+  /**
+   * Manually trigger grass growth (for testing).
+   */
+  public forceGrassGrowth(minutes: number): void {
+    const deltaMs = minutes * 60 * 1000;
+    this.grassSystem.update(deltaMs, this.gameTime / 60);
+  }
+
+  /**
+   * Get terrain editor state.
+   */
+  public getTerrainEditorState(): {
+    enabled: boolean;
+    tool: string | null;
+    brushSize: number;
+    canUndo: boolean;
+    canRedo: boolean;
+  } {
+    if (!this.terrainEditorSystem) {
+      return {
+        enabled: false,
+        tool: null,
+        brushSize: 1,
+        canUndo: false,
+        canRedo: false,
+      };
+    }
+
+    return {
+      enabled: this.terrainEditorSystem.isEnabled(),
+      tool: this.terrainEditorSystem.getCurrentTool(),
+      brushSize: this.terrainEditorSystem.getBrushSize(),
+      canUndo: this.terrainEditorSystem.canUndo(),
+      canRedo: this.terrainEditorSystem.canRedo(),
+    };
+  }
+
   public dispose(): void {
     this.inputManager.dispose();
     this.grassSystem.dispose();
