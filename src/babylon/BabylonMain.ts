@@ -1110,7 +1110,15 @@ export class BabylonMain {
     this.golferPool = saved.golferPool;
     this.researchState = saved.researchState;
     this.prestigeState = saved.prestigeState;
-    this.teeTimeState = saved.teeTimeState;
+    // Reconstruct teeTimes Map from saved data (Map doesn't serialize to JSON properly)
+    const teeTimesData = saved.teeTimeState.teeTimes;
+    const reconstructedTeeTimes = teeTimesData instanceof Map
+      ? teeTimesData
+      : new Map(Object.entries(teeTimesData || {}).map(([k, v]) => [Number(k), v as import('../core/tee-times').TeeTime[]]));
+    this.teeTimeState = {
+      ...saved.teeTimeState,
+      teeTimes: reconstructedTeeTimes,
+    };
     this.walkOnState = saved.walkOnState;
     this.revenueState = saved.revenueState;
     this.marketingState = saved.marketingState;
