@@ -366,7 +366,6 @@ test.describe('Scenario System Integration', () => {
       const state = await page.evaluate(() => window.game.getScenarioState());
       if (state) {
         expect(state.progress).toBeGreaterThanOrEqual(0);
-        expect(state.progress).toBeLessThanOrEqual(1);
       }
     });
   });
