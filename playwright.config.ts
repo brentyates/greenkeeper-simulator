@@ -2,10 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false,
+  fullyParallel: true, // Enable parallel execution for faster tests
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  workers: process.env.CI ? 2 : undefined, // Use multiple workers for speed
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:8080',
@@ -28,10 +28,5 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
-  expect: {
-    toHaveScreenshot: {
-      maxDiffPixelRatio: 0.05,
-      timeout: 10000,
-    },
-  },
+  // Screenshot configuration removed - we use state-based testing instead
 });

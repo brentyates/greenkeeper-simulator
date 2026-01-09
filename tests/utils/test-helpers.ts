@@ -1,58 +1,48 @@
 import { Page } from '@playwright/test';
 
+/**
+ * Wait for the game to be ready and API to be available.
+ */
 export async function waitForGameReady(page: Page): Promise<void> {
-  await page.waitForSelector('#game-ready', { state: 'attached', timeout: 10000 });
-}
-
-export async function waitForPlayerIdle(page: Page, timeout = 2000): Promise<void> {
-  const startTime = Date.now();
-  let wasMoving = false;
-  let idleFrames = 0;
-
-  while (Date.now() - startTime < timeout) {
-    const isMoving = await page.evaluate(() => {
-      const game = (window as unknown as { game: Phaser.Game }).game;
-      const scene = game.scene.getScene('GameScene') as unknown as { getPlayer: () => { getIsMoving: () => boolean } };
-      return scene.getPlayer().getIsMoving();
-    });
-
-    if (isMoving) {
-      wasMoving = true;
-      idleFrames = 0;
-    } else {
-      idleFrames++;
-      if (wasMoving || idleFrames >= 3) {
-        await page.waitForTimeout(50);
-        return;
-      }
-    }
-
-    await page.waitForTimeout(30);
-  }
-}
-
-export async function pressKey(page: Page, key: string): Promise<void> {
-  await page.keyboard.down(key);
+  await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+  // Give rendering a moment to stabilize
   await page.waitForTimeout(200);
-  await page.keyboard.up(key);
-  await page.waitForTimeout(50);
 }
 
+/**
+ * Wait for player movement to complete using the public API.
+ */
+export async function waitForPlayerIdle(page: Page): Promise<void> {
+  await page.evaluate(() => window.game.waitForPlayerIdle());
+}
+
+/**
+ * Navigate to a test preset.
+ */
 export async function navigateToPreset(page: Page, presetName: string): Promise<void> {
   await page.goto(`/?testMode=true&preset=${presetName}`);
   await waitForGameReady(page);
 }
 
+/**
+ * Navigate to a scenario.
+ */
+export async function navigateToScenario(page: Page, scenarioId: string): Promise<void> {
+  await page.goto(`/?testMode=true&scenario=${scenarioId}`);
+  await waitForGameReady(page);
+}
+
+/**
+ * Navigate with arbitrary state (base64-encoded).
+ */
 export async function navigateToState(page: Page, base64State: string): Promise<void> {
   await page.goto(`/?testMode=true&state=${base64State}`);
   await waitForGameReady(page);
 }
 
+/**
+ * Setup a test with a specific preset (alias for navigateToPreset).
+ */
 export async function setupTest(page: Page, presetName: string): Promise<void> {
   await navigateToPreset(page, presetName);
-}
-
-export async function navigateToTestHarness(page: Page): Promise<void> {
-  await page.goto('/?testMode=true&scene=TestHarnessScene');
-  await page.waitForSelector('#game-ready', { state: 'attached', timeout: 10000 });
 }

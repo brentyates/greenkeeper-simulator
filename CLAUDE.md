@@ -191,49 +191,89 @@ window.loadPreset('name')   // Navigate to preset
 window.listPresets()        // Get available presets
 ```
 
-### Playwright Test Pattern (API-Based - NO Canvas Clicks!)
+### Integration Test Pattern (State-Based - NO Screenshots!)
+
+**CRITICAL**: All integration tests use **state-based assertions**, NOT screenshot comparisons.
+
 ```javascript
-// ✅ CORRECT: Use public API
-await page.goto('/?preset=equipment_test&testMode=true');
-await page.evaluate(() => {
-  window.game.movePlayer('right');
-  window.game.selectEquipment(1);
-  window.game.toggleEquipment(true);
-});
-await page.waitForTimeout(500);
-await expect(page).toHaveScreenshot('test.png');
-
-// ✅ CORRECT: Terrain editing via API
-await page.evaluate(() => {
-  window.game.enableTerrainEditor();
-  window.game.setEditorTool('raise');
-  const pos = window.game.getPlayerPosition();
-  window.game.editTerrainAt(pos.x, pos.y);
-});
-
-// ❌ WRONG: Canvas clicks are FLAKY and PROHIBITED
-await page.mouse.click(640, 445);  // DON'T DO THIS!
-await page.click('canvas');  // DON'T DO THIS!
-```
-
-### Example: Complete Test Using API
-```javascript
-test('player can mow grass', async ({ page }) => {
+// ✅ CORRECT: State-based testing
+test('mowing reduces grass height', async ({ page }) => {
   await page.goto('/?testMode=true&preset=all_grass_unmown');
   await waitForGameReady(page);
 
-  // Use API to control game
-  await page.evaluate(() => {
-    window.game.selectEquipment(1);  // Select mower
-    window.game.toggleEquipment(true);  // Turn on
+  const pos = await page.evaluate(() => window.game.getPlayerPosition());
+
+  // Check initial state
+  const initialTerrain = await page.evaluate(({ x, y }) => {
+    return window.game.getTerrainAt(x + 1, y);
+  }, pos);
+  expect(initialTerrain.height).toBeGreaterThan(0.8);
+
+  // Perform action
+  await page.evaluate(async () => {
+    window.game.selectEquipment(1);
     window.game.movePlayer('right');
-    window.game.movePlayer('right');
-    window.game.movePlayer('right');
+    await window.game.waitForPlayerIdle();
   });
 
-  await page.waitForTimeout(500);
-  await expect(page).toHaveScreenshot('mowing.png');
+  // Verify state changed
+  const mownTerrain = await page.evaluate(({ x, y }) => {
+    return window.game.getTerrainAt(x + 1, y);
+  }, pos);
+  expect(mownTerrain.height).toBeLessThan(0.3);
+  expect(mownTerrain.lastMowed).toBeGreaterThan(0);
 });
+
+// ❌ WRONG: Screenshot testing is FLAKY and DEPRECATED
+await expect(page).toHaveScreenshot('mowing.png');  // DON'T DO THIS!
+```
+
+### Integration Test Examples
+
+```javascript
+// Equipment selection
+test('selecting equipment activates it', async ({ page }) => {
+  await page.evaluate(() => window.game.selectEquipment(1));
+  const state = await page.evaluate(() => window.game.getEquipmentState());
+  expect(state.mower?.active).toBe(true);
+});
+
+// Terrain editor
+test('raising terrain increases elevation', async ({ page }) => {
+  await page.evaluate(() => {
+    window.game.enableTerrainEditor();
+    window.game.setEditorTool('raise');
+  });
+  const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
+  await page.evaluate(() => window.game.editTerrainAt(10, 10));
+  const after = await page.evaluate(() => window.game.getElevationAt(10, 10));
+  expect(after).toBeGreaterThan(before!);
+});
+
+// Economy
+test('purchases cost money', async ({ page }) => {
+  await page.evaluate(() => window.game.setCash(1000));
+  const before = await page.evaluate(() => window.game.getEconomyState().cash);
+  await page.evaluate(() => window.game.placePipe(10, 10, 'pvc'));
+  const after = await page.evaluate(() => window.game.getEconomyState().cash);
+  expect(after).toBeLessThan(before);
+});
+```
+
+### Test Organization
+
+```
+tests/
+├── integration/              # Integration tests (UI layer + core logic)
+│   ├── equipment-integration.spec.ts
+│   ├── player-movement-integration.spec.ts
+│   ├── terrain-grass-integration.spec.ts
+│   ├── irrigation-integration.spec.ts
+│   ├── terrain-editor-integration.spec.ts
+│   └── management-integration.spec.ts
+├── utils/
+│   └── test-helpers.ts      # Shared test utilities
+└── old-screenshot-tests/    # Deprecated screenshot tests (reference only)
 ```
 
 ### Available Presets
