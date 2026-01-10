@@ -15,7 +15,7 @@ The Economy System manages all financial aspects of the golf course operation. I
 
 ---
 
-## Financial State
+## Financial State ✅ IMPLEMENTED
 
 ```typescript
 interface EconomyState {
@@ -32,47 +32,118 @@ interface EconomyState {
 }
 ```
 
+**Status:** Fully implemented in `src/core/economy.ts`
+
 ---
 
-## Transaction Categories
+## Bankruptcy System 🔨 IN SCOPE
+
+### Critical Thresholds
+
+```typescript
+const BANKRUPTCY_WARNING_THRESHOLD = -7500;  // First warning
+const BANKRUPTCY_GAME_OVER_THRESHOLD = -10000; // Hard game over
+```
+
+### Warning at -$7,500
+
+When cash first crosses below -$7,500:
+- Show modal warning: **"⚠️ CRITICAL CASH WARNING"**
+- Display current cash balance and debt status
+- Suggest actions: fire employees, take loan, reduce spending
+- Only shown **once per crossing** (track with flag that resets when back above threshold)
+- Game continues after dismissing modal
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ⚠️  CRITICAL CASH WARNING                                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Cash Balance: -$7,850                                      │
+│  You're running out of money!                               │
+│                                                              │
+│  If you reach -$10,000 you will go bankrupt.               │
+│                                                              │
+│  Consider:                                                   │
+│  • Fire unnecessary employees                               │
+│  • Take out a loan                                          │
+│  • Reduce research funding                                  │
+│  • Increase green fees                                      │
+│                                                              │
+│  [Understood]                                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Game Over at -$10,000
+
+When cash drops below -$10,000:
+- **Immediate game over** (pause game)
+- Show bankruptcy modal with final statistics
+- **Do NOT clear autosave** - player can reload from last autosave
+- No scenario completion/failure (just stops)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  💀 BANKRUPTCY                                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  You ran out of money!                                      │
+│                                                              │
+│  Final Cash: -$10,240                                       │
+│  Total Earned: $45,230                                      │
+│  Total Spent: $55,470                                       │
+│  Net Loss: -$10,240                                         │
+│                                                              │
+│  Days Survived: 42                                          │
+│                                                              │
+│  [Reload Last Save]  [Return to Menu]                      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Notes:**
+- Track `bankruptcyWarningShown` flag (resets when cash > -$7,500)
+- Check thresholds after every expense transaction
+- Autosave continues normally, bankruptcy doesn't wipe it
+- Player can load autosave from 1 hour before bankruptcy
+
+---
+
+## Transaction Categories ✅ IMPLEMENTED
 
 ### Income Categories
 
-| Category | Description | Example |
-|----------|-------------|---------|
-| green_fees | Golfer payments | $55 for 18 holes |
-| membership_dues | Member subscriptions | $200/month |
-| pro_shop_sales | Merchandise revenue | $25 polo shirt |
-| food_beverage | Restaurant/snacks | $8 hot dog |
-| tournament_revenue | Event hosting | $50,000 sponsorship |
-| lessons | Instruction fees | $75/hour lesson |
-| cart_rentals | Golf cart fees | $20/round |
-| driving_range | Practice facility | $10 bucket |
-| sponsorships | Advertising deals | $5,000/month sign |
-| loan_received | Borrowed funds | $25,000 loan |
-| other_income | Miscellaneous | Tips, etc. |
+| Category | Description | Status |
+|----------|-------------|--------|
+| green_fees | Golfer payments | ✅ Implemented |
+| loan_received | Borrowed funds | ✅ Implemented |
+| other_income | Tips, misc | ✅ Implemented |
 
 ### Expense Categories
 
-| Category | Description | Example |
-|----------|-------------|---------|
-| employee_wages | Staff payroll | $12/hr groundskeeper |
-| equipment_purchase | New equipment | $5,000 mower |
-| equipment_maintenance | Repairs, upkeep | $200 blade replacement |
-| supplies | Consumables | $50 fertilizer |
-| utilities | Water, electric | $500/month |
-| research | R&D investment | $400/month funding |
-| construction | Building projects | $10,000 shed |
-| loan_payment | Principal repayment | $500/month |
-| loan_interest | Interest charges | $50/month |
-| marketing | Advertising | $200 newspaper ad |
-| insurance | Liability coverage | $300/month |
-| property_tax | Land taxes | $1,000/year |
-| other_expense | Miscellaneous | Misc costs |
+| Category | Description | Status |
+|----------|-------------|--------|
+| employee_wages | Staff payroll | ✅ Implemented |
+| equipment_purchase | New equipment | ✅ Implemented |
+| equipment_maintenance | Repairs, upkeep | ✅ Implemented |
+| research | R&D investment | ✅ Implemented |
+| supplies | Consumables (fuel, fertilizer, etc.) | ✅ Implemented |
+| loan_payment | Principal repayment | ✅ Implemented |
+| loan_interest | Interest charges | ✅ Implemented |
+| construction | Building/terrain changes | ✅ Implemented |
+| marketing | Advertising | ✅ Implemented |
+| utilities | Water, electric | ✅ Implemented |
+| other_expense | Miscellaneous | ✅ Implemented |
+
+**Deferred Categories (not in economy.ts):**
+- ⏸️ membership_dues, pro_shop_sales, food_beverage, tournament_revenue
+- ⏸️ cart_rentals, driving_range, lessons, sponsorships
+- ⏸️ insurance, property_tax
 
 ---
 
-## Transaction Recording
+## Transaction Recording ✅ IMPLEMENTED
 
 ```typescript
 interface Transaction {
@@ -83,69 +154,38 @@ interface Transaction {
   timestamp: number;        // Game time
 }
 
-function recordIncome(
+function addIncome(
   state: EconomyState,
   amount: number,
   category: TransactionCategory,
   description: string,
   timestamp: number
-): EconomyState {
-  const transaction = {
-    id: generateId(),
-    amount: amount,         // Positive
-    category,
-    description,
-    timestamp
-  };
+): EconomyState;
 
-  return {
-    ...state,
-    cash: state.cash + amount,
-    transactions: [...state.transactions, transaction],
-    totalEarned: state.totalEarned + amount
-  };
-}
-
-function recordExpense(
+function addExpense(
   state: EconomyState,
   amount: number,
   category: TransactionCategory,
   description: string,
   timestamp: number,
-  force: boolean = false
-): EconomyState | null {
-  if (!force && !canAfford(state, amount)) {
-    return null; // Cannot afford
-  }
-
-  const transaction = {
-    id: generateId(),
-    amount: -amount,        // Negative
-    category,
-    description,
-    timestamp
-  };
-
-  return {
-    ...state,
-    cash: state.cash - amount,
-    transactions: [...state.transactions, transaction],
-    totalSpent: state.totalSpent + amount
-  };
-}
+  force: boolean = false  // Bypasses affordability check
+): EconomyState | null;
 ```
+
+**Status:** Fully implemented in `src/core/economy.ts`
+
+**Important:** `force: true` bypasses bankruptcy checks - used for mandatory expenses like payroll and utilities.
 
 ---
 
 ## Revenue Streams
 
-**Note on Memberships:** For detailed membership tiers, benefits, and pricing, see PRESTIGE_SYSTEM_SPEC.md - Component 5: Exclusivity section. Membership revenue is a significant income source for 4-5★ courses.
+### Green Fees ✅ IMPLEMENTED (Basic)
 
-### Green Fees
-
-Primary income source, scales with prestige and golfer volume.
+Primary income source, currently using static pricing from golfer system.
 
 ```typescript
+// Current: Static fees from tee-times.ts
 interface GreenFeeStructure {
   weekday9Holes: number;     // $35 default
   weekday18Holes: number;    // $55 default
@@ -156,142 +196,107 @@ interface GreenFeeStructure {
 }
 ```
 
-**Dynamic pricing factors:**
-- Base fee from structure
-- Prestige modifier (+10% per star above 3)
-- Demand modifier (crowded = higher prices acceptable)
-- Seasonal modifier (peak season = higher rates)
+**Status:** Basic implementation exists in `tee-times.ts` and `golfers.ts`
 
-### Membership Program
+### ❌ CUT: Dynamic Pricing
 
-Unlocked at 4-star prestige:
+**Removed from scope** - too complex for marginal gameplay benefit.
 
-```typescript
-interface MembershipTiers {
-  basic: {
-    monthlyFee: 150;
-    greenFeeDiscount: 0.20;     // 20% off
-    maxMembers: 100;
-  };
-  premium: {
-    monthlyFee: 300;
-    greenFeeDiscount: 0.40;     // 40% off
-    priorityBooking: true;
-    guestPasses: 2;
-    maxMembers: 50;
-  };
-  elite: {
-    monthlyFee: 500;
-    greenFeeDiscount: 0.60;     // 60% off
-    priorityBooking: true;
-    guestPasses: 4;
-    lockerIncluded: true;
-    maxMembers: 25;
-  };
-}
-```
+Static pricing is sufficient. Prestige already affects golfer volume organically.
 
-**Membership value:**
-- Predictable monthly income
-- Higher golfer loyalty
-- Word-of-mouth prestige boost
-- Lower per-round revenue but guaranteed volume
+~~Dynamic pricing factors:~~
+~~- Base fee from structure~~
+~~- Prestige modifier (+10% per star above 3)~~
+~~- Demand modifier (crowded = higher prices acceptable)~~
+~~- Seasonal modifier (peak season = higher rates)~~
 
-### Pro Shop Sales
+### ❌ CUT: Price Elasticity
 
-Scales with golfer traffic and prestige:
+**Removed from scope** - statistical modeling not needed.
 
-```typescript
-interface ProShopRevenue {
-  averageSpendPerGolfer: number;  // $15 base
-  prestigeMultiplier: number;      // Higher prestige = more spend
-  merchandiseMarkup: number;       // 40% margin
-  categories: {
-    apparel: 0.40;      // 40% of sales
-    equipment: 0.30;    // 30% of sales
-    accessories: 0.20;  // 20% of sales
-    snacks: 0.10;       // 10% of sales
-  };
-}
-```
+~~Higher prices = fewer golfers calculation~~
 
-### Tournament Revenue
+### ⏸️ DEFERRED: Membership Program
 
-See [Tournament System Spec](TOURNAMENT_SYSTEM_SPEC.md) for full details:
+**Not implementing now** - adds complexity without clear value.
 
-| Tournament Tier | Gross Revenue | Net Profit |
-|-----------------|---------------|------------|
-| Local Amateur | $5,500 | $2,500 |
-| Regional | $35,000 | $17,000 |
-| State | $117,500 | $59,500 |
-| National | $384,000 | $169,000 |
-| PGA Tour | $1,500,000 | $845,000 |
-| Major | $5,550,000 | $3,750,000 |
+May reconsider for late-game content if needed.
 
-### Revenue by Game Stage
+~~Unlocked at 4-star prestige with Basic/Premium/Elite tiers~~
+
+### ⏸️ DEFERRED: Pro Shop Sales
+
+**Not implementing now** - passive income that doesn't add strategic depth.
+
+~~Scales with golfer traffic~~
+
+### ⏸️ DEFERRED: Tournament Revenue
+
+**Dependent on Tournament System** - see TOURNAMENT_SYSTEM_SPEC.md
+
+Won't implement until tournament hosting is added (if ever).
+
+### Revenue by Game Stage 🔨 IN SCOPE (Simplified)
 
 | Stage | Primary Revenue | Monthly Range | Notes |
 |-------|-----------------|---------------|-------|
 | Starter (3-hole) | Green fees only | $2,000-5,000 | Low prestige, few golfers |
-| Growing (9-hole) | Green fees + pro shop | $8,000-15,000 | Building reputation |
-| Established (18-hole) | Full operations | $25,000-50,000 | 15-25% utilization |
-| Premium (18-hole 5★) | All + memberships | $60,000-100,000 | 30-40% utilization |
-| Resort (27+ hole) | All + tournaments | $150,000-500,000 | Higher capacity + events |
+| Growing (9-hole) | Green fees + tips | $8,000-15,000 | Building reputation |
+| Established (18-hole) | Green fees + tips | $25,000-50,000 | 15-25% utilization |
+| Premium (18-hole 5★) | Green fees + tips | $60,000-100,000 | 30-40% utilization |
 
-**Understanding Utilization:**
-- **Theoretical Maximum:** 60 tee times/day × 4 golfers × $55 fee × 30 days = $396,000/month
-- **Actual Revenue:** Depends on tee time utilization rate (see TEE_TIME_SYSTEM_SPEC.md)
-- **Typical Utilization:** 15-40% depending on prestige, marketing, and seasonality
-- **Example (Established 18-hole):**
-  - Available: 60 slots/day × 30 days = 1,800 slots/month
-  - Filled: 20% utilization = 360 slots
-  - Revenue: 360 slots × 3.5 avg players × $55 = $69,300 green fees
-  - Plus pro shop, cart fees, F&B = $25k-50k total range
-
-**Key Factors Affecting Utilization:**
+**Revenue factors:**
+- Tee time utilization (see TEE_TIME_SYSTEM_SPEC.md)
 - Prestige/star rating (see PRESTIGE_SYSTEM_SPEC.md)
-- Marketing campaigns (see TEE_TIME_SYSTEM_SPEC.md - Marketing section)
-- Pricing vs tolerance (overpriced courses see turn-aways)
-- Season and weather
-- Day of week (weekends fill better)
-- Competition from nearby courses (future feature)
+- Marketing campaigns (see TEE_TIME_SYSTEM_SPEC.md)
+- Day of week (weekends busier)
 
 ---
 
 ## Operating Costs
 
-### Fixed Costs
+### Fixed Costs 🔨 IN SCOPE (Simplified)
 
-Monthly recurring expenses:
+Daily recurring expenses (simplified from monthly):
 
 | Cost | Small Course | Medium Course | Large Course |
 |------|--------------|---------------|--------------|
-| Utilities | $300 | $800 | $2,000 |
-| Insurance | $200 | $500 | $1,200 |
-| Property Tax | $100 | $400 | $1,000 |
-| Loan Payments | Variable | Variable | Variable |
+| Utilities | $50/day | $100/day | $200/day |
+| **TOTAL DAILY** | **$50** | **$100** | **$200** |
 
-### Variable Costs
+**Deferred:**
+- ⏸️ Insurance (monthly)
+- ⏸️ Property Tax (monthly/yearly)
+
+**Note:** Simplified to daily utilities only. Insurance/tax may be added later if needed.
+
+**Status:** Utilities partially implemented ($50/day in BabylonMain.ts)
+
+### Variable Costs 🔨 IN SCOPE
 
 Scale with operations:
 
 ```typescript
 interface VariableCosts {
-  // Per refill
+  // Per refill - 🔨 TO IMPLEMENT
   fuelCost: 10;           // $10 per mower refill
   waterCost: 5;           // $5 per sprinkler refill
   fertilizerCost: 15;     // $15 per spreader refill
 
-  // Per employee-hour
+  // Per employee-hour - ✅ IMPLEMENTED
   wageRates: Record<EmployeeRole, number>;
-
-  // Per golfer
-  servicesCost: 2;        // Towels, tees, etc.
-
-  // Per equipment-hour
-  maintenanceCost: 0.50;  // Depreciation/wear
 }
 ```
+
+**Currently Implemented:**
+- ✅ Employee wages (hourly, processed each game hour)
+
+**To Implement:**
+- 🔨 Refill costs (immediate feedback when refilling at station)
+
+**Deferred:**
+- ⏸️ Per-golfer services cost (towels, tees)
+- ⏸️ Equipment depreciation/maintenance cost per hour
 
 ### Cost Breakdown Example
 
@@ -299,19 +304,17 @@ Monthly costs for established 18-hole course:
 
 | Category | Amount | % of Total |
 |----------|--------|------------|
-| Employee Wages | $15,000 | 50% |
-| Supplies (fuel, fert, etc.) | $4,000 | 13% |
-| Utilities | $2,000 | 7% |
-| Equipment Maintenance | $3,000 | 10% |
-| Insurance | $800 | 3% |
-| Research Funding | $2,400 | 8% |
-| Loan Payments | $2,000 | 7% |
-| Other | $800 | 3% |
-| **Total** | **$30,000** | 100% |
+| Employee Wages | $15,000 | 71% |
+| Utilities | $3,000 | 14% |
+| Research Funding | $2,400 | 11% |
+| Loan Payments | $800 | 4% |
+| **TOTAL** | **$21,200** | 100% |
+
+**Note:** Simplified from original spec - focuses on implemented systems.
 
 ---
 
-## Loan System
+## Loan System ✅ IMPLEMENTED
 
 ### Loan Tiers
 
@@ -338,7 +341,7 @@ const LOAN_OPTIONS = {
 };
 ```
 
-### Loan Mechanics
+### Loan Mechanics ✅ IMPLEMENTED
 
 ```typescript
 interface Loan {
@@ -351,267 +354,63 @@ interface Loan {
   termMonths: number;
 }
 
-// Maximum concurrent loans
 const MAX_LOANS = 3;
-
-// Monthly payment splits into interest + principal
-function processLoanPayment(loan: Loan): {
-  interestPortion: number;
-  principalPortion: number;
-  newBalance: number;
-} {
-  const monthlyRate = loan.interestRate / 12;
-  const interest = loan.remainingBalance * monthlyRate;
-  const principal = loan.monthlyPayment - interest;
-
-  return {
-    interestPortion: interest,
-    principalPortion: principal,
-    newBalance: loan.remainingBalance - principal
-  };
-}
 ```
+
+**Implemented Functions:**
+- ✅ `takeLoan()` - Borrow money
+- ✅ `makeLoanPayment()` - Monthly payment (splits interest + principal)
+- ✅ `payOffLoan()` - Early payoff
+- ✅ Interest calculation (amortization schedule)
 
 ### Loan Strategy
 
 **When to take loans:**
 - Equipment purchase (immediate ROI)
-- Facility expansion (enables growth)
-- Emergency cash flow
+- Emergency cash flow (avoid bankruptcy)
 - Research acceleration
+- Hiring employees when cash-strapped
 
 **Loan risks:**
 - Interest eats into profits
-- Monthly payment obligations
-- Bankruptcy risk if revenue drops
+- Monthly payment obligations increase expenses
+- **Bankruptcy risk if you can't afford payments**
 
 ---
 
-## Cash Flow Management
+## ❌ CUT: Financial Reports
 
-### Overdraft Protection
+**Removed from scope** - too much accounting complexity.
 
-```typescript
-const MIN_CASH_FOR_OPERATIONS = -10000; // Small overdraft allowed
+~~Income Statements, Balance Sheets~~
 
-function canAfford(state: EconomyState, amount: number): boolean {
-  return state.cash - amount >= MIN_CASH_FOR_OPERATIONS;
-}
-```
-
-### Cash Flow Projection
-
-```typescript
-interface CashFlowProjection {
-  currentCash: number;
-  projectedIncome: number;     // Next 30 days
-  projectedExpenses: number;   // Next 30 days
-  projectedBalance: number;
-  warningLevel: 'healthy' | 'caution' | 'danger';
-}
-
-function projectCashFlow(
-  state: EconomyState,
-  dailyAverageIncome: number,
-  dailyAverageExpense: number,
-  days: number = 30
-): CashFlowProjection {
-  const projectedIncome = dailyAverageIncome * days;
-  const projectedExpenses = dailyAverageExpense * days;
-  const projectedBalance = state.cash + projectedIncome - projectedExpenses;
-
-  let warningLevel: 'healthy' | 'caution' | 'danger';
-  if (projectedBalance > 10000) {
-    warningLevel = 'healthy';
-  } else if (projectedBalance > 0) {
-    warningLevel = 'caution';
-  } else {
-    warningLevel = 'danger';
-  }
-
-  return { currentCash: state.cash, projectedIncome, projectedExpenses, projectedBalance, warningLevel };
-}
-```
+Players can see transaction history and categories, that's sufficient.
 
 ---
 
-## Financial Reports
+## ❌ CUT: Investment ROI Calculations
 
-### Income Statement
+**Removed from scope** - overly complex financial modeling.
 
-```typescript
-interface IncomeStatement {
-  period: { start: number; end: number };
+~~Equipment ROI, Facility ROI calculations~~
 
-  revenue: {
-    greenFees: number;
-    proShop: number;
-    memberships: number;
-    tournaments: number;
-    other: number;
-    total: number;
-  };
-
-  expenses: {
-    wages: number;
-    supplies: number;
-    utilities: number;
-    maintenance: number;
-    research: number;
-    interest: number;
-    other: number;
-    total: number;
-  };
-
-  netIncome: number;
-  profitMargin: number;
-}
-```
-
-### Balance Sheet
-
-```typescript
-interface BalanceSheet {
-  assets: {
-    cash: number;
-    equipment: number;       // Depreciated value
-    facilities: number;      // Building value
-    land: number;           // Course value
-    total: number;
-  };
-
-  liabilities: {
-    loans: number;          // Total debt
-    accountsPayable: number;
-    total: number;
-  };
-
-  equity: number;           // Assets - Liabilities
-}
-```
+Players can intuit value without spreadsheet-level analysis.
 
 ---
 
-## Pricing Strategy
-
-### Dynamic Pricing
-
-```typescript
-function calculateOptimalGreenFee(
-  baseFee: number,
-  prestige: number,           // 1-5 stars
-  crowdingLevel: number,      // 0-100%
-  dayType: 'weekday' | 'weekend',
-  timeOfDay: 'peak' | 'offpeak' | 'twilight'
-): number {
-  let price = baseFee;
-
-  // Prestige modifier (+10% per star above 3)
-  const prestigeModifier = 1 + (Math.max(0, prestige - 3) * 0.10);
-  price *= prestigeModifier;
-
-  // Demand modifier
-  const demandModifier = 1 + (crowdingLevel / 100) * 0.20;
-  price *= demandModifier;
-
-  // Day type
-  if (dayType === 'weekend') {
-    price *= 1.20;
-  }
-
-  // Time of day
-  if (timeOfDay === 'twilight') {
-    price *= 0.70;
-  } else if (timeOfDay === 'offpeak') {
-    price *= 0.90;
-  }
-
-  return Math.round(price);
-}
-```
-
-### Price Elasticity
-
-```typescript
-// Higher prices = fewer golfers, but more revenue per golfer
-function estimateGolferDemand(
-  baseGolfers: number,
-  priceVsAverage: number    // 1.0 = average, 1.2 = 20% above
-): number {
-  // Elasticity: 10% price increase = 8% demand decrease
-  const elasticity = -0.8;
-  const demandModifier = 1 + elasticity * (priceVsAverage - 1);
-
-  return Math.max(0, baseGolfers * demandModifier);
-}
-```
-
----
-
-## Investment Decisions
-
-### Equipment ROI
-
-```typescript
-interface EquipmentInvestment {
-  name: string;
-  purchaseCost: number;
-  monthlyMaintenance: number;
-  laborSavings: number;       // Reduced employee hours
-  qualityImprovement: number; // Prestige boost
-  lifespan: number;          // Months before replacement
-}
-
-function calculateEquipmentROI(investment: EquipmentInvestment): {
-  paybackMonths: number;
-  totalReturn: number;
-  roi: number;
-} {
-  const monthlyBenefit = investment.laborSavings - investment.monthlyMaintenance;
-  const paybackMonths = investment.purchaseCost / monthlyBenefit;
-  const totalReturn = (monthlyBenefit * investment.lifespan) - investment.purchaseCost;
-  const roi = totalReturn / investment.purchaseCost;
-
-  return { paybackMonths, totalReturn, roi };
-}
-```
-
-### Facility ROI
-
-| Facility | Cost | Monthly Revenue/Savings | Payback |
-|----------|------|------------------------|---------|
-| Pro Shop | $15,000 | +$2,000 revenue | 8 months |
-| Driving Range | $25,000 | +$3,000 revenue | 8 months |
-| Staff Building | $10,000 | +$500 savings (efficiency) | 20 months |
-| Training Center | $20,000 | +$800 savings (faster training) | 25 months |
-| Restaurant | $50,000 | +$5,000 revenue | 10 months |
-
-### Research ROI
-
-Research investments have long-term payoffs:
-
-| Research | Cost (Points) | Funding Cost | Benefit |
-|----------|---------------|--------------|---------|
-| Riding Mower | 1,500 pts | $7,500 | 3x mowing speed |
-| Robot Mower | 6,000 pts | $30,000 | Autonomous, 24/7 |
-| Smart Irrigation | 2,000 pts | $10,000 | 40% water savings |
-
----
-
-## Economic Stages
+## Economic Stages 🔨 IN SCOPE (Simplified)
 
 ### Stage 1: Survival (Months 1-6)
 
 **Characteristics:**
-- Cash-strapped
-- Every expense scrutinized
+- Cash-strapped, every dollar matters
 - Green fees are lifeline
-- Player does most work (no wages)
+- Player does most work (few/no employees)
 
 **Goals:**
 - Break even monthly
-- Build cash buffer
-- Avoid loans if possible
+- Avoid bankruptcy
+- Build small cash buffer ($5k+)
 
 **Typical finances:**
 - Revenue: $3,000-5,000/month
@@ -623,12 +422,11 @@ Research investments have long-term payoffs:
 **Characteristics:**
 - Consistent profitability
 - First employees hired
-- Equipment investments
-- Small loans acceptable
+- Small loans for growth
 
 **Goals:**
 - $10,000+ cash buffer
-- Hire core team
+- Hire core team (2-3 employees)
 - Research basic upgrades
 
 **Typical finances:**
@@ -640,14 +438,13 @@ Research investments have long-term payoffs:
 
 **Characteristics:**
 - Strong profits
-- Facility expansion
-- Staff specialization
-- Strategic loans for growth
+- Larger employee roster
+- Strategic investments
 
 **Goals:**
 - Expand to 18 holes
 - Achieve 4+ star prestige
-- Build secondary revenue streams
+- Build cash reserves
 
 **Typical finances:**
 - Revenue: $30,000-60,000/month
@@ -658,17 +455,16 @@ Research investments have long-term payoffs:
 
 **Characteristics:**
 - Highly profitable
-- Multiple revenue streams
-- Minimal player work
-- Tournament opportunities
+- Large employee team
+- Minimal player maintenance work
 
 **Goals:**
 - 5-star prestige
-- Host major events
-- Consider expansion/second course
+- Large cash reserves
+- Complete scenarios
 
 **Typical finances:**
-- Revenue: $80,000-200,000/month
+- Revenue: $80,000-150,000/month
 - Expenses: $50,000-100,000/month
 - Cash reserve: $100,000+
 
@@ -676,98 +472,58 @@ Research investments have long-term payoffs:
 
 ## UI Elements
 
-### Financial Dashboard
+### Economy HUD ✅ IMPLEMENTED
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  FINANCES                                              March, Year 2    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  CASH BALANCE                                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │              $47,250                                             │   │
-│  │              ▲ $3,420 from last month                           │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  THIS MONTH                                                              │
-│  ┌───────────────────────────┐  ┌───────────────────────────────────┐ │
-│  │  INCOME        $28,450    │  │  EXPENSES         $25,030         │ │
-│  │  ─────────────────────    │  │  ────────────────────────         │ │
-│  │  Green Fees    $18,200    │  │  Wages            $12,800         │ │
-│  │  Pro Shop       $4,800    │  │  Supplies          $3,200         │ │
-│  │  Memberships    $3,600    │  │  Utilities         $1,800         │ │
-│  │  Driving Range  $1,850    │  │  Maintenance       $2,400         │ │
-│  │                           │  │  Research          $2,400         │ │
-│  │                           │  │  Loan Payment      $1,150         │ │
-│  │                           │  │  Other             $1,280         │ │
-│  └───────────────────────────┘  └───────────────────────────────────┘ │
-│                                                                          │
-│  NET PROFIT: $3,420   ████████████░░░░░░░░  Margin: 12%                │
-│                                                                          │
-│  LOANS                                                                   │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Medium Loan: $18,400 remaining  │  $1,150/month  │  16 mo left │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  [View Full Report]  [Take Loan]  [Pay Off Early]  [Set Prices]        │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+Simple HUD showing:
+- Current cash (with color coding: green > $5k, yellow $0-5k, red < $0)
+- Active golfer count
 
-### Cash Flow Warning
+**Status:** Basic implementation in `UIManager.ts`
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  ⚠️  CASH FLOW WARNING                                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Projected cash balance in 30 days: -$2,450                             │
-│                                                                          │
-│  Your expenses are exceeding income. Consider:                          │
-│  • Reducing staff hours                                                 │
-│  • Raising green fees                                                   │
-│  • Taking a loan                                                        │
-│  • Reducing research funding                                            │
-│                                                                          │
-│  [View Details]  [Take Loan]  [Dismiss]                                │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### ⏸️ DEFERRED: Financial Dashboard
+
+**Not implementing now** - overly detailed UI.
+
+~~Comprehensive finances panel with income breakdown, expense categories, profit margin~~
+
+### Bankruptcy Warning Modal 🔨 IN SCOPE
+
+See "Bankruptcy System" section above for full design.
 
 ---
 
 ## Implementation Priority
 
-### Phase 1: Core Economy
-1. Cash tracking
-2. Transaction recording
-3. Basic income/expense categories
-4. Simple financial display
+### ✅ Phase 1: Core Economy (COMPLETE)
+1. ✅ Cash tracking
+2. ✅ Transaction recording
+3. ✅ Basic income/expense categories
+4. ✅ Simple financial display
 
-### Phase 2: Loans
-1. Loan options
-2. Taking loans
-3. Monthly payments
-4. Interest calculation
-5. Early payoff
+### ✅ Phase 2: Loans (COMPLETE)
+1. ✅ Loan options
+2. ✅ Taking loans
+3. ✅ Monthly payments
+4. ✅ Interest calculation
+5. ✅ Early payoff
 
-### Phase 3: Revenue Streams
-1. Green fee calculation
-2. Pro shop integration
-3. Dynamic pricing
-4. Membership system
+### 🔨 Phase 3: Bankruptcy & Costs (IN PROGRESS)
+1. 🔨 Bankruptcy warning at -$7,500
+2. 🔨 Game over at -$10,000
+3. 🔨 Refill costs (fuel, water, fertilizer)
+4. ⏸️ Fixed monthly costs (insurance, property tax) - deferred
 
-### Phase 4: Financial Intelligence
-1. Income statements
-2. Cash flow projection
-3. Warning systems
-4. ROI calculations
+### ⏸️ Phase 4: Advanced Revenue (DEFERRED)
+1. ⏸️ Pro shop sales
+2. ⏸️ Membership system
+3. ⏸️ Tournament economics
 
-### Phase 5: Advanced Features
-1. Budget planning
-2. Investment analysis
-3. Multiple course portfolio
-4. Tournament economics
+### ❌ Phase 5: Cut Features
+1. ❌ Dynamic pricing
+2. ❌ Price elasticity
+3. ❌ Income statements
+4. ❌ Balance sheets
+5. ❌ ROI calculations
 
 ---
 
@@ -775,13 +531,21 @@ Research investments have long-term payoffs:
 
 The Economy System creates meaningful financial decisions:
 
-1. **Early game tension**: Every dollar matters, survival focus
-2. **Mid game investment**: Spend money to make money
+1. **Early game tension**: Every dollar matters, bankruptcy is real threat
+2. **Mid game investment**: Spend money to make money (loans, employees, research)
 3. **Late game optimization**: Maximize efficiency and margins
-4. **End game wealth**: Fund ambitious projects and legacy
+4. **End game wealth**: Fund ambitious projects
 
-Key principles:
+**Key principles:**
 - Revenue must exceed expenses for survival
+- Bankruptcy at -$10,000 enforces discipline
 - Investment in staff/equipment enables scaling
-- Multiple revenue streams reduce risk
+- Loans provide growth capital but increase risk
 - Financial health enables ambition
+
+**Simplified scope:**
+- Focus on core cash management
+- Simple, clear costs (wages, utilities, research)
+- Predictable revenue (green fees, tips)
+- No complex financial modeling
+- Player learns through clear consequences (bankruptcy)
