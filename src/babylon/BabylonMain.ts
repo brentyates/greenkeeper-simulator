@@ -2743,16 +2743,16 @@ export class BabylonMain {
         this.grassSystem.waterArea(
           effect.gridX,
           effect.gridY,
-          0,
-          30 * effect.efficiency
+          1,
+          20 * effect.efficiency
         );
         this.dailyStats.maintenance.tilesWatered++;
       } else if (effect.type === "fertilize") {
         this.grassSystem.fertilizeArea(
           effect.gridX,
           effect.gridY,
-          0,
-          25,
+          1,
+          20,
           effect.efficiency
         );
         this.dailyStats.maintenance.tilesFertilized++;
