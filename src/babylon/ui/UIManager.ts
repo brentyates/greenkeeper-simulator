@@ -341,6 +341,7 @@ export class UIManager {
     this.dayText.color = 'white';
     this.dayText.fontSize = 12;
     this.dayText.fontFamily = 'Arial, sans-serif';
+    this.dayText.width = '80px';
     this.dayText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     dayRow.addControl(this.dayText);
 
@@ -411,6 +412,7 @@ export class UIManager {
     this.cashText.color = '#44ff44';
     this.cashText.fontSize = 14;
     this.cashText.fontFamily = 'Arial Black, sans-serif';
+    this.cashText.width = '100px';
     this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     cashRow.addControl(this.cashText);
 
@@ -430,6 +432,7 @@ export class UIManager {
     this.golfersText.color = '#aaaaaa';
     this.golfersText.fontSize = 11;
     this.golfersText.fontFamily = 'Arial, sans-serif';
+    this.golfersText.width = '100px';
     this.golfersText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     golfersRow.addControl(this.golfersText);
 
@@ -449,6 +452,7 @@ export class UIManager {
     this.satisfactionText.color = '#aaaaaa';
     this.satisfactionText.fontSize = 11;
     this.satisfactionText.fontFamily = 'Arial, sans-serif';
+    this.satisfactionText.width = '100px';
     this.satisfactionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     satisfactionRow.addControl(this.satisfactionText);
   }
@@ -481,6 +485,7 @@ export class UIManager {
     titleLabel.text = 'PRESTIGE';
     titleLabel.color = '#7a9a7a';
     titleLabel.fontSize = 9;
+    titleLabel.width = '120px';
     titleLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     titleRow.addControl(titleLabel);
 
@@ -756,6 +761,7 @@ export class UIManager {
     this.scoreText.color = '#ffcc00';
     this.scoreText.fontSize = 18;
     this.scoreText.fontFamily = 'Arial Black, sans-serif';
+    this.scoreText.width = '80px';
     row.addControl(this.scoreText);
   }
 
