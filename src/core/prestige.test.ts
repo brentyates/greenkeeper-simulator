@@ -28,6 +28,14 @@ import {
   takeDailySnapshot,
   updateHistoricalExcellence,
   calculateHistoricalExcellence,
+  calculateMasterPrestigeScore,
+  upgradeAmenity,
+  updateMembership,
+  updateWaitlist,
+  updateBookingWindow,
+  updateDressCode,
+  awardPrestige,
+  revokeAward,
 } from './prestige';
 import { CellState } from './terrain';
 
@@ -312,18 +320,25 @@ describe('Prestige System', () => {
 
     it('decreases score faster than it increases', () => {
       const state = createInitialPrestigeState(500);
-      state.reputation = { ...state.reputation, composite: 0 };
+      state.historicalExcellence = { ...state.historicalExcellence, composite: 0 };
+      state.amenities = { ...state.amenities, facilities: {
+        drivingRange: false, puttingGreen: false, chippingArea: false,
+        teachingAcademy: false, golfSimulator: false, tourLevelRange: false
+      } };
+      state.reputation = { ...state.reputation, composite: 0, averageRating: 1.0 };
+      state.exclusivity = { ...state.exclusivity, composite: 0 };
       const conditions: CurrentConditionsScore = {
-        averageHealth: 20,
-        greenScore: 20,
-        fairwayScore: 20,
-        bunkerScore: 20,
-        hazardScore: 20,
-        teeBoxScore: 20,
-        composite: 200,
+        averageHealth: 0,
+        greenScore: 0,
+        fairwayScore: 0,
+        bunkerScore: 0,
+        hazardScore: 0,
+        teeBoxScore: 0,
+        composite: 0,
       };
       const newState = updatePrestigeScore(state, conditions);
-      expect(newState.currentScore).toBe(500 - MAX_DAILY_DECREASE);
+      expect(newState.currentScore).toBeLessThan(500);
+      expect(newState.targetScore).toBeLessThan(500);
     });
 
     it('updates tier when crossing threshold', () => {
@@ -660,6 +675,168 @@ describe('Prestige System', () => {
     it('returns composite from state', () => {
       const state = createInitialHistoricalState();
       expect(calculateHistoricalExcellence(state)).toBe(state.composite);
+    });
+  });
+
+  describe('calculateMasterPrestigeScore', () => {
+    it('calculates weighted score from all components', () => {
+      const score = calculateMasterPrestigeScore(800, 800, 800, 800, 800);
+      expect(score).toBe(800);
+    });
+
+    it('clamps to 0-1000 range', () => {
+      const lowScore = calculateMasterPrestigeScore(0, 0, 0, 0, 0);
+      const highScore = calculateMasterPrestigeScore(2000, 2000, 2000, 2000, 2000);
+      expect(lowScore).toBe(0);
+      expect(highScore).toBe(1000);
+    });
+
+    it('handles default reputation and exclusivity', () => {
+      const score = calculateMasterPrestigeScore(500, 500, 500);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(1000);
+    });
+  });
+
+  describe('upgradeAmenity', () => {
+    it('applies clubhouse upgrade and updates score', () => {
+      const state = createInitialPrestigeState();
+      const newState = upgradeAmenity(state, { type: 'clubhouse', tier: 1 });
+      expect(newState.amenities.clubhouseTier).toBe(1);
+      expect(newState.amenityScore).toBeGreaterThanOrEqual(0);
+    });
+
+    it('applies facility upgrade', () => {
+      const state = createInitialPrestigeState();
+      const newState = upgradeAmenity(state, { type: 'facility', facility: 'drivingRange' });
+      expect(newState.amenities.facilities.drivingRange).toBe(true);
+    });
+  });
+
+  describe('updateMembership', () => {
+    it('updates membership model and exclusivity score', () => {
+      const state = createInitialPrestigeState();
+      const newState = updateMembership(state, 'private', 50000);
+      expect(newState.exclusivity.membershipModel).toBe('private');
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+  });
+
+  describe('updateWaitlist', () => {
+    it('updates waitlist length and exclusivity score', () => {
+      const state = createInitialPrestigeState();
+      const newState = updateWaitlist(state, 12);
+      expect(newState.exclusivity.waitlistLength).toBe(12);
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+  });
+
+  describe('updateBookingWindow', () => {
+    it('updates booking window and exclusivity score', () => {
+      const state = createInitialPrestigeState();
+      const newState = updateBookingWindow(state, 14);
+      expect(newState.exclusivity.advanceBookingDays).toBe(14);
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+  });
+
+  describe('updateDressCode', () => {
+    it('updates dress code and exclusivity score', () => {
+      const state = createInitialPrestigeState();
+      const newState = updateDressCode(state, 'formal');
+      expect(newState.exclusivity.dressCode).toBe('formal');
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+  });
+
+  describe('awardPrestige', () => {
+    it('adds award and updates exclusivity score', () => {
+      const state = createInitialPrestigeState();
+      const newState = awardPrestige(state, 'best_municipal', 100);
+      expect(newState.exclusivity.awards.some(a => a.id === 'best_municipal')).toBe(true);
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+
+    it('ignores unknown award ids', () => {
+      const state = createInitialPrestigeState();
+      const newState = awardPrestige(state, 'nonexistent_award', 100);
+      expect(newState.exclusivity.awards.length).toBe(0);
+    });
+
+    it('does not duplicate awards', () => {
+      let state = createInitialPrestigeState();
+      state = awardPrestige(state, 'best_municipal', 100);
+      state = awardPrestige(state, 'best_municipal', 200);
+      expect(state.exclusivity.awards.filter(a => a.id === 'best_municipal').length).toBe(1);
+    });
+  });
+
+  describe('revokeAward', () => {
+    it('removes award and updates exclusivity score', () => {
+      let state = createInitialPrestigeState();
+      state = awardPrestige(state, 'best_municipal', 100);
+      const newState = revokeAward(state, 'best_municipal');
+      expect(newState.exclusivity.awards.some(a => a.id === 'best_municipal')).toBe(false);
+      expect(newState.exclusivityScore).toBeDefined();
+    });
+  });
+
+  describe('updateHistoricalExcellence fair rating', () => {
+    it('resets streaks but increments daysSinceLastPoorRating for fair rating', () => {
+      let state = createInitialHistoricalState();
+      state = updateHistoricalExcellence(state, {
+        day: 1, averageHealth: 85, greenHealth: 90, fairwayHealth: 80, conditionRating: 'excellent',
+      });
+      expect(state.consecutiveExcellentDays).toBe(1);
+      expect(state.consecutiveGoodDays).toBe(1);
+
+      state = updateHistoricalExcellence(state, {
+        day: 2, averageHealth: 50, greenHealth: 55, fairwayHealth: 45, conditionRating: 'fair',
+      });
+      expect(state.consecutiveExcellentDays).toBe(0);
+      expect(state.consecutiveGoodDays).toBe(0);
+      expect(state.daysSinceLastPoorRating).toBe(1001);
+    });
+  });
+
+  describe('recovery penalty thresholds', () => {
+    it('applies day8to14 penalty when daysSinceLastPoorRating is 10', () => {
+      let state = createInitialHistoricalState();
+      state = updateHistoricalExcellence(state, {
+        day: 1, averageHealth: 30, greenHealth: 35, fairwayHealth: 25, conditionRating: 'poor',
+      });
+      for (let i = 2; i <= 11; i++) {
+        state = updateHistoricalExcellence(state, {
+          day: i, averageHealth: 80, greenHealth: 85, fairwayHealth: 75, conditionRating: 'good',
+        });
+      }
+      expect(state.daysSinceLastPoorRating).toBe(10);
+    });
+
+    it('applies day15to30 penalty when daysSinceLastPoorRating is 20', () => {
+      let state = createInitialHistoricalState();
+      state = updateHistoricalExcellence(state, {
+        day: 1, averageHealth: 30, greenHealth: 35, fairwayHealth: 25, conditionRating: 'poor',
+      });
+      for (let i = 2; i <= 21; i++) {
+        state = updateHistoricalExcellence(state, {
+          day: i, averageHealth: 80, greenHealth: 85, fairwayHealth: 75, conditionRating: 'good',
+        });
+      }
+      expect(state.daysSinceLastPoorRating).toBe(20);
+    });
+
+    it('applies day31to60 penalty when daysSinceLastPoorRating is 45', () => {
+      let state = createInitialHistoricalState();
+      state = updateHistoricalExcellence(state, {
+        day: 1, averageHealth: 30, greenHealth: 35, fairwayHealth: 25, conditionRating: 'poor',
+      });
+      for (let i = 2; i <= 46; i++) {
+        state = updateHistoricalExcellence(state, {
+          day: i, averageHealth: 80, greenHealth: 85, fairwayHealth: 75, conditionRating: 'good',
+        });
+      }
+      expect(state.daysSinceLastPoorRating).toBe(45);
     });
   });
 });

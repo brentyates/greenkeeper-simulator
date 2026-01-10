@@ -238,8 +238,6 @@ export function getUpgradeCost(_state: AmenityState, upgrade: AmenityUpgrade): n
       return COMFORT_STATION_DATA[upgrade.tier as ComfortStationTier].cost;
     case 'courseFeature':
       return COURSE_FEATURE_DATA[upgrade.feature as keyof typeof COURSE_FEATURE_DATA].cost;
-    default:
-      return 0;
   }
 }
 
@@ -293,8 +291,6 @@ export function applyUpgrade(state: AmenityState, upgrade: AmenityUpgrade): Amen
         ...state,
         courseFeatures: { ...state.courseFeatures, [upgrade.feature]: true },
       };
-    default:
-      return state;
   }
 }
 
@@ -386,7 +382,5 @@ export function getUpgradeName(upgrade: AmenityUpgrade): string {
       return COMFORT_STATION_DATA[upgrade.tier].name;
     case 'courseFeature':
       return COURSE_FEATURE_DATA[upgrade.feature].name;
-    default:
-      return 'Unknown';
   }
 }

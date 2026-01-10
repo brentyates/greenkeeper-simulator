@@ -1,5 +1,6 @@
 import { EconomyState } from './economy';
 import { EmployeeRoster } from './employees';
+import { EmployeeWorkSystemState } from './employee-work';
 import { GolferPoolState } from './golfers';
 import { ResearchState } from './research';
 import { PrestigeState } from './prestige';
@@ -27,6 +28,7 @@ export interface SaveGameState {
 
   economyState: EconomyState;
   employeeRoster: EmployeeRoster;
+  employeeWorkState?: EmployeeWorkSystemState;
   golferPool: GolferPoolState;
   researchState: ResearchState;
   prestigeState: PrestigeState;
@@ -55,6 +57,7 @@ export function createSaveState(
   score: number,
   economyState: EconomyState,
   employeeRoster: EmployeeRoster,
+  employeeWorkState: EmployeeWorkSystemState,
   golferPool: GolferPoolState,
   researchState: ResearchState,
   prestigeState: PrestigeState,
@@ -80,6 +83,7 @@ export function createSaveState(
     score,
     economyState,
     employeeRoster,
+    employeeWorkState,
     golferPool,
     researchState,
     prestigeState,

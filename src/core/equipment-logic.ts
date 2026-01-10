@@ -69,7 +69,7 @@ export const REFILL_COST_PER_UNIT: Record<EquipmentType, number> = {
 export function calculateRefillCost(state: EquipmentState): number {
   const unitsNeeded = state.resourceMax - state.resourceCurrent;
   if (unitsNeeded <= 0) return 0;
-  const costPerUnit = REFILL_COST_PER_UNIT[state.type] ?? 0.10;
+  const costPerUnit = REFILL_COST_PER_UNIT[state.type];
   return Math.round(unitsNeeded * costPerUnit * 100) / 100;
 }
 
@@ -113,8 +113,6 @@ export function getIsoOffset(direction: Direction): { x: number; y: number } {
       return { x: -16, y: -8 };
     case 'right':
       return { x: 16, y: 8 };
-    default:
-      return { x: 0, y: 8 };
   }
 }
 
@@ -126,7 +124,5 @@ export function getDepthOffset(direction: Direction): number {
     case 'down':
     case 'right':
       return 1;
-    default:
-      return 0;
   }
 }

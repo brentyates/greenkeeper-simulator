@@ -819,6 +819,15 @@ describe("Economy System", () => {
       const state = makeEconomyState({ cash: 10000 });
       expect(makeLoanPayment(state, "loan_fake", 1000)).toBeNull();
     });
+
+    it("preserves other loans when paying one", () => {
+      const loan1 = makeLoan({ id: "loan_1", remainingBalance: 10000, interestRate: 0.12, monthlyPayment: 888.49 });
+      const loan2 = makeLoan({ id: "loan_2", remainingBalance: 5000, interestRate: 0.10, monthlyPayment: 500 });
+      const state = makeEconomyState({ cash: 10000, loans: [loan1, loan2] });
+      const result = makeLoanPayment(state, "loan_1", 1000);
+      expect(result?.loans.length).toBe(2);
+      expect(result?.loans.find(l => l.id === "loan_2")?.remainingBalance).toBe(5000);
+    });
   });
 
   describe("payOffLoan", () => {

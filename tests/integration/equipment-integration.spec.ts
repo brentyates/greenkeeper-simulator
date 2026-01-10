@@ -91,7 +91,7 @@ test.describe('Equipment System Integration', () => {
   test.describe('Resource Management', () => {
     test('equipment depletes resources when active', async ({ page }) => {
       // Unpause the game (presets start paused)
-      await page.evaluate(() => window.game.unpause());
+      await page.evaluate(() => window.game.setPaused(false));
 
       // Select mower
       await page.evaluate(() => window.game.selectEquipment(1));
@@ -111,7 +111,7 @@ test.describe('Equipment System Integration', () => {
 
     test('equipment auto-deselects when resource depleted', async ({ page }) => {
       // Unpause the game (presets start paused)
-      await page.evaluate(() => window.game.unpause());
+      await page.evaluate(() => window.game.setPaused(false));
 
       // Set very low fuel (will deplete in ~2 sec at 0.5 units/sec)
       await page.evaluate(() => {
@@ -442,7 +442,7 @@ test.describe('Equipment System Integration', () => {
       // Ensure game is paused and no equipment is selected to start clean
       // Then atomically set resource and select equipment
       const state = await page.evaluate(() => {
-        window.game.pause();
+        window.game.setPaused(true);
         const current = window.game.getEquipmentState();
         if (current.selectedSlot !== null) {
           window.game.selectEquipment(current.selectedSlot + 1 as 1 | 2 | 3);
@@ -460,7 +460,7 @@ test.describe('Equipment System Integration', () => {
     test('pausing game stops resource depletion', async ({ page }) => {
       // Ensure game is unpaused, select equipment
       await page.evaluate(() => {
-        window.game.unpause();
+        window.game.setPaused(false);
         window.game.selectEquipment(1);
       });
 
@@ -470,7 +470,7 @@ test.describe('Equipment System Integration', () => {
       // Atomically capture state AND pause to eliminate race condition
       const before = await page.evaluate(() => {
         const state = window.game.getEquipmentState();
-        window.game.pause();
+        window.game.setPaused(true);
         return state;
       });
 

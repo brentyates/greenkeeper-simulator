@@ -197,6 +197,15 @@ describe('walk-ons', () => {
       const slot = findSuitableSlot(golfer, slots, currentTime, DEFAULT_WALK_ON_POLICY);
       expect(slot?.id).toBe('slot2');
     });
+
+    it('skips slots more than an hour away', () => {
+      const golfer = createWalkOnGolfer('g1', 'John', { day: 75, hour: 8, minute: 0 });
+      const farSlot = createTestSlot('slot1', 10, 0);
+      const slots = [farSlot];
+      const currentTime: GameTime = { day: 75, hour: 8, minute: 0 };
+      const slot = findSuitableSlot(golfer, slots, currentTime, DEFAULT_WALK_ON_POLICY);
+      expect(slot).toBeUndefined();
+    });
   });
 
   describe('processWalkOns', () => {

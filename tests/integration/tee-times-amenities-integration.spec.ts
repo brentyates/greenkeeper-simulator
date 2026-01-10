@@ -267,3 +267,65 @@ test.describe('Marketing Campaign Integration', () => {
     });
   });
 });
+
+test.describe('Tee Time Advanced Features', () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateToScenario(page, 'tutorial_basics');
+  });
+
+  test('getTeeTimeStats returns stats object', async ({ page }) => {
+    const stats = await page.evaluate(() => window.game.getTeeTimeStats());
+    expect(stats).toBeDefined();
+  });
+
+  test('checkInTeeTime returns boolean', async ({ page }) => {
+    const result = await page.evaluate(() => window.game.checkInTeeTime('nonexistent'));
+    expect(typeof result).toBe('boolean');
+  });
+
+  test('cancelTeeTimeBooking returns boolean', async ({ page }) => {
+    const result = await page.evaluate(() => window.game.cancelTeeTimeBooking('nonexistent'));
+    expect(typeof result).toBe('boolean');
+  });
+});
+
+test.describe('Golfer Fee Calculations', () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateToScenario(page, 'tutorial_basics');
+  });
+
+  test('calculateGreenFeeForGolfer returns number', async ({ page }) => {
+    const fee = await page.evaluate(() => window.game.calculateGreenFeeForGolfer('standard'));
+    expect(typeof fee).toBe('number');
+    expect(fee).toBeGreaterThanOrEqual(0);
+  });
+
+  test('calculateCartFeeForGolfer returns number', async ({ page }) => {
+    const fee = await page.evaluate(() => window.game.calculateCartFeeForGolfer('standard'));
+    expect(typeof fee).toBe('number');
+    expect(fee).toBeGreaterThanOrEqual(0);
+  });
+});
+
+test.describe('Reputation Tracking', () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateToScenario(page, 'tutorial_basics');
+  });
+
+  test('trackGolferVisitForReputation does not throw', async ({ page }) => {
+    await page.evaluate(() => {
+      window.game.trackGolferVisitForReputation(85, 50);
+    });
+    expect(true).toBe(true);
+  });
+
+  test('trackTurnAwayForReputation does not throw', async ({ page }) => {
+    await page.evaluate(() => window.game.trackTurnAwayForReputation());
+    expect(true).toBe(true);
+  });
+
+  test('getReputationSummaryData returns summary', async ({ page }) => {
+    const summary = await page.evaluate(() => window.game.getReputationSummaryData());
+    expect(summary).toBeDefined();
+  });
+});

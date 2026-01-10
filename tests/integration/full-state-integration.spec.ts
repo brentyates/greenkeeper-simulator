@@ -254,12 +254,12 @@ test.describe('Edge Cases', () => {
 
   test('terrain editor operations sequence', async ({ page }) => {
     await page.evaluate(() => {
-      window.game.enableTerrainEditor();
+      window.game.setTerrainEditor(true);
       window.game.setEditorTool('raise');
       window.game.editTerrainAt(5, 5);
       window.game.undoTerrainEdit();
       window.game.redoTerrainEdit();
-      window.game.disableTerrainEditor();
+      window.game.setTerrainEditor(false);
     });
 
     const state = await page.evaluate(() => window.game.getTerrainEditorState());

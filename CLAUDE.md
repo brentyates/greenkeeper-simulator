@@ -11,7 +11,7 @@ npm run test          # Run unit tests (Vitest)
 npm run test:watch    # Run unit tests in watch mode
 npm run test:coverage # Run with coverage report
 npm run test:e2e      # Run Playwright E2E tests
-npm run test:e2e:update # Update Playwright snapshots
+npm run lint:e2e      # Lint E2E tests for API compliance
 firebase deploy --only hosting  # Deploy to https://greenkeeper-96a0b.web.app
 ```
 
@@ -123,75 +123,15 @@ http://localhost:8080/?state=<base64>
 
 ### Public JavaScript API for Testing
 
-**IMPORTANT**: All E2E tests MUST use the public JavaScript API instead of canvas clicks. Canvas clicks are flaky and unreliable. The game provides a comprehensive API accessible via `window.game` for automated testing and bot control.
+**IMPORTANT**: All E2E tests MUST use `window.game.*` API methods - never canvas clicks or key simulations.
 
-#### Player Control
-```javascript
-// Move player
-window.game.movePlayer('up' | 'down' | 'left' | 'right')  // Move one tile
-window.game.getPlayerPosition()  // Returns { x: number, y: number }
-window.game.teleport(x, y)  // Teleport to grid position
-await window.game.waitForPlayerIdle()  // Wait for movement to complete
-```
+The full API is defined by public methods in `src/babylon/BabylonMain.ts`. Common patterns:
+- `window.game.movePlayer('right')` - player control
+- `window.game.selectEquipment(1)` - equipment selection
+- `window.game.getTerrainAt(x, y)` - state queries
+- `window.game.set*()` / `window.game.toggle*()` - state changes
 
-#### Equipment Control
-```javascript
-// Select and control equipment
-window.game.selectEquipment(1 | 2 | 3)  // 1=mower, 2=sprinkler, 3=spreader
-window.game.toggleEquipment(true | false)  // true=on, false=off, undefined=toggle
-window.game.getEquipmentState()  // Returns full equipment state
-```
-
-#### Terrain Editor Control
-```javascript
-// Enable/disable editor
-window.game.enableTerrainEditor()
-window.game.disableTerrainEditor()
-window.game.toggleTerrainEditor()
-window.game.isTerrainEditorEnabled()  // Returns boolean
-
-// Configure editor
-window.game.setEditorTool('raise' | 'lower' | 'paint' | 'smooth')
-window.game.setEditorBrushSize(1 | 2 | 3)
-
-// Edit terrain at grid coordinates (NO canvas clicks!)
-window.game.editTerrainAt(gridX, gridY)  // Click to edit
-
-// Drag operations for vertical drag mode
-window.game.dragTerrainStart(gridX, gridY, screenY?)
-window.game.dragTerrainMove(gridX, gridY, screenY?)
-window.game.dragTerrainEnd()
-
-// Undo/redo
-window.game.undoTerrainEdit()
-window.game.redoTerrainEdit()
-```
-
-#### Terrain State Query & Manipulation
-```javascript
-// Read terrain state
-window.game.getElevationAt(x, y)  // Get elevation at grid position
-window.game.getTerrainTypeAt(x, y)  // Get terrain type ('fairway', 'bunker', etc.)
-
-// Direct manipulation (testing only - bypasses normal editing)
-window.game.setElevationAt(x, y, elevation)
-window.game.setTerrainTypeAt(x, y, 'fairway' | 'rough' | 'green' | 'bunker' | 'water')
-```
-
-#### Game State & Control
-```javascript
-// General control
-window.game.pressKey('ArrowUp' | '1' | 'Space' | 't' | 'p' | etc.)  // Simulate key press
-window.game.getFullGameState()  // Get complete game state for testing
-
-// Utility APIs
-window.captureScreenshot()  // PNG data URL + download
-window.exportGameState()    // Log state to console
-window.loadPreset('name')   // Navigate to preset
-window.listPresets()        // Get available presets
-```
-
-### Integration Test Pattern (State-Based - NO Screenshots!)
+### Integration Test Pattern (State-Based)
 
 **CRITICAL**: All integration tests use **state-based assertions**, NOT screenshot comparisons.
 
@@ -226,38 +166,6 @@ test('mowing reduces grass height', async ({ page }) => {
 
 // ❌ WRONG: Screenshot testing is FLAKY and DEPRECATED
 await expect(page).toHaveScreenshot('mowing.png');  // DON'T DO THIS!
-```
-
-### Integration Test Examples
-
-```javascript
-// Equipment selection
-test('selecting equipment activates it', async ({ page }) => {
-  await page.evaluate(() => window.game.selectEquipment(1));
-  const state = await page.evaluate(() => window.game.getEquipmentState());
-  expect(state.mower?.active).toBe(true);
-});
-
-// Terrain editor
-test('raising terrain increases elevation', async ({ page }) => {
-  await page.evaluate(() => {
-    window.game.enableTerrainEditor();
-    window.game.setEditorTool('raise');
-  });
-  const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
-  await page.evaluate(() => window.game.editTerrainAt(10, 10));
-  const after = await page.evaluate(() => window.game.getElevationAt(10, 10));
-  expect(after).toBeGreaterThan(before!);
-});
-
-// Economy
-test('purchases cost money', async ({ page }) => {
-  await page.evaluate(() => window.game.setCash(1000));
-  const before = await page.evaluate(() => window.game.getEconomyState().cash);
-  await page.evaluate(() => window.game.placePipe(10, 10, 'pvc'));
-  const after = await page.evaluate(() => window.game.getEconomyState().cash);
-  expect(after).toBeLessThan(before);
-});
 ```
 
 ### Test Organization
@@ -301,36 +209,7 @@ Defined in `src/data/testPresets.ts`. Common ones:
     └──────────────┘            └─────────────────┘
 ```
 
-### Why This Matters
-
-1. **Keyboard and tests use THE SAME CODE** - no duplication, no divergence
-2. **Bugs found in tests = bugs in actual gameplay** - perfect test coverage
-3. **Easy to add new features** - implement once, works everywhere
-4. **Bots and automation** work identically to human players
-
-### Implementation
-
-The `InputManager` callbacks now call public API methods:
-
-```typescript
-// src/babylon/BabylonMain.ts
-private setupInputCallbacks(): void {
-  this.inputManager.setCallbacks({
-    onMove: (direction) => {
-      this.movePlayer(direction);  // ✅ Uses public API!
-    },
-    onEquipmentSelect: (slot) => {
-      this.selectEquipment(slot);  // ✅ Uses public API!
-    },
-    // ... etc
-  });
-}
-```
-
-This ensures keyboard → InputManager → Public API → Game Logic
-And tests → Public API → Game Logic
-
-**Both paths converge at the public API layer!**
+This ensures keyboard, tests, and bots all use the same code paths - bugs found in tests reflect actual gameplay issues.
 
 ## Game Controls
 

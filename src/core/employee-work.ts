@@ -184,16 +184,11 @@ function isInArea(x: number, y: number, area: CourseArea | null): boolean {
   return x >= area.minX && x <= area.maxX && y >= area.minY && y <= area.maxY;
 }
 
-function getTaskPriorityForRole(role: EmployeeRole): EmployeeTask[] {
-  switch (role) {
-    case 'groundskeeper':
-      return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
-    default:
-      return ['patrol'];
-  }
+function getTaskPriorityForRole(_role: EmployeeRole): EmployeeTask[] {
+  return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
 }
 
-function findBestWorkTarget(
+export function findBestWorkTarget(
   cells: CellState[][],
   currentX: number,
   currentY: number,
@@ -223,7 +218,9 @@ function findBestWorkTarget(
         const need = getTaskNeed(cell, task, gameTime);
 
         if (need > 0) {
-          const score = (priorities.length - priorityIndex) * 1000 + need * 10 - distance;
+          const isCritical = need > 50;
+          const priorityBonus = isCritical ? 5000 : (priorities.length - priorityIndex) * 100;
+          const score = priorityBonus + need * 10 - distance;
 
           if (score > bestScore) {
             bestScore = score;
@@ -286,7 +283,7 @@ function getTaskNeed(cell: CellState, task: EmployeeTask, gameTime: number = 0):
   }
 }
 
-function findPath(
+export function findPath(
   cells: CellState[][],
   startX: number,
   startY: number,
@@ -354,20 +351,13 @@ function findPath(
       const toCell = cells[neighbor.y]?.[neighbor.x];
       if (!fromCell || !toCell || !canMoveFromTo(fromCell, toCell)) continue;
 
+      const alreadyInOpenSet = openSet.some(n => n.x === neighbor.x && n.y === neighbor.y);
+      if (alreadyInOpenSet) continue;
+
       const g = current.g + 1;
       const h = heuristic(neighbor.x, neighbor.y);
       const f = g + h;
-
-      const existing = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
-      if (existing) {
-        if (g < existing.g) {
-          existing.g = g;
-          existing.f = f;
-          existing.parent = current;
-        }
-      } else {
-        openSet.push({ x: neighbor.x, y: neighbor.y, g, h, f, parent: current });
-      }
+      openSet.push({ x: neighbor.x, y: neighbor.y, g, h, f, parent: current });
     }
   }
 

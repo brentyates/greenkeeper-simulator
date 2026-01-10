@@ -21,6 +21,7 @@ import {
   getTerrainFertilizable,
   clampToGrid,
   isGrassTerrain,
+  isNonRough,
   getTerrainDisplayName,
   getObstacleDisplayName,
   getTerrainThresholds,
@@ -46,6 +47,7 @@ import {
   exportToRCTFormat,
   importFromRCTFormat,
   getTerrainCode,
+  getAdjacentPositions,
   RCTTerrainData,
   CellState,
   CornerHeights,
@@ -75,6 +77,10 @@ describe('Terrain Type Mapping', () => {
 
   it('maps code 4 to water', () => {
     expect(getTerrainType(4)).toBe('water');
+  });
+
+  it('maps code 5 to tee', () => {
+    expect(getTerrainType(5)).toBe('tee');
   });
 
   it('maps unknown codes to rough', () => {
@@ -143,6 +149,13 @@ describe('Initial Values', () => {
     expect(values.height).toBe(0);
     expect(values.moisture).toBe(100);
     expect(values.nutrients).toBe(0);
+  });
+
+  it('sets tee with short height and good stats', () => {
+    const values = getInitialValues('tee');
+    expect(values.height).toBe(15);
+    expect(values.moisture).toBe(65);
+    expect(values.nutrients).toBe(75);
   });
 });
 
@@ -243,22 +256,22 @@ describe('Health Calculation', () => {
     expect(calculateHealth(cell)).toBe(0);
   });
 
-  it('moisture contributes 30% to health', () => {
+  it('moisture contributes 35% to health', () => {
     const high = makeCell({ moisture: 100, nutrients: 0, height: 100 });
     const low = makeCell({ moisture: 0, nutrients: 0, height: 100 });
-    expect(calculateHealth(high) - calculateHealth(low)).toBe(30);
+    expect(calculateHealth(high) - calculateHealth(low)).toBe(35);
   });
 
-  it('nutrients contribute 30% to health', () => {
+  it('nutrients contribute 35% to health', () => {
     const high = makeCell({ moisture: 0, nutrients: 100, height: 100 });
     const low = makeCell({ moisture: 0, nutrients: 0, height: 100 });
-    expect(calculateHealth(high) - calculateHealth(low)).toBe(30);
+    expect(calculateHealth(high) - calculateHealth(low)).toBe(35);
   });
 
-  it('height contributes 40% to health (inverted)', () => {
+  it('height contributes 30% to health (inverted)', () => {
     const short = makeCell({ moisture: 0, nutrients: 0, height: 0 });
     const tall = makeCell({ moisture: 0, nutrients: 0, height: 100 });
-    expect(calculateHealth(short) - calculateHealth(tall)).toBe(40);
+    expect(calculateHealth(short) - calculateHealth(tall)).toBe(30);
   });
 
   it('health is clamped between 0 and 100', () => {
@@ -426,6 +439,11 @@ describe('Ramp Direction Detection', () => {
   it('handles null neighbors by treating as same elevation', () => {
     const result = getRampDirection(0, 1, null, null, null);
     expect(result).toBe('north');
+  });
+
+  it('treats all null neighbors as same elevation', () => {
+    const result = getRampDirection(1, null, null, null, null);
+    expect(result).toBeNull();
   });
 });
 
@@ -780,6 +798,10 @@ describe('Terrain Speed Modifier', () => {
   it('water blocks movement', () => {
     expect(getTerrainSpeedModifier('water')).toBe(0.0);
   });
+
+  it('tee has full speed', () => {
+    expect(getTerrainSpeedModifier('tee')).toBe(1.0);
+  });
 });
 
 describe('Terrain Capabilities', () => {
@@ -874,6 +896,24 @@ describe('isGrassTerrain', () => {
   });
 });
 
+describe('isNonRough', () => {
+  it('returns false for rough', () => {
+    expect(isNonRough('rough')).toBe(false);
+  });
+
+  it('returns true for fairway', () => {
+    expect(isNonRough('fairway')).toBe(true);
+  });
+
+  it('returns true for green', () => {
+    expect(isNonRough('green')).toBe(true);
+  });
+
+  it('returns true for tee', () => {
+    expect(isNonRough('tee')).toBe(true);
+  });
+});
+
 describe('getTerrainDisplayName', () => {
   it('returns Fairway for fairway', () => {
     expect(getTerrainDisplayName('fairway')).toBe('Fairway');
@@ -893,6 +933,10 @@ describe('getTerrainDisplayName', () => {
 
   it('returns Water for water', () => {
     expect(getTerrainDisplayName('water')).toBe('Water');
+  });
+
+  it('returns Tee Box for tee', () => {
+    expect(getTerrainDisplayName('tee')).toBe('Tee Box');
   });
 });
 
@@ -935,6 +979,12 @@ describe('getTerrainThresholds', () => {
     const thresholds = getTerrainThresholds('green');
     expect(thresholds.mownHeight).toBe(10);
     expect(thresholds.growingHeight).toBe(22);
+  });
+
+  it('returns correct thresholds for tee', () => {
+    const thresholds = getTerrainThresholds('tee');
+    expect(thresholds.mownHeight).toBe(12);
+    expect(thresholds.growingHeight).toBe(25);
   });
 
   it('returns default thresholds for non-grass terrain', () => {
@@ -1178,6 +1228,13 @@ describe('Surface Physics', () => {
       expect(bunker.bounciness).toBeLessThan(rough.bounciness);
       expect(rough.bounciness).toBeLessThan(fairway.bounciness);
     });
+
+    it('returns tee properties similar to fairway', () => {
+      const tee = getSurfacePhysics('tee');
+      expect(tee.friction).toBe(0.35);
+      expect(tee.bounciness).toBe(0.3);
+      expect(tee.rollResistance).toBe(0.015);
+    });
   });
 
   describe('getSlopeFrictionModifier', () => {
@@ -1363,6 +1420,12 @@ describe('Slope Constraints (RCT Spec 6.1)', () => {
   });
 
   describe('validateTerrainData', () => {
+    it('validates empty layout', () => {
+      const result = validateTerrainData([]);
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('validates terrain with no errors', () => {
       const layout = [[0, 1, 2], [1, 0, 3], [2, 3, 0]];
       const result = validateTerrainData(layout);
@@ -1407,6 +1470,13 @@ describe('Slope Constraints (RCT Spec 6.1)', () => {
       expect(result.errors[0].x).toBe(1);
       expect(result.errors[0].y).toBe(0);
       expect(result.errors[0].message).toContain('Invalid terrain code');
+    });
+
+    it('handles sparse elevation array', () => {
+      const layout = [[0, 0], [0, 0]];
+      const elevation = [[0]] as number[][];
+      const result = validateTerrainData(layout, elevation);
+      expect(result.valid).toBe(true);
     });
   });
 });
@@ -1604,6 +1674,10 @@ describe('RCT Data Format', () => {
     it('returns correct code for water', () => {
       expect(getTerrainCode('water')).toBe(TERRAIN_CODES.WATER);
     });
+
+    it('returns correct code for tee', () => {
+      expect(getTerrainCode('tee')).toBe(TERRAIN_CODES.TEE);
+    });
   });
 
   describe('exportToRCTFormat', () => {
@@ -1703,5 +1777,25 @@ describe('RCT Data Format', () => {
       const imported = importFromRCTFormat(exported);
       expect(imported.layout).toEqual(layout);
     });
+  });
+});
+
+describe('getAdjacentPositions', () => {
+  it('returns 4 cardinal positions by default', () => {
+    const positions = getAdjacentPositions(5, 5);
+    expect(positions).toHaveLength(4);
+    expect(positions).toContainEqual({ x: 5, y: 4 });
+    expect(positions).toContainEqual({ x: 6, y: 5 });
+    expect(positions).toContainEqual({ x: 5, y: 6 });
+    expect(positions).toContainEqual({ x: 4, y: 5 });
+  });
+
+  it('includes diagonal positions when requested', () => {
+    const positions = getAdjacentPositions(5, 5, true);
+    expect(positions).toHaveLength(8);
+    expect(positions).toContainEqual({ x: 4, y: 4 });
+    expect(positions).toContainEqual({ x: 6, y: 4 });
+    expect(positions).toContainEqual({ x: 6, y: 6 });
+    expect(positions).toContainEqual({ x: 4, y: 6 });
   });
 });

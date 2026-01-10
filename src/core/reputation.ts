@@ -167,7 +167,6 @@ export function addReview(state: ReputationState, review: GolferReview, currentD
 }
 
 function calculateAverageRating(reviews: GolferReview[]): number {
-  if (reviews.length === 0) return 3.0;
   const sum = reviews.reduce((acc, r) => acc + r.overallRating, 0);
   return sum / reviews.length;
 }
@@ -180,10 +179,6 @@ function calculateTrend(previousRating: number, currentRating: number): RatingTr
 }
 
 function calculateCategoryAverages(reviews: GolferReview[]): ReputationState['categoryAverages'] {
-  if (reviews.length === 0) {
-    return { conditions: 3.0, pace: 3.0, value: 3.0, service: 3.0, amenities: 3.0 };
-  }
-
   const sum = reviews.reduce(
     (acc, r) => ({
       conditions: acc.conditions + r.categoryRatings.conditions,

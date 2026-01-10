@@ -64,6 +64,25 @@ describe('ScenarioManager', () => {
       expect(result.completed).toBe(false);
     });
 
+    it('tracks targetCash and detects completion', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetCash: 15000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+
+      manager.addRevenue(6000);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(true);
+      expect(result.progress).toBe(100);
+      expect(result.message).toBe('Economic objective achieved!');
+    });
+
     it('applies cost and revenue multipliers', () => {
       const objective: ScenarioObjective = {
         type: 'economic',
@@ -84,6 +103,40 @@ describe('ScenarioManager', () => {
       expect(progress.totalRevenue).toBe(2000);
       expect(progress.totalExpenses).toBe(750);
       expect(progress.currentCash).toBe(6250); // 5000 + 2000 - 750
+    });
+
+    it('economic objective in progress returns undefined message', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetProfit: 10000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 5000,
+        timeLimitDays: 30,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.addRevenue(1000);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.message).toBeUndefined();
+    });
+
+    it('checkObjective handles economic objective with no specific target', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      const result = manager.checkObjective();
+
+      expect(result.completed).toBe(false);
+      expect(result.progress).toBe(0);
     });
   });
 
@@ -149,6 +202,21 @@ describe('ScenarioManager', () => {
 
       const result = manager.checkObjective();
       expect(result.failed).toBe(true);
+    });
+
+    it('checkObjective handles attendance objective with no specific target', () => {
+      const objective: ScenarioObjective = {
+        type: 'attendance',
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      const result = manager.checkObjective();
+
+      expect(result.completed).toBe(false);
+      expect(result.progress).toBe(0);
     });
   });
 
@@ -307,6 +375,125 @@ describe('ScenarioManager', () => {
       const manager = new ScenarioManager(objective, conditions);
       expect(manager.getObjectiveDescription()).toBe('Restore course health to 80+');
     });
+
+    it('generates correct description for targetCash economic objective', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetCash: 25000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Accumulate $25000 in cash');
+    });
+
+    it('generates correct description for targetRounds attendance objective', () => {
+      const objective: ScenarioObjective = {
+        type: 'attendance',
+        targetRounds: 100,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Host 100 rounds');
+    });
+
+    it('generates correct description for targetCondition restoration objective', () => {
+      const objective: ScenarioObjective = {
+        type: 'restoration',
+        targetHealth: 80,
+        targetCondition: 'Excellent',
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Restore course to Excellent condition');
+    });
+
+    it('generates correct description for targetRevenue economic objective', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetRevenue: 50000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Earn $50000 in revenue');
+    });
+
+    it('generates fallback description for economic objective with no specific target', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Economic objective');
+    });
+
+    it('generates fallback description for attendance objective with no specific target', () => {
+      const objective: ScenarioObjective = {
+        type: 'attendance',
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Attendance objective');
+    });
+
+    it('generates fallback description for unknown objective type', () => {
+      const objective = {
+        type: 'mystery',
+      } as unknown as ScenarioObjective;
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      expect(manager.getObjectiveDescription()).toBe('Unknown objective');
+    });
+
+    it('checkObjective returns default result for unknown objective type', () => {
+      const objective = {
+        type: 'mystery',
+      } as unknown as ScenarioObjective;
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      const result = manager.checkObjective();
+
+      expect(result.completed).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.progress).toBe(0);
+    });
+
+    it('getObjectiveDescription uses default days for satisfaction without maintainForDays', () => {
+      const objective: ScenarioObjective = {
+        type: 'satisfaction',
+        targetRating: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      // maintainForDays defaults to 1
+      expect(manager.getObjectiveDescription()).toBe('Maintain 80+ rating for 1 days');
+    });
   });
 
   describe('Reset', () => {
@@ -336,6 +523,245 @@ describe('ScenarioManager', () => {
       expect(progress.totalExpenses).toBe(0);
       expect(progress.totalGolfers).toBe(0);
       expect(progress.currentHealth).toBe(60);
+    });
+
+    it('uses default health of 50 when no startingHealth provided', () => {
+      const objective: ScenarioObjective = {
+        type: 'restoration',
+        targetHealth: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.reset();
+
+      const progress = manager.getProgress();
+      expect(progress.currentHealth).toBe(50);
+    });
+  });
+
+  describe('Getters', () => {
+    it('getObjective returns a copy of the objective', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetProfit: 5000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      const retrieved = manager.getObjective();
+
+      expect(retrieved.type).toBe('economic');
+      expect((retrieved as any).targetProfit).toBe(5000);
+    });
+
+    it('getConditions returns a copy of the conditions', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetProfit: 5000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        timeLimitDays: 30,
+        costMultiplier: 1.5,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      const retrieved = manager.getConditions();
+
+      expect(retrieved.startingCash).toBe(10000);
+      expect(retrieved.timeLimitDays).toBe(30);
+      expect(retrieved.costMultiplier).toBe(1.5);
+    });
+  });
+
+  describe('Satisfaction Edge Cases', () => {
+    it('satisfaction defaults to 1 day when maintainForDays not provided', () => {
+      const objective: ScenarioObjective = {
+        type: 'satisfaction',
+        targetRating: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentRating: 85 });
+      manager.checkSatisfactionStreak(80);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(true);
+      expect(result.progress).toBe(100);
+    });
+
+    it('satisfaction fails when time limit exceeded', () => {
+      const objective: ScenarioObjective = {
+        type: 'satisfaction',
+        targetRating: 80,
+        maintainForDays: 10,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        timeLimitDays: 5,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+
+      for (let i = 0; i < 6; i++) {
+        manager.incrementDay();
+      }
+
+      const result = manager.checkObjective();
+      expect(result.failed).toBe(true);
+      expect(result.message).toBe('Time limit exceeded!');
+    });
+  });
+
+  describe('Restoration Edge Cases', () => {
+    it('restoration fails when time limit exceeded', () => {
+      const objective: ScenarioObjective = {
+        type: 'restoration',
+        targetHealth: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        startingHealth: 30,
+        timeLimitDays: 10,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+
+      for (let i = 0; i < 11; i++) {
+        manager.incrementDay();
+      }
+
+      const result = manager.checkObjective();
+      expect(result.failed).toBe(true);
+      expect(result.message).toBe('Time limit exceeded!');
+    });
+
+    it('restoration shows success message on completion', () => {
+      const objective: ScenarioObjective = {
+        type: 'restoration',
+        targetHealth: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        startingHealth: 30,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentHealth: 85 });
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(true);
+      expect(result.message).toBe('Course restored!');
+    });
+  });
+
+  describe('Attendance Edge Cases', () => {
+    it('attendance shows success message on completion', () => {
+      const objective: ScenarioObjective = {
+        type: 'attendance',
+        targetGolfers: 50,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.addGolfers(60);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(true);
+      expect(result.message).toBe('Attendance objective achieved!');
+    });
+
+    it('attendance returns undefined message when in progress', () => {
+      const objective: ScenarioObjective = {
+        type: 'attendance',
+        targetGolfers: 100,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        timeLimitDays: 30,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.addGolfers(50);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.message).toBeUndefined();
+    });
+
+    it('satisfaction returns undefined message when in progress', () => {
+      const objective: ScenarioObjective = {
+        type: 'satisfaction',
+        targetRating: 80,
+        maintainForDays: 10,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        timeLimitDays: 30,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentRating: 85 });
+      manager.checkSatisfactionStreak(80);
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.message).toBeUndefined();
+    });
+
+    it('satisfaction shows success message on completion', () => {
+      const objective: ScenarioObjective = {
+        type: 'satisfaction',
+        targetRating: 80,
+        maintainForDays: 3,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentRating: 85 });
+
+      for (let i = 0; i < 3; i++) {
+        manager.checkSatisfactionStreak(80);
+        manager.incrementDay();
+      }
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(true);
+      expect(result.message).toBe('Satisfaction objective achieved!');
+    });
+
+    it('restoration returns undefined message when in progress', () => {
+      const objective: ScenarioObjective = {
+        type: 'restoration',
+        targetHealth: 80,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 10000,
+        startingHealth: 30,
+        timeLimitDays: 30,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentHealth: 60 });
+
+      const result = manager.checkObjective();
+      expect(result.completed).toBe(false);
+      expect(result.failed).toBe(false);
+      expect(result.message).toBeUndefined();
     });
   });
 });

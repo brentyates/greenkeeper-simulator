@@ -244,7 +244,7 @@ export function applySmooth(
   if (positions.length === 0) return [];
 
   const totalElev = positions.reduce((sum, pos) => {
-    return sum + (getElevationAt(pos.x, pos.y, elevation) ?? 0);
+    return sum + getElevationAt(pos.x, pos.y, elevation)!;
   }, 0);
   const avgElev = Math.round(totalElev / positions.length);
 

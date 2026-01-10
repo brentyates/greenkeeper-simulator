@@ -45,14 +45,14 @@ test.describe('UI State Integration', () => {
     });
 
     test('pause toggles pause state', async ({ page }) => {
-      await page.evaluate(() => window.game.pause());
+      await page.evaluate(() => window.game.setPaused(true));
       const paused = await page.evaluate(() => window.game.getUIState());
       expect(paused.isPaused).toBe(true);
     });
 
     test('unpause sets pause to false', async ({ page }) => {
-      await page.evaluate(() => window.game.pause());
-      await page.evaluate(() => window.game.unpause());
+      await page.evaluate(() => window.game.setPaused(true));
+      await page.evaluate(() => window.game.setPaused(false));
       const state = await page.evaluate(() => window.game.getUIState());
       expect(state.isPaused).toBe(false);
     });
@@ -76,27 +76,16 @@ test.describe('Terrain Editor UI', () => {
   });
 
   test.describe('Editor Toggle', () => {
-    test('enableTerrainEditor activates editor', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+    test('setTerrainEditor(true) activates editor', async ({ page }) => {
+      await page.evaluate(() => window.game.setTerrainEditor(true));
       const state = await page.evaluate(() => window.game.getTerrainEditorState());
       expect(state.enabled).toBe(true);
     });
 
-    test('disableTerrainEditor deactivates editor', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
-      await page.evaluate(() => window.game.disableTerrainEditor());
+    test('setTerrainEditor(false) deactivates editor', async ({ page }) => {
+      await page.evaluate(() => window.game.setTerrainEditor(true));
+      await page.evaluate(() => window.game.setTerrainEditor(false));
       const state = await page.evaluate(() => window.game.getTerrainEditorState());
-      expect(state.enabled).toBe(false);
-    });
-
-    test('toggleTerrainEditor toggles state', async ({ page }) => {
-      await page.evaluate(() => window.game.disableTerrainEditor());
-      await page.evaluate(() => window.game.toggleTerrainEditor());
-      let state = await page.evaluate(() => window.game.getTerrainEditorState());
-      expect(state.enabled).toBe(true);
-
-      await page.evaluate(() => window.game.toggleTerrainEditor());
-      state = await page.evaluate(() => window.game.getTerrainEditorState());
       expect(state.enabled).toBe(false);
     });
 
@@ -108,7 +97,7 @@ test.describe('Terrain Editor UI', () => {
 
   test.describe('Editor Tools', () => {
     test('setEditorTool changes tool', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
 
       await page.evaluate(() => window.game.setEditorTool('raise'));
       let state = await page.evaluate(() => window.game.getTerrainEditorState());
@@ -124,7 +113,7 @@ test.describe('Terrain Editor UI', () => {
     });
 
     test('paint tool can be set', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
       await page.evaluate(() => window.game.setEditorTool('paint'));
       const state = await page.evaluate(() => window.game.getTerrainEditorState());
       expect(['paint', 'raise', 'lower', 'smooth']).toContain(state.tool);
@@ -133,7 +122,7 @@ test.describe('Terrain Editor UI', () => {
 
   test.describe('Brush Size', () => {
     test('setEditorBrushSize changes size', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
 
       await page.evaluate(() => window.game.setEditorBrushSize(1));
       let state = await page.evaluate(() => window.game.getTerrainEditorState());
@@ -151,7 +140,7 @@ test.describe('Terrain Editor UI', () => {
 
   test.describe('Editor Operations', () => {
     test('editTerrainAt modifies terrain', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
       await page.evaluate(() => window.game.setEditorTool('raise'));
 
       const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
@@ -162,7 +151,7 @@ test.describe('Terrain Editor UI', () => {
     });
 
     test('undoTerrainEdit reverses edit', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
       await page.evaluate(() => window.game.setEditorTool('raise'));
 
       const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
@@ -174,7 +163,7 @@ test.describe('Terrain Editor UI', () => {
     });
 
     test('redoTerrainEdit reapplies edit', async ({ page }) => {
-      await page.evaluate(() => window.game.enableTerrainEditor());
+      await page.evaluate(() => window.game.setTerrainEditor(true));
       await page.evaluate(() => window.game.setEditorTool('raise'));
 
       await page.evaluate(() => window.game.editTerrainAt(10, 10));
@@ -211,38 +200,97 @@ test.describe('Save/Load Integration', () => {
   });
 });
 
-test.describe('Key Simulation', () => {
+test.describe('Overlay Cycling', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&preset=all_grass_mown');
     await waitForGameReady(page);
   });
 
-  test('pressKey simulates key press', async ({ page }) => {
-    await page.evaluate(() => window.game.pressKey('1'));
-    const state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.selectedSlot).toBe(0);
+  test('cycleOverlay changes overlay mode', async ({ page }) => {
+    const initialMode = await page.evaluate(() => window.game.getOverlayMode());
+    await page.evaluate(() => window.game.cycleOverlay());
+    const newMode = await page.evaluate(() => window.game.getOverlayMode());
+    expect(newMode).not.toBe(initialMode);
   });
 
-  test('pressKey for different equipment', async ({ page }) => {
-    await page.evaluate(() => window.game.pressKey('2'));
-    let state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.selectedSlot).toBe(1);
-
-    await page.evaluate(() => window.game.pressKey('3'));
-    state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.selectedSlot).toBe(2);
-  });
-
-  test('pressKey for pause', async ({ page }) => {
-    await page.evaluate(() => window.game.unpause());
-    await page.evaluate(() => window.game.pressKey('p'));
-    const state = await page.evaluate(() => window.game.getUIState());
-    expect(state.isPaused).toBe(true);
-  });
-
-  test('pressKey for terrain editor toggle', async ({ page }) => {
-    await page.evaluate(() => window.game.pressKey('t'));
-    const state = await page.evaluate(() => window.game.getTerrainEditorState());
-    expect(state.enabled).toBe(true);
+  test('cycleOverlay cycles through all modes', async ({ page }) => {
+    const modes: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const mode = await page.evaluate(() => window.game.getOverlayMode());
+      modes.push(mode);
+      await page.evaluate(() => window.game.cycleOverlay());
+    }
+    const uniqueModes = new Set(modes);
+    expect(uniqueModes.size).toBeGreaterThan(1);
   });
 });
+
+test.describe('Audio Control', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await waitForGameReady(page);
+  });
+
+  test('toggleMute does not throw', async ({ page }) => {
+    await page.evaluate(() => window.game.toggleMute());
+    expect(true).toBe(true);
+  });
+
+  test('toggleMute can be called multiple times', async ({ page }) => {
+    await page.evaluate(() => {
+      window.game.toggleMute();
+      window.game.toggleMute();
+    });
+    expect(true).toBe(true);
+  });
+});
+
+test.describe('Equipment Refill', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?testMode=true&preset=refill_test');
+    await waitForGameReady(page);
+  });
+
+  test('refillEquipment does not throw', async ({ page }) => {
+    await page.evaluate(() => window.game.refillEquipment());
+    expect(true).toBe(true);
+  });
+
+  test('isAtRefillStation returns boolean', async ({ page }) => {
+    const atStation = await page.evaluate(() => window.game.isAtRefillStation());
+    expect(typeof atStation).toBe('boolean');
+  });
+
+  test('getRefillStations returns array', async ({ page }) => {
+    const stations = await page.evaluate(() => window.game.getRefillStations());
+    expect(Array.isArray(stations)).toBe(true);
+  });
+});
+
+test.describe('Game Running State', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await waitForGameReady(page);
+  });
+
+  test('setRunning true starts game', async ({ page }) => {
+    await page.evaluate(() => window.game.setRunning(true));
+    expect(true).toBe(true);
+  });
+
+  test('setRunning false stops game', async ({ page }) => {
+    await page.evaluate(() => window.game.setRunning(false));
+    expect(true).toBe(true);
+  });
+
+  test('setRunning can toggle multiple times', async ({ page }) => {
+    await page.evaluate(() => {
+      window.game.setRunning(false);
+      window.game.setRunning(true);
+      window.game.setRunning(false);
+      window.game.setRunning(true);
+    });
+    expect(true).toBe(true);
+  });
+});
+

@@ -780,8 +780,7 @@ export function promoteEmployee(
 
   if (!isEligibleForPromotion(employee)) return null;
 
-  const nextLevel = getNextSkillLevel(employee.skillLevel);
-  if (!nextLevel) return null;
+  const nextLevel = getNextSkillLevel(employee.skillLevel)!;
 
   const config = EMPLOYEE_CONFIGS[employee.role];
   const newWage = Math.round(config.baseWage * config.wageMultipliers[nextLevel] * 100) / 100;

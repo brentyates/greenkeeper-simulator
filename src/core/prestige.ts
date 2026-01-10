@@ -322,7 +322,8 @@ export function updatePrestigeScore(
 
   if (diff > 0) {
     newScore = Math.min(state.currentScore + MAX_DAILY_INCREASE, targetScore);
-  } else if (diff < 0) {
+  }
+  if (diff < 0) {
     newScore = Math.max(state.currentScore - MAX_DAILY_DECREASE, targetScore);
   }
 
@@ -419,7 +420,6 @@ export function takeDailySnapshot(
 }
 
 function calculateRollingAverage(snapshots: DailySnapshot[], days: number): number {
-  if (snapshots.length === 0) return 50;
   const recentSnapshots = snapshots.slice(-days);
   const sum = recentSnapshots.reduce((acc, s) => acc + s.averageHealth, 0);
   return sum / recentSnapshots.length;
@@ -428,7 +428,6 @@ function calculateRollingAverage(snapshots: DailySnapshot[], days: number): numb
 function calculateStandardDeviation(snapshots: DailySnapshot[], days: number): number {
   if (snapshots.length < 2) return 0;
   const recentSnapshots = snapshots.slice(-days);
-  if (recentSnapshots.length < 2) return 0;
 
   const mean = recentSnapshots.reduce((acc, s) => acc + s.averageHealth, 0) / recentSnapshots.length;
   const squaredDiffs = recentSnapshots.map(s => Math.pow(s.averageHealth - mean, 2));

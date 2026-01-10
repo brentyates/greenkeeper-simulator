@@ -104,8 +104,6 @@ export function getInitialValues(type: TerrainType): {
       return { height: 0, moisture: 100, nutrients: 0 };
     case "tee":
       return { height: 15, moisture: 65, nutrients: 75 };
-    default:
-      return { height: 50, moisture: 50, nutrients: 50 };
   }
 }
 
@@ -143,9 +141,9 @@ export function calculateHealth(
   if (!isGrassTerrain(cell.type)) {
     return 100;
   }
-  const moistureScore = cell.moisture * 0.3;
-  const nutrientScore = cell.nutrients * 0.3;
-  const heightScore = (100 - Math.min(cell.height, 100)) * 0.4;
+  const moistureScore = cell.moisture * 0.35;
+  const nutrientScore = cell.nutrients * 0.35;
+  const heightScore = (100 - Math.min(cell.height, 100)) * 0.3;
   return Math.max(
     0,
     Math.min(100, moistureScore + nutrientScore + heightScore)
@@ -211,18 +209,14 @@ export function getTextureForCell(
   if (cell.type === "bunker") return "iso_bunker";
   if (cell.type === "water") return "iso_water";
 
-  if (isGrassTerrain(cell.type)) {
-    if (cell.health < 20) return "iso_grass_dead";
-    if (cell.health < 40) return "iso_grass_dry";
+  if (cell.health < 20) return "iso_grass_dead";
+  if (cell.health < 40) return "iso_grass_dry";
 
-    const thresholds = getTerrainThresholds(cell.type);
-    if (cell.height <= thresholds.mownHeight) return `iso_${cell.type}_mown`;
-    if (cell.height <= thresholds.growingHeight)
-      return `iso_${cell.type}_growing`;
-    return `iso_${cell.type}_unmown`;
-  }
-
-  return "iso_rough_unmown";
+  const thresholds = getTerrainThresholds(cell.type);
+  if (cell.height <= thresholds.mownHeight) return `iso_${cell.type}_mown`;
+  if (cell.height <= thresholds.growingHeight)
+    return `iso_${cell.type}_growing`;
+  return `iso_${cell.type}_unmown`;
 }
 
 export function getCellsInRadius(
@@ -379,8 +373,6 @@ export function getSurfacePhysics(type: TerrainType): SurfacePhysics {
       return { friction: 0.1, bounciness: 0.0, rollResistance: 1.0 };
     case "tee":
       return { friction: 0.35, bounciness: 0.3, rollResistance: 0.015 };
-    default:
-      return { friction: 0.5, bounciness: 0.2, rollResistance: 0.05 };
   }
 }
 
@@ -451,8 +443,6 @@ export function getTileNormal(
   const nz = v1x * v2y - v1y * v2x;
 
   const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-  if (len === 0) return { x: 0, y: 0, z: 1 };
-
   return { x: nx / len, y: ny / len, z: nz / len };
 }
 
@@ -627,8 +617,6 @@ export function getTerrainSpeedModifier(type: TerrainType): number {
       return 0.0;
     case "tee":
       return 1.0;
-    default:
-      return 1.0;
   }
 }
 
@@ -654,8 +642,6 @@ export function getTerrainDisplayName(type: TerrainType): string {
       return "Water";
     case "tee":
       return "Tee Box";
-    default:
-      return "Unknown";
   }
 }
 
@@ -671,8 +657,6 @@ export function getObstacleDisplayName(type: ObstacleType): string {
       return "Shrub";
     case "bush":
       return "Bush";
-    default:
-      return "Unknown";
   }
 }
 
@@ -840,8 +824,6 @@ export function getTerrainCode(type: TerrainType): number {
       return TERRAIN_CODES.WATER;
     case "tee":
       return TERRAIN_CODES.TEE;
-    default:
-      return TERRAIN_CODES.ROUGH;
   }
 }
 

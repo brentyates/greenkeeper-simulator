@@ -238,6 +238,27 @@ describe('tee-revenue', () => {
       const addOns = generateAddOnsForGolfer(STANDARD_ADDONS, 'booking', 500, () => 0.99);
       expect(addOns).toHaveLength(0);
     });
+
+    it('only includes add-ons offered at check_in phase', () => {
+      const addOns = generateAddOnsForGolfer(STANDARD_ADDONS, 'check_in', 500, () => 0.01);
+      const offeredAtCheckIn = STANDARD_ADDONS.filter(a => a.offeredAtCheckIn);
+      expect(addOns.length).toBe(offeredAtCheckIn.length);
+    });
+
+    it('handles during_round phase with custom add-on', () => {
+      const customAddOn = {
+        id: 'during_round_addon',
+        name: 'Round Refreshment',
+        price: 10,
+        offeredAtBooking: false,
+        offeredAtCheckIn: false,
+        offeredDuringRound: true,
+        baseUptakeRate: 1.0,
+        prestigeUptakeBonus: 0,
+      };
+      const addOns = generateAddOnsForGolfer([customAddOn], 'during_round', 500, () => 0.01);
+      expect(addOns.length).toBe(1);
+    });
   });
 
   describe('calculateTotalAddOnRevenue', () => {
@@ -314,6 +335,14 @@ describe('tee-revenue', () => {
       daily = setOperatingCosts(daily, 50);
       daily = addRevenueToDaily(daily, { greenFees: 100 });
       expect(daily.netRevenue).toBe(50);
+    });
+
+    it('handles partial revenue with no greenFees', () => {
+      const daily = createEmptyDailyRevenue();
+      const updated = addRevenueToDaily(daily, { tips: 25, cartFees: 40 });
+      expect(updated.greenFees).toBe(0);
+      expect(updated.tips).toBe(25);
+      expect(updated.cartFees).toBe(40);
     });
   });
 

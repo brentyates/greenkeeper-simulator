@@ -11,6 +11,7 @@ import {
 } from './save-game';
 import { createInitialEconomyState } from './economy';
 import { createInitialRoster, createInitialApplicationState } from './employees';
+import { createInitialWorkSystemState } from './employee-work';
 import { createInitialPoolState } from './golfers';
 import { createInitialResearchState } from './research';
 import { createInitialPrestigeState } from './prestige';
@@ -21,6 +22,7 @@ import { createInitialMarketingState } from './marketing';
 import { ScenarioProgress } from './scenario';
 import { createInitialAutonomousState } from './autonomous-equipment';
 import { createInitialWeatherState } from './weather';
+import { createInitialIrrigationSystem } from './irrigation';
 
 const mockLocalStorage = (() => {
   let store: Record<string, string> = {};
@@ -60,6 +62,7 @@ function createMockSaveState(scenarioId = 'test_scenario'): SaveGameState {
     1500,
     createInitialEconomyState(10000),
     createInitialRoster(),
+    createInitialWorkSystemState(),
     createInitialPoolState(),
     createInitialResearchState(),
     createInitialPrestigeState(),
@@ -107,6 +110,37 @@ describe('save-game', () => {
       expect(state.weatherState).toBeDefined();
       expect(state.cells).toBeDefined();
     });
+
+    it('creates save state with optional irrigationSystem', () => {
+      const irrigationSystem = createInitialIrrigationSystem();
+      const state = createSaveState(
+        'irrigation_test',
+        420,
+        5,
+        25,
+        19,
+        1500,
+        createInitialEconomyState(10000),
+        createInitialRoster(),
+        createInitialWorkSystemState(),
+        createInitialPoolState(),
+        createInitialResearchState(),
+        createInitialPrestigeState(),
+        createInitialTeeTimeState(),
+        createInitialWalkOnState(),
+        createInitialRevenueState(),
+        createInitialMarketingState(),
+        createInitialApplicationState(),
+        createMockScenarioProgress(),
+        createInitialAutonomousState(),
+        createInitialWeatherState(),
+        [],
+        irrigationSystem
+      );
+
+      expect(state.irrigationSystem).toBeDefined();
+      expect(state.irrigationSystem).toEqual(irrigationSystem);
+    });
   });
 
   describe('saveGame', () => {
@@ -124,6 +158,16 @@ describe('save-game', () => {
     it('returns true on successful save', () => {
       const state = createMockSaveState();
       expect(saveGame(state)).toBe(true);
+    });
+
+    it('returns false when localStorage throws', () => {
+      const state = createMockSaveState('error_scenario');
+      mockLocalStorage.setItem.mockImplementationOnce(() => {
+        throw new Error('Storage quota exceeded');
+      });
+
+      const result = saveGame(state);
+      expect(result).toBe(false);
     });
   });
 
@@ -150,6 +194,18 @@ describe('save-game', () => {
       const result = loadGame('invalid');
       expect(result).toBeNull();
     });
+
+    it('returns null for version mismatch', () => {
+      const state = createMockSaveState();
+      const stateWithOldVersion = { ...state, version: 0 };
+      mockLocalStorage.setItem(
+        'greenkeeper_save_old_version',
+        JSON.stringify(stateWithOldVersion)
+      );
+
+      const result = loadGame('old_version');
+      expect(result).toBeNull();
+    });
   });
 
   describe('deleteSave', () => {
@@ -161,6 +217,15 @@ describe('save-game', () => {
 
       expect(result).toBe(true);
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('greenkeeper_save_test_scenario');
+    });
+
+    it('returns false when localStorage throws', () => {
+      mockLocalStorage.removeItem.mockImplementationOnce(() => {
+        throw new Error('Storage error');
+      });
+
+      const result = deleteSave('error_scenario');
+      expect(result).toBe(false);
     });
   });
 
@@ -192,6 +257,12 @@ describe('save-game', () => {
     it('returns null for non-existent save', () => {
       expect(getSaveInfo('nonexistent')).toBeNull();
     });
+
+    it('returns null for invalid JSON data', () => {
+      mockLocalStorage.setItem('greenkeeper_save_corrupt', 'invalid json data');
+      const result = getSaveInfo('corrupt');
+      expect(result).toBeNull();
+    });
   });
 
   describe('listSaves', () => {
@@ -210,6 +281,28 @@ describe('save-game', () => {
     it('returns empty array when no saves exist', () => {
       const saves = listSaves();
       expect(saves).toEqual([]);
+    });
+
+    it('skips saves with corrupt data', () => {
+      const validState = createMockSaveState('valid_scenario');
+      saveGame(validState);
+      mockLocalStorage.setItem('greenkeeper_save_corrupt_scenario', 'not valid json');
+
+      const saves = listSaves();
+
+      expect(saves.length).toBe(1);
+      expect(saves[0].scenarioId).toBe('valid_scenario');
+    });
+
+    it('skips keys that do not match save prefix', () => {
+      const state = createMockSaveState('my_scenario');
+      saveGame(state);
+      mockLocalStorage.setItem('some_other_key', 'value');
+
+      const saves = listSaves();
+
+      expect(saves.length).toBe(1);
+      expect(saves[0].scenarioId).toBe('my_scenario');
     });
   });
 

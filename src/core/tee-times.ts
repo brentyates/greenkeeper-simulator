@@ -327,6 +327,8 @@ export function bookTeeTime(
   bookingType: BookingType,
   currentTime: GameTime
 ): TeeTimeSystemState {
+  if (golfers.length === 0) return state;
+
   const newTeeTimes = new Map(state.teeTimes);
 
   for (const [day, slots] of newTeeTimes) {
@@ -341,7 +343,7 @@ export function bookTeeTime(
         const addOnTotal = g.addOns.reduce((a, addon) => a + addon.price, 0);
         return sum + g.greenFee + g.cartFee + addOnTotal;
       }, 0);
-      const pricePerGolfer = golfers.length > 0 ? totalRevenue / golfers.length : 0;
+      const pricePerGolfer = totalRevenue / golfers.length;
 
       const updatedSlot: TeeTime = {
         ...slot,

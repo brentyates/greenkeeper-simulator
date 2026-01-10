@@ -830,8 +830,7 @@ export function getPrerequisiteChain(itemId: string): readonly string[] {
     if (visited.has(id)) return;
     visited.add(id);
 
-    const research = getResearchItem(id);
-    if (!research) return;
+    const research = getResearchItem(id)!;
 
     for (const prereq of research.prerequisites) {
       collectPrereqs(prereq);
@@ -876,8 +875,7 @@ export function startResearch(
     return addToQueue(state, itemId);
   }
 
-  const progress = createResearchProgress(itemId, currentTime);
-  if (!progress) return null;
+  const progress = createResearchProgress(itemId, currentTime)!;
 
   return {
     ...state,
@@ -1109,7 +1107,5 @@ export function describeResearchUnlock(item: ResearchItem): string {
       return `+${bonusPercent}% ${unlock.bonus.type} bonus`;
     case "feature":
       return `Unlocked feature: ${item.name}`;
-    default:
-      return item.name;
   }
 }

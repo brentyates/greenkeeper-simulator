@@ -285,6 +285,30 @@ describe('amenities', () => {
       const cost = getUpgradeCost(state, { type: 'service', service: 'lockerRoom' });
       expect(cost).toBe(SERVICE_DATA.lockerRoom.cost);
     });
+
+    it('returns dining upgrade cost', () => {
+      const state = createInitialAmenityState();
+      const cost = getUpgradeCost(state, { type: 'dining', tier: 3 });
+      expect(cost).toBe(DINING_DATA[3].cost);
+    });
+
+    it('returns cart upgrade cost', () => {
+      const state = createInitialAmenityState();
+      const cost = getUpgradeCost(state, { type: 'cart', cartType: 'premium_carts' });
+      expect(cost).toBe(CART_DATA.premium_carts.cost);
+    });
+
+    it('returns comfort station upgrade cost', () => {
+      const state = createInitialAmenityState();
+      const cost = getUpgradeCost(state, { type: 'comfortStation', tier: 2 });
+      expect(cost).toBe(COMFORT_STATION_DATA[2].cost);
+    });
+
+    it('returns course feature upgrade cost', () => {
+      const state = createInitialAmenityState();
+      const cost = getUpgradeCost(state, { type: 'courseFeature', feature: 'halfwayHouse' });
+      expect(cost).toBe(COURSE_FEATURE_DATA.halfwayHouse.cost);
+    });
   });
 
   describe('getPrestigeGain', () => {
@@ -371,6 +395,56 @@ describe('amenities', () => {
       expect(clubhouseUpgrades.length).toBe(0);
     });
 
+    it('excludes max pro shop tier', () => {
+      let state = createInitialAmenityState();
+      state = { ...state, proShopTier: 3 };
+      const upgrades = getAvailableUpgrades(state);
+      const proShopUpgrades = upgrades.filter(u => u.type === 'proShop');
+      expect(proShopUpgrades.length).toBe(0);
+    });
+
+    it('excludes max dining tier', () => {
+      let state = createInitialAmenityState();
+      state = { ...state, diningTier: 4 };
+      const upgrades = getAvailableUpgrades(state);
+      const diningUpgrades = upgrades.filter(u => u.type === 'dining');
+      expect(diningUpgrades.length).toBe(0);
+    });
+
+    it('excludes already owned services', () => {
+      let state = createInitialAmenityState();
+      state = applyUpgrade(state, { type: 'service', service: 'caddieProgram' });
+      const upgrades = getAvailableUpgrades(state);
+      expect(upgrades).not.toContainEqual({ type: 'service', service: 'caddieProgram' });
+    });
+
+    it('excludes max cart type', () => {
+      let state = createInitialAmenityState();
+      state = { ...state, courseFeatures: { ...state.courseFeatures, cartType: 'luxury_carts' } };
+      const upgrades = getAvailableUpgrades(state);
+      const cartUpgrades = upgrades.filter(u => u.type === 'cart');
+      expect(cartUpgrades.length).toBe(0);
+    });
+
+    it('excludes max comfort station tier', () => {
+      let state = createInitialAmenityState();
+      state = { ...state, courseFeatures: { ...state.courseFeatures, comfortStations: 4 } };
+      const upgrades = getAvailableUpgrades(state);
+      const comfortUpgrades = upgrades.filter(u => u.type === 'comfortStation');
+      expect(comfortUpgrades.length).toBe(0);
+    });
+
+    it('excludes already owned course features', () => {
+      let state = createInitialAmenityState();
+      state = applyUpgrade(state, { type: 'courseFeature', feature: 'beverageService' });
+      state = applyUpgrade(state, { type: 'courseFeature', feature: 'halfwayHouse' });
+      state = applyUpgrade(state, { type: 'courseFeature', feature: 'signatureMarkers' });
+      state = applyUpgrade(state, { type: 'courseFeature', feature: 'tournamentTees' });
+      const upgrades = getAvailableUpgrades(state);
+      const courseFeatureUpgrades = upgrades.filter(u => u.type === 'courseFeature');
+      expect(courseFeatureUpgrades.length).toBe(0);
+    });
+
     it('includes next cart type', () => {
       let state = createInitialAmenityState();
       state = applyUpgrade(state, { type: 'cart', cartType: 'basic_carts' });
@@ -387,6 +461,10 @@ describe('amenities', () => {
 
     it('returns pro shop name', () => {
       expect(getUpgradeName({ type: 'proShop', tier: 2 })).toBe('Full Pro Shop');
+    });
+
+    it('returns dining name', () => {
+      expect(getUpgradeName({ type: 'dining', tier: 3 })).toBe('Fine Dining Restaurant');
     });
 
     it('returns facility name', () => {

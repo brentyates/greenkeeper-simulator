@@ -15,7 +15,7 @@ test.describe('Terrain Drag Operations', () => {
   test.describe('Drag Elevation Editing', () => {
     test('dragTerrainStart/Move/End raises terrain', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('raise');
       });
 
@@ -38,7 +38,7 @@ test.describe('Terrain Drag Operations', () => {
       });
 
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('lower');
       });
 
@@ -56,7 +56,7 @@ test.describe('Terrain Drag Operations', () => {
 
     test('multiple drag moves accumulate', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('raise');
       });
 
@@ -76,7 +76,7 @@ test.describe('Terrain Drag Operations', () => {
 
     test('drag operation can be undone', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('raise');
       });
 
@@ -102,7 +102,7 @@ test.describe('Terrain Drag Operations', () => {
   test.describe('Terrain Type Painting', () => {
     test('can paint different terrain types', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('paint');
       });
 
@@ -136,7 +136,7 @@ test.describe('Terrain Drag Operations', () => {
   test.describe('Brush Size', () => {
     test('brush size affects multiple tiles', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorTool('raise');
         window.game.setEditorBrushSize(2);
       });
@@ -166,7 +166,7 @@ test.describe('Terrain Drag Operations', () => {
   test.describe('Editor State', () => {
     test('getTerrainEditorState returns full state', async ({ page }) => {
       await page.evaluate(() => {
-        window.game.enableTerrainEditor();
+        window.game.setTerrainEditor(true);
         window.game.setEditorBrushSize(3);
       });
 

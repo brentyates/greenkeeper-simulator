@@ -513,6 +513,13 @@ describe("Research System", () => {
       });
       expect(getEquipmentEfficiencyBonus(state)).toBeCloseTo(1.375);
     });
+
+    it("ignores non-efficiency upgrades", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower", "clubhouse_upgrade"]
+      });
+      expect(getEquipmentEfficiencyBonus(state)).toBe(1.0);
+    });
   });
 
   describe("getActiveUpgrades", () => {
@@ -548,6 +555,13 @@ describe("Research System", () => {
     it("returns empty for nonexistent item", () => {
       const chain = getPrerequisiteChain("fake_item");
       expect(chain.length).toBe(0);
+    });
+
+    it("handles diamond dependencies without duplicates", () => {
+      const chain = getPrerequisiteChain("smart_irrigation_controller");
+      expect(chain).toContain("piped_irrigation_basic");
+      const pibCount = chain.filter(id => id === "piped_irrigation_basic").length;
+      expect(pibCount).toBe(1);
     });
   });
 
@@ -729,6 +743,28 @@ describe("Research System", () => {
 
       expect(result).toEqual(state);
     });
+
+    it("skips invalid item IDs in queue", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower"],
+        currentResearch: makeResearchProgress({ itemId: "riding_mower_basic" }),
+        researchQueue: ["fake_invalid_id", "basic_fertilizer"]
+      });
+      const result = cancelResearch(state);
+
+      expect(result.currentResearch).toBeNull();
+    });
+
+    it("skips locked items in queue", () => {
+      const state = makeResearchState({
+        completedResearch: [],
+        currentResearch: makeResearchProgress({ itemId: "basic_push_mower" }),
+        researchQueue: ["riding_mower_basic"]
+      });
+      const result = cancelResearch(state);
+
+      expect(result.currentResearch).toBeNull();
+    });
   });
 
   describe("tickResearch", () => {
@@ -841,6 +877,41 @@ describe("Research System", () => {
 
       // After completing riding_mower_basic, riding_mower_advanced prerequisites are now met
       expect(result.state.currentResearch?.itemId).toBe("riding_mower_advanced");
+    });
+
+    it("skips invalid item IDs in queue on completion", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower"],
+        fundingLevel: "maximum",
+        currentResearch: makeResearchProgress({
+          itemId: "riding_mower_basic",
+          pointsEarned: 490,
+          pointsRequired: 500
+        }),
+        researchQueue: ["fake_invalid_id", "basic_fertilizer"]
+      });
+
+      const result = tickResearch(state, 10, 1000);
+
+      expect(result.state.currentResearch?.itemId).toBe("basic_fertilizer");
+    });
+
+    it("skips items with unmet prerequisites on completion", () => {
+      const state = makeResearchState({
+        completedResearch: ["basic_push_mower"],
+        fundingLevel: "maximum",
+        currentResearch: makeResearchProgress({
+          itemId: "basic_fertilizer",
+          pointsEarned: 190,
+          pointsRequired: 200
+        }),
+        researchQueue: ["riding_mower_advanced"]
+      });
+
+      const result = tickResearch(state, 10, 1000);
+
+      expect(result.state.currentResearch).toBeNull();
+      expect(result.state.researchQueue).toContain("riding_mower_advanced");
     });
   });
 

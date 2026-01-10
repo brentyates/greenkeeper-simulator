@@ -48,6 +48,7 @@ import {
   previewSpacingImpact,
   getPaceRatingLabel,
   formatRoundTime,
+  identifyBackupLocations,
 } from './tee-times';
 
 describe('tee-times', () => {
@@ -165,6 +166,15 @@ describe('tee-times', () => {
       const slot = getTeeTimeById(state, 'fake-id');
       expect(slot).toBeUndefined();
     });
+
+    it('searches across multiple days to find tee time', () => {
+      const state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      getTeeTimes(state, 76);
+      const slot = getTeeTimeById(state, 'tt-76-0600');
+      expect(slot).toBeDefined();
+      expect(slot?.scheduledTime.hour).toBe(6);
+    });
   });
 
   describe('getAvailableSlots', () => {
@@ -273,6 +283,16 @@ describe('tee-times', () => {
       expect(state).toBe(beforeState);
     });
 
+    it('returns unchanged state for empty golfers array', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+
+      const beforeState = state;
+      state = bookTeeTime(state, 'tt-75-0600', [], 'reservation', { day: 0, hour: 8, minute: 0 });
+
+      expect(state).toBe(beforeState);
+    });
+
     it('sets booking type correctly', () => {
       let state = createInitialTeeTimeState();
       getTeeTimes(state, 75);
@@ -282,6 +302,16 @@ describe('tee-times', () => {
 
       const slot = getTeeTimeById(state, 'tt-75-0600');
       expect(slot?.bookingType).toBe('member');
+    });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = bookTeeTime(state, 'invalid-id', [
+        { golferId: 'g1', name: 'Test', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] }
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      expect(state).toBe(beforeState);
     });
   });
 
@@ -306,6 +336,14 @@ describe('tee-times', () => {
       state = checkInTeeTime(state, 'tt-75-0600');
       expect(state).toBe(beforeState);
     });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = checkInTeeTime(state, 'invalid-id');
+      expect(state).toBe(beforeState);
+    });
   });
 
   describe('startRound', () => {
@@ -321,6 +359,25 @@ describe('tee-times', () => {
       const slot = getTeeTimeById(state, 'tt-75-0600');
       expect(slot?.status).toBe('in_progress');
       expect(slot?.actualStartTime?.minute).toBe(5);
+    });
+
+    it('does not start round for non-checked-in slot', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      state = bookTeeTime(state, 'tt-75-0600', [
+        { golferId: 'g1', name: 'Test', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] }
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      const beforeState = state;
+      state = startRound(state, 'tt-75-0600', { day: 75, hour: 6, minute: 5 });
+      expect(state).toBe(beforeState);
+    });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = startRound(state, 'invalid-id', { day: 75, hour: 6, minute: 5 });
+      expect(state).toBe(beforeState);
     });
   });
 
@@ -340,6 +397,26 @@ describe('tee-times', () => {
       expect(slot?.roundCompleted).toBe(true);
       expect(slot?.completionTime?.hour).toBe(10);
     });
+
+    it('does not complete round not in progress', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      state = bookTeeTime(state, 'tt-75-0600', [
+        { golferId: 'g1', name: 'Test', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] }
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      state = checkInTeeTime(state, 'tt-75-0600');
+      const beforeState = state;
+      state = completeRound(state, 'tt-75-0600', { day: 75, hour: 10, minute: 15 });
+      expect(state).toBe(beforeState);
+    });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = completeRound(state, 'invalid-id', { day: 75, hour: 10, minute: 15 });
+      expect(state).toBe(beforeState);
+    });
   });
 
   describe('cancelTeeTime', () => {
@@ -356,6 +433,22 @@ describe('tee-times', () => {
       expect(slot?.golfers).toHaveLength(0);
       expect(slot?.totalRevenue).toBe(0);
     });
+
+    it('does not cancel non-reserved slot', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = cancelTeeTime(state, 'tt-75-0600');
+      expect(state).toBe(beforeState);
+    });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = cancelTeeTime(state, 'invalid-id');
+      expect(state).toBe(beforeState);
+    });
   });
 
   describe('markNoShow', () => {
@@ -370,6 +463,22 @@ describe('tee-times', () => {
       const slot = getTeeTimeById(state, 'tt-75-0600');
       expect(slot?.status).toBe('no_show');
     });
+
+    it('does not mark non-reserved slot as no-show', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = markNoShow(state, 'tt-75-0600');
+      expect(state).toBe(beforeState);
+    });
+
+    it('returns unchanged state for invalid tee time id', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      const beforeState = state;
+      state = markNoShow(state, 'invalid-id');
+      expect(state).toBe(beforeState);
+    });
   });
 
   describe('getDailyStats', () => {
@@ -379,6 +488,16 @@ describe('tee-times', () => {
       expect(stats.totalSlots).toBeGreaterThan(0);
       expect(stats.availableSlots).toBe(stats.totalSlots);
       expect(stats.bookedSlots).toBe(0);
+      expect(stats.bookingRate).toBe(0);
+    });
+
+    it('returns zero booking rate when no slots exist', () => {
+      let state = createInitialTeeTimeState();
+      state = updateOperatingHours(state, {
+        summerHours: { open: 18, close: 20, lastTee: 6 },
+      });
+      const stats = getDailyStats(state, 150);
+      expect(stats.totalSlots).toBe(0);
       expect(stats.bookingRate).toBe(0);
     });
 
@@ -417,6 +536,49 @@ describe('tee-times', () => {
       expect(stats.checkedIn).toBe(1);
       expect(stats.noShows).toBe(1);
     });
+
+    it('tracks in_progress rounds', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      state = bookTeeTime(state, 'tt-75-0600', [
+        { golferId: 'g1', name: 'A', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] },
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      state = checkInTeeTime(state, 'tt-75-0600');
+      state = startRound(state, 'tt-75-0600', { day: 75, hour: 6, minute: 0 });
+
+      const stats = getDailyStats(state, 75);
+      expect(stats.inProgress).toBe(1);
+      expect(stats.totalGolfers).toBe(1);
+      expect(stats.totalRevenue).toBe(70);
+    });
+
+    it('tracks completed rounds', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      state = bookTeeTime(state, 'tt-75-0600', [
+        { golferId: 'g1', name: 'A', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] },
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      state = checkInTeeTime(state, 'tt-75-0600');
+      state = startRound(state, 'tt-75-0600', { day: 75, hour: 6, minute: 0 });
+      state = completeRound(state, 'tt-75-0600', { day: 75, hour: 10, minute: 0 });
+
+      const stats = getDailyStats(state, 75);
+      expect(stats.completed).toBe(1);
+      expect(stats.totalGolfers).toBe(1);
+      expect(stats.totalRevenue).toBe(70);
+    });
+
+    it('tracks cancelled bookings', () => {
+      let state = createInitialTeeTimeState();
+      getTeeTimes(state, 75);
+      state = bookTeeTime(state, 'tt-75-0600', [
+        { golferId: 'g1', name: 'A', membershipStatus: 'public', greenFee: 50, cartFee: 20, addOns: [] },
+      ], 'reservation', { day: 0, hour: 8, minute: 0 });
+      state = cancelTeeTime(state, 'tt-75-0600');
+
+      const stats = getDailyStats(state, 75);
+      expect(stats.cancelled).toBe(1);
+    });
   });
 
   describe('isTwilight', () => {
@@ -446,7 +608,10 @@ describe('tee-times', () => {
   describe('getSpacingLabel', () => {
     it('returns correct labels', () => {
       expect(getSpacingLabel('packed')).toBe('Packed (6 min)');
+      expect(getSpacingLabel('tight')).toBe('Tight (8 min)');
       expect(getSpacingLabel('standard')).toBe('Standard (10 min)');
+      expect(getSpacingLabel('comfortable')).toBe('Comfortable (12 min)');
+      expect(getSpacingLabel('relaxed')).toBe('Relaxed (15 min)');
       expect(getSpacingLabel('exclusive')).toBe('Exclusive (20 min)');
     });
   });
@@ -591,6 +756,19 @@ describe('tee-times', () => {
         marketingBonus: 0.5,
       });
       expect(demand.bookingProbability).toBe(1.0);
+    });
+
+    it('uses default weather multiplier for unknown weather condition', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const demand = calculateSlotDemand(slot, 75, { weatherCondition: 'unknown_weather' as any });
+      expect(demand.weatherMultiplier).toBe(1.0);
+    });
+
+    it('reduces demand for high pricing ratio', () => {
+      const slot = generateDailySlots(75, SPACING_CONFIGS.standard, DEFAULT_OPERATING_HOURS)[0];
+      const normalPricing = calculateSlotDemand(slot, 75, { pricingRatio: 1.0 });
+      const highPricing = calculateSlotDemand(slot, 75, { pricingRatio: 2.0 });
+      expect(highPricing.pricingMultiplier).toBeLessThan(normalPricing.pricingMultiplier);
     });
   });
 
@@ -819,6 +997,27 @@ describe('tee-times', () => {
       state = applyBookingSimulation(state, simulation, 75);
       expect(state.bookingMetrics.totalBookingsToday).toBeGreaterThan(0);
     });
+
+    it('preserves unbooked slots when simulation has partial bookings', () => {
+      let state = createInitialTeeTimeState();
+      const slots = getTeeTimes(state, 75);
+      const totalSlots = slots.length;
+
+      const simulation = simulateDailyBookings(
+        state,
+        75,
+        74,
+        { baseDemand: 0.1 },
+        50,
+        20,
+        () => 0.5
+      );
+      expect(simulation.newBookings.length).toBeLessThan(totalSlots);
+
+      state = applyBookingSimulation(state, simulation, 75);
+      const slotsAfter = getTeeTimes(state, 75);
+      expect(slotsAfter.length).toBe(totalSlots);
+    });
   });
 
   describe('resetDailyMetrics', () => {
@@ -960,6 +1159,30 @@ describe('tee-times', () => {
     });
   });
 
+  describe('identifyBackupLocations', () => {
+    it('returns empty array for fast round time', () => {
+      const backups = identifyBackupLocations(3.5, SPACING_CONFIGS.standard);
+      expect(backups).toEqual([]);
+    });
+
+    it('returns empty array for exactly 4.0 round time', () => {
+      const backups = identifyBackupLocations(4.0, SPACING_CONFIGS.standard);
+      expect(backups).toEqual([]);
+    });
+
+    it('may return backup locations for slow round time', () => {
+      const originalRandom = Math.random;
+      Math.random = () => 0.1;
+      try {
+        const backups = identifyBackupLocations(6.0, SPACING_CONFIGS.packed);
+        expect(Array.isArray(backups)).toBe(true);
+        expect(backups.length).toBeGreaterThan(0);
+      } finally {
+        Math.random = originalRandom;
+      }
+    });
+  });
+
   describe('calculatePaceOfPlayDeterministic', () => {
     it('calculates base round time with standard spacing', () => {
       const pace = calculatePaceOfPlayDeterministic(SPACING_CONFIGS.standard, 0.5, 80);
@@ -1008,6 +1231,18 @@ describe('tee-times', () => {
       expect(pace.paceRating).toBeDefined();
       expect(typeof pace.satisfactionPenalty).toBe('number');
     });
+
+    it('adds time for high capacity above 0.8', () => {
+      const lowCapacity = calculatePaceOfPlay(SPACING_CONFIGS.standard, 0.5, 80);
+      const highCapacity = calculatePaceOfPlay(SPACING_CONFIGS.standard, 0.95, 80);
+      expect(highCapacity.averageRoundTime).toBeGreaterThan(lowCapacity.averageRoundTime);
+    });
+
+    it('adds time for poor course conditions below 50', () => {
+      const goodConditions = calculatePaceOfPlay(SPACING_CONFIGS.standard, 0.5, 80);
+      const poorConditions = calculatePaceOfPlay(SPACING_CONFIGS.standard, 0.5, 30);
+      expect(poorConditions.averageRoundTime).toBeGreaterThan(goodConditions.averageRoundTime);
+    });
   });
 
   describe('previewSpacingImpact', () => {
@@ -1031,6 +1266,12 @@ describe('tee-times', () => {
       expect(preview.revenueMultiplier).toBeLessThan(1.0);
       expect(preview.backupRisk).toBe('low');
       expect(preview.reputationImpact).toBeGreaterThan(0);
+    });
+
+    it('returns high backup risk for tight spacing', () => {
+      const preview = previewSpacingImpact('tight');
+      expect(preview.backupRisk).toBe('high');
+      expect(preview.reputationImpact).toBeLessThan(0);
     });
   });
 

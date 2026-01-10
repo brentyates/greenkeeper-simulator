@@ -14,11 +14,11 @@ test.describe('Game Control Integration', () => {
 
   test.describe('Pause Control', () => {
     test('can pause and unpause the game', async ({ page }) => {
-      await page.evaluate(() => window.game.pause());
+      await page.evaluate(() => window.game.setPaused(true));
       let state = await page.evaluate(() => window.game.getUIState());
       expect(state.isPaused).toBe(true);
 
-      await page.evaluate(() => window.game.unpause());
+      await page.evaluate(() => window.game.setPaused(false));
       state = await page.evaluate(() => window.game.getUIState());
       expect(state.isPaused).toBe(false);
     });
@@ -34,7 +34,7 @@ test.describe('Game Control Integration', () => {
     });
 
     test('time does not advance when paused', async ({ page }) => {
-      await page.evaluate(() => window.game.pause());
+      await page.evaluate(() => window.game.setPaused(true));
       const before = await page.evaluate(() => window.game.getGameTime());
 
       await page.waitForTimeout(500);
@@ -57,7 +57,7 @@ test.describe('Game Control Integration', () => {
 
     test('advanceTimeByMinutes advances game time', async ({ page }) => {
       // Pause first to get stable readings
-      await page.evaluate(() => window.game.pause());
+      await page.evaluate(() => window.game.setPaused(true));
 
       const before = await page.evaluate(() => window.game.getGameTime());
       const beforeTotal = before.hours * 60 + before.minutes;
@@ -134,55 +134,43 @@ test.describe('Game Control Integration', () => {
     });
   });
 
-  test.describe('Key Simulation', () => {
-    test('pressKey simulates keyboard input', async ({ page }) => {
+  test.describe('Direct API Control', () => {
+    test('movePlayer moves player position', async ({ page }) => {
       const initialPos = await page.evaluate(() => window.game.getPlayerPosition());
 
-      await page.evaluate(() => window.game.pressKey('ArrowRight'));
+      await page.evaluate(() => window.game.movePlayer('right'));
       await page.evaluate(() => window.game.waitForPlayerIdle());
 
       const finalPos = await page.evaluate(() => window.game.getPlayerPosition());
       expect(finalPos.y).toBe(initialPos.y + 1);
     });
 
-    test('pressKey works with WASD', async ({ page }) => {
-      const initialPos = await page.evaluate(() => window.game.getPlayerPosition());
-
-      await page.evaluate(() => window.game.pressKey('d'));
-      await page.evaluate(() => window.game.waitForPlayerIdle());
-
-      const finalPos = await page.evaluate(() => window.game.getPlayerPosition());
-      expect(finalPos.y).toBe(initialPos.y + 1);
-    });
-
-    test('pressKey number selects equipment', async ({ page }) => {
-      // Use selectEquipment directly to test that path
-      // selectEquipment takes 1-indexed (1=mower, 2=sprinkler, 3=spreader)
-      // getEquipmentState returns 0-indexed (0=mower, 1=sprinkler, 2=spreader)
+    test('selectEquipment selects equipment slot', async ({ page }) => {
       await page.evaluate(() => window.game.selectEquipment(1));
 
       const state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.selectedSlot).toBe(0); // 0 = mower (0-indexed)
+      expect(state.selectedSlot).toBe(0);
       expect(state.mower?.active).toBe(true);
     });
 
-    test('pressKey space toggles equipment', async ({ page }) => {
+    test('toggleEquipment toggles active state', async ({ page }) => {
       await page.evaluate(() => window.game.selectEquipment(1));
       let state = await page.evaluate(() => window.game.getEquipmentState());
       expect(state.mower?.active).toBe(true);
 
-      await page.evaluate(() => window.game.pressKey(' '));
+      await page.evaluate(() => window.game.toggleEquipment());
       state = await page.evaluate(() => window.game.getEquipmentState());
       expect(state.mower?.active).toBe(false);
     });
 
-    test('pressKey p toggles pause', async ({ page }) => {
+    test('setPaused controls pause state', async ({ page }) => {
+      await page.evaluate(() => window.game.setPaused(false));
       let uiState = await page.evaluate(() => window.game.getUIState());
-      const initialPaused = uiState.isPaused;
+      expect(uiState.isPaused).toBe(false);
 
-      await page.evaluate(() => window.game.pressKey('p'));
+      await page.evaluate(() => window.game.setPaused(true));
       uiState = await page.evaluate(() => window.game.getUIState());
-      expect(uiState.isPaused).toBe(!initialPaused);
+      expect(uiState.isPaused).toBe(true);
     });
   });
 

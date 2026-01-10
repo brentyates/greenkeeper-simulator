@@ -235,6 +235,11 @@ describe("Golfer System", () => {
       // Casual should be most common
       expect(counts.casual).toBeGreaterThan(counts.professional);
     });
+
+    it("returns casual as fallback for edge case roll >= 1", () => {
+      const type = selectGolferType(1.0);
+      expect(type).toBe("casual");
+    });
   });
 
   describe("createGolfer", () => {
@@ -453,6 +458,13 @@ describe("Golfer System", () => {
       expect(stats.byType.casual).toBe(1);
       expect(stats.byType.regular).toBe(1);
     });
+
+    it("returns default values when pool is empty", () => {
+      const state = makePoolState({ golfers: [] });
+      const stats = getGolferStats(state);
+      expect(stats.averageSatisfaction).toBe(75);
+      expect(stats.returnRate).toBe(0);
+    });
   });
 
   // ==========================================================================
@@ -483,6 +495,16 @@ describe("Golfer System", () => {
     it("returns 9-hole rate for 9 holes", () => {
       const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, false, false);
       expect(fee).toBe(DEFAULT_GREEN_FEES.weekday9Holes);
+    });
+
+    it("returns 9-hole weekend rate", () => {
+      const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, true, false);
+      expect(fee).toBe(DEFAULT_GREEN_FEES.weekend9Holes);
+    });
+
+    it("returns 9-hole twilight rate", () => {
+      const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, false, true);
+      expect(fee).toBe(DEFAULT_GREEN_FEES.twilight9Holes);
     });
   });
 
@@ -578,6 +600,36 @@ describe("Golfer System", () => {
 
       expect(patientSat).toBeGreaterThan(impatientSat);
     });
+
+    it("returns value for staff_service factor", () => {
+      const golfer = makeGolfer();
+      const sat = calculateSatisfactionFactor("staff_service", 85, golfer);
+      expect(sat).toBe(85);
+    });
+
+    it("returns value for facilities factor", () => {
+      const golfer = makeGolfer();
+      const sat = calculateSatisfactionFactor("facilities", 90, golfer);
+      expect(sat).toBe(90);
+    });
+
+    it("returns value for weather factor", () => {
+      const golfer = makeGolfer();
+      const sat = calculateSatisfactionFactor("weather", 70, golfer);
+      expect(sat).toBe(70);
+    });
+
+    it("returns 100 for pace_of_play when value is below threshold", () => {
+      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, patienceLevel: 80 } });
+      const sat = calculateSatisfactionFactor("pace_of_play", 50, golfer);
+      expect(sat).toBe(100);
+    });
+
+    it("returns value for unknown factor type via default case", () => {
+      const golfer = makeGolfer();
+      const sat = calculateSatisfactionFactor("unknown_factor" as any, 65, golfer);
+      expect(sat).toBe(65);
+    });
   });
 
   describe("updateSatisfaction", () => {
@@ -607,6 +659,25 @@ describe("Golfer System", () => {
 
       expect(updated.satisfactionFactors.course_condition).toBe(80);
       expect(updated.satisfactionFactors.facilities).toBeDefined();
+    });
+
+    it("skips factors without defined weights", () => {
+      const golfer = makeGolfer({
+        satisfaction: 60,
+        satisfactionFactors: { unknown_factor: 90 } as any
+      });
+      const updated = updateSatisfaction(golfer, {});
+      // Unknown factor should be skipped, satisfaction should stay same
+      expect(updated.satisfaction).toBe(60);
+    });
+
+    it("keeps original satisfaction when no weighted factors exist", () => {
+      const golfer = makeGolfer({
+        satisfaction: 55,
+        satisfactionFactors: {}
+      });
+      const updated = updateSatisfaction(golfer, {});
+      expect(updated.satisfaction).toBe(55);
     });
   });
 
@@ -640,6 +711,18 @@ describe("Golfer System", () => {
       });
       // Good value should return
       expect(calculateWillReturn(goodValue)).toBe(true);
+    });
+
+    it("poor price value reduces return likelihood", () => {
+      const poorValue = makeGolfer({
+        satisfaction: 60,
+        type: "casual", // 0.8 modifier
+        satisfactionFactors: { price_value: 40 }
+      });
+      // 60% satisfaction / 100 = 0.6
+      // 0.6 * 0.8 (casual) = 0.48
+      // 0.48 * 0.7 (poor value) = 0.336 < 0.5, should not return
+      expect(calculateWillReturn(poorValue)).toBe(false);
     });
   });
 
@@ -703,6 +786,57 @@ describe("Golfer System", () => {
       const crowdedRate = calculateArrivalRate(crowded, weather, false, 9);
 
       expect(emptyRate).toBeGreaterThan(crowdedRate);
+    });
+
+    it("applies afternoon modifier for hours 13-16", () => {
+      const state = makePoolState();
+      const weather = makeWeather();
+
+      const afternoonRate = calculateArrivalRate(state, weather, false, 14);
+      const eveningRate = calculateArrivalRate(state, weather, false, 18);
+
+      expect(afternoonRate).toBeGreaterThan(eveningRate);
+    });
+
+    it("applies twilight modifier for hour >= 17", () => {
+      const state = makePoolState();
+      const weather = makeWeather();
+
+      const twilightRate = calculateArrivalRate(state, weather, false, 17);
+      const noonRate = calculateArrivalRate(state, weather, false, 12);
+
+      expect(twilightRate).toBeLessThan(noonRate);
+    });
+
+    it("applies early morning modifier for hour < 7", () => {
+      const state = makePoolState();
+      const weather = makeWeather();
+
+      const earlyRate = calculateArrivalRate(state, weather, false, 6);
+      const morningRate = calculateArrivalRate(state, weather, false, 8);
+
+      expect(earlyRate).toBeLessThan(morningRate);
+    });
+
+    it("applies moderate crowding modifier for 60-80% capacity", () => {
+      const moderateCrowd = makePoolState({
+        peakCapacity: 40,
+        golfers: Array(26).fill(null).map((_, i) =>
+          makeGolfer({ id: `g${i}`, status: "playing" })
+        )
+      });
+      const veryCrowded = makePoolState({
+        peakCapacity: 40,
+        golfers: Array(34).fill(null).map((_, i) =>
+          makeGolfer({ id: `g${i}`, status: "playing" })
+        )
+      });
+      const weather = makeWeather();
+
+      const moderateRate = calculateArrivalRate(moderateCrowd, weather, false, 9);
+      const veryRate = calculateArrivalRate(veryCrowded, weather, false, 9);
+
+      expect(moderateRate).toBeGreaterThan(veryRate);
     });
   });
 
@@ -794,6 +928,16 @@ describe("Golfer System", () => {
       const state = makePoolState();
       expect(updateGolfer(state, "fake", { satisfaction: 80 })).toBeNull();
     });
+
+    it("only updates matching golfer, leaving others unchanged", () => {
+      const g1 = makeGolfer({ id: "g1", satisfaction: 50 });
+      const g2 = makeGolfer({ id: "g2", satisfaction: 60 });
+      const state = makePoolState({ golfers: [g1, g2] });
+      const result = updateGolfer(state, "g1", { satisfaction: 80 });
+
+      expect(result?.golfers[0].satisfaction).toBe(80);
+      expect(result?.golfers[1].satisfaction).toBe(60);
+    });
   });
 
   describe("setGolferStatus", () => {
@@ -829,6 +973,11 @@ describe("Golfer System", () => {
       const result = advanceGolferProgress(state, "g1", 2);
 
       expect(result?.golfers[0].status).toBe("finishing");
+    });
+
+    it("returns null for non-existent golfer", () => {
+      const state = makePoolState({ golfers: [] });
+      expect(advanceGolferProgress(state, "nonexistent", 1)).toBeNull();
     });
   });
 
@@ -995,6 +1144,95 @@ describe("Golfer System", () => {
 
     it("increases duration with crowding", () => {
       expect(estimateRoundDuration(18, 100)).toBeGreaterThan(estimateRoundDuration(18, 0));
+    });
+  });
+
+  // ==========================================================================
+  // Price Value Calculation Tests (via tickGolfers)
+  // ==========================================================================
+
+  describe("Price Value Branches", () => {
+    // calculatePriceValue compares paidAmount to (rating.overall / 100) * priceThreshold
+    // rating.overall = 70, priceThreshold = 100 → expectedValue = 70
+    // Great value (100): actualValue <= 70 * 0.7 = 49
+    // Fair value (75): actualValue <= 70
+    // Slightly overpriced (50): actualValue <= 70 * 1.3 = 91
+    // Overpriced (25): actualValue > 91
+
+    it("assigns great value (100) when paidAmount is much lower than expected", () => {
+      const golfer = makeGolfer({
+        id: "g1",
+        status: "checking_in",
+        paidAmount: 40, // <= 49 is great value (70 * 0.7 = 49)
+        preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
+      });
+      const state = makePoolState({
+        golfers: [golfer],
+        rating: { ...makePoolState().rating, overall: 70 }
+      });
+      const weather = makeWeather();
+
+      const result = tickGolfers(state, 10, 70, 70, weather);
+
+      expect(result.state.golfers[0].status).toBe("playing");
+      expect(result.state.golfers[0].satisfactionFactors.price_value).toBe(100);
+    });
+
+    it("assigns fair value (75) when paidAmount is at or below expected", () => {
+      const golfer = makeGolfer({
+        id: "g1",
+        status: "checking_in",
+        paidAmount: 60, // Between 50-70 is fair value
+        preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
+      });
+      const state = makePoolState({
+        golfers: [golfer],
+        rating: { ...makePoolState().rating, overall: 70 }
+      });
+      const weather = makeWeather();
+
+      const result = tickGolfers(state, 10, 70, 70, weather);
+
+      expect(result.state.golfers[0].status).toBe("playing");
+      expect(result.state.golfers[0].satisfactionFactors.price_value).toBe(75);
+    });
+
+    it("assigns slightly overpriced (50) when paidAmount exceeds expected by up to 30%", () => {
+      const golfer = makeGolfer({
+        id: "g1",
+        status: "checking_in",
+        paidAmount: 85, // Between 71-91 is slightly overpriced
+        preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
+      });
+      const state = makePoolState({
+        golfers: [golfer],
+        rating: { ...makePoolState().rating, overall: 70 }
+      });
+      const weather = makeWeather();
+
+      const result = tickGolfers(state, 10, 70, 70, weather);
+
+      expect(result.state.golfers[0].status).toBe("playing");
+      expect(result.state.golfers[0].satisfactionFactors.price_value).toBe(50);
+    });
+
+    it("assigns overpriced (25) when paidAmount exceeds expected by more than 30%", () => {
+      const golfer = makeGolfer({
+        id: "g1",
+        status: "checking_in",
+        paidAmount: 100, // > 91 is overpriced
+        preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
+      });
+      const state = makePoolState({
+        golfers: [golfer],
+        rating: { ...makePoolState().rating, overall: 70 }
+      });
+      const weather = makeWeather();
+
+      const result = tickGolfers(state, 10, 70, 70, weather);
+
+      expect(result.state.golfers[0].status).toBe("playing");
+      expect(result.state.golfers[0].satisfactionFactors.price_value).toBe(25);
     });
   });
 

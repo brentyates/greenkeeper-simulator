@@ -14,24 +14,24 @@ test.describe('Terrain Editor Integration', () => {
   test('terrain editor can be enabled and disabled', async ({ page }) => {
     expect(await page.evaluate(() => window.game.isTerrainEditorEnabled())).toBe(false);
 
-    await page.evaluate(() => window.game.enableTerrainEditor());
+    await page.evaluate(() => window.game.setTerrainEditor(true));
     expect(await page.evaluate(() => window.game.isTerrainEditorEnabled())).toBe(true);
 
-    await page.evaluate(() => window.game.disableTerrainEditor());
+    await page.evaluate(() => window.game.setTerrainEditor(false));
     expect(await page.evaluate(() => window.game.isTerrainEditorEnabled())).toBe(false);
   });
 
-  test('can toggle terrain editor', async ({ page }) => {
-    await page.evaluate(() => window.game.toggleTerrainEditor());
+  test('can enable and disable terrain editor', async ({ page }) => {
+    await page.evaluate(() => window.game.setTerrainEditor(true));
     expect(await page.evaluate(() => window.game.isTerrainEditorEnabled())).toBe(true);
 
-    await page.evaluate(() => window.game.toggleTerrainEditor());
+    await page.evaluate(() => window.game.setTerrainEditor(false));
     expect(await page.evaluate(() => window.game.isTerrainEditorEnabled())).toBe(false);
   });
 
   test('can change editor tools', async ({ page }) => {
     await page.evaluate(() => {
-      window.game.enableTerrainEditor();
+      window.game.setTerrainEditor(true);
       window.game.setEditorTool('raise');
     });
 
@@ -45,7 +45,7 @@ test.describe('Terrain Editor Integration', () => {
 
   test('can change brush size', async ({ page }) => {
     await page.evaluate(() => {
-      window.game.enableTerrainEditor();
+      window.game.setTerrainEditor(true);
       window.game.setEditorBrushSize(2);
     });
 
@@ -59,7 +59,7 @@ test.describe('Terrain Editor Integration', () => {
 
   test('editing terrain changes elevation', async ({ page }) => {
     await page.evaluate(() => {
-      window.game.enableTerrainEditor();
+      window.game.setTerrainEditor(true);
       window.game.setEditorTool('raise');
     });
 
@@ -76,7 +76,7 @@ test.describe('Terrain Editor Integration', () => {
 
   test('undo and redo work', async ({ page }) => {
     await page.evaluate(() => {
-      window.game.enableTerrainEditor();
+      window.game.setTerrainEditor(true);
       window.game.setEditorTool('raise');
     });
 
@@ -103,7 +103,7 @@ test.describe('Terrain Editor Integration', () => {
   });
 
   test('undo/redo state is tracked', async ({ page }) => {
-    await page.evaluate(() => window.game.enableTerrainEditor());
+    await page.evaluate(() => window.game.setTerrainEditor(true));
 
     let state = await page.evaluate(() => window.game.getTerrainEditorState());
     expect(state.canUndo).toBe(false);

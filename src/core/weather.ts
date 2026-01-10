@@ -174,8 +174,6 @@ export function tickWeather(
       else if (transitionRandom < 0.8) newType = 'cloudy';
       else newType = 'stormy';
       break;
-    default:
-      newType = 'sunny';
   }
 
   const newCondition = generateWeatherCondition(
@@ -229,8 +227,6 @@ export function getWeatherImpactDescription(weather: WeatherCondition): string {
         return 'Warm and sunny. Good golf weather, moderate moisture loss.';
       }
       return 'Perfect conditions for golf!';
-    default:
-      return '';
   }
 }
 
@@ -250,8 +246,6 @@ export function getArrivalMultiplierFromWeather(weather: WeatherCondition): numb
       if (weather.temperature > 95) return 0.6;
       if (weather.temperature > 90) return 0.8;
       if (weather.temperature < 50) return 0.7;
-      return 1.0;
-    default:
       return 1.0;
   }
 }

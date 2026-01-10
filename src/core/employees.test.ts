@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   // Types
   Employee,
@@ -59,7 +59,23 @@ import {
   getRoleName,
   getSkillLevelName,
   formatWage,
-  resetEmployeeCounter
+  resetEmployeeCounter,
+
+  // Prestige-based hiring functions
+  createInitialApplicationState,
+  resetJobPostingCounter,
+  generateApplication,
+  tickApplications,
+  postJobOpening,
+  acceptApplication,
+  rejectApplication,
+  getTimeUntilNextApplication,
+  getActivePostingsCount,
+  hasActivePosting,
+  getPostingCost,
+
+  // Prestige types/constants
+  PRESTIGE_HIRING_CONFIG
 } from "./employees";
 
 // ============================================================================
@@ -651,6 +667,28 @@ describe("Employee System", () => {
       const updated = awardExperience(roster, "unknown-id", 50);
       expect(updated).toBe(roster);
     });
+
+    it("only awards experience to targeted employee", () => {
+      const emp1 = makeEmployee({ id: "emp_1", experience: 100 });
+      const emp2 = makeEmployee({ id: "emp_2", experience: 50 });
+      const roster = makeRoster({ employees: [emp1, emp2] });
+      const updated = awardExperience(roster, "emp_1", 50);
+      expect(updated.employees[0].experience).toBe(150);
+      expect(updated.employees[1].experience).toBe(50);
+    });
+
+    it("does not promote expert when experience threshold reached", () => {
+      const config = EMPLOYEE_CONFIGS.groundskeeper;
+      const emp = makeEmployee({
+        role: "groundskeeper",
+        skillLevel: "expert",
+        experience: config.experienceToLevel - 10
+      });
+      const roster = makeRoster({ employees: [emp] });
+      const updated = awardExperience(roster, emp.id, 50);
+      expect(updated.employees[0].skillLevel).toBe("expert");
+      expect(updated.employees[0].experience).toBe(config.experienceToLevel + 40);
+    });
   });
 
   describe("getManagerBonus", () => {
@@ -786,6 +824,16 @@ describe("Employee System", () => {
     it("returns null for nonexistent employee", () => {
       const roster = makeRoster();
       expect(updateEmployee(roster, "fake", { happiness: 50 })).toBeNull();
+    });
+
+    it("only updates targeted employee in roster with multiple employees", () => {
+      const emp1 = makeEmployee({ id: "emp_1", happiness: 50 });
+      const emp2 = makeEmployee({ id: "emp_2", happiness: 60 });
+      const roster = makeRoster({ employees: [emp1, emp2] });
+      const result = updateEmployee(roster, "emp_1", { happiness: 75 });
+
+      expect(result?.employees[0].happiness).toBe(75);
+      expect(result?.employees[1].happiness).toBe(60);
     });
   });
 
@@ -924,6 +972,31 @@ describe("Employee System", () => {
 
       const expectedWage = config.baseWage * config.wageMultipliers.trained;
       expect(result.roster.employees[0].hourlyWage).toBeCloseTo(expectedWage, 2);
+    });
+
+    it("does not promote when already at expert level", () => {
+      const config = EMPLOYEE_CONFIGS.groundskeeper;
+      const emp = makeEmployee({
+        id: "emp_1",
+        role: "groundskeeper",
+        skillLevel: "expert",
+        status: "working",
+        experience: config.experienceToLevel - 1
+      });
+      const roster = makeRoster({ employees: [emp] });
+      const result = tickEmployees(roster, 10);
+
+      expect(result.promotions.length).toBe(0);
+      expect(result.roster.employees[0].skillLevel).toBe("expert");
+    });
+
+    it("does not accrue fatigue or experience for idle employees", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "idle", fatigue: 20, experience: 100 });
+      const roster = makeRoster({ employees: [emp] });
+      const result = tickEmployees(roster, 10);
+
+      expect(result.roster.employees[0].fatigue).toBe(20);
+      expect(result.roster.employees[0].experience).toBe(100);
     });
 
     it("applies training bonus to reduce fatigue accrual", () => {
@@ -1104,9 +1177,18 @@ describe("Employee System", () => {
 
       expect(promoteEmployee(roster, "emp_1")).toBeNull();
     });
+
+    it("returns null for non-existent employee", () => {
+      const roster = makeRoster({ employees: [] });
+      expect(promoteEmployee(roster, "nonexistent")).toBeNull();
+    });
   });
 
   describe("adjustHappiness", () => {
+    it("returns null for non-existent employee", () => {
+      const roster = makeRoster({ employees: [] });
+      expect(adjustHappiness(roster, "nonexistent", 10)).toBeNull();
+    });
     it("increases happiness", () => {
       const emp = makeEmployee({ id: "emp_1", happiness: 50 });
       const roster = makeRoster({ employees: [emp] });
@@ -1133,6 +1215,11 @@ describe("Employee System", () => {
   });
 
   describe("giveRaise", () => {
+    it("returns null for non-existent employee", () => {
+      const roster = makeRoster({ employees: [] });
+      expect(giveRaise(roster, "nonexistent", 10)).toBeNull();
+    });
+
     it("increases wage by percentage", () => {
       const emp = makeEmployee({ id: "emp_1", hourlyWage: 10 });
       const roster = makeRoster({ employees: [emp] });
@@ -1262,6 +1349,338 @@ describe("Employee System", () => {
 
       const increased = adjustHappiness(roster2, "emp_2", 10);
       expect(increased?.employees[0].happiness).toBe(100);
+    });
+  });
+
+  // ==========================================================================
+  // Prestige-Based Hiring System Tests
+  // ==========================================================================
+
+  describe("Prestige-Based Hiring", () => {
+    beforeEach(() => {
+      resetJobPostingCounter();
+    });
+
+    describe("createInitialApplicationState", () => {
+      it("creates empty application state", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        expect(state.applications).toEqual([]);
+        expect(state.activeJobPostings).toEqual([]);
+        expect(state.totalApplicationsReceived).toBe(0);
+      });
+
+      it("sets next application time based on prestige tier", () => {
+        const config = PRESTIGE_HIRING_CONFIG['municipal'];
+        const state = createInitialApplicationState(1000, 'municipal');
+        expect(state.nextApplicationTime).toBe(1000 + config.applicationRate * 60);
+      });
+
+      it("uses different config for different tiers", () => {
+        const municipal = createInitialApplicationState(0, 'municipal');
+        const championship = createInitialApplicationState(0, 'championship');
+        // Championship has different application rate
+        expect(municipal.nextApplicationTime).not.toBe(championship.nextApplicationTime);
+      });
+    });
+
+    describe("generateApplication", () => {
+      it("generates employee application", () => {
+        const emp = generateApplication(1000, 'municipal');
+        expect(emp).toBeDefined();
+        expect(emp.id).toBeDefined();
+        expect(emp.hireDate).toBe(1000);
+      });
+
+      it("can target specific role from posting", () => {
+        const posting = {
+          id: 'posting_1',
+          role: 'mechanic' as const,
+          postedTime: 0,
+          expiresAt: 10000,
+          cost: 100
+        };
+        // With target posting, role selection is biased
+        const applications = [];
+        for (let i = 0; i < 10; i++) {
+          applications.push(generateApplication(1000, 'municipal', posting));
+        }
+        // Should have at least some mechanics due to 65% bias
+        expect(applications.some(a => a.role === 'mechanic')).toBe(true);
+      });
+
+      it("can target specific skill level from posting", () => {
+        const posting = {
+          id: 'posting_1',
+          role: 'groundskeeper' as const,
+          postedTime: 0,
+          expiresAt: 10000,
+          cost: 100,
+          targetSkillLevel: 'experienced' as const
+        };
+        // With target skill, 60% chance to match
+        const applications = [];
+        for (let i = 0; i < 10; i++) {
+          applications.push(generateApplication(1000, 'municipal', posting));
+        }
+        // Should have at least some experienced due to 60% bias
+        expect(applications.some(a => a.skillLevel === 'experienced')).toBe(true);
+      });
+
+      it("generates experienced skill level when random falls in experienced range", () => {
+        const randomSpy = vi.spyOn(Math, 'random');
+        // For championship tier: novice=3, trained=17, experienced=42, expert=38 (total=100)
+        // To get experienced: roll must be > 20 (3+17) and <= 62 (3+17+42)
+        // So we need random() * 100 to be in range (20, 62] => random() in (0.2, 0.62]
+        // We'll return 0.4 which gives roll = 40, hitting experienced
+        randomSpy.mockReturnValue(0.4);
+
+        const emp = generateApplication(1000, 'championship');
+        expect(emp.skillLevel).toBe('experienced');
+
+        randomSpy.mockRestore();
+      });
+
+      it("generates expert skill level when random falls in expert range", () => {
+        const randomSpy = vi.spyOn(Math, 'random');
+        // For championship tier: novice=3, trained=17, experienced=42, expert=38 (total=100)
+        // To get expert: roll must be > 62
+        // So we need random() * 100 to be > 62 => random() > 0.62
+        // We'll return 0.8 which gives roll = 80, hitting expert
+        randomSpy.mockReturnValue(0.8);
+
+        const emp = generateApplication(1000, 'championship');
+        expect(emp.skillLevel).toBe('expert');
+
+        randomSpy.mockRestore();
+      });
+    });
+
+    describe("tickApplications", () => {
+      it("generates application when time is reached", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = tickApplications(state, state.nextApplicationTime, 'municipal');
+
+        expect(result.newApplicant).not.toBeNull();
+        expect(result.state.applications.length).toBe(1);
+        expect(result.state.totalApplicationsReceived).toBe(1);
+      });
+
+      it("does not generate application before time", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = tickApplications(state, 100, 'municipal');
+
+        expect(result.newApplicant).toBeNull();
+        expect(result.state.applications.length).toBe(0);
+      });
+
+      it("expires old job postings", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const posting = {
+          id: 'posting_1',
+          role: 'mechanic' as const,
+          postedTime: 0,
+          expiresAt: 1000,
+          cost: 100
+        };
+        const stateWithPosting = {
+          ...state,
+          activeJobPostings: [posting]
+        };
+
+        const result = tickApplications(stateWithPosting, 2000, 'municipal');
+        expect(result.expiredPostings.length).toBe(1);
+        expect(result.state.activeJobPostings.length).toBe(0);
+      });
+
+      it("respects max applications limit", () => {
+        const config = PRESTIGE_HIRING_CONFIG['municipal'];
+        const apps = Array(config.maxApplications).fill(null).map(() =>
+          generateApplication(0, 'municipal')
+        );
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          applications: apps
+        };
+
+        const result = tickApplications(state, state.nextApplicationTime + 10000, 'municipal');
+        expect(result.state.applications.length).toBe(config.maxApplications);
+      });
+
+      it("uses posting bonus for next application time", () => {
+        const config = PRESTIGE_HIRING_CONFIG['municipal'];
+        const posting = {
+          id: 'posting_1',
+          role: 'mechanic' as const,
+          postedTime: 0,
+          expiresAt: 100000,
+          cost: 100
+        };
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          activeJobPostings: [posting],
+          nextApplicationTime: 0
+        };
+
+        const result = tickApplications(state, 0, 'municipal');
+        const expectedInterval = Math.min(config.applicationRate, config.postingApplicationRate);
+        expect(result.state.nextApplicationTime).toBe(expectedInterval * 60);
+      });
+    });
+
+    describe("postJobOpening", () => {
+      it("creates job posting", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = postJobOpening(state, 1000, 'municipal', 'mechanic');
+
+        expect(result).not.toBeNull();
+        expect(result?.posting.role).toBe('mechanic');
+        expect(result?.posting.postedTime).toBe(1000);
+      });
+
+      it("adds posting to active postings", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = postJobOpening(state, 1000, 'municipal', 'mechanic');
+
+        expect(result?.state.activeJobPostings.length).toBe(1);
+      });
+
+      it("sets expiration time based on prestige config", () => {
+        const config = PRESTIGE_HIRING_CONFIG['municipal'];
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = postJobOpening(state, 1000, 'municipal', 'mechanic');
+
+        expect(result?.posting.expiresAt).toBe(1000 + config.postingDuration * 60);
+      });
+
+      it("includes target skill level when specified", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = postJobOpening(state, 1000, 'municipal', 'mechanic', 'experienced');
+
+        expect(result?.posting.targetSkillLevel).toBe('experienced');
+      });
+
+      it("updates next application time with posting bonus", () => {
+        const config = PRESTIGE_HIRING_CONFIG['municipal'];
+        const state = createInitialApplicationState(0, 'municipal');
+        const result = postJobOpening(state, 1000, 'municipal', 'mechanic');
+
+        expect(result?.state.nextApplicationTime).toBeLessThanOrEqual(
+          1000 + config.postingApplicationRate * 60
+        );
+      });
+    });
+
+    describe("acceptApplication", () => {
+      it("removes accepted application", () => {
+        const app = generateApplication(0, 'municipal');
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          applications: [app]
+        };
+
+        const result = acceptApplication(state, app.id);
+        expect(result?.applications.length).toBe(0);
+      });
+
+      it("returns null for non-existent application", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        expect(acceptApplication(state, 'fake_id')).toBeNull();
+      });
+
+      it("keeps other applications", () => {
+        const app1 = generateApplication(0, 'municipal');
+        const app2 = generateApplication(100, 'municipal');
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          applications: [app1, app2]
+        };
+
+        const result = acceptApplication(state, app1.id);
+        expect(result?.applications.length).toBe(1);
+        expect(result?.applications[0].id).toBe(app2.id);
+      });
+    });
+
+    describe("rejectApplication", () => {
+      it("removes rejected application", () => {
+        const app = generateApplication(0, 'municipal');
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          applications: [app]
+        };
+
+        const result = rejectApplication(state, app.id);
+        expect(result?.applications.length).toBe(0);
+      });
+
+      it("returns null for non-existent application", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        expect(rejectApplication(state, 'fake_id')).toBeNull();
+      });
+    });
+
+    describe("getTimeUntilNextApplication", () => {
+      it("returns time remaining", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const timeUntil = getTimeUntilNextApplication(state, 100);
+        expect(timeUntil).toBe(state.nextApplicationTime - 100);
+      });
+
+      it("returns 0 when time has passed", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        const timeUntil = getTimeUntilNextApplication(state, state.nextApplicationTime + 1000);
+        expect(timeUntil).toBe(0);
+      });
+    });
+
+    describe("getActivePostingsCount", () => {
+      it("returns count of active postings", () => {
+        const state = createInitialApplicationState(0, 'municipal');
+        expect(getActivePostingsCount(state)).toBe(0);
+
+        const posting = {
+          id: 'posting_1',
+          role: 'mechanic' as const,
+          postedTime: 0,
+          expiresAt: 10000,
+          cost: 100
+        };
+        const stateWithPosting = {
+          ...state,
+          activeJobPostings: [posting]
+        };
+        expect(getActivePostingsCount(stateWithPosting)).toBe(1);
+      });
+    });
+
+    describe("hasActivePosting", () => {
+      it("returns true when role has active posting", () => {
+        const posting = {
+          id: 'posting_1',
+          role: 'mechanic' as const,
+          postedTime: 0,
+          expiresAt: 10000,
+          cost: 100
+        };
+        const state = {
+          ...createInitialApplicationState(0, 'municipal'),
+          activeJobPostings: [posting]
+        };
+
+        expect(hasActivePosting(state, 'mechanic')).toBe(true);
+        expect(hasActivePosting(state, 'groundskeeper')).toBe(false);
+      });
+    });
+
+    describe("getPostingCost", () => {
+      it("returns cost for prestige tier", () => {
+        const municipalCost = getPostingCost('municipal');
+        const championshipCost = getPostingCost('championship');
+
+        expect(typeof municipalCost).toBe('number');
+        expect(typeof championshipCost).toBe('number');
+        expect(municipalCost).toBeGreaterThan(championshipCost);
+      });
     });
   });
 });

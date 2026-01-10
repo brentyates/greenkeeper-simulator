@@ -131,13 +131,13 @@ export class ScenarioManager {
     this.progress.currentHealth = stats.health;
 
     const condition = getOverallCondition(stats.health);
-    const conditionToRating: Record<string, number> = {
+    const conditionToRating: Record<'Excellent' | 'Good' | 'Fair' | 'Poor', number> = {
       'Excellent': 90,
       'Good': 70,
       'Fair': 50,
       'Poor': 30,
     };
-    this.progress.currentRating = conditionToRating[condition] || 50;
+    this.progress.currentRating = conditionToRating[condition];
   }
 
   public checkSatisfactionStreak(targetRating: number): void {

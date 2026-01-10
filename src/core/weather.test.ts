@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   WeatherState,
   createInitialWeatherState,
@@ -150,11 +150,36 @@ describe('weather', () => {
       expect(result.previousType).toBeNull();
     });
 
+    it('returns unchanged state when temp drift rounds to zero', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'sunny', temperature: 75, windSpeed: 5 },
+        lastChangeTime: 180,
+      };
+      const result = tickWeather(state, 240, 1, false);
+      expect(result.changed).toBe(false);
+      expect(result.state.current.temperature).toBe(75);
+      vi.restoreAllMocks();
+    });
+
     it('can force weather change', () => {
       const state = createInitialWeatherState();
       const result = tickWeather(state, 0, 1, true);
       expect(result.changed).toBe(true);
       expect(result.previousType).toBe(state.current.type);
+    });
+
+    it('may naturally change weather after enough hours', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'sunny', temperature: 75, windSpeed: 5 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 300, 1, false);
+      expect(result.changed).toBe(true);
+      vi.restoreAllMocks();
     });
 
     it('updates lastChangeTime when weather changes', () => {
@@ -231,6 +256,102 @@ describe('weather', () => {
 
       expect(rainOrCloudCount).toBeGreaterThan(trials * 0.6);
     });
+
+    it('rainy can transition to stormy with high random', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'rainy', temperature: 65, windSpeed: 15 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('stormy');
+      vi.restoreAllMocks();
+    });
+
+    it('rainy can transition to sunny', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.7);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'rainy', temperature: 65, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('sunny');
+      vi.restoreAllMocks();
+    });
+
+    it('cloudy can transition to rainy', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.75);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'cloudy', temperature: 65, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('rainy');
+      vi.restoreAllMocks();
+    });
+
+    it('cloudy can transition to stormy', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.95);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'cloudy', temperature: 65, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('stormy');
+      vi.restoreAllMocks();
+    });
+
+    it('cloudy can stay cloudy', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'cloudy', temperature: 65, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('cloudy');
+      vi.restoreAllMocks();
+    });
+
+    it('cloudy can transition to sunny', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.2);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'cloudy', temperature: 70, windSpeed: 5 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('sunny');
+      vi.restoreAllMocks();
+    });
+
+    it('rainy can transition to cloudy', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.15);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'rainy', temperature: 60, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('cloudy');
+      vi.restoreAllMocks();
+    });
+
+    it('rainy can stay rainy', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.45);
+      const state: WeatherState = {
+        ...createInitialWeatherState(),
+        current: { type: 'rainy', temperature: 60, windSpeed: 10 },
+        lastChangeTime: 0,
+      };
+      const result = tickWeather(state, 500, 1, true);
+      expect(result.state.current.type).toBe('rainy');
+      vi.restoreAllMocks();
+    });
   });
 
   describe('getWeatherDescription', () => {
@@ -261,6 +382,16 @@ describe('weather', () => {
       expect(desc).toContain('Rainy');
       expect(desc).toContain('Cold');
     });
+
+    it('describes warm weather', () => {
+      const desc = getWeatherDescription({ type: 'sunny', temperature: 85, windSpeed: 5 });
+      expect(desc).toContain('Warm');
+    });
+
+    it('describes cool weather', () => {
+      const desc = getWeatherDescription({ type: 'cloudy', temperature: 55, windSpeed: 5 });
+      expect(desc).toContain('Cool');
+    });
   });
 
   describe('getWeatherImpactDescription', () => {
@@ -285,6 +416,18 @@ describe('weather', () => {
     it('describes perfect conditions for moderate sunny weather', () => {
       const desc = getWeatherImpactDescription({ type: 'sunny', temperature: 72, windSpeed: 5 });
       expect(desc).toContain('Perfect');
+    });
+
+    it('describes cloudy weather impact', () => {
+      const desc = getWeatherImpactDescription({ type: 'cloudy', temperature: 65, windSpeed: 8 });
+      expect(desc).toContain('Overcast');
+      expect(desc).toContain('moisture');
+    });
+
+    it('describes warm sunny weather impact', () => {
+      const desc = getWeatherImpactDescription({ type: 'sunny', temperature: 85, windSpeed: 5 });
+      expect(desc).toContain('Warm');
+      expect(desc).toContain('sunny');
     });
   });
 

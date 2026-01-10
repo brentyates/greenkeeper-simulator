@@ -187,6 +187,21 @@ describe('golf-logic', () => {
       const angle = getApproachAngle(100, 50, green);
       expect(angle).toBeLessThan(45);
     });
+
+    it('returns 0 when from position is at green center', () => {
+      const angle = getApproachAngle(100, 100, green);
+      expect(angle).toBe(0);
+    });
+
+    it('returns 0 when green has zero-length orientation', () => {
+      const pointGreen: GreenInfo = {
+        frontEdge: { x: 100, y: 100 },
+        center: { x: 100, y: 100 },
+        backEdge: { x: 100, y: 100 },
+      };
+      const angle = getApproachAngle(50, 50, pointGreen);
+      expect(angle).toBe(0);
+    });
   });
 
   describe('getDirection', () => {
@@ -208,6 +223,11 @@ describe('golf-logic', () => {
     it('calculates west direction', () => {
       const dir = getDirection(10, 10, 5, 10);
       expect(dir).toBeCloseTo(270, 0);
+    });
+
+    it('calculates northwest direction', () => {
+      const dir = getDirection(10, 10, 5, 5);
+      expect(dir).toBeCloseTo(315, 0);
     });
   });
 

@@ -258,9 +258,64 @@ describe('marketing', () => {
       expect(result.cooldowns['radio_spot']).toBe(14);
     });
 
+    it('preserves other campaigns when stopping one', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'local_newspaper',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 3,
+          status: 'active',
+          totalCostSoFar: 300,
+          bookingsDuringCampaign: 90,
+          revenueDuringCampaign: 9000,
+        },
+        {
+          campaignId: 'radio_spot',
+          startDay: 2,
+          plannedDuration: 14,
+          elapsedDays: 5,
+          status: 'active',
+          totalCostSoFar: 750,
+          bookingsDuringCampaign: 150,
+          revenueDuringCampaign: 15000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      const result = stopCampaign(state, 'local_newspaper', 10);
+      expect(result.activeCampaigns).toHaveLength(1);
+      expect(result.activeCampaigns[0].campaignId).toBe('radio_spot');
+      expect(result.activeCampaigns[0].status).toBe('active');
+      expect(result.campaignHistory).toHaveLength(1);
+    });
+
     it('returns unchanged state if campaign not found', () => {
       const state = createInitialMarketingState();
       const result = stopCampaign(state, 'local_newspaper', 10);
+      expect(result).toEqual(state);
+    });
+
+    it('returns unchanged state if campaign definition not found', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'nonexistent_campaign',
+        startDay: 1,
+        plannedDuration: 7,
+        elapsedDays: 3,
+        status: 'active',
+        totalCostSoFar: 300,
+        bookingsDuringCampaign: 90,
+        revenueDuringCampaign: 9000,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+
+      const result = stopCampaign(state, 'nonexistent_campaign', 10);
       expect(result).toEqual(state);
     });
   });
@@ -321,6 +376,79 @@ describe('marketing', () => {
       expect(newState.cooldowns['radio_spot']).toBe(4);
       expect(newState.cooldowns['social_media_push']).toBe(0);
     });
+
+    it('does not decrement cooldown already at 0', () => {
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        cooldowns: { radio_spot: 0 },
+      };
+
+      const { state: newState } = processDailyCampaigns(state, 10, 25, 2500);
+      expect(newState.cooldowns['radio_spot']).toBe(0);
+    });
+
+    it('sets cooldown when campaign with cooldownDays completes', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'radio_spot',
+        startDay: 1,
+        plannedDuration: 7,
+        elapsedDays: 6,
+        status: 'active',
+        totalCostSoFar: 1050,
+        bookingsDuringCampaign: 180,
+        revenueDuringCampaign: 18000,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+
+      const { state: newState } = processDailyCampaigns(state, 8, 30, 3000);
+      expect(newState.activeCampaigns).toHaveLength(0);
+      expect(newState.cooldowns['radio_spot']).toBe(14);
+    });
+
+    it('skips non-active campaigns', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'local_newspaper',
+        startDay: 1,
+        plannedDuration: 7,
+        elapsedDays: 2,
+        status: 'cancelled',
+        totalCostSoFar: 200,
+        bookingsDuringCampaign: 50,
+        revenueDuringCampaign: 5000,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+
+      const { state: newState, dailyCost } = processDailyCampaigns(state, 4, 30, 3000);
+      expect(dailyCost).toBe(0);
+      expect(newState.activeCampaigns).toHaveLength(0);
+    });
+
+    it('skips campaigns with invalid ID', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'nonexistent_campaign',
+        startDay: 1,
+        plannedDuration: 7,
+        elapsedDays: 2,
+        status: 'active',
+        totalCostSoFar: 200,
+        bookingsDuringCampaign: 50,
+        revenueDuringCampaign: 5000,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+
+      const { state: newState, dailyCost } = processDailyCampaigns(state, 4, 30, 3000);
+      expect(dailyCost).toBe(0);
+      expect(newState.activeCampaigns).toHaveLength(0);
+    });
   });
 
   describe('evaluateCampaign', () => {
@@ -364,6 +492,24 @@ describe('marketing', () => {
       const result = evaluateCampaign(state, campaign, definition, 8);
       expect(result.returnOnInvestment).toBe(0);
     });
+
+    it('defaults to 1 day when elapsedDays is 0', () => {
+      const state = createInitialMarketingState(20, 2000);
+      const campaign: ActiveCampaign = {
+        campaignId: 'local_newspaper',
+        startDay: 1,
+        plannedDuration: 7,
+        elapsedDays: 0,
+        status: 'active',
+        totalCostSoFar: 100,
+        bookingsDuringCampaign: 30,
+        revenueDuringCampaign: 3000,
+      };
+      const definition = getCampaignById('local_newspaper')!;
+
+      const result = evaluateCampaign(state, campaign, definition, 1);
+      expect(result.durationDays).toBe(1);
+    });
   });
 
   describe('calculatePrestigeFromCampaign', () => {
@@ -386,6 +532,18 @@ describe('marketing', () => {
       const campaign = getCampaignById('golf_magazine_feature')!;
       expect(calculatePrestigeFromCampaign(campaign, 30)).toBe(35);
       expect(calculatePrestigeFromCampaign(campaign, 90)).toBe(50);
+    });
+
+    it('scales radio prestige with duration', () => {
+      const campaign = getCampaignById('radio_spot')!;
+      expect(calculatePrestigeFromCampaign(campaign, 10)).toBe(10);
+      expect(calculatePrestigeFromCampaign(campaign, 30)).toBe(20);
+    });
+
+    it('scales social media prestige with duration', () => {
+      const campaign = getCampaignById('social_media_push')!;
+      expect(calculatePrestigeFromCampaign(campaign, 3)).toBe(1);
+      expect(calculatePrestigeFromCampaign(campaign, 30)).toBe(10);
     });
   });
 
@@ -448,6 +606,69 @@ describe('marketing', () => {
       const result = calculateCombinedDemandMultiplier(state);
       expect(result).toBeCloseTo(1.15 * 1.20, 2);
     });
+
+    it('skips non-active campaigns', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'local_newspaper',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'cancelled',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(calculateCombinedDemandMultiplier(state)).toBe(1.0);
+    });
+
+    it('skips campaigns with invalid ID', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'nonexistent',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'active',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(calculateCombinedDemandMultiplier(state)).toBe(1.0);
+    });
+
+    it('skips campaigns with demandMultiplier = 0', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'tournament_hosting',
+          startDay: 1,
+          plannedDuration: 1,
+          elapsedDays: 0,
+          status: 'active',
+          totalCostSoFar: 5000,
+          bookingsDuringCampaign: 0,
+          revenueDuringCampaign: 0,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(calculateCombinedDemandMultiplier(state)).toBe(1.0);
+    });
   });
 
   describe('calculateCombinedElasticityEffect', () => {
@@ -486,6 +707,48 @@ describe('marketing', () => {
 
       const result = calculateCombinedElasticityEffect(state);
       expect(result).toBe(0.05);
+    });
+
+    it('skips non-active campaigns', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'social_media_push',
+          startDay: 1,
+          plannedDuration: 14,
+          elapsedDays: 2,
+          status: 'completed',
+          totalCostSoFar: 350,
+          bookingsDuringCampaign: 55,
+          revenueDuringCampaign: 5500,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(calculateCombinedElasticityEffect(state)).toBe(0);
+    });
+
+    it('skips campaigns with invalid ID', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'nonexistent',
+          startDay: 1,
+          plannedDuration: 14,
+          elapsedDays: 2,
+          status: 'active',
+          totalCostSoFar: 350,
+          bookingsDuringCampaign: 55,
+          revenueDuringCampaign: 5500,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(calculateCombinedElasticityEffect(state)).toBe(0);
     });
   });
 
@@ -528,6 +791,48 @@ describe('marketing', () => {
       expect(audiences).toContain('regular');
       expect(audiences).toContain('young_professional');
     });
+
+    it('skips non-active campaigns', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'local_newspaper',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'cancelled',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(getTargetedAudiences(state)).toEqual([]);
+    });
+
+    it('skips campaigns with invalid ID', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'nonexistent',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'active',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      expect(getTargetedAudiences(state)).toEqual([]);
+    });
   });
 
   describe('hasTwilightCampaign', () => {
@@ -553,6 +858,24 @@ describe('marketing', () => {
       };
       expect(hasTwilightCampaign(state)).toBe(true);
     });
+
+    it('returns false with non-active twilight campaign', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'twilight_special',
+        startDay: 1,
+        plannedDuration: 30,
+        elapsedDays: 5,
+        status: 'cancelled',
+        totalCostSoFar: 0,
+        bookingsDuringCampaign: 150,
+        revenueDuringCampaign: 10000,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+      expect(hasTwilightCampaign(state)).toBe(false);
+    });
   });
 
   describe('hasActiveEvent', () => {
@@ -577,6 +900,24 @@ describe('marketing', () => {
         activeCampaigns: [campaign],
       };
       expect(hasActiveEvent(state)).toBe(true);
+    });
+
+    it('returns false with non-active event', () => {
+      const campaign: ActiveCampaign = {
+        campaignId: 'tournament_hosting',
+        startDay: 10,
+        plannedDuration: 1,
+        elapsedDays: 0,
+        status: 'completed',
+        totalCostSoFar: 5000,
+        bookingsDuringCampaign: 0,
+        revenueDuringCampaign: 0,
+      };
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: [campaign],
+      };
+      expect(hasActiveEvent(state)).toBe(false);
     });
   });
 
@@ -641,6 +982,50 @@ describe('marketing', () => {
       expect(summary.combinedDemandMultiplier).toBeCloseTo(1.15 * 1.25, 2);
       expect(summary.historicalRoi).toBe(0.6);
       expect(summary.totalHistoricalSpent).toBe(5000);
+    });
+
+    it('skips non-active campaigns in daily cost', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'local_newspaper',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'cancelled',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      const summary = getCampaignSummary(state);
+      expect(summary.totalDailyCost).toBe(0);
+    });
+
+    it('skips campaigns with invalid ID in daily cost', () => {
+      const campaigns: ActiveCampaign[] = [
+        {
+          campaignId: 'nonexistent',
+          startDay: 1,
+          plannedDuration: 7,
+          elapsedDays: 2,
+          status: 'active',
+          totalCostSoFar: 200,
+          bookingsDuringCampaign: 50,
+          revenueDuringCampaign: 5000,
+        },
+      ];
+      const state: MarketingState = {
+        ...createInitialMarketingState(),
+        activeCampaigns: campaigns,
+      };
+
+      const summary = getCampaignSummary(state);
+      expect(summary.totalDailyCost).toBe(0);
     });
   });
 

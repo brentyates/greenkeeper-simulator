@@ -83,6 +83,12 @@ describe('advanced-tee-time', () => {
   });
 
   describe('calculateBookingRate', () => {
+    it('returns 0 for missing day in teeTimes', () => {
+      const teeTimes = new Map<number, TeeTime[]>();
+      const state = { teeTimes, currentDay: 1 } as unknown as TeeTimeSystemState;
+      expect(calculateBookingRate(state)).toBe(0);
+    });
+
     it('returns 0 for empty slots', () => {
       const teeTimes = new Map<number, TeeTime[]>();
       teeTimes.set(1, []);
@@ -274,6 +280,11 @@ describe('advanced-tee-time', () => {
         const state = scheduleTournament(createInitialTournamentState(), partialTournament);
         expect(isCourseClosedForTournament(state, 150)).toBe(false);
       });
+
+      it('returns false when no tournament on that day', () => {
+        const state = createInitialTournamentState();
+        expect(isCourseClosedForTournament(state, 150)).toBe(false);
+      });
     });
 
     describe('getAvailableSlotsForTournament', () => {
@@ -440,6 +451,36 @@ describe('advanced-tee-time', () => {
         const deposited = confirmGroupBooking(state, 'group_1', 459, 150);
         expect(deposited.bookings[0].status).toBe('deposit_paid');
       });
+
+      it('leaves other bookings unchanged', () => {
+        let state = createInitialGroupBookingState();
+        state = createGroupBooking(state, {
+          id: 'group_1',
+          organizerName: 'John',
+          organizerContact: 'john@example.com',
+          groupSize: 12,
+          dayOfYear: 100,
+          startTime: { day: 100, hour: 9, minute: 0 },
+          discountApplied: 0,
+          reservedSlotIds: [],
+          notes: '',
+        });
+        state = createGroupBooking(state, {
+          id: 'group_2',
+          organizerName: 'Jane',
+          organizerContact: 'jane@example.com',
+          groupSize: 8,
+          dayOfYear: 101,
+          startTime: { day: 101, hour: 10, minute: 0 },
+          discountApplied: 0,
+          reservedSlotIds: [],
+          notes: '',
+        });
+
+        const confirmed = confirmGroupBooking(state, 'group_1', 459, 150);
+        expect(confirmed.bookings[0].status).toBe('deposit_paid');
+        expect(confirmed.bookings[1].status).toBe('inquiry');
+      });
     });
 
     describe('cancelGroupBooking', () => {
@@ -484,6 +525,43 @@ describe('advanced-tee-time', () => {
         expect(completed.bookings[0].status).toBe('completed');
         expect(completed.totalGroupRevenue).toBe(459);
         expect(completed.groupsServed).toBe(1);
+      });
+
+      it('returns state unchanged if booking not found', () => {
+        const state = createInitialGroupBookingState();
+        const result = completeGroupBooking(state, 'nonexistent_id');
+        expect(result).toEqual(state);
+      });
+
+      it('leaves other bookings unchanged', () => {
+        let state = createInitialGroupBookingState();
+        state = createGroupBooking(state, {
+          id: 'group_1',
+          organizerName: 'John',
+          organizerContact: 'john@example.com',
+          groupSize: 12,
+          dayOfYear: 100,
+          startTime: { day: 100, hour: 9, minute: 0 },
+          discountApplied: 0,
+          reservedSlotIds: [],
+          notes: '',
+        });
+        state = createGroupBooking(state, {
+          id: 'group_2',
+          organizerName: 'Jane',
+          organizerContact: 'jane@example.com',
+          groupSize: 8,
+          dayOfYear: 101,
+          startTime: { day: 101, hour: 10, minute: 0 },
+          discountApplied: 0,
+          reservedSlotIds: [],
+          notes: '',
+        });
+        state = confirmGroupBooking(state, 'group_1', 459, 459);
+
+        const completed = completeGroupBooking(state, 'group_1');
+        expect(completed.bookings[0].status).toBe('completed');
+        expect(completed.bookings[1].status).toBe('inquiry');
       });
     });
 

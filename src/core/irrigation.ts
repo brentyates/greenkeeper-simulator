@@ -69,7 +69,6 @@ export interface IrrigationSystem {
   readonly totalWaterUsedToday: number;
   readonly lastTickTime: number;
   readonly pressureCache: Map<string, number>;
-  readonly flowPaths: Map<string, readonly string[]>;
 }
 
 export interface CoverageTile {
@@ -204,8 +203,7 @@ export function createInitialIrrigationSystem(): IrrigationSystem {
     waterSources: [],
     totalWaterUsedToday: 0,
     lastTickTime: 0,
-    pressureCache: new Map(),
-    flowPaths: new Map()
+    pressureCache: new Map()
   };
 }
 
@@ -377,10 +375,12 @@ export function updatePipeConnections(
   const connectedTo: Direction[] = [];
 
   for (const adj of adjacent) {
-    if (adj.gridY < pipe.gridY) connectedTo.push('north');
-    else if (adj.gridY > pipe.gridY) connectedTo.push('south');
-    else if (adj.gridX > pipe.gridX) connectedTo.push('east');
-    else if (adj.gridX < pipe.gridX) connectedTo.push('west');
+    const dx = adj.gridX - pipe.gridX;
+    const dy = adj.gridY - pipe.gridY;
+    if (dy < 0) connectedTo.push('north');
+    if (dy > 0) connectedTo.push('south');
+    if (dx > 0) connectedTo.push('east');
+    if (dx < 0) connectedTo.push('west');
   }
 
   return { ...pipe, connectedTo };
@@ -411,12 +411,6 @@ export function calculatePipeDistance(
   source: WaterSource,
   system: IrrigationSystem
 ): number {
-  const cacheKey = `${pipe.gridX},${pipe.gridY}:${source.id}`;
-  const cached = system.flowPaths.get(cacheKey);
-  if (cached) {
-    return cached.length;
-  }
-
   const path = findPipePath(pipe, source, system);
   if (path) {
     return path.length;

@@ -72,6 +72,13 @@ describe('exclusivity', () => {
       expect(highCost.composite).toBeGreaterThan(lowCost.composite);
     });
 
+    it('handles non-public membership with zero cost', () => {
+      const state = setMembershipModel(createInitialExclusivityState(), 'private', 0);
+      expect(state.membershipModel).toBe('private');
+      expect(state.membershipCost).toBe(0);
+      expect(state.composite).toBeGreaterThan(0);
+    });
+
     it('adds bonus for long waitlist', () => {
       let state = setMembershipModel(createInitialExclusivityState(), 'private', 10000);
       const noWaitlist = state.composite;
