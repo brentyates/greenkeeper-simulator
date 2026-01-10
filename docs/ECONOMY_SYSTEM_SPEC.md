@@ -198,37 +198,92 @@ interface GreenFeeStructure {
 
 **Status:** Basic implementation exists in `tee-times.ts` and `golfers.ts`
 
-### ❌ CUT: Dynamic Pricing
+### Prestige-Based Pricing 🔨 IN SCOPE (Simplified)
 
-**Removed from scope** - too complex for marginal gameplay benefit.
+**Simple automatic pricing** - base rates adjusted by course prestige.
 
-Static pricing is sufficient. Prestige already affects golfer volume organically.
+```typescript
+function getAdjustedGreenFee(baseRate: number, prestigeStars: number): number {
+  // 3-star = baseline (1.0x)
+  // 4-star = +10% (1.1x)
+  // 5-star = +20% (1.2x)
+  const prestigeMultiplier = 1 + Math.max(0, (prestigeStars - 3) * 0.1);
+  return Math.round(baseRate * prestigeMultiplier);
+}
+```
 
-~~Dynamic pricing factors:~~
-~~- Base fee from structure~~
-~~- Prestige modifier (+10% per star above 3)~~
-~~- Demand modifier (crowded = higher prices acceptable)~~
-~~- Seasonal modifier (peak season = higher rates)~~
+**Examples:**
+- 3-star course: Weekday 18 = $55 (baseline)
+- 4-star course: Weekday 18 = $61 (+10%)
+- 5-star course: Weekday 18 = $66 (+20%)
 
-### ❌ CUT: Price Elasticity
+**What's cut:**
+- ❌ Complex demand multipliers
+- ❌ Price elasticity calculations
+- ❌ Seasonal modifiers
+- ❌ Time-of-day dynamic adjustments
 
-**Removed from scope** - statistical modeling not needed.
+### Membership Program 🔨 IN SCOPE (Simplified)
 
-~~Higher prices = fewer golfers calculation~~
+**Simple single-tier membership** - predictable monthly income without complex management.
 
-### ⏸️ DEFERRED: Membership Program
+```typescript
+interface SimpleMembership {
+  unlockPrestige: 4;              // Requires 4-star prestige
+  monthlyDue: 200;                // $200/month per member
+  greenFeeDiscount: 0.25;         // 25% off green fees
+  maxMembers: 100;                // Cap to prevent revenue cannibalization
+  automaticFilling: true;         // Slowly fills based on prestige/satisfaction
+}
+```
 
-**Not implementing now** - adds complexity without clear value.
+**Mechanics:**
+- Unlocks at 4-star prestige
+- Members join automatically (1-3 per week) when prestige/satisfaction high
+- Guaranteed monthly income: $200 × member count
+- Members play regularly, pay 25% less per round
+- Simple trade-off: Stable income vs. higher per-round revenue
 
-May reconsider for late-game content if needed.
+**What's cut:**
+- ❌ Multiple membership tiers (basic/premium/elite)
+- ❌ Guest passes tracking
+- ❌ Member satisfaction systems
+- ❌ Priority booking complexity
 
-~~Unlocked at 4-star prestige with Basic/Premium/Elite tiers~~
+### Pro Shop Revenue 🔨 IN SCOPE (Simplified)
 
-### ⏸️ DEFERRED: Pro Shop Sales
+**Simple per-golfer revenue** - scales with course traffic and pro shop quality.
 
-**Not implementing now** - passive income that doesn't add strategic depth.
+```typescript
+interface ProShopRevenue {
+  // Revenue per golfer visit (when pro shop exists)
+  tier1: 15;    // Basic Pro Shop: $15/golfer
+  tier2: 25;    // Full Pro Shop: $25/golfer
+  tier3: 40;    // Premium Pro Shop: $40/golfer
 
-~~Scales with golfer traffic~~
+  // Staff efficiency modifier
+  staffed: 1.0;     // 100% revenue with staff
+  unstaffed: 0.5;   // 50% revenue without staff
+}
+```
+
+**Mechanics:**
+- Build pro shop (see PLACEABLE_ASSETS_SPEC.md for costs)
+- Automatically earn revenue per golfer who visits
+- Hire Pro Shop Staff (see EMPLOYEE_SYSTEM_SPEC.md) to unlock full revenue
+- No inventory management, no category tracking
+
+**Examples:**
+- 50 golfers/day × $25 (tier 2) × 0.5 (unstaffed) = $625/day
+- 50 golfers/day × $25 (tier 2) × 1.0 (staffed) = $1,250/day
+- Staff wages: $10/hr × 8hr = $80/day
+- Net benefit of hiring staff: +$545/day
+
+**What's cut:**
+- ❌ Merchandise categories (apparel/equipment/accessories)
+- ❌ Inventory management
+- ❌ Markup percentages
+- ❌ Prestige-based spending multipliers
 
 ### ⏸️ DEFERRED: Tournament Revenue
 
@@ -241,15 +296,24 @@ Won't implement until tournament hosting is added (if ever).
 | Stage | Primary Revenue | Monthly Range | Notes |
 |-------|-----------------|---------------|-------|
 | Starter (3-hole) | Green fees only | $2,000-5,000 | Low prestige, few golfers |
-| Growing (9-hole) | Green fees + tips | $8,000-15,000 | Building reputation |
-| Established (18-hole) | Green fees + tips | $25,000-50,000 | 15-25% utilization |
-| Premium (18-hole 5★) | Green fees + tips | $60,000-100,000 | 30-40% utilization |
+| Growing (9-hole) | Green fees + tips + pro shop | $8,000-20,000 | Building reputation, optional pro shop |
+| Established (18-hole) | Green fees + tips + pro shop | $25,000-60,000 | 15-25% utilization, staffed pro shop |
+| Premium (18-hole 4★) | All + memberships | $60,000-120,000 | Membership unlocks, higher pricing |
+| Championship (18-hole 5★) | All sources | $100,000-200,000 | 30-40% utilization, full amenities |
+
+**Revenue sources breakdown:**
+- **Green fees:** Primary income, scales with golfer volume and prestige pricing
+- **Tips:** Golfer satisfaction-based, small but consistent
+- **Pro shop:** $15-40 per golfer (if built and staffed)
+- **Memberships:** $200/month × member count (unlocks at 4-star)
 
 **Revenue factors:**
 - Tee time utilization (see TEE_TIME_SYSTEM_SPEC.md)
-- Prestige/star rating (see PRESTIGE_SYSTEM_SPEC.md)
+- Prestige/star rating - affects pricing and volume (see PRESTIGE_SYSTEM_SPEC.md)
 - Marketing campaigns (see TEE_TIME_SYSTEM_SPEC.md)
 - Day of week (weekends busier)
+- Pro shop tier and staffing
+- Member count (4-star+)
 
 ---
 
@@ -513,17 +577,20 @@ See "Bankruptcy System" section above for full design.
 3. 🔨 Refill costs (fuel, water, fertilizer)
 4. ⏸️ Fixed monthly costs (insurance, property tax) - deferred
 
-### ⏸️ Phase 4: Advanced Revenue (DEFERRED)
-1. ⏸️ Pro shop sales
-2. ⏸️ Membership system
-3. ⏸️ Tournament economics
+### 🔨 Phase 4: Revenue Expansion (IN SCOPE - Simplified)
+1. 🔨 Prestige-based pricing modifier (+10-20% at high prestige)
+2. 🔨 Pro shop revenue (simple per-golfer, 3 tiers)
+3. 🔨 Pro shop staffing (efficiency multiplier)
+4. 🔨 Membership system (single tier, automatic filling)
+5. ⏸️ Tournament economics (dependent on tournament system)
 
 ### ❌ Phase 5: Cut Features
-1. ❌ Dynamic pricing
-2. ❌ Price elasticity
-3. ❌ Income statements
-4. ❌ Balance sheets
-5. ❌ ROI calculations
+1. ❌ Complex dynamic pricing with demand/seasonal modifiers
+2. ❌ Price elasticity modeling
+3. ❌ Multi-tier membership management
+4. ❌ Pro shop inventory/categories
+5. ❌ Income statements & balance sheets
+6. ❌ ROI calculation systems
 
 ---
 
@@ -544,8 +611,9 @@ The Economy System creates meaningful financial decisions:
 - Financial health enables ambition
 
 **Simplified scope:**
-- Focus on core cash management
-- Simple, clear costs (wages, utilities, research)
-- Predictable revenue (green fees, tips)
-- No complex financial modeling
-- Player learns through clear consequences (bankruptcy)
+- Focus on core cash management with meaningful depth
+- Simple, clear costs (wages, utilities, research, refills)
+- Multiple revenue streams: green fees (prestige-adjusted), tips, pro shop, memberships
+- Strategic trade-offs without spreadsheet complexity
+- Clear feedback loops (staff pro shop = more revenue, members = stable income)
+- Player learns through consequences (bankruptcy) not accounting
