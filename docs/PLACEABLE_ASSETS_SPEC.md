@@ -188,16 +188,26 @@ Golf cart storage and charging station.
 
 These are interior-based amenities that occupy space within or adjacent to the Clubhouse.
 
-#### Pro Shop
+#### Pro Shop 🔨 SIMPLIFIED
 
-| Tier | Name | Cost | Monthly | Prestige | Revenue Potential |
-|------|------|------|---------|----------|------------------|
-| 0 | None | - | - | 0 | - |
-| 1 | Basic Pro Shop | $25,000 | $300 | +25 | $500/day |
-| 2 | Full Pro Shop | $75,000 | $800 | +50 | $1,500/day |
-| 3 | Premium Pro Shop | $200,000 | $2,000 | +100 | $4,000/day |
+**Note:** See ECONOMY_SYSTEM_SPEC.md for revenue implementation details.
+
+| Tier | Name | Cost | Prestige | Revenue Per Golfer |
+|------|------|------|----------|-------------------|
+| 0 | None | - | 0 | - |
+| 1 | Basic Pro Shop | $25,000 | +25 | $15/golfer |
+| 2 | Full Pro Shop | $75,000 | +50 | $25/golfer |
+| 3 | Premium Pro Shop | $200,000 | +100 | $40/golfer |
+
+**Revenue Examples** (50 golfers/day):
+- Tier 1: $750/day with staff, $375/day without
+- Tier 2: $1,250/day with staff, $625/day without
+- Tier 3: $2,000/day with staff, $1,000/day without
 
 **Placement:** Inside Clubhouse (Tier 2+ required) or as separate 2x2 building.
+
+**What's cut:**
+- ❌ Monthly operating costs (see simplified economy)
 
 #### Dining
 

@@ -630,158 +630,67 @@ function calculateTeeTimeSatisfaction(
 
 ## Revenue Streams
 
-### Primary: Green Fees
+### Primary: Green Fees 🔨 SIMPLIFIED
+
+**Note:** See ECONOMY_SYSTEM_SPEC.md for full pricing implementation.
 
 ```typescript
-interface GreenFeeStructure {
-  // Base rates (modified by prestige tolerance)
-  weekdayRate: number;
-  weekendRate: number;
-  twilightRate: number;              // After twilightStart
+interface SimplifiedGreenFeeStructure {
+  // Base rates (static)
+  weekday9Holes: number;     // $35 default
+  weekday18Holes: number;    // $55 default
+  weekend9Holes: number;     // $45 default
+  weekend18Holes: number;    // $75 default
+  twilight9Holes: number;    // $25 default
+  twilight18Holes: number;   // $40 default
 
-  // Time-based pricing
-  primeMorningPremium: number;       // e.g., 1.2 = 20% more for 7-10 AM
+  // Membership discount (see ECONOMY_SYSTEM_SPEC.md)
+  memberDiscount: number;    // 25% off for members
+}
 
-  // Membership pricing (see PRESTIGE_SYSTEM_SPEC.md - Membership Tiers for full details)
-  memberRate: number;                // Discount for members (typically 20-40% off public rate)
-  guestOfMemberRate: number;         // Guest discount (typically 10-20% off public rate)
-
-  // Dynamic pricing (optional advanced feature)
-  dynamicPricingEnabled: boolean;
-  demandMultiplierRange: [number, number];  // e.g., [0.8, 1.3]
+// Prestige automatically adjusts pricing
+function getActualGreenFee(baseRate: number, prestigeStars: number): number {
+  const prestigeMultiplier = 1 + Math.max(0, (prestigeStars - 3) * 0.1);
+  return Math.round(baseRate * prestigeMultiplier);
 }
 ```
 
-### Secondary: Cart Fees
+**What's cut:**
+- ❌ Dynamic pricing with demand multipliers
+- ❌ Prime morning premium pricing
+- ❌ Complex time-of-day adjustments
+- ❌ Guest-of-member rates
 
-```typescript
-interface CartFeeStructure {
-  // Per person vs per cart
-  pricingModel: 'per_person' | 'per_cart';
+### ⏸️ DEFERRED: Cart Fees
 
-  // Rates
-  standardCartFee: number;           // e.g., $20 per person
-  walkingDiscount: number;           // Discount for walking
+**Not in current economy scope** - May add later if needed.
 
-  // Cart types (if luxury carts owned)
-  premiumCartFee?: number;           // GPS/luxury cart premium
+~~Cart rental fees, walking discounts, premium cart surcharges~~
 
-  // Policies
-  cartRequired: boolean;             // Some courses require carts
-  cartIncluded: boolean;             // Some bundle cart with green fee
-}
-```
+### ⏸️ DEFERRED: Add-On Services
 
-### Tertiary: Add-On Services
+**Not in current economy scope** - Adds complexity without strategic depth.
 
-```typescript
-interface AddOnService {
-  id: string;
-  name: string;
-  price: number;
+~~Range balls, caddie service, club rentals, GPS devices, etc.~~
 
-  // When offered
-  offeredAtBooking: boolean;
-  offeredAtCheckIn: boolean;
-  offeredDuringRound: boolean;
+### Tips System ✅ IMPLEMENTED (Simplified)
 
-  // Uptake rate (base probability golfer purchases)
-  baseUptakeRate: number;
+**Note:** Basic implementation in `golfers.ts`. Tips based on satisfaction.
 
-  // Prestige modifier (higher prestige = more uptake)
-  prestigeUptakeBonus: number;
-}
+Golfers tip based on their experience quality:
+- Low satisfaction (< 50): No tips
+- Medium satisfaction (50-80): Small tips ($5-15)
+- High satisfaction (> 80): Generous tips ($15-30)
 
-const STANDARD_ADDONS: AddOnService[] = [
-  {
-    id: 'range_balls',
-    name: 'Range Balls',
-    price: 10,
-    offeredAtBooking: true,
-    offeredAtCheckIn: true,
-    offeredDuringRound: false,
-    baseUptakeRate: 0.3,
-    prestigeUptakeBonus: 0.1,
-  },
-  {
-    id: 'caddie',
-    name: 'Caddie Service',
-    price: 75,
-    offeredAtBooking: true,
-    offeredAtCheckIn: true,
-    offeredDuringRound: false,
-    baseUptakeRate: 0.05,
-    prestigeUptakeBonus: 0.15,        // Much higher at prestige courses
-  },
-  {
-    id: 'forecaddie',
-    name: 'Forecaddie (Group)',
-    price: 50,
-    offeredAtBooking: true,
-    offeredAtCheckIn: false,
-    offeredDuringRound: false,
-    baseUptakeRate: 0.08,
-    prestigeUptakeBonus: 0.10,
-  },
-  {
-    id: 'club_rental',
-    name: 'Club Rental',
-    price: 60,
-    offeredAtBooking: true,
-    offeredAtCheckIn: true,
-    offeredDuringRound: false,
-    baseUptakeRate: 0.08,
-    prestigeUptakeBonus: 0.02,
-  },
-  {
-    id: 'gps_rental',
-    name: 'GPS Device Rental',
-    price: 15,
-    offeredAtBooking: false,
-    offeredAtCheckIn: true,
-    offeredDuringRound: false,
-    baseUptakeRate: 0.15,
-    prestigeUptakeBonus: 0.05,
-  },
-];
-```
+Tips go directly to course revenue (see ECONOMY_SYSTEM_SPEC.md).
 
-### Tips System
+**What's cut:**
+- ❌ Individual staff tip tracking
+- ❌ Tip pooling mechanics
+- ❌ Service-based tip percentages
+- ❌ House cut percentages
 
-Golfers can tip staff, creating additional revenue:
-
-```typescript
-interface TipSystem {
-  // Staff categories that receive tips
-  tippableStaff: ('caddie' | 'cart_attendant' | 'beverage_cart' | 'pro_shop')[];
-
-  // Tip calculation
-  baseTipPercentage: number;         // e.g., 0.15 = 15% of service
-  satisfactionModifier: number;      // Happy golfers tip more
-
-  // Tip pooling
-  tipPooling: boolean;               // Share tips among staff
-  housePercentage: number;           // Course takes a cut (0 = none)
-}
-
-function calculateTips(
-  services: ServiceRendered[],
-  golferSatisfaction: number
-): number {
-  let totalTips = 0;
-
-  for (const service of services) {
-    const baseTip = service.cost * 0.15;
-
-    // Satisfaction modifier: -50 to +50 satisfaction maps to 0.5x to 1.5x
-    const satisfactionMod = 1 + (golferSatisfaction / 100);
-
-    totalTips += baseTip * satisfactionMod;
-  }
-
-  return totalTips;
-}
-```
+Simple implementation: Satisfaction → direct revenue boost.
 
 ### Concessions & Food/Beverage
 

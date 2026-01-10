@@ -372,135 +372,103 @@ Reputation spreads based on golfer count:
 
 Perceived exclusivity and "elite" status.
 
-### Sub-Components
+### Sub-Components 🔨 SIMPLIFIED
+
+**Note:** See ECONOMY_SYSTEM_SPEC.md for membership implementation details.
 
 | Factor | Weight | Description |
 |--------|--------|-------------|
-| Membership Type | 40% | Public vs private vs exclusive |
-| Price Point | 25% | Higher prices = more exclusive feel |
-| Booking Difficulty | 20% | Waitlists, advance booking requirements |
-| Dress Code | 15% | Strictness of dress code |
+| Membership Program | 50% | Has active membership program |
+| Price Point | 40% | Higher green fees = more exclusive |
+| Course Quality | 10% | 5-star prestige = more exclusive |
 
-### Membership Model
+**What's cut:**
+- ❌ Multiple membership types (public/semi-private/private/exclusive)
+- ❌ Waitlist mechanics
+- ❌ Dress code strictness
+- ❌ Booking difficulty scoring
+
+### Membership Model (Simplified)
 
 ```typescript
-type MembershipModel =
-  | 'public'           // Anyone can play
-  | 'semi_private'     // Members + public tee times
-  | 'private'          // Members + guests only
-  | 'exclusive'        // Members only, invitation required
-
-interface ExclusivityState {
-  membershipModel: MembershipModel;
-  membershipCost: number;          // Annual fee
-  waitlistLength: number;          // Months to join
-  advanceBookingDays: number;      // How far ahead can book
-
-  dressCode: 'none' | 'casual' | 'smart_casual' | 'formal';
+interface SimplifiedExclusivity {
+  hasMembership: boolean;          // Unlocks at 4-star prestige
+  memberCount: number;             // 0-100 members
+  greenFeePricing: number;         // Current green fee (prestige-adjusted)
+  prestigeStars: number;           // 1-5 star rating
 
   // Derived score
   exclusivityScore: number;        // 0-1000
 }
 ```
 
-### Exclusivity Scoring
+### Exclusivity Scoring (Simplified)
 
-| Membership Model | Base Score |
-|------------------|------------|
-| Public | 0 |
-| Semi-Private | 200 |
-| Private | 500 |
-| Exclusive | 800 |
+```typescript
+function calculateExclusivityScore(state: SimplifiedExclusivity): number {
+  let score = 0;
 
-Additional modifiers:
-- Membership cost > $25,000/year: +100
-- Waitlist > 1 year: +100
-- Formal dress code: +50
-- Celebrity members: +50 (event-based)
+  // Membership program (50% weight = 500 points)
+  if (state.hasMembership) {
+    score += 500;
+  }
+
+  // Price point (40% weight = 400 points)
+  // $55 base = 0 points, $100+ = 400 points
+  const priceFactor = Math.min(1.0, (state.greenFeePricing - 55) / 45);
+  score += priceFactor * 400;
+
+  // Course quality (10% weight = 100 points)
+  const qualityFactor = (state.prestigeStars - 1) / 4;  // 1-star = 0, 5-star = 1
+  score += qualityFactor * 100;
+
+  return Math.round(score);
+}
+```
+
+**Examples:**
+- 3-star public course, $55 green fee: 50 exclusivity points
+- 4-star with membership, $61 green fee: 625 exclusivity points
+- 5-star with membership, $66 green fee: 725 exclusivity points
 
 ---
 
-## Green Fee Tolerance System
+## Green Fee Pricing 🔨 SIMPLIFIED
 
-The core economic mechanic - how prestige affects pricing power.
+**Note:** See ECONOMY_SYSTEM_SPEC.md for full pricing implementation.
 
-### Base Green Fee Tolerance
+### Prestige-Based Pricing
 
-Each prestige tier has a "sweet spot" and maximum tolerance:
+Simple automatic pricing - prestige affects green fees directly:
 
-| Stars | Sweet Spot | Max Tolerance | Rejection Starts |
-|-------|------------|---------------|------------------|
-| 1★ | $15 | $35 | $25 |
-| 2★ | $35 | $65 | $50 |
-| 3★ | $65 | $120 | $90 |
-| 4★ | $120 | $250 | $175 |
-| 5★ | $200 | $500+ | $350 |
-
-### Tolerance Calculation
+| Stars | Base Weekday 18 | Pricing Multiplier | Final Price |
+|-------|----------------|-------------------|-------------|
+| 1-2★ | $55 | 1.0x | $55 |
+| 3★ | $55 | 1.0x | $55 (baseline) |
+| 4★ | $55 | 1.1x | $61 (+10%) |
+| 5★ | $55 | 1.2x | $66 (+20%) |
 
 ```typescript
-interface GreenFeeTolerance {
-  sweetSpot: number;        // Optimal price (max attendance)
-  maxTolerance: number;     // Absolute ceiling
-  rejectionThreshold: number; // Where turn-aways begin
-
-  // Calculated demand curve
-  getDemandMultiplier(price: number): number;
-}
-
-function calculateDemandMultiplier(
-  price: number,
-  tolerance: GreenFeeTolerance
-): number {
-  if (price <= tolerance.sweetSpot) {
-    // Below sweet spot: full demand, possibly leaving money on table
-    return 1.0;
-  } else if (price <= tolerance.rejectionThreshold) {
-    // Slight price sensitivity
-    const ratio = (price - tolerance.sweetSpot) /
-                  (tolerance.rejectionThreshold - tolerance.sweetSpot);
-    return 1.0 - (ratio * 0.2);  // Up to 20% reduction
-  } else if (price <= tolerance.maxTolerance) {
-    // Significant rejection zone
-    const ratio = (price - tolerance.rejectionThreshold) /
-                  (tolerance.maxTolerance - tolerance.rejectionThreshold);
-    return 0.8 - (ratio * 0.6);  // 80% down to 20%
-  } else {
-    // Beyond max: severe rejection
-    return Math.max(0.05, 0.2 - ((price - tolerance.maxTolerance) / 100) * 0.15);
-  }
+function getAdjustedGreenFee(baseRate: number, prestigeStars: number): number {
+  const prestigeMultiplier = 1 + Math.max(0, (prestigeStars - 3) * 0.1);
+  return Math.round(baseRate * prestigeMultiplier);
 }
 ```
 
-### Golfer Turn-Away Animation
+**What's cut:**
+- ❌ Complex demand curves and tolerance thresholds
+- ❌ Price rejection animations
+- ❌ Sweet spot calculations
+- ❌ Dynamic multipliers (weather, season, competition)
 
-When a golfer rejects the price:
-1. Golfer sprite approaches pro shop/starter
-2. "Price check" animation (looks at sign)
-3. Shakes head / dismissive gesture
-4. Walks away from course entrance
-5. Thought bubble: "$$$" or frowning face
+### Golfer Volume Impact
 
-This provides **visible feedback** that prices are too high for current prestige.
+Higher prestige increases **golfer volume**, not price tolerance:
+- 3★ course: 15-25% tee time utilization
+- 4★ course: 25-35% utilization + membership unlocks
+- 5★ course: 30-40% utilization + premium pricing
 
-### Demand Factors Beyond Price
-
-```typescript
-interface DemandCalculation {
-  basedemand: number;           // From golfer spawning system
-
-  multipliers: {
-    priceMultiplier: number;    // From tolerance calculation
-    weatherMultiplier: number;  // Bad weather reduces demand
-    seasonMultiplier: number;   // Peak vs off-season
-    dayOfWeek: number;          // Weekends higher
-    competitionMultiplier: number; // Future: nearby courses
-    reputationMultiplier: number;  // Word-of-mouth effect
-  };
-
-  finalDemand: number;
-}
-```
+Pricing affects volume indirectly through prestige's reputation effect.
 
 ---
 
