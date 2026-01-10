@@ -53,12 +53,14 @@ export class IrrigationSchedulePanel {
     title.color = '#7FFF7F';
     title.fontSize = 14;
     title.fontWeight = 'bold';
+    title.height = '20px';
     stack.addControl(title);
 
     const info = new TextBlock('info');
     info.text = 'Default schedule: 5am-7am, 6pm-8pm';
     info.color = '#aaaaaa';
     info.fontSize = 11;
+    info.height = '18px';
     stack.addControl(info);
 
     const closeBtn = Button.CreateSimpleButton('closeBtn', 'Close');

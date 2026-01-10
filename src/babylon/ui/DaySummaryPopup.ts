@@ -184,6 +184,7 @@ export class DaySummaryPopup {
     amountText.text = `$${Math.abs(amount).toLocaleString()}`;
     amountText.color = isPositive ? '#66ff66' : '#ff8888';
     amountText.fontSize = 11;
+    amountText.width = '80px';
     amountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     row.addControl(amountText);
 
@@ -240,6 +241,7 @@ export class DaySummaryPopup {
     valueText.text = value;
     valueText.color = valueColor;
     valueText.fontSize = 12;
+    valueText.width = '180px';
     valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     row.addControl(valueText);
 

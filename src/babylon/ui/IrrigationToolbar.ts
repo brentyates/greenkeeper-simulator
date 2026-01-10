@@ -60,6 +60,7 @@ export class IrrigationToolbar {
     title.color = '#7FFF7F';
     title.fontSize = 14;
     title.fontWeight = 'bold';
+    title.height = '20px';
     stack.addControl(title);
 
     const toolRow = new StackPanel('toolRow');

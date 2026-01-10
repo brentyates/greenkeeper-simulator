@@ -134,6 +134,7 @@ export class ResearchPanel {
     this.currentResearchText.text = 'None';
     this.currentResearchText.color = '#ffffff';
     this.currentResearchText.fontSize = 12;
+    this.currentResearchText.width = '260px';
     this.currentResearchText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     titleRow.addControl(this.currentResearchText);
 
@@ -202,6 +203,7 @@ export class ResearchPanel {
     this.costText.text = '($150/min)';
     this.costText.color = '#ff8844';
     this.costText.fontSize = 10;
+    this.costText.width = '80px';
     this.costText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     labelRow.addControl(this.costText);
 

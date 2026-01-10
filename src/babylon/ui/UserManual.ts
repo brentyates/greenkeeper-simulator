@@ -179,6 +179,7 @@ export class UserManual {
     label.color = '#aaccaa';
     label.fontSize = 13;
     label.fontFamily = 'Arial, sans-serif';
+    label.width = '150px';
     label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     label.isPointerBlocker = false;
     itemStack.addControl(label);

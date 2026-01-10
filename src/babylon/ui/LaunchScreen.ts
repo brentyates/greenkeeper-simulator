@@ -320,6 +320,7 @@ export class LaunchScreen {
     objText.color = isLocked ? '#3a4a40' : '#aaccaa';
     objText.fontSize = 10;
     objText.fontFamily = 'Arial, sans-serif';
+    objText.width = '200px';
     objText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     objRow.addControl(objText);
 
