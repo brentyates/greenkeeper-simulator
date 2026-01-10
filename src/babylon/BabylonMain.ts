@@ -2209,7 +2209,7 @@ export class BabylonMain {
 
       this.grassSystem.update(
         deltaMs * this.timeScale,
-        this.gameTime,
+        this.gameDay * 1440 + this.gameTime,
         this.weather
       );
 
@@ -3961,7 +3961,7 @@ export class BabylonMain {
       this.gameTime -= 24 * 60;
       this.gameDay++;
     }
-    this.grassSystem.update(deltaMs, this.gameTime / 60);
+    this.grassSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
     this.updateEconomySystems(deltaMs);
   }
 
@@ -4292,7 +4292,7 @@ export class BabylonMain {
    */
   public forceGrassGrowth(minutes: number): void {
     const deltaMs = minutes * 500;
-    this.grassSystem.update(deltaMs, this.gameTime / 60);
+    this.grassSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
   }
 
   /**

@@ -1195,6 +1195,27 @@ describe('employee-work', () => {
       expect(worker.currentTask).toBe('idle');
     });
 
+    it('bunker cooldown works correctly across multiple days', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0);
+      const workingEmployee = { ...employee, status: 'working' as const };
+      state = addWorker(state, workingEmployee);
+
+      const day1Noon = 1 * 1440 + 720;
+      const cells = createTestGrid(3, 3, (x, y) => {
+        if (x === 1 && y === 0) {
+          return { ...createTestCell('bunker', 100, 100, 100, 0), lastMowed: day1Noon };
+        }
+        return createTestCell('fairway', 100, 100, 100, 0);
+      });
+
+      const day1At1210 = 1 * 1440 + 730;
+      const result = tickEmployeeWork(state, [workingEmployee], cells, 0.1, day1At1210);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).toBe('idle');
+    });
+
     it('ignores non-grass terrain types for mowing', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
