@@ -56,7 +56,16 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Game Time', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&preset=equipment_test');
+      await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => {
+      window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
+      window.game.setEquipmentResource('mower', 100);
+      window.game.setEquipmentResource('sprinkler', 100);
+      window.game.setEquipmentResource('spreader', 100);
+      window.game.selectEquipment(1);
+      window.game.toggleEquipment();
+    });
       await waitForGameReady(page);
     });
 

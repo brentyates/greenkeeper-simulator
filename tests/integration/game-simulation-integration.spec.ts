@@ -90,7 +90,9 @@ test.describe('Game Simulation Integration', () => {
 
   test.describe('Grass Growth Simulation', () => {
     test('grass grows over extended time', async ({ page }) => {
-      await page.goto('/?testMode=true&preset=all_grass_mown');
+      await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
       await waitForGameReady(page);
 
       const before = await page.evaluate(() => window.game.getCourseStats());
@@ -121,7 +123,9 @@ test.describe('Game Simulation Integration', () => {
 
     test('nutrients decay much slower than moisture (design intent)', async ({ page }) => {
       // Start fresh with known state
-      await page.goto('/?testMode=true&preset=all_grass_mown');
+      await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
       await waitForGameReady(page);
 
       const before = await page.evaluate(() => window.game.getCourseStats());
@@ -149,7 +153,9 @@ test.describe('Game Simulation Integration', () => {
     });
 
     test('nutrients stay above critical for multiple days without fertilizing', async ({ page }) => {
-      await page.goto('/?testMode=true&preset=all_grass_mown');
+      await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
       await waitForGameReady(page);
 
       const before = await page.evaluate(() => window.game.getCourseStats());

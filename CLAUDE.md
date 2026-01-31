@@ -76,7 +76,6 @@ Pure, engine-independent modules for TDD:
 |------|---------|
 | `courseData.ts` | Course layouts (3/9/18/27 holes), refill stations, obstacles |
 | `scenarioData.ts` | 10 scenarios with objectives, conditions, progression |
-| `testPresets.ts` | Test state presets for E2E testing |
 
 ### Coordinate Systems
 - **Grid coordinates**: `(gridX, gridY)` - logical tile positions
@@ -104,14 +103,11 @@ Located in `src/core/*.test.ts`. Pure logic tests for TDD:
 - `terrain-editor-logic.test.ts` - Terrain editing operations
 
 ### E2E Tests (Playwright)
-**State-based testing** is the primary pattern. Load specific game states via URL:
+**State-based testing** is the primary pattern. Tests use `?testMode=true` to skip the menu, then set up state via the game API:
 
 ```bash
-# Named preset
-http://localhost:8080/?preset=equipment_test
-
-# Arbitrary state (base64-encoded JSON)
-http://localhost:8080/?state=<base64>
+# Start in test mode
+http://localhost:8080/?testMode=true
 ```
 
 ### Test Keyboard Shortcuts
@@ -138,8 +134,13 @@ The full API is defined by public methods in `src/babylon/BabylonMain.ts`. Commo
 ```javascript
 // ✅ CORRECT: State-based testing
 test('mowing reduces grass height', async ({ page }) => {
-  await page.goto('/?testMode=true&preset=all_grass_unmown');
+  await page.goto('/?testMode=true');
   await waitForGameReady(page);
+
+  // Set up initial state via API
+  await page.evaluate(() => {
+    window.game.setAllCellsState({ height: 100, moisture: 50, nutrients: 50, health: 60 });
+  });
 
   const pos = await page.evaluate(() => window.game.getPlayerPosition());
 
@@ -183,14 +184,6 @@ tests/
 │   └── test-helpers.ts      # Shared test utilities
 └── old-screenshot-tests/    # Deprecated screenshot tests (reference only)
 ```
-
-### Available Presets
-Defined in `src/data/testPresets.ts`. Common ones:
-- `all_grass_mown`, `all_grass_unmown`, `mixed_mowing_pattern`
-- `equipment_test`, `resource_test`, `refill_test`
-- `time_morning`, `time_noon`, `time_evening`, `time_night`
-- `elevation_test`, `ramp_test`, `cliff_test`
-- `tree_collision_test`, `water_collision_test`
 
 ## Architecture: Single Source of Truth
 

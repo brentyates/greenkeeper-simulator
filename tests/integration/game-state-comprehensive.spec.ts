@@ -8,8 +8,9 @@ import { test, expect, waitForGameReady, navigateToScenario } from '../utils/tes
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Full State Snapshot', () => {
@@ -133,8 +134,9 @@ test.describe('Game State Comprehensive', () => {
 
 test.describe('Terrain Queries', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Elevation Queries', () => {
@@ -196,8 +198,9 @@ test.describe('Terrain Queries', () => {
 
 test.describe('Economy Manipulation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('setCash updates cash amount', async ({ page }) => {
@@ -221,8 +224,9 @@ test.describe('Economy Manipulation', () => {
 
 test.describe('Time Control', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('getGameTime returns valid time', async ({ page }) => {
@@ -265,8 +269,9 @@ test.describe('Time Control', () => {
 
 test.describe('Player Movement', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('getPlayerPosition returns coordinates', async ({ page }) => {

@@ -13,8 +13,9 @@ import { test, expect, waitForGameReady, waitForPlayerIdle } from '../utils/test
 
 test.describe('Player Movement Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Basic Movement', () => {

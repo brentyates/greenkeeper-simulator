@@ -9,8 +9,9 @@ import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Terrain and Grass Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_unmown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('grass grows over time', async ({ page }) => {

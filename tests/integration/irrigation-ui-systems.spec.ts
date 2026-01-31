@@ -8,8 +8,9 @@ import { test, expect, waitForGameReady, navigateToScenario } from '../utils/tes
 
 test.describe('Irrigation System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Irrigation State', () => {
@@ -98,8 +99,9 @@ test.describe('Irrigation System', () => {
 
 test.describe('Overlay System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Overlay Modes', () => {
@@ -143,8 +145,9 @@ test.describe('Overlay System', () => {
 
 test.describe('UI State System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('UI State', () => {
@@ -208,8 +211,9 @@ test.describe('Panel Toggle System', () => {
 
 test.describe('Terrain Editor System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=elevation_test');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Editor State', () => {
@@ -312,7 +316,16 @@ test.describe('Terrain Editor System', () => {
 
 test.describe('Equipment System Extended', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=equipment_test');
+    await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => {
+      window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
+      window.game.setEquipmentResource('mower', 100);
+      window.game.setEquipmentResource('sprinkler', 100);
+      window.game.setEquipmentResource('spreader', 100);
+      window.game.selectEquipment(1);
+      window.game.toggleEquipment();
+    });
     await waitForGameReady(page);
   });
 
@@ -368,8 +381,9 @@ test.describe('Equipment System Extended', () => {
 
 test.describe('Grass System Extended', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_unmown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Grass Growth', () => {
@@ -415,8 +429,9 @@ test.describe('Time System Extended', () => {
 
 test.describe('Full Game State', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('State Access', () => {

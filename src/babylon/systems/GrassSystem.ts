@@ -1288,6 +1288,40 @@ export class GrassSystem {
     return this.cells[y]?.[x] ?? null;
   }
 
+  public setCellState(
+    x: number,
+    y: number,
+    state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>
+  ): void {
+    const cell = this.cells[y]?.[x];
+    if (!cell) return;
+
+    if (state.height !== undefined) cell.height = state.height;
+    if (state.moisture !== undefined) cell.moisture = state.moisture;
+    if (state.nutrients !== undefined) cell.nutrients = state.nutrients;
+    if (state.health !== undefined) cell.health = state.health;
+
+    this.updateTileVisual(x, y);
+  }
+
+  public setAllCellsState(
+    state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>
+  ): void {
+    for (let y = 0; y < this.cells.length; y++) {
+      for (let x = 0; x < this.cells[y].length; x++) {
+        const cell = this.cells[y][x];
+        // Skip non-grass terrain
+        if (cell.type === 'water' || cell.type === 'bunker') continue;
+
+        if (state.height !== undefined) cell.height = state.height;
+        if (state.moisture !== undefined) cell.moisture = state.moisture;
+        if (state.nutrients !== undefined) cell.nutrients = state.nutrients;
+        if (state.health !== undefined) cell.health = state.health;
+      }
+    }
+    this.updateAllTileVisuals();
+  }
+
   public getTerrainTypeAt(x: number, y: number): string | undefined {
     return this.cells[y]?.[x]?.type;
   }

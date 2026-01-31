@@ -20,10 +20,10 @@ export async function waitForPlayerIdle(page: Page): Promise<void> {
 }
 
 /**
- * Navigate to a test preset.
+ * Navigate to test mode and wait for game to be ready.
  */
-export async function navigateToPreset(page: Page, presetName: string): Promise<void> {
-  await page.goto(`/?testMode=true&preset=${presetName}`);
+export async function setupTestMode(page: Page): Promise<void> {
+  await page.goto('/?testMode=true');
   await waitForGameReady(page);
 }
 
@@ -36,16 +36,41 @@ export async function navigateToScenario(page: Page, scenarioId: string): Promis
 }
 
 /**
- * Navigate with arbitrary state (base64-encoded).
+ * Set all grass cells to mown state (height=0).
  */
-export async function navigateToState(page: Page, base64State: string): Promise<void> {
-  await page.goto(`/?testMode=true&state=${base64State}`);
-  await waitForGameReady(page);
+export async function setAllGrassMown(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 });
+  });
 }
 
 /**
- * Setup a test with a specific preset (alias for navigateToPreset).
+ * Set all grass cells to unmown state (height=100).
  */
-export async function setupTest(page: Page, presetName: string): Promise<void> {
-  await navigateToPreset(page, presetName);
+export async function setAllGrassUnmown(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.game.setAllCellsState({ height: 100, moisture: 50, nutrients: 50, health: 60 });
+  });
+}
+
+/**
+ * Set equipment resources to full.
+ */
+export async function setFullEquipment(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.game.setEquipmentResource('mower', 100);
+    window.game.setEquipmentResource('sprinkler', 100);
+    window.game.setEquipmentResource('spreader', 100);
+  });
+}
+
+/**
+ * Set equipment resources to low (for testing refill).
+ */
+export async function setLowEquipment(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.game.setEquipmentResource('mower', 10);
+    window.game.setEquipmentResource('sprinkler', 10);
+    window.game.setEquipmentResource('spreader', 10);
+  });
 }

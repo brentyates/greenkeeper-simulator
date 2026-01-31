@@ -8,8 +8,9 @@ import { test, expect, waitForGameReady, navigateToScenario } from '../utils/tes
 
 test.describe('UI State Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Overlay Modes', () => {
@@ -71,8 +72,9 @@ test.describe('UI State Integration', () => {
 
 test.describe('Terrain Editor UI', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Editor Toggle', () => {
@@ -179,8 +181,9 @@ test.describe('Terrain Editor UI', () => {
 
 test.describe('Save/Load Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('saveCurrentGame saves without error', async ({ page }) => {
@@ -202,8 +205,9 @@ test.describe('Save/Load Integration', () => {
 
 test.describe('Overlay Cycling', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('cycleOverlay changes overlay mode', async ({ page }) => {
@@ -227,8 +231,9 @@ test.describe('Overlay Cycling', () => {
 
 test.describe('Audio Control', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('toggleMute does not throw', async ({ page }) => {
@@ -247,7 +252,14 @@ test.describe('Audio Control', () => {
 
 test.describe('Equipment Refill', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=refill_test');
+    await page.goto('/?testMode=true');
+    await waitForGameReady(page);
+    await page.evaluate(() => {
+      window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
+      window.game.setEquipmentResource('mower', 10);
+      window.game.setEquipmentResource('sprinkler', 10);
+      window.game.setEquipmentResource('spreader', 10);
+    });
     await waitForGameReady(page);
   });
 
@@ -269,8 +281,9 @@ test.describe('Equipment Refill', () => {
 
 test.describe('Game Running State', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('setRunning true starts game', async ({ page }) => {

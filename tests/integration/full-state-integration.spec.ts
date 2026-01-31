@@ -8,8 +8,9 @@ import { test, expect, waitForGameReady, navigateToScenario } from '../utils/tes
 
 test.describe('Full Game State Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Complete State Retrieval', () => {
@@ -173,8 +174,9 @@ test.describe('Full Game State Integration', () => {
 
 test.describe('State Manipulation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('setCash updates economy state', async ({ page }) => {
@@ -204,8 +206,9 @@ test.describe('State Manipulation', () => {
 
 test.describe('Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('moving at boundary positions', async ({ page }) => {

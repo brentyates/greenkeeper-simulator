@@ -8,8 +8,9 @@ import { test, expect, waitForGameReady, navigateToScenario } from '../utils/tes
 
 test.describe('Terrain System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=elevation_test');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Elevation Operations', () => {
@@ -284,8 +285,9 @@ test.describe('Economy System Comprehensive', () => {
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Full State Access', () => {

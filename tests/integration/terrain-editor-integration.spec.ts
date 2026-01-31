@@ -7,8 +7,9 @@ import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Terrain Editor Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('terrain editor can be enabled and disabled', async ({ page }) => {

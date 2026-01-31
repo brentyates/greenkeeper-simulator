@@ -97,8 +97,9 @@ test.describe('Scenario System Advanced', () => {
 
 test.describe('Terrain System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=elevation_test');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Terrain Dimensions', () => {
@@ -388,8 +389,9 @@ test.describe('Employee Work System Advanced', () => {
 
 test.describe('Weather System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
+    await page.goto('/?testMode=true');
     await waitForGameReady(page);
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Weather State', () => {
