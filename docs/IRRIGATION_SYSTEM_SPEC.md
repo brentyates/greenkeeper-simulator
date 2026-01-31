@@ -1,8 +1,8 @@
-# Piped Irrigation System - Design Plan
+# Irrigation System Design Specification
 
-## Executive Summary
+## Overview
 
-This plan outlines a SimCity-style piped irrigation system that replaces the manual "Irrigator" employee role with an infrastructure-based approach. The system balances simplicity (like classic SimCity pipes) with enough depth to create meaningful gameplay decisions around coverage, maintenance, and costs.
+SimCity-style piped irrigation system that replaces manual irrigation with an infrastructure-based approach. The system balances simplicity (like classic SimCity pipes) with enough depth to create meaningful gameplay decisions around coverage, maintenance, and costs.
 
 ---
 
@@ -843,7 +843,6 @@ Rotary Sprinkler Coverage (5×5):
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-01-04
-**Author:** Planning Phase - Irrigation System Redesign
-**Status:** Draft - Awaiting Review
+**Document Version:** 1.1
+**Last Updated:** 2026-01-31
+**Status:** Implemented (see `src/core/irrigation.ts`)

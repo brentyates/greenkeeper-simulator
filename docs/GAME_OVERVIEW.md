@@ -405,6 +405,74 @@ Each stage has an initial dip (investment) followed by growth (returns).
 
 ---
 
+## Controls & Input
+
+The game supports keyboard, mouse, and touch input. All menus and UI elements can be navigated using any input method.
+
+### Keyboard Controls
+
+**Movement & Equipment:**
+| Key | Action |
+|-----|--------|
+| WASD / Arrow Keys | Move player |
+| 1, 2, 3 | Select equipment (mower, sprinkler, spreader) |
+| Space | Toggle equipment on/off |
+| E | Refill at station |
+
+**Camera & Display:**
+| Key | Action |
+|-----|--------|
+| Tab | Cycle overlay modes (normal/moisture/nutrients/height) |
+| [ / ] | Zoom out/in |
+| Mouse Wheel | Zoom in/out |
+
+**Time & Game:**
+| Key | Action |
+|-----|--------|
+| + / - | Speed up/slow down time |
+| P / Escape | Pause game |
+| M | Mute audio |
+
+**Panels:**
+| Key | Action |
+|-----|--------|
+| H | Employee panel |
+| Y | Research panel |
+| G | Tee sheet panel |
+| K | Marketing panel |
+| B | Equipment store |
+| U | Amenities panel |
+| T | Toggle terrain editor |
+
+**Menu Navigation:**
+- **Tab / Arrow Keys**: Navigate through menu options
+- **Enter / Space**: Activate selected button
+- **Escape**: Close menu / return
+
+### Mouse Controls
+
+- **Click**: Select/activate elements
+- **Hover**: Visual feedback on interactive elements
+- **Scroll**: Navigate through scrollable lists
+- **Mouse Wheel**: Zoom in/out
+
+### Touch Controls (Mobile/Tablet)
+
+- **Tap**: Click/select elements
+- **Swipe**: Move player (directional swipes, 50px threshold)
+- **Pinch**: Zoom in/out
+- **Touch & Drag**: Pan camera
+
+### Accessibility
+
+- All interactive elements reachable via keyboard
+- Tab order follows visual layout
+- Visual focus indicators (white border on focused elements)
+- Minimum button size: 45px (touch-friendly)
+- No reliance on hover states for critical functionality
+
+---
+
 ## Summary
 
 Greenkeeper Simulator is about **personal growth through professional growth**:
