@@ -8,7 +8,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('Research Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -97,7 +100,10 @@ test.describe('Research Integration', () => {
 
 test.describe('Employee Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -159,7 +165,10 @@ test.describe('Employee Integration', () => {
 
 test.describe('Employee Work System', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 

@@ -9,7 +9,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('Scenario System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -84,7 +87,10 @@ test.describe('Scenario System Integration', () => {
     test('different scenarios load correctly', async ({ page }) => {
       const state1 = await page.evaluate(() => window.game.getScenarioState());
 
-      await page.goto('/?testMode=true&scenario=dry_spell_challenge');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('dry_spell_challenge'));
+    await page.waitForFunction(() => window.game !== null);
       await page.waitForFunction(() => window.game !== undefined, { timeout: 15000 });
       await page.waitForTimeout(200);
 
@@ -100,7 +106,10 @@ test.describe('Scenario System Integration', () => {
 
 test.describe('Economy System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -258,7 +267,10 @@ test.describe('Economy System Integration', () => {
 
 test.describe('Scenario and Economy Interaction', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 

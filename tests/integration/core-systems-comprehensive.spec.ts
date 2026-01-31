@@ -8,7 +8,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('Terrain System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -71,7 +74,10 @@ test.describe('Terrain System Comprehensive', () => {
 
 test.describe('Employee Work System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -117,7 +123,10 @@ test.describe('Employee Work System Comprehensive', () => {
 
 test.describe('Tee Times System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -168,7 +177,10 @@ test.describe('Tee Times System Comprehensive', () => {
 
 test.describe('Research System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -235,7 +247,10 @@ test.describe('Research System Comprehensive', () => {
 
 test.describe('Economy System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -289,7 +304,10 @@ test.describe('Economy System Comprehensive', () => {
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -337,7 +355,10 @@ test.describe('Game State Comprehensive', () => {
 
 test.describe('Prestige System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -365,7 +386,10 @@ test.describe('Prestige System Comprehensive', () => {
 
 test.describe('Golfer System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -389,7 +413,10 @@ test.describe('Golfer System Comprehensive', () => {
 
 test.describe('Marketing System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 

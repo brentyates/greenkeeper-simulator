@@ -9,7 +9,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('Terrain System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -218,7 +221,10 @@ test.describe('Terrain System Integration', () => {
 
 test.describe('Research System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -421,7 +427,10 @@ test.describe('Research System Integration', () => {
 
 test.describe('Terrain and Research Interaction', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 

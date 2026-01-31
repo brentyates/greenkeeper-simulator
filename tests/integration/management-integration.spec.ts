@@ -9,7 +9,10 @@ import { test, expect } from '../fixtures/coverage';
 test.describe('Management Systems Integration', () => {
   test.describe('Economy', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
@@ -35,7 +38,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Employees', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
@@ -58,7 +64,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Game Time', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
@@ -96,7 +105,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Golfers', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
@@ -112,7 +124,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Research', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
@@ -126,7 +141,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Prestige', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
@@ -142,7 +160,10 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Scenarios', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/?testMode=true&scenario=tutorial_basics');
+      await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 

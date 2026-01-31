@@ -8,7 +8,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('Save Game Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -57,7 +60,10 @@ test.describe('Save Game Integration', () => {
 
 test.describe('Reputation System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -114,7 +120,10 @@ test.describe('Reputation System Integration', () => {
 
 test.describe('Tee Revenue Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -205,7 +214,10 @@ test.describe('Tee Revenue Integration', () => {
 
 test.describe('Walk-On System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -257,7 +269,10 @@ test.describe('Walk-On System Integration', () => {
 
 test.describe('Economy System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -288,7 +303,10 @@ test.describe('Economy System Integration', () => {
 
 test.describe('Autonomous Equipment Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
@@ -328,7 +346,10 @@ test.describe('Autonomous Equipment Integration', () => {
 
 test.describe('Weather System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -354,7 +375,10 @@ test.describe('Weather System Integration', () => {
 
 test.describe('Scenario System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
