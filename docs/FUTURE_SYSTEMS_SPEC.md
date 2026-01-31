@@ -323,103 +323,15 @@ compactionReduction = aerationType.effectiveness * (1 - grassType.sensitivity);
 
 ## 9. Irrigation Pipe Network System
 
-> This system replaces the autonomous robot irrigator concept with a more realistic pipe/sprinkler network that players build and manage.
-
-### Overview
-
-Instead of robot irrigators, players build a network of underground pipes and sprinkler heads to water the course. This creates strategic infrastructure decisions and long-term planning.
-
-### Core Components
-
-**Pipe Types:**
-| Type | Cost/Tile | Flow Rate | Durability | Notes |
-|------|-----------|-----------|------------|-------|
-| PVC (Small) | $15 | 5 GPM | 20 years | Residential grade |
-| PVC (Large) | $25 | 15 GPM | 20 years | Commercial grade |
-| HDPE | $35 | 20 GPM | 50 years | Premium, flexible |
-| Steel | $50 | 30 GPM | 30 years | High pressure |
-
-**Sprinkler Heads:**
-| Type | Cost | Coverage Radius | GPM | Pattern |
-|------|------|-----------------|-----|---------|
-| Pop-up Small | $50 | 15 ft | 2 | Circle |
-| Pop-up Large | $100 | 30 ft | 5 | Circle |
-| Rotor | $150 | 40 ft | 8 | Adjustable arc |
-| Impact | $200 | 50 ft | 12 | Full circle |
-| Gear-driven | $300 | 60 ft | 15 | Adjustable |
-
-### Pipe Network Mechanics
-
-```typescript
-interface PipeSegment {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  pipeType: PipeType;
-  flowCapacity: number;
-  currentFlow: number;
-  age: number;
-  condition: number;  // 0-100, degrades over time
-}
-
-interface SprinklerHead {
-  gridX: number;
-  gridY: number;
-  headType: SprinklerType;
-  coverageRadius: number;
-  gpm: number;
-  connectedPipe: string;
-  schedule: WateringSchedule;
-}
-
-interface WateringZone {
-  id: string;
-  name: string;
-  sprinklerIds: string[];
-  schedule: {
-    startTime: number;    // Minutes from midnight
-    duration: number;     // Minutes
-    daysActive: boolean[];  // [Mon, Tue, ...]
-  };
-}
-```
-
-### Gameplay Features
-
-**Building Phase:**
-- Lay pipes from water source (well, municipal connection)
-- Connect sprinkler heads to pipes
-- Define watering zones for scheduling
-- Consider elevation for water pressure
-
-**Operational Phase:**
-- Set zone schedules (morning watering preferred)
-- Monitor water usage and costs
-- Handle pipe breaks and repairs
-- Winterization in cold climates
-
-**Upgrade Path:**
-1. Manual watering (starting equipment)
-2. Basic hose bibs at strategic locations
-3. Simple zone system (2-4 zones)
-4. Full programmable system (8+ zones)
-5. Smart irrigation with soil sensors
-
-**Challenges:**
-- Pipe breaks require digging and repair
-- Overlapping coverage wastes water
-- Insufficient coverage leaves dry spots
-- Water pressure drops with distance from source
-- Seasonal adjustments needed
-
-### Integration Points
-
-- **Economy:** Water bills, pipe/head purchases, repair costs
-- **Research:** Smart controllers, efficient heads, leak detection
-- **Weather:** Adjust schedules based on rainfall
-- **Prestige:** Well-maintained, green course = higher prestige
-- **Staff:** Irrigation technician role for maintenance
+> **IMPLEMENTED:** This system has been fully designed and implemented. See **[IRRIGATION_SYSTEM_SPEC.md](./IRRIGATION_SYSTEM_SPEC.md)** for the complete specification.
+>
+> The irrigation system includes:
+> - Pipe network with PVC, metal, and industrial pipe types
+> - Sprinkler heads (fixed, rotary, impact, precision)
+> - Water sources (municipal, wells, ponds)
+> - Pressure calculation and leak detection
+> - Scheduled watering automation
+> - Research tree integration
 
 ---
 
