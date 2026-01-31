@@ -116,6 +116,11 @@ export function createDirectPopup(
   return { panel, stack };
 }
 
+const BUTTON_COLORS = {
+  back: { normal: '#4a6a5a', hover: '#5a7a6a' },
+  close: { normal: '#aa4444', hover: '#cc5555' },
+} as const;
+
 export interface HeaderConfig {
   title: string;
   titleColor?: string;
@@ -143,22 +148,23 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
 
   const closeLabel = config.closeLabel ?? '✕';
   const isBackButton = closeLabel === '← Back';
+  const colors = isBackButton ? BUTTON_COLORS.back : BUTTON_COLORS.close;
 
   const closeBtn = Button.CreateSimpleButton('closeBtn', closeLabel);
   closeBtn.width = isBackButton ? '70px' : '28px';
   closeBtn.height = '28px';
   closeBtn.cornerRadius = 4;
-  closeBtn.background = isBackButton ? '#4a6a5a' : '#aa4444';
+  closeBtn.background = colors.normal;
   closeBtn.color = 'white';
   closeBtn.thickness = 0;
   closeBtn.fontSize = isBackButton ? 12 : 14;
   closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
   closeBtn.onPointerClickObservable.add(config.onClose);
   closeBtn.onPointerEnterObservable.add(() => {
-    closeBtn.background = isBackButton ? '#5a7a6a' : '#cc5555';
+    closeBtn.background = colors.hover;
   });
   closeBtn.onPointerOutObservable.add(() => {
-    closeBtn.background = isBackButton ? '#4a6a5a' : '#aa4444';
+    closeBtn.background = colors.normal;
   });
   container.addControl(closeBtn);
 

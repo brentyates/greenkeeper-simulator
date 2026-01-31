@@ -347,6 +347,10 @@ export function applyTool(
   return modifications;
 }
 
+function isValidPosition(mod: TileModification, grid: unknown[][]): boolean {
+  return mod.y >= 0 && mod.y < grid.length && mod.x >= 0 && mod.x < (grid[mod.y]?.length ?? 0);
+}
+
 export function getCellsInBrush(
   centerX: number,
   centerY: number,
@@ -374,20 +378,10 @@ export function commitModifications(
   layout: number[][]
 ): void {
   for (const mod of modifications) {
-    if (
-      mod.y >= 0 &&
-      mod.y < elevation.length &&
-      mod.x >= 0 &&
-      mod.x < (elevation[mod.y]?.length ?? 0)
-    ) {
+    if (isValidPosition(mod, elevation)) {
       elevation[mod.y][mod.x] = mod.newElevation;
     }
-    if (
-      mod.y >= 0 &&
-      mod.y < layout.length &&
-      mod.x >= 0 &&
-      mod.x < (layout[mod.y]?.length ?? 0)
-    ) {
+    if (isValidPosition(mod, layout)) {
       layout[mod.y][mod.x] = mod.newType;
     }
   }
@@ -399,20 +393,10 @@ export function revertModifications(
   layout: number[][]
 ): void {
   for (const mod of modifications) {
-    if (
-      mod.y >= 0 &&
-      mod.y < elevation.length &&
-      mod.x >= 0 &&
-      mod.x < (elevation[mod.y]?.length ?? 0)
-    ) {
+    if (isValidPosition(mod, elevation)) {
       elevation[mod.y][mod.x] = mod.oldElevation;
     }
-    if (
-      mod.y >= 0 &&
-      mod.y < layout.length &&
-      mod.x >= 0 &&
-      mod.x < (layout[mod.y]?.length ?? 0)
-    ) {
+    if (isValidPosition(mod, layout)) {
       layout[mod.y][mod.x] = mod.oldType;
     }
   }

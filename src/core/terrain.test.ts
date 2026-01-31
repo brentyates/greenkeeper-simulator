@@ -580,12 +580,12 @@ describe('Area Selection', () => {
 
 describe('Corner Heights Calculation', () => {
   it('returns all zeros for flat terrain', () => {
-    const corners = getCornerHeights(0, 0, 0, 0, 0, null, null, null, null);
+    const corners = getCornerHeights(0, 0, 0, 0, 0);
     expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
   });
 
   it('marks north corner as raised when north neighbor is higher', () => {
-    const corners = getCornerHeights(0, 1, 0, 0, 0, null, null, null, null);
+    const corners = getCornerHeights(0, 1, 0, 0, 0);
     expect(corners.n).toBe(1);
     expect(corners.e).toBe(0);
     expect(corners.s).toBe(0);
@@ -593,37 +593,37 @@ describe('Corner Heights Calculation', () => {
   });
 
   it('marks east corner as raised when east neighbor is higher', () => {
-    const corners = getCornerHeights(0, 0, 1, 0, 0, null, null, null, null);
+    const corners = getCornerHeights(0, 0, 1, 0, 0);
     expect(corners.e).toBe(1);
   });
 
   it('marks south corner as raised when south neighbor is higher', () => {
-    const corners = getCornerHeights(0, 0, 0, 1, 0, null, null, null, null);
+    const corners = getCornerHeights(0, 0, 0, 1, 0);
     expect(corners.s).toBe(1);
   });
 
   it('marks west corner as raised when west neighbor is higher', () => {
-    const corners = getCornerHeights(0, 0, 0, 0, 1, null, null, null, null);
+    const corners = getCornerHeights(0, 0, 0, 0, 1);
     expect(corners.w).toBe(1);
   });
 
   it('marks all corners raised when all neighbors are higher', () => {
-    const corners = getCornerHeights(0, 1, 1, 1, 1, null, null, null, null);
+    const corners = getCornerHeights(0, 1, 1, 1, 1);
     expect(corners).toEqual({ n: 1, e: 1, s: 1, w: 1 });
   });
 
   it('treats null neighbors as same elevation', () => {
-    const corners = getCornerHeights(0, null, null, null, null, null, null, null, null);
+    const corners = getCornerHeights(0, null, null, null, null);
     expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
   });
 
   it('only marks raised if neighbor is strictly higher', () => {
-    const corners = getCornerHeights(1, 1, 1, 1, 1, null, null, null, null);
+    const corners = getCornerHeights(1, 1, 1, 1, 1);
     expect(corners).toEqual({ n: 0, e: 0, s: 0, w: 0 });
   });
 
   it('correctly identifies adjacent raised corners (NE edge)', () => {
-    const corners = getCornerHeights(0, 1, 1, 0, 0, null, null, null, null);
+    const corners = getCornerHeights(0, 1, 1, 0, 0);
     expect(corners.n).toBe(1);
     expect(corners.e).toBe(1);
     expect(corners.s).toBe(0);

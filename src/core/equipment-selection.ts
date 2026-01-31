@@ -1,4 +1,4 @@
-export type EquipmentType = "mower" | "sprinkler" | "spreader";
+import type { EquipmentType } from './equipment-logic';
 
 export interface EquipmentSelectionState {
   selected: EquipmentType | null;
