@@ -4,12 +4,12 @@
  * Tests terrain drag editing operations via public API.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Terrain Drag Operations', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 

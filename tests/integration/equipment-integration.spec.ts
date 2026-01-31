@@ -11,13 +11,13 @@
  * from user input through to game state changes.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 
 test.describe('Equipment System Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
       window.game.setEquipmentResource('mower', 100);
@@ -26,7 +26,7 @@ test.describe('Equipment System Integration', () => {
       window.game.selectEquipment(1);
       window.game.toggleEquipment();
     });
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Equipment Selection and Activation', () => {
@@ -160,9 +160,9 @@ test.describe('Equipment System Integration', () => {
   test.describe('Equipment Effects on Terrain', () => {
     test('mowing reduces grass height', async ({ page }) => {
       await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 100, moisture: 50, nutrients: 50, health: 60 }));
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       const pos = await page.evaluate(() => window.game.getPlayerPosition());
 
@@ -246,7 +246,7 @@ test.describe('Equipment System Integration', () => {
     test('player can refill at refill station', async ({ page }) => {
       // Use scenario to get proper economy setup
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       // Deplete some resources
       await page.evaluate(() => {
@@ -294,7 +294,7 @@ test.describe('Equipment System Integration', () => {
     test('refill costs money', async ({ page }) => {
       // Use scenario for proper economy
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       // Set cash and deplete resources
       await page.evaluate(() => {

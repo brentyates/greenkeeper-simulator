@@ -6,12 +6,12 @@
  * and related employee work functions.
  */
 
-import { test, expect } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Employee Work System Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Worker State Management', () => {

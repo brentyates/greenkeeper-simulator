@@ -4,12 +4,12 @@
  * Tests leak repair, sprinkler removal, and advanced irrigation features.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Advanced Irrigation Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Sprinkler Head Management', () => {

@@ -5,12 +5,12 @@
  * Exercises purchaseRobotUnit, sellRobotUnit, getRobotState, and simulation.
  */
 
-import { test, expect } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Robot System Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Robot State', () => {
@@ -97,7 +97,7 @@ test.describe('Robot System Integration', () => {
 test.describe('Robot Purchasing with Research', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Research Unlocks Robots', () => {
@@ -278,7 +278,7 @@ test.describe('Robot Purchasing with Research', () => {
 test.describe('Robot Selling', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setCash(1000000));
     await page.evaluate(() =>
       window.game.completeResearchWithPrerequisites('robot_mower_fairway')
@@ -367,7 +367,7 @@ test.describe('Robot Selling', () => {
 test.describe('Robot Simulation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setCash(10000000));
     await page.evaluate(() =>
       window.game.completeResearchWithPrerequisites('robot_mower_fairway')
@@ -461,7 +461,7 @@ test.describe('Robot Simulation', () => {
 test.describe('Robot Types', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setCash(100000000));
   });
 
@@ -524,7 +524,7 @@ test.describe('Robot Types', () => {
 test.describe('Robot State Persistence', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setCash(10000000));
     await page.evaluate(() =>
       window.game.completeResearchWithPrerequisites('robot_mower_fairway')
@@ -549,7 +549,7 @@ test.describe('Robot State Persistence', () => {
 test.describe('Robot Details', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setCash(10000000));
     await page.evaluate(() =>
       window.game.completeResearchWithPrerequisites('robot_mower_fairway')

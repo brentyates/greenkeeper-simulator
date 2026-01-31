@@ -4,12 +4,12 @@
  * Tests tee time booking system and amenity upgrades via public API.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Tee Times Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Tee Sheet', () => {
@@ -125,7 +125,7 @@ test.describe('Tee Times Integration', () => {
 test.describe('Amenities Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Available Amenities', () => {
@@ -207,7 +207,7 @@ test.describe('Amenities Integration', () => {
 test.describe('Marketing Campaign Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Campaign Management', () => {
@@ -274,7 +274,7 @@ test.describe('Marketing Campaign Integration', () => {
 test.describe('Tee Time Advanced Features', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('getTeeTimeStats returns stats object', async ({ page }) => {
@@ -296,7 +296,7 @@ test.describe('Tee Time Advanced Features', () => {
 test.describe('Golfer Fee Calculations', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('calculateGreenFeeForGolfer returns number', async ({ page }) => {
@@ -315,7 +315,7 @@ test.describe('Golfer Fee Calculations', () => {
 test.describe('Reputation Tracking', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('trackGolferVisitForReputation does not throw', async ({ page }) => {

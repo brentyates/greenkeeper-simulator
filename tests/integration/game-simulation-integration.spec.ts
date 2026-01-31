@@ -4,12 +4,12 @@
  * Tests game systems that run during simulation loops via advanceDay and advanceTime.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Game Simulation Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Economy Simulation', () => {
@@ -92,9 +92,9 @@ test.describe('Game Simulation Integration', () => {
   test.describe('Grass Growth Simulation', () => {
     test('grass grows over extended time', async ({ page }) => {
       await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       const before = await page.evaluate(() => window.game.getCourseStats());
 
@@ -125,9 +125,9 @@ test.describe('Game Simulation Integration', () => {
     test('nutrients decay much slower than moisture (design intent)', async ({ page }) => {
       // Start fresh with known state
       await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       const before = await page.evaluate(() => window.game.getCourseStats());
 
@@ -155,9 +155,9 @@ test.describe('Game Simulation Integration', () => {
 
     test('nutrients stay above critical for multiple days without fertilizing', async ({ page }) => {
       await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       const before = await page.evaluate(() => window.game.getCourseStats());
 
@@ -280,7 +280,7 @@ test.describe('Game Simulation Integration', () => {
 test.describe('Extended Game Loop', () => {
   test('full day simulation exercises systems', async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
     await page.evaluate(() => window.game.setCash(50000));
     await page.evaluate(() => window.game.setPaused(false));
@@ -326,7 +326,7 @@ test.describe('Extended Game Loop', () => {
 test.describe('Weather System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('getWeatherState returns valid weather info', async ({ page }) => {
@@ -361,7 +361,7 @@ test.describe('Weather System', () => {
 test.describe('Time Utilities', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('isCurrentTimePrimeMorning returns boolean', async ({ page }) => {
@@ -396,7 +396,7 @@ test.describe('Time Utilities', () => {
 test.describe('Save Game Management', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('listSaveGames returns array', async ({ page }) => {
@@ -426,7 +426,7 @@ test.describe('Save Game Management', () => {
 test.describe('Terrain Dimensions', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('getTerrainDimensions returns valid dimensions', async ({ page }) => {

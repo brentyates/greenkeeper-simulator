@@ -4,13 +4,13 @@
  * Tests economy, employees, research, golfers, and scenarios.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Management Systems Integration', () => {
   test.describe('Economy', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('can get and set cash', async ({ page }) => {
@@ -36,7 +36,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Employees', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('employee roster starts empty or with initial staff', async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Game Time', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
       window.game.setEquipmentResource('mower', 100);
@@ -68,7 +68,7 @@ test.describe('Management Systems Integration', () => {
       window.game.selectEquipment(1);
       window.game.toggleEquipment();
     });
-      await waitForGameReady(page);
+      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('game time has valid hour and minute values', async ({ page }) => {
@@ -97,7 +97,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Golfers', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('golfer state tracks active and served counts', async ({ page }) => {
@@ -113,7 +113,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Research', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('research state has funding level', async ({ page }) => {
@@ -127,7 +127,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Prestige', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('prestige score and tier reflect course quality', async ({ page }) => {
@@ -143,7 +143,7 @@ test.describe('Management Systems Integration', () => {
   test.describe('Scenarios', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('scenario progress tracks financial and operational metrics', async ({ page }) => {

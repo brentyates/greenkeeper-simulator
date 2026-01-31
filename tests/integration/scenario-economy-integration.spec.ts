@@ -5,12 +5,12 @@
  * Focuses on exercising ScenarioManager methods and economy functions.
  */
 
-import { test, expect } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Scenario System Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Scenario State', () => {
@@ -101,7 +101,7 @@ test.describe('Scenario System Integration', () => {
 test.describe('Economy System Integration', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Cash Management', () => {
@@ -259,7 +259,7 @@ test.describe('Economy System Integration', () => {
 test.describe('Scenario and Economy Interaction', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('scenario progress tracks economy state', async ({ page }) => {

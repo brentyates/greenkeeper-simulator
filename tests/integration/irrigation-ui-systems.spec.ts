@@ -4,12 +4,12 @@
  * Tests for irrigation system and UI-related functionality.
  */
 
-import { test, expect, waitForGameReady } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Irrigation System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
@@ -100,7 +100,7 @@ test.describe('Irrigation System', () => {
 test.describe('Overlay System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
@@ -146,7 +146,7 @@ test.describe('Overlay System', () => {
 test.describe('UI State System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
@@ -184,7 +184,7 @@ test.describe('UI State System', () => {
 test.describe('Panel Toggle System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Panel Toggles', () => {
@@ -213,7 +213,7 @@ test.describe('Panel Toggle System', () => {
 test.describe('Terrain Editor System', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
@@ -318,7 +318,7 @@ test.describe('Terrain Editor System', () => {
 test.describe('Equipment System Extended', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
       window.game.setEquipmentResource('mower', 100);
@@ -327,7 +327,7 @@ test.describe('Equipment System Extended', () => {
       window.game.selectEquipment(1);
       window.game.toggleEquipment();
     });
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Equipment Resource', () => {
@@ -383,7 +383,7 @@ test.describe('Equipment System Extended', () => {
 test.describe('Grass System Extended', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
@@ -406,7 +406,7 @@ test.describe('Grass System Extended', () => {
 test.describe('Time System Extended', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true&scenario=tutorial_basics');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Time Operations', () => {
@@ -432,7 +432,7 @@ test.describe('Time System Extended', () => {
 test.describe('Full Game State', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?testMode=true');
-    await waitForGameReady(page);
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
