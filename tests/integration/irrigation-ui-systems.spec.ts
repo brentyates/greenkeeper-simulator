@@ -4,7 +4,7 @@
  * Tests for irrigation system and UI-related functionality.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Irrigation System', () => {
   test.beforeEach(async ({ page }) => {
@@ -183,7 +183,8 @@ test.describe('UI State System', () => {
 
 test.describe('Panel Toggle System', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Panel Toggles', () => {
@@ -404,7 +405,8 @@ test.describe('Grass System Extended', () => {
 
 test.describe('Time System Extended', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Time Operations', () => {

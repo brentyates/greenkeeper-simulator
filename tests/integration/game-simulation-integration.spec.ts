@@ -4,11 +4,12 @@
  * Tests game systems that run during simulation loops via advanceDay and advanceTime.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Game Simulation Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Economy Simulation', () => {
@@ -278,7 +279,8 @@ test.describe('Game Simulation Integration', () => {
 
 test.describe('Extended Game Loop', () => {
   test('full day simulation exercises systems', async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
 
     await page.evaluate(() => window.game.setCash(50000));
     await page.evaluate(() => window.game.setPaused(false));
@@ -323,7 +325,8 @@ test.describe('Extended Game Loop', () => {
 
 test.describe('Weather System', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test('getWeatherState returns valid weather info', async ({ page }) => {
@@ -357,7 +360,8 @@ test.describe('Weather System', () => {
 
 test.describe('Time Utilities', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test('isCurrentTimePrimeMorning returns boolean', async ({ page }) => {
@@ -391,7 +395,8 @@ test.describe('Time Utilities', () => {
 
 test.describe('Save Game Management', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test('listSaveGames returns array', async ({ page }) => {
@@ -420,7 +425,8 @@ test.describe('Save Game Management', () => {
 
 test.describe('Terrain Dimensions', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test('getTerrainDimensions returns valid dimensions', async ({ page }) => {

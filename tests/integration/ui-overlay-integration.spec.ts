@@ -4,7 +4,7 @@
  * Tests for UI state management and overlay modes.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('UI State Integration', () => {
   test.beforeEach(async ({ page }) => {

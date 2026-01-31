@@ -4,7 +4,7 @@
  * Tests complete game state retrieval and manipulation.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Full Game State Integration', () => {
   test.beforeEach(async ({ page }) => {

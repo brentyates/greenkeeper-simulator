@@ -4,7 +4,7 @@
  * Tests game lifecycle, save/load, pause, and time control via public API.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Game Control Integration', () => {
   test.beforeEach(async ({ page }) => {
@@ -121,7 +121,8 @@ test.describe('Game Control Integration', () => {
     });
 
     test('getScenarioState returns scenario info', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
 
       const state = await page.evaluate(() => window.game.getScenarioState());
 

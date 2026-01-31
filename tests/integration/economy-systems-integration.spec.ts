@@ -4,7 +4,7 @@
  * Tests for save-game, reputation, tee-revenue, walk-ons, and economy modules.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Save Game Integration', () => {
   test.beforeEach(async ({ page }) => {
@@ -57,7 +57,8 @@ test.describe('Save Game Integration', () => {
 
 test.describe('Reputation System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Reputation State', () => {
@@ -113,7 +114,8 @@ test.describe('Reputation System Integration', () => {
 
 test.describe('Tee Revenue Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Revenue Summary', () => {
@@ -203,7 +205,8 @@ test.describe('Tee Revenue Integration', () => {
 
 test.describe('Walk-On System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Walk-On State', () => {
@@ -254,7 +257,8 @@ test.describe('Walk-On System Integration', () => {
 
 test.describe('Economy System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Economy State', () => {
@@ -284,7 +288,8 @@ test.describe('Economy System Integration', () => {
 
 test.describe('Autonomous Equipment Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Robot State', () => {
@@ -349,7 +354,8 @@ test.describe('Weather System Integration', () => {
 
 test.describe('Scenario System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Scenario State', () => {

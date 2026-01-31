@@ -4,7 +4,7 @@
  * Additional tests for low-coverage modules: terrain, employee-work, tee-times, economy, research.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Terrain System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
@@ -71,7 +71,8 @@ test.describe('Terrain System Comprehensive', () => {
 
 test.describe('Employee Work System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Employee Operations', () => {
@@ -116,7 +117,8 @@ test.describe('Employee Work System Comprehensive', () => {
 
 test.describe('Tee Times System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Tee Time State', () => {
@@ -166,7 +168,8 @@ test.describe('Tee Times System Comprehensive', () => {
 
 test.describe('Research System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Research Discovery', () => {
@@ -232,7 +235,8 @@ test.describe('Research System Comprehensive', () => {
 
 test.describe('Economy System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Financial State', () => {
@@ -333,7 +337,8 @@ test.describe('Game State Comprehensive', () => {
 
 test.describe('Prestige System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Prestige State', () => {
@@ -360,7 +365,8 @@ test.describe('Prestige System Comprehensive', () => {
 
 test.describe('Golfer System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Golfer Pool State', () => {
@@ -383,7 +389,8 @@ test.describe('Golfer System Comprehensive', () => {
 
 test.describe('Marketing System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Marketing State', () => {

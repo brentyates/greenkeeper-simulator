@@ -4,11 +4,12 @@
  * Tests for low-coverage modules: autonomous-equipment, scenario, terrain, tee-times, research
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Autonomous Equipment Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Robot State', () => {
@@ -57,7 +58,8 @@ test.describe('Autonomous Equipment Advanced', () => {
 
 test.describe('Scenario System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Scenario Progress', () => {
@@ -162,7 +164,8 @@ test.describe('Terrain System Advanced', () => {
 
 test.describe('Tee Times System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Tee Sheet', () => {
@@ -236,7 +239,8 @@ test.describe('Tee Times System Advanced', () => {
 
 test.describe('Research System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Research Progress', () => {
@@ -302,7 +306,8 @@ test.describe('Research System Advanced', () => {
 
 test.describe('Economy System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Cash Management', () => {
@@ -342,7 +347,8 @@ test.describe('Economy System Advanced', () => {
 
 test.describe('Employee Work System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Employee Work State', () => {
@@ -418,7 +424,8 @@ test.describe('Weather System Advanced', () => {
 
 test.describe('Prestige System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Amenity Upgrades', () => {
@@ -448,7 +455,8 @@ test.describe('Prestige System Advanced', () => {
 
 test.describe('Golfer System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Golfer State', () => {
@@ -486,7 +494,8 @@ test.describe('Golfer System Advanced', () => {
 
 test.describe('Marketing System Advanced', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Marketing Stats', () => {

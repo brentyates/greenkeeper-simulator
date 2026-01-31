@@ -6,11 +6,12 @@
  * and related autonomous equipment functions.
  */
 
-import { test, expect, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../utils/test-helpers';
 
 test.describe('Autonomous Equipment Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Robot State Management', () => {

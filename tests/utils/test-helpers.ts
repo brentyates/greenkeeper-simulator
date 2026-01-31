@@ -17,11 +17,3 @@ export async function waitForGameReady(page: Page): Promise<void> {
 export async function waitForPlayerIdle(page: Page): Promise<void> {
   await page.evaluate(() => window.game.waitForPlayerIdle());
 }
-
-/**
- * Navigate to a scenario and wait for game ready.
- */
-export async function navigateToScenario(page: Page, scenarioId: string): Promise<void> {
-  await page.goto(`/?testMode=true&scenario=${scenarioId}`);
-  await waitForGameReady(page);
-}

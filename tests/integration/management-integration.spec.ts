@@ -4,12 +4,13 @@
  * Tests economy, employees, research, golfers, and scenarios.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Management Systems Integration', () => {
   test.describe('Economy', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('can get and set cash', async ({ page }) => {
@@ -34,7 +35,8 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Employees', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('employee roster starts empty or with initial staff', async ({ page }) => {
@@ -94,7 +96,8 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Golfers', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('golfer state tracks active and served counts', async ({ page }) => {
@@ -109,7 +112,8 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Research', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('research state has funding level', async ({ page }) => {
@@ -122,7 +126,8 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Prestige', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('prestige score and tier reflect course quality', async ({ page }) => {
@@ -137,7 +142,8 @@ test.describe('Management Systems Integration', () => {
 
   test.describe('Scenarios', () => {
     test.beforeEach(async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
     });
 
     test('scenario progress tracks financial and operational metrics', async ({ page }) => {

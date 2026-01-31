@@ -4,7 +4,7 @@
  * Tests for complete game state manipulation and verification.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect, waitForGameReady } from '../utils/test-helpers';
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
@@ -110,7 +110,8 @@ test.describe('Game State Comprehensive', () => {
 
   test.describe('Scenario State', () => {
     test('getScenarioState returns scenario info', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
       const state = await page.evaluate(() => window.game.getScenarioState());
 
       if (state) {
@@ -121,7 +122,8 @@ test.describe('Game State Comprehensive', () => {
     });
 
     test('scenario progress is within 0-100', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
       const state = await page.evaluate(() => window.game.getScenarioState());
 
       if (state) {

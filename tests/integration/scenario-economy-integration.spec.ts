@@ -5,11 +5,12 @@
  * Focuses on exercising ScenarioManager methods and economy functions.
  */
 
-import { test, expect, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../utils/test-helpers';
 
 test.describe('Scenario System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Scenario State', () => {
@@ -99,7 +100,8 @@ test.describe('Scenario System Integration', () => {
 
 test.describe('Economy System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test.describe('Cash Management', () => {
@@ -256,7 +258,8 @@ test.describe('Economy System Integration', () => {
 
 test.describe('Scenario and Economy Interaction', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await waitForGameReady(page);
   });
 
   test('scenario progress tracks economy state', async ({ page }) => {
