@@ -164,9 +164,6 @@ test('mowing reduces grass height', async ({ page }) => {
   expect(mownTerrain.height).toBeLessThan(0.3);
   expect(mownTerrain.lastMowed).toBeGreaterThan(0);
 });
-
-// ❌ WRONG: Screenshot testing is FLAKY and DEPRECATED
-await expect(page).toHaveScreenshot('mowing.png');  // DON'T DO THIS!
 ```
 
 ### Test Organization
@@ -179,10 +176,10 @@ tests/
 │   ├── terrain-grass-integration.spec.ts
 │   ├── irrigation-integration.spec.ts
 │   ├── terrain-editor-integration.spec.ts
-│   └── management-integration.spec.ts
-├── utils/
-│   └── test-helpers.ts      # Shared test utilities
-└── old-screenshot-tests/    # Deprecated screenshot tests (reference only)
+│   ├── management-integration.spec.ts
+│   └── ... (additional integration tests)
+└── fixtures/                 # Test fixtures
+    └── coverage.ts
 ```
 
 ## Architecture: Single Source of Truth
