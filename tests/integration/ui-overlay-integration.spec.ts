@@ -8,7 +8,10 @@ import { test, expect } from '../fixtures/coverage';
 
 test.describe('UI State Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -72,7 +75,10 @@ test.describe('UI State Integration', () => {
 
 test.describe('Terrain Editor UI', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -181,7 +187,10 @@ test.describe('Terrain Editor UI', () => {
 
 test.describe('Save/Load Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -205,7 +214,10 @@ test.describe('Save/Load Integration', () => {
 
 test.describe('Overlay Cycling', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -231,7 +243,10 @@ test.describe('Overlay Cycling', () => {
 
 test.describe('Audio Control', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
@@ -252,7 +267,10 @@ test.describe('Audio Control', () => {
 
 test.describe('Equipment Refill', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
@@ -281,7 +299,10 @@ test.describe('Equipment Refill', () => {
 
 test.describe('Game Running State', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true');
+    await page.goto('/');
+    await page.waitForFunction(() => window.app !== undefined);
+    await page.evaluate(() => window.startScenario('tutorial_basics'));
+    await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });

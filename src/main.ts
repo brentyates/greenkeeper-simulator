@@ -11,65 +11,13 @@ import { Color4 } from '@babylonjs/core/Maths/math.color';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
-export interface StartupParams {
-  headless?: boolean;
-  testMode?: boolean;
-  skipMenu?: boolean;
-  scenario?: ScenarioDefinition;
-  loadFromSave?: boolean;
-}
-
-function parseURLParams(): StartupParams {
-  const params = new URLSearchParams(window.location.search);
-  const result: StartupParams = {};
-
-  const headless = params.get('headless');
-  if (headless === 'true' || headless === '1') {
-    result.headless = true;
-    console.log('Headless mode enabled');
-  }
-
-  const testMode = params.get('testMode');
-  if (testMode === 'true' || testMode === '1') {
-    result.testMode = true;
-    result.skipMenu = true;
-    console.log('Test mode enabled');
-  }
-
-  const skipMenu = params.get('skipMenu');
-  if (skipMenu === 'true' || skipMenu === '1') {
-    result.skipMenu = true;
-    console.log('Skipping menu');
-  }
-
-  const scenarioId = params.get('scenario');
-  if (scenarioId) {
-    const scenario = getScenarioById(scenarioId);
-    if (scenario) {
-      result.scenario = scenario;
-      result.skipMenu = true;
-      console.log(`Loaded scenario: ${scenarioId}`);
-    } else {
-      console.warn(`Unknown scenario: ${scenarioId}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
-    }
-  }
-
-  const loadFromSave = params.get('loadFromSave');
-  if (loadFromSave === 'true' || loadFromSave === '1') {
-    result.loadFromSave = true;
-  }
-
-  return result;
-}
-
 declare global {
   interface Window {
     game: BabylonMain | null;
-    startupParams: StartupParams;
     captureScreenshot: () => Promise<string>;
     exportGameState: () => void;
     listScenarios: () => string[];
-    loadScenario: (id: string) => void;
+    startScenario: (id: string, loadFromSave?: boolean) => boolean;
     getScenarioState: () => { progress: number; completed: boolean; failed: boolean; message?: string } | null;
     getEconomyState: () => { cash: number; earned: number; spent: number } | null;
     getPrestigeState: () => { score: number; stars: number; tier: string; amenityScore: number } | null;
@@ -103,12 +51,10 @@ class GameApp {
   private launchScreen: LaunchScreen | null = null;
   private userManual: UserManual | null = null;
   private game: BabylonMain | null = null;
-  private startupParams: StartupParams;
   private progressManager = getProgressManager();
 
-  constructor(canvasId: string, startupParams: StartupParams) {
+  constructor(canvasId: string) {
     this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
-    this.startupParams = startupParams;
 
     if (!this.canvas) {
       throw new Error(`Canvas element '${canvasId}' not found`);
@@ -116,18 +62,6 @@ class GameApp {
   }
 
   public async start(): Promise<void> {
-    // If we have a scenario from URL, start it directly
-    if (this.startupParams.scenario) {
-      this.startGame(this.startupParams.scenario, this.startupParams.loadFromSave ?? false);
-      return;
-    }
-
-    // If we have preset/state or skipMenu, go straight to game
-    if (this.startupParams.skipMenu) {
-      this.startGameDirectly();
-      return;
-    }
-
     // Show launch screen
     this.showLaunchScreen();
   }
@@ -175,7 +109,7 @@ class GameApp {
     });
   }
 
-  private startGame(scenario: ScenarioDefinition, loadFromSave: boolean = false): void {
+  public startGame(scenario: ScenarioDefinition, loadFromSave: boolean = false): void {
     // Clean up menu resources
     if (this.launchScreen) {
       this.launchScreen.dispose();
@@ -211,12 +145,14 @@ class GameApp {
     window.game = this.game;
   }
 
-  private startGameDirectly(): void {
-    // Start game without menu (for presets/testing)
-    this.game = startBabylonGame('renderCanvas', {
-      onReturnToMenu: () => this.returnToMenu()
-    });
-    window.game = this.game;
+  public startScenarioById(id: string, loadFromSave: boolean = false): boolean {
+    const scenario = getScenarioById(id);
+    if (scenario) {
+      this.startGame(scenario, loadFromSave);
+      return true;
+    }
+    console.warn(`Unknown scenario: ${id}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
+    return false;
   }
 
   private returnToMenu(): void {
@@ -314,11 +250,8 @@ class GameApp {
   }
 }
 
-const startupParams = parseURLParams();
-window.startupParams = startupParams;
-
 // Create and start the app
-const app = new GameApp('renderCanvas', startupParams);
+const app = new GameApp('renderCanvas');
 window.app = app;
 window.game = null; // Will be set when game starts
 app.start();
@@ -347,13 +280,8 @@ window.exportGameState = () => {
 
 window.listScenarios = () => SCENARIOS.map(s => s.id);
 
-window.loadScenario = (id: string) => {
-  const scenario = getScenarioById(id);
-  if (scenario) {
-    window.location.search = `?scenario=${id}`;
-  } else {
-    console.warn(`Unknown scenario: ${id}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
-  }
+window.startScenario = (id: string, loadFromSave: boolean = false) => {
+  return window.app.startScenarioById(id, loadFromSave);
 };
 
 window.getScenarioState = () => {
