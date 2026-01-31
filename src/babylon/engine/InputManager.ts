@@ -249,7 +249,7 @@ export class InputManager {
         const touch2 = event.touches[1];
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
-        this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
+        this.initialPinchDistance = this.getDistance(dx, dy);
         this.lastPinchDistance = this.initialPinchDistance;
         this.touchStartPos = null; // Cancel swipe detection
       }
@@ -270,7 +270,7 @@ export class InputManager {
         const touch2 = event.touches[1];
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = this.getDistance(dx, dy);
 
         if (this.lastPinchDistance > 0) {
           const delta = distance - this.lastPinchDistance;
@@ -302,7 +302,7 @@ export class InputManager {
 
         const dx = endX - this.touchStartPos.x;
         const dy = endY - this.touchStartPos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = this.getDistance(dx, dy);
 
         // Check if it was a tap (short time, minimal movement)
         if (timeDiff < this.TAP_TIME_THRESHOLD && distance < 10) {
@@ -338,9 +338,10 @@ export class InputManager {
     }, { passive: true });
   }
 
-  /**
-   * Determine swipe direction from touch delta
-   */
+  private getDistance(dx: number, dy: number): number {
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   private getSwipeDirection(dx: number, dy: number): Direction | null {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);

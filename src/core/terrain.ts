@@ -264,11 +264,7 @@ export function getCornerHeights(
   nElev: number | null,
   eElev: number | null,
   sElev: number | null,
-  wElev: number | null,
-  _neElev: number | null,
-  _seElev: number | null,
-  _swElev: number | null,
-  _nwElev: number | null
+  wElev: number | null
 ): CornerHeights {
   const limit = 1;
   const nVal = nElev ?? elevation;
