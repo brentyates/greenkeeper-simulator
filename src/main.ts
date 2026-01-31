@@ -1,7 +1,4 @@
 import { BabylonMain, startBabylonGame } from './babylon/BabylonMain';
-import { getPreset, listPresets } from './data/testPresets';
-import { GameStateSerializer } from './systems/GameStateSerializer';
-import { GameState } from './systems/GameState';
 import { ScenarioDefinition, getScenarioById, SCENARIOS } from './data/scenarioData';
 import { hasSave, deleteSave } from './core/save-game';
 import { getProgressManager } from './systems/ProgressManager';
@@ -15,11 +12,8 @@ import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 export interface StartupParams {
-  preset?: string;
-  state?: GameState;
   headless?: boolean;
   testMode?: boolean;
-  scene?: string;
   skipMenu?: boolean;
   scenario?: ScenarioDefinition;
   loadFromSave?: boolean;
@@ -28,30 +22,6 @@ export interface StartupParams {
 function parseURLParams(): StartupParams {
   const params = new URLSearchParams(window.location.search);
   const result: StartupParams = {};
-
-  const presetName = params.get('preset');
-  if (presetName) {
-    const preset = getPreset(presetName);
-    if (preset) {
-      result.preset = presetName;
-      result.state = preset;
-      result.skipMenu = true;
-      console.log(`Loaded preset: ${presetName}`);
-    } else {
-      console.warn(`Unknown preset: ${presetName}. Available presets: ${listPresets().join(', ')}`);
-    }
-  }
-
-  const stateParam = params.get('state');
-  if (stateParam && !result.state) {
-    try {
-      result.state = GameStateSerializer.fromBase64(stateParam);
-      result.skipMenu = true;
-      console.log('Loaded state from URL parameter');
-    } catch (e) {
-      console.error('Failed to parse state from URL:', e);
-    }
-  }
 
   const headless = params.get('headless');
   if (headless === 'true' || headless === '1') {
@@ -64,12 +34,6 @@ function parseURLParams(): StartupParams {
     result.testMode = true;
     result.skipMenu = true;
     console.log('Test mode enabled');
-  }
-
-  const scene = params.get('scene');
-  if (scene) {
-    result.scene = scene;
-    console.log(`Scene override: ${scene}`);
   }
 
   const skipMenu = params.get('skipMenu');
@@ -104,8 +68,6 @@ declare global {
     startupParams: StartupParams;
     captureScreenshot: () => Promise<string>;
     exportGameState: () => void;
-    loadPreset: (name: string) => void;
-    listPresets: () => string[];
     listScenarios: () => string[];
     loadScenario: (id: string) => void;
     getScenarioState: () => { progress: number; completed: boolean; failed: boolean; message?: string } | null;
@@ -354,17 +316,6 @@ class GameApp {
 
 const startupParams = parseURLParams();
 window.startupParams = startupParams;
-
-window.listPresets = listPresets;
-
-window.loadPreset = (name: string) => {
-  const preset = getPreset(name);
-  if (preset) {
-    window.location.search = `?preset=${name}`;
-  } else {
-    console.warn(`Unknown preset: ${name}. Available: ${listPresets().join(', ')}`);
-  }
-};
 
 // Create and start the app
 const app = new GameApp('renderCanvas', startupParams);

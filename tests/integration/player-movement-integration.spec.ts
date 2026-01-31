@@ -9,12 +9,13 @@
  * - BabylonMain controller
  */
 
-import { test, expect, waitForGameReady, waitForPlayerIdle } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Player Movement Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Basic Movement', () => {
@@ -25,26 +26,26 @@ test.describe('Player Movement Integration', () => {
 
       // Move up (isometric: decreases X)
       await page.evaluate(() => window.game.movePlayer('up'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       let pos = await getPos();
       expect(pos.x).toBe(initialPos.x - 1);
       expect(pos.y).toBe(initialPos.y);
 
       // Move right (isometric: increases Y)
       await page.evaluate(() => window.game.movePlayer('right'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.y).toBe(initialPos.y + 1);
 
       // Move down (isometric: increases X, back to initial)
       await page.evaluate(() => window.game.movePlayer('down'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.x).toBe(initialPos.x);
 
       // Move left (isometric: decreases Y, back to initial)
       await page.evaluate(() => window.game.movePlayer('left'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.x).toBe(initialPos.x);
       expect(pos.y).toBe(initialPos.y);
@@ -56,25 +57,25 @@ test.describe('Player Movement Integration', () => {
 
       // W = up (isometric: decreases X)
       await page.evaluate(() => window.game.movePlayer('w'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       let pos = await getPos();
       expect(pos.x).toBe(initialPos.x - 1);
 
       // D = right (isometric: increases Y)
       await page.evaluate(() => window.game.movePlayer('d'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.y).toBe(initialPos.y + 1);
 
       // S = down (isometric: increases X, back to initial)
       await page.evaluate(() => window.game.movePlayer('s'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.x).toBe(initialPos.x);
 
       // A = left (isometric: decreases Y, back to initial)
       await page.evaluate(() => window.game.movePlayer('a'));
-      await waitForPlayerIdle(page);
+      await page.evaluate(() => window.game.waitForPlayerIdle());
       pos = await getPos();
       expect(pos.y).toBe(initialPos.y);
     });

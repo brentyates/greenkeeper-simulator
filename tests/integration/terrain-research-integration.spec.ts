@@ -5,11 +5,12 @@
  * Focuses on exercising terrain manipulation and research functions.
  */
 
-import { test, expect, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Terrain System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Terrain Queries', () => {
@@ -217,7 +218,8 @@ test.describe('Terrain System Integration', () => {
 
 test.describe('Research System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Research State', () => {
@@ -419,7 +421,8 @@ test.describe('Research System Integration', () => {
 
 test.describe('Terrain and Research Interaction', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test('completed research can affect terrain maintenance', async ({ page }) => {

@@ -5,11 +5,12 @@
  * Exercises takeLoan, makeLoanPayment, payOffLoan, and related functions.
  */
 
-import { test, expect, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Loan System Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Loan State', () => {
@@ -298,7 +299,8 @@ test.describe('Loan System Integration', () => {
 
 test.describe('Transaction History Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Transaction Tracking', () => {

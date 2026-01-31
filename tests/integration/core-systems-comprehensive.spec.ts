@@ -4,12 +4,13 @@
  * Additional tests for low-coverage modules: terrain, employee-work, tee-times, economy, research.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Terrain System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=elevation_test');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Elevation Operations', () => {
@@ -70,7 +71,8 @@ test.describe('Terrain System Comprehensive', () => {
 
 test.describe('Employee Work System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Employee Operations', () => {
@@ -115,7 +117,8 @@ test.describe('Employee Work System Comprehensive', () => {
 
 test.describe('Tee Times System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Tee Time State', () => {
@@ -165,7 +168,8 @@ test.describe('Tee Times System Comprehensive', () => {
 
 test.describe('Research System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Research Discovery', () => {
@@ -231,7 +235,8 @@ test.describe('Research System Comprehensive', () => {
 
 test.describe('Economy System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Financial State', () => {
@@ -284,8 +289,9 @@ test.describe('Economy System Comprehensive', () => {
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Full State Access', () => {
@@ -331,7 +337,8 @@ test.describe('Game State Comprehensive', () => {
 
 test.describe('Prestige System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Prestige State', () => {
@@ -358,7 +365,8 @@ test.describe('Prestige System Comprehensive', () => {
 
 test.describe('Golfer System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Golfer Pool State', () => {
@@ -381,7 +389,8 @@ test.describe('Golfer System Comprehensive', () => {
 
 test.describe('Marketing System Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Marketing State', () => {

@@ -4,12 +4,13 @@
  * Tests for complete game state manipulation and verification.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Game State Comprehensive', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Full State Snapshot', () => {
@@ -109,7 +110,8 @@ test.describe('Game State Comprehensive', () => {
 
   test.describe('Scenario State', () => {
     test('getScenarioState returns scenario info', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
       const state = await page.evaluate(() => window.game.getScenarioState());
 
       if (state) {
@@ -120,7 +122,8 @@ test.describe('Game State Comprehensive', () => {
     });
 
     test('scenario progress is within 0-100', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
       const state = await page.evaluate(() => window.game.getScenarioState());
 
       if (state) {
@@ -133,8 +136,9 @@ test.describe('Game State Comprehensive', () => {
 
 test.describe('Terrain Queries', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Elevation Queries', () => {
@@ -196,8 +200,9 @@ test.describe('Terrain Queries', () => {
 
 test.describe('Economy Manipulation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('setCash updates cash amount', async ({ page }) => {
@@ -221,8 +226,9 @@ test.describe('Economy Manipulation', () => {
 
 test.describe('Time Control', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('getGameTime returns valid time', async ({ page }) => {
@@ -265,8 +271,9 @@ test.describe('Time Control', () => {
 
 test.describe('Player Movement', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test('getPlayerPosition returns coordinates', async ({ page }) => {

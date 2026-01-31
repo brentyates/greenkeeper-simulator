@@ -4,11 +4,12 @@
  * Tests marketing campaigns and amenity purchases via public API.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Marketing Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Marketing Stats', () => {
@@ -81,7 +82,8 @@ test.describe('Marketing Integration', () => {
 
 test.describe('Amenities Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToScenario(page, 'tutorial_basics');
+    await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
   });
 
   test.describe('Amenity Purchases', () => {

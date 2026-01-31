@@ -3542,6 +3542,26 @@ export class BabylonMain {
   }
 
   /**
+   * Set grass cell state at a grid position.
+   */
+  public setCellState(
+    x: number,
+    y: number,
+    state: { height?: number; moisture?: number; nutrients?: number; health?: number }
+  ): void {
+    this.grassSystem.setCellState(x, y, state);
+  }
+
+  /**
+   * Set all grass cells to the same state (useful for test setup).
+   */
+  public setAllCellsState(
+    state: { height?: number; moisture?: number; nutrients?: number; health?: number }
+  ): void {
+    this.grassSystem.setAllCellsState(state);
+  }
+
+  /**
    * Get terrain type at a grid position.
    */
   public getTerrainTypeAt(x: number, y: number): string | undefined {

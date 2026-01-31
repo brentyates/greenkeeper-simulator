@@ -4,12 +4,13 @@
  * Tests game lifecycle, save/load, pause, and time control via public API.
  */
 
-import { test, expect, waitForGameReady, navigateToScenario } from '../utils/test-helpers';
+import { test, expect } from '../fixtures/coverage';
 
 test.describe('Game Control Integration', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?testMode=true&preset=all_grass_mown');
-    await waitForGameReady(page);
+    await page.goto('/?testMode=true');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
+    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
   });
 
   test.describe('Pause Control', () => {
@@ -120,7 +121,8 @@ test.describe('Game Control Integration', () => {
     });
 
     test('getScenarioState returns scenario info', async ({ page }) => {
-      await navigateToScenario(page, 'tutorial_basics');
+      await page.goto('/?testMode=true&scenario=tutorial_basics');
+    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
 
       const state = await page.evaluate(() => window.game.getScenarioState());
 
