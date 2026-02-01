@@ -747,40 +747,29 @@ The player progressively shifts from worker to manager to director.
 
 ## Visual Representation
 
-### Employee Sprites
+### Employee 3D Models
 
-All employees are visible on the golf course while working. This creates a living, dynamic course environment.
+All employees are visible on the golf course while working. This creates a living, dynamic course environment. Employees are rendered as 3D meshes loaded via AssetLoader.
 
 ```typescript
 interface EmployeeVisualState {
   gridX: number;
   gridY: number;
-  facingDirection: 'n' | 's' | 'e' | 'w';
-  animation: EmployeeAnimation;
+  facingAngle: number;  // Radians, continuous rotation
+  isAnimating: boolean;
   equipmentVisible: boolean;
 }
-
-type EmployeeAnimation =
-  | 'idle'
-  | 'walking'
-  | 'mowing'
-  | 'watering'
-  | 'fertilizing'
-  | 'raking_bunker'
-  | 'repairing'
-  | 'on_break';
 ```
 
-### Sprite Requirements by Role
+### 3D Model Requirements by Role
 
-| Role | Sprites Needed | Equipment Shown |
-|------|---------------|-----------------|
-| Groundskeeper | Walk, Mow, Water, Rake, Fertilize, Idle, Break | Push mower, rake, spreader |
-| Irrigator | Walk, Water, Adjusting, Idle, Break | Hose, sprinkler tools |
-| Mechanic | Walk, Repair, Carry Tools, Idle, Break | Toolbox, wrenches |
-| Pro Shop Staff | Walk, Idle at Counter | None |
-| Caddy | Walk with bag, Advising, Idle | Golf bag |
-| Manager | Walk, Clipboard, Idle | Clipboard |
+| Role | Model Asset | Equipment Attached |
+|------|-------------|-------------------|
+| Groundskeeper | character.employee | Push mower, rake, spreader meshes |
+| Mechanic | character.employee | Toolbox mesh |
+| Pro Shop Staff | character.employee | None |
+| Caddy | character.employee | Golf bag mesh |
+| Manager | character.employee | Clipboard mesh |
 
 ### Visual Behavior
 
@@ -966,10 +955,10 @@ interface CourseArea {
 4. Work action execution
 
 ### Phase 2.5: Visual Representation
-1. Employee sprite loading and rendering
-2. Animation state machine
+1. Employee 3D mesh loading via AssetLoader
+2. Movement and rotation interpolation
 3. Position sync with work state
-4. Equipment/tool visualization
+4. Equipment mesh attachment
 
 ### Phase 3: State Management
 1. Fatigue system

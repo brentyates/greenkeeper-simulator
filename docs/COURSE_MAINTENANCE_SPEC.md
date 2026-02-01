@@ -402,43 +402,26 @@ Players can cycle through visualization modes:
 
 ### Grid System
 
-The course uses an isometric grid coordinate system:
+The course uses a 3D isometric grid coordinate system rendered with Babylon.js:
 
 ```typescript
-const TILE_WIDTH = 64;   // Pixels
-const TILE_HEIGHT = 32;  // Pixels (half of width for isometric)
-const ELEVATION_HEIGHT = 16; // Pixels per elevation level
-```
+// 1 grid unit = 1 game tile (approximately 1 meter)
+// The isometric view is achieved via an orthographic camera at 60° from vertical
 
-### Grid to Screen Conversion
+// Grid to 3D world conversion (from BabylonEngine.ts)
+function gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
+  return new Vector3(gridX, elevation, gridY);
+}
 
-```typescript
-function gridToScreen(
-  gridX: number,
-  gridY: number,
-  mapWidth: number,
-  elevation: number = 0
-): { x: number; y: number } {
-  const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + (mapWidth * TILE_WIDTH) / 2;
-  const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) - elevation * ELEVATION_HEIGHT;
-  return { x: screenX, y: screenY };
+// 3D world to grid conversion
+function worldToGrid(worldPos: Vector3): { x: number; y: number } {
+  return { x: Math.floor(worldPos.x), y: Math.floor(worldPos.z) };
 }
 ```
 
-### Screen to Grid Conversion
+### Isometric Camera
 
-```typescript
-function screenToGrid(
-  screenX: number,
-  screenY: number,
-  mapWidth: number
-): { x: number; y: number } {
-  const offsetX = screenX - (mapWidth * TILE_WIDTH) / 2;
-  const isoX = (offsetX / (TILE_WIDTH / 2) + screenY / (TILE_HEIGHT / 2)) / 2;
-  const isoY = (screenY / (TILE_HEIGHT / 2) - offsetX / (TILE_WIDTH / 2)) / 2;
-  return { x: Math.floor(isoX), y: Math.floor(isoY) };
-}
-```
+The isometric appearance is achieved via an orthographic camera positioned at a fixed angle, not pixel-based sprite offsets. See `BabylonEngine.ts` for camera setup details.
 
 ---
 
