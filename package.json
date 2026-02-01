@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@babylonjs/core": "^8.44.0",
-    "@babylonjs/gui": "^8.44.0"
+    "@babylonjs/gui": "^8.44.0",
+    "@babylonjs/loaders": "^8.44.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
