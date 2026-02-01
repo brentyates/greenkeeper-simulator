@@ -7,7 +7,6 @@
 
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
 import { AssetId, AssetInstance, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
@@ -189,11 +188,4 @@ export function disposeEntityMesh(state: EntityVisualState): void {
     state.meshInstance = null;
   }
   state.container.dispose();
-}
-
-/**
- * Get world position for effects/equipment attachment
- */
-export function getEntityWorldPosition(state: EntityVisualState): Vector3 {
-  return state.container.position.clone();
 }

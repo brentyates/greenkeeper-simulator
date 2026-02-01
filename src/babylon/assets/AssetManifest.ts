@@ -806,45 +806,5 @@ export function getAssetPath(assetId: AssetId): string {
   return ASSET_MANIFEST[assetId].path;
 }
 
-export function getAssetsByCategory(category: string): AssetId[] {
-  const prefix = category + ".";
-  return (Object.keys(ASSET_MANIFEST) as AssetId[]).filter((id) =>
-    id.startsWith(prefix)
-  );
-}
-
-export function getCategories(): string[] {
-  const categories = new Set<string>();
-  for (const key of Object.keys(ASSET_MANIFEST)) {
-    categories.add(key.split(".")[0]);
-  }
-  return Array.from(categories).sort();
-}
-
-export function validateAssetDimensions(
-  assetId: AssetId,
-  height: number,
-  width: number,
-  depth: number
-): string[] {
-  const spec = ASSET_MANIFEST[assetId];
-  const errors: string[] = [];
-
-  const [minH, maxH] = spec.heightRange;
-  if (height < minH || height > maxH) {
-    errors.push(`Height ${height.toFixed(2)} out of range [${minH}, ${maxH}]`);
-  }
-
-  const [maxW, maxD] = spec.footprint;
-  if (width > maxW * 1.1) {
-    errors.push(`Width ${width.toFixed(2)} exceeds footprint ${maxW}`);
-  }
-  if (depth > maxD * 1.1) {
-    errors.push(`Depth ${depth.toFixed(2)} exceeds footprint ${maxD}`);
-  }
-
-  return errors;
-}
-
 // Total asset count
 export const ASSET_COUNT = Object.keys(ASSET_MANIFEST).length;

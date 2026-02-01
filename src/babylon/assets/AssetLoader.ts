@@ -18,10 +18,10 @@ import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import "@babylonjs/loaders/glTF";
 
 import { createPlaceholderAsset, assetFileExists, LoadedAsset } from "./PlaceholderMeshes";
-import { ASSET_MANIFEST, AssetId, getAssetPath } from "./AssetManifest";
+import { AssetId, getAssetPath } from "./AssetManifest";
 
 // Re-export for convenience
-export { ASSET_MANIFEST, getAssetPath, getAssetSpec, getAssetsByCategory } from "./AssetManifest";
+export { getAssetPath, getAssetSpec } from "./AssetManifest";
 export type { AssetId, AssetSpec } from "./AssetManifest";
 export type { LoadedAsset } from "./PlaceholderMeshes";
 
@@ -163,24 +163,6 @@ export function createInstance(
   }
 
   return { root, meshes, animations };
-}
-
-/**
- * Preload multiple assets in parallel
- * Call this during game initialization
- */
-export async function preloadAssets(
-  scene: Scene,
-  assetIds: AssetId[]
-): Promise<void> {
-  await Promise.all(assetIds.map(id => loadAsset(scene, id)));
-}
-
-/**
- * Check if an asset exists in the manifest
- */
-export function hasAsset(assetId: string): assetId is AssetId {
-  return assetId in ASSET_MANIFEST;
 }
 
 /**
