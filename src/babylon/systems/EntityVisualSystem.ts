@@ -1,19 +1,26 @@
+/**
+ * EntityVisualSystem - 3D mesh-based entity rendering
+ *
+ * Renders entities as 3D meshes loaded via AssetLoader.
+ * Handles smooth movement interpolation and rotation to face movement direction.
+ *
+ * Note: Animations are not yet implemented - meshes just rotate and move.
+ */
+
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { SpriteManager, Sprite } from "@babylonjs/core/Sprites";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
+import { AssetId, AssetInstance, LoadedAsset, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
 
+// Keep these exports for compatibility, though they're not used with meshes
 export const SPRITE_FRAMES_PER_DIRECTION = 6;
 export const SPRITE_DIRECTIONS_COUNT = 8;
 export const SPRITE_ANIMATION_SPEED_MS = 150;
-
 export const ANIM_TYPE_WALK = 0;
 export const ANIM_TYPE_PUSHING = 1;
-
 
 export interface EntityAppearance {
   readonly bodyColor: Color3;
@@ -22,20 +29,22 @@ export interface EntityAppearance {
   readonly hatEmissive: Color3;
   readonly scale: number;
   readonly hasHatBrim: boolean;
+  readonly assetId: AssetId;
 }
 
 export interface EntityVisualState {
   container: Mesh;
-  sprite: Sprite;
-  equipmentSprite: Sprite | null;
+  meshInstance: AssetInstance | null;
   lastGridX: number;
   lastGridY: number;
   targetGridX: number;
   targetGridY: number;
   visualProgress: number;
-  direction: number; // 0-7: S, N, W, E, SE, SW, NE, NW
-  animationType: number; // 0=walk, 1=pushing
+  facingAngle: number;
+  animationType: number;
   isAnimating: boolean;
+  // Legacy sprite fields (unused but kept for interface compatibility)
+  direction: number;
 }
 
 export interface ElevationProvider {
@@ -43,40 +52,41 @@ export interface ElevationProvider {
 }
 
 export const PLAYER_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.11, 0.48, 0.24), // Ignored by sprite
+  bodyColor: new Color3(0.11, 0.48, 0.24),
   bodyEmissive: new Color3(0.06, 0.24, 0.12),
   hatColor: new Color3(0.9, 0.9, 0.85),
   hatEmissive: new Color3(0.45, 0.45, 0.42),
-  scale: 0.5,
+  scale: 1.0,
   hasHatBrim: true,
+  assetId: "character.greenkeeper",
 };
 
 export const EMPLOYEE_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.4, 0.35, 0.3), // Ignored by sprite
+  bodyColor: new Color3(0.4, 0.35, 0.3),
   bodyEmissive: new Color3(0.2, 0.17, 0.15),
   hatColor: new Color3(0.7, 0.5, 0.2),
   hatEmissive: new Color3(0.35, 0.25, 0.1),
-  scale: 0.4,
+  scale: 1.0,
   hasHatBrim: false,
+  assetId: "character.employee",
 };
 
-let sharedSpriteManager: SpriteManager | null = null;
-let equipmentSpriteManager: SpriteManager | null = null;
+// Asset cache for loaded models
+const assetCache: Map<AssetId, Promise<LoadedAsset>> = new Map();
 
-function getEquipmentSpriteManager(scene: Scene): SpriteManager {
-  if (!equipmentSpriteManager || equipmentSpriteManager.scene !== scene) {
-    equipmentSpriteManager = new SpriteManager(
-      "equipmentManager",
-      "/assets/textures/push_mower.png",
-      50,
-      { width: 48, height: 48 },
-      scene
-    );
-    (equipmentSpriteManager as unknown as { billboardMode: number }).billboardMode = 2;
+async function getOrLoadAsset(scene: Scene, assetId: AssetId): Promise<LoadedAsset> {
+  const cached = assetCache.get(assetId);
+  if (cached) {
+    return cached;
   }
-  return equipmentSpriteManager;
+  const promise = loadAsset(scene, assetId);
+  assetCache.set(assetId, promise);
+  return promise;
 }
 
+/**
+ * Create a 3D mesh-based entity
+ */
 export function createEntityMesh(
   scene: Scene,
   id: string,
@@ -84,68 +94,77 @@ export function createEntityMesh(
   startX: number,
   startY: number
 ): EntityVisualState {
-  const scale = appearance.scale;
-
-  if (!sharedSpriteManager || sharedSpriteManager.scene !== scene) {
-    sharedSpriteManager = new SpriteManager(
-      "greenskeeperManager",
-      "/assets/textures/greenkeeper_pixellab.png",
-      200,
-      { width: 48, height: 48 },
-      scene
-    );
-    (sharedSpriteManager as unknown as { billboardMode: number }).billboardMode = 2;
-    sharedSpriteManager.isPickable = true;
-  }
-
-  const container = MeshBuilder.CreateBox(`entity_${id}`, { size: 0.01 }, scene);
+  // Create a container mesh for positioning
+  const container = new Mesh(`entity_${id}`, scene);
   container.isVisible = false;
 
-  const sprite = new Sprite(`sprite_${id}`, sharedSpriteManager);
-  sprite.height = 1.8 * scale;
-  sprite.width = 1.8 * scale;
-  sprite.cellIndex = 0;
+  // Position container at start
+  const startPos = gridTo3D(startX + 0.5, startY + 0.5, 0);
+  container.position.copyFrom(startPos);
 
-  return {
+  const state: EntityVisualState = {
     container,
-    sprite,
-    equipmentSprite: null,
+    meshInstance: null,
     lastGridX: startX,
     lastGridY: startY,
     targetGridX: startX,
     targetGridY: startY,
     visualProgress: 1,
-    direction: 0,
+    facingAngle: 0,
     animationType: ANIM_TYPE_WALK,
     isAnimating: false,
+    direction: 0,
   };
+
+  // Load the asset asynchronously
+  getOrLoadAsset(scene, appearance.assetId).then((loadedAsset) => {
+    const instance = createInstance(scene, loadedAsset, `${id}_mesh`);
+    instance.root.parent = container;
+    instance.root.position.set(0, 0, 0);
+    instance.root.scaling.setAll(appearance.scale);
+    state.meshInstance = instance;
+  });
+
+  return state;
 }
 
+/**
+ * Calculate facing angle from movement direction
+ * Returns angle in radians where 0 = facing south (+Z in isometric)
+ */
+function calculateFacingAngle(dx: number, dy: number, currentAngle: number): number {
+  if (dx === 0 && dy === 0) return currentAngle;
+
+  // In isometric: grid dx maps to screen diagonal, dy maps to other diagonal
+  // We want the mesh to face the direction of movement
+  // atan2 gives angle from +X axis, we adjust for our coordinate system
+  return Math.atan2(dy, dx) + Math.PI / 2;
+}
+
+/**
+ * Legacy direction index for compatibility
+ */
 export function getIsometricDirectionIndex(dx: number, dy: number, currentDir: number): number {
   if (dx === 0 && dy === 0) return currentDir;
 
-  // Sprite sheet rows: S=0, N=1, W=2, E=3, SE=4, SW=5, NE=6, NW=7
-  // Screen directions: NE=top-right, NW=top-left, SE=bottom-right, SW=bottom-left
-  // Grid movement: dx- = screen top-right, dx+ = screen bottom-left
-  //                dy- = screen top-left, dy+ = screen bottom-right
   const DIR_S = 0, DIR_N = 1, DIR_W = 2, DIR_E = 3;
   const DIR_SE = 4, DIR_SW = 5, DIR_NE = 6, DIR_NW = 7;
 
-  // Cardinal directions (one axis only)
-  if (dx < 0 && dy === 0) return DIR_NE;  // up key → top-right
-  if (dx > 0 && dy === 0) return DIR_SW;  // down key → bottom-left
-  if (dy < 0 && dx === 0) return DIR_NW;  // left key → top-left
-  if (dy > 0 && dx === 0) return DIR_SE;  // right key → bottom-right
-
-  // Diagonal directions (both axes)
-  if (dx < 0 && dy < 0) return DIR_N;   // up+left → top
-  if (dx > 0 && dy > 0) return DIR_S;   // down+right → bottom
-  if (dx < 0 && dy > 0) return DIR_E;   // up+right → right
-  if (dx > 0 && dy < 0) return DIR_W;   // down+left → left
+  if (dx < 0 && dy === 0) return DIR_NE;
+  if (dx > 0 && dy === 0) return DIR_SW;
+  if (dy < 0 && dx === 0) return DIR_NW;
+  if (dy > 0 && dx === 0) return DIR_SE;
+  if (dx < 0 && dy < 0) return DIR_N;
+  if (dx > 0 && dy > 0) return DIR_S;
+  if (dx < 0 && dy > 0) return DIR_E;
+  if (dx > 0 && dy < 0) return DIR_W;
 
   return currentDir;
 }
 
+/**
+ * Update entity position with smooth interpolation and rotation
+ */
 export function updateEntityVisualPosition(
   state: EntityVisualState,
   gridX: number,
@@ -159,19 +178,15 @@ export function updateEntityVisualPosition(
   const targetX = isMoving ? nextX : gridX;
   const targetY = isMoving ? nextY : gridY;
 
+  // Detect movement start
   if (targetX !== state.targetGridX || targetY !== state.targetGridY) {
     const dx = targetX - gridX;
     const dy = targetY - gridY;
-    const newDir = getIsometricDirectionIndex(dx, dy, state.direction);
 
-    if (newDir !== state.direction || !state.isAnimating) {
-      state.direction = newDir;
-      const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
-      const startFrame = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
-      const endFrame = startFrame + SPRITE_FRAMES_PER_DIRECTION - 1;
-      state.sprite.playAnimation(startFrame, endFrame, true, SPRITE_ANIMATION_SPEED_MS);
-      state.isAnimating = true;
-    }
+    // Update facing direction
+    state.facingAngle = calculateFacingAngle(dx, dy, state.facingAngle);
+    state.direction = getIsometricDirectionIndex(dx, dy, state.direction);
+    state.isAnimating = true;
 
     state.lastGridX = state.targetGridX;
     state.lastGridY = state.targetGridY;
@@ -180,18 +195,17 @@ export function updateEntityVisualPosition(
     state.visualProgress = 0;
   }
 
+  // Progress movement
   if (state.visualProgress < 1) {
     state.visualProgress = Math.min(
       1,
       state.visualProgress + deltaMs / MOVE_DURATION_MS
     );
   } else if (state.isAnimating) {
-    state.sprite.stopAnimation();
-    const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
-    state.sprite.cellIndex = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
     state.isAnimating = false;
   }
 
+  // Interpolate position
   const startElevation = elevationProvider.getElevationAt(
     state.lastGridX,
     state.lastGridY,
@@ -220,74 +234,59 @@ export function updateEntityVisualPosition(
   const z = startPos.z + (endPos.z - startPos.z) * t;
 
   state.container.position.set(x, y, z);
-  state.sprite.position.copyFrom(state.container.position);
-  state.sprite.position.y += state.sprite.height / 2 + 0.15;
-  updateEquipmentSpritePosition(state);
+
+  // Apply rotation to mesh instance
+  if (state.meshInstance) {
+    state.meshInstance.root.rotation.y = state.facingAngle;
+  }
 }
 
+/**
+ * Dispose entity and free resources
+ */
 export function disposeEntityMesh(state: EntityVisualState): void {
-  if (state.equipmentSprite) {
-    state.equipmentSprite.dispose();
+  if (state.meshInstance) {
+    disposeInstance(state.meshInstance);
+    state.meshInstance = null;
   }
-  state.sprite.dispose();
   state.container.dispose();
 }
 
+/**
+ * Get world position for effects/equipment attachment
+ */
 export function getEntityWorldPosition(state: EntityVisualState): Vector3 {
   return state.container.position.clone();
 }
 
+/**
+ * Set animation type (walk vs pushing)
+ * Note: Animation playback not yet implemented - just stores the state
+ */
 export function setEntityAnimationType(state: EntityVisualState, animationType: number): void {
-  if (state.animationType === animationType) return;
-
   state.animationType = animationType;
-  const spriteRow = state.animationType * SPRITE_DIRECTIONS_COUNT + state.direction;
-
-  if (state.isAnimating) {
-    const startFrame = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
-    const endFrame = startFrame + SPRITE_FRAMES_PER_DIRECTION - 1;
-    state.sprite.playAnimation(startFrame, endFrame, true, SPRITE_ANIMATION_SPEED_MS);
-  } else {
-    state.sprite.cellIndex = spriteRow * SPRITE_FRAMES_PER_DIRECTION;
-  }
+  // TODO: When GLB animations are added, trigger appropriate animation here
 }
 
-const EQUIPMENT_OFFSET_BY_DIRECTION: Record<number, { x: number; z: number }> = {
-  0: { x: 0, z: 0.4 },      // S - in front
-  1: { x: 0, z: -0.4 },     // N - in front
-  2: { x: -0.4, z: 0 },     // W - in front
-  3: { x: 0.4, z: 0 },      // E - in front
-  4: { x: 0.3, z: 0.3 },    // SE - diagonal front
-  5: { x: -0.3, z: 0.3 },   // SW - diagonal front
-  6: { x: 0.3, z: -0.3 },   // NE - diagonal front
-  7: { x: -0.3, z: -0.3 },  // NW - diagonal front
-};
-
-export function showEquipmentSprite(state: EntityVisualState, scene: Scene): void {
-  if (state.equipmentSprite) return;
-
-  const manager = getEquipmentSpriteManager(scene);
-  const equipSprite = new Sprite(`equipment_${state.container.name}`, manager);
-  equipSprite.width = 0.7;
-  equipSprite.height = 0.7;
-  equipSprite.cellIndex = 0;
-  state.equipmentSprite = equipSprite;
-  updateEquipmentSpritePosition(state);
+/**
+ * Show equipment (placeholder - creates simple box attached to entity)
+ */
+export function showEquipmentSprite(_state: EntityVisualState, _scene: Scene): void {
+  // Equipment is now handled by attaching to the mesh
+  // For now, this is a no-op - equipment will be part of the character model
+  // or loaded as a separate asset and attached
 }
 
-export function hideEquipmentSprite(state: EntityVisualState): void {
-  if (!state.equipmentSprite) return;
-  state.equipmentSprite.dispose();
-  state.equipmentSprite = null;
+/**
+ * Hide equipment
+ */
+export function hideEquipmentSprite(_state: EntityVisualState): void {
+  // No-op for now
 }
 
-export function updateEquipmentSpritePosition(state: EntityVisualState): void {
-  if (!state.equipmentSprite) return;
-
-  const offset = EQUIPMENT_OFFSET_BY_DIRECTION[state.direction] || { x: 0, z: 0.4 };
-  state.equipmentSprite.position.set(
-    state.container.position.x + offset.x,
-    state.container.position.y + 0.35,
-    state.container.position.z + offset.z
-  );
+/**
+ * Update equipment position (no longer needed with parented meshes)
+ */
+export function updateEquipmentSpritePosition(_state: EntityVisualState): void {
+  // No-op - equipment is parented to character mesh
 }

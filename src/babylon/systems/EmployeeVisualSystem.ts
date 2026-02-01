@@ -1,3 +1,10 @@
+/**
+ * EmployeeVisualSystem - Manages 3D mesh rendering for NPC employees
+ *
+ * Creates and updates employee meshes based on their positions and tasks.
+ * Equipment meshes are attached based on current task.
+ */
+
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -70,9 +77,6 @@ export class EmployeeVisualSystem {
 
   private createTaskMaterials(): void {
     for (const [task, colors] of Object.entries(TASK_COLORS)) {
-      // Body materials are no longer used with sprites
-      // but we keep the loop for equipment materials
-
       if (colors.equipment) {
         const equipMat = new StandardMaterial(
           `workerEquip_${task}`,
@@ -141,7 +145,6 @@ export class EmployeeVisualSystem {
     if (group.currentTask === task) return;
 
     group.currentTask = task;
-    // Sprite handles body visualization, so we don't change body material here.
 
     if (group.equipment) {
       group.equipment.dispose();
@@ -162,44 +165,44 @@ export class EmployeeVisualSystem {
       case "mow_grass":
         equipment = MeshBuilder.CreateBox(
           "mower",
-          { width: 0.2, height: 0.08, depth: 0.15 },
+          { width: 0.3, height: 0.15, depth: 0.5 },
           this.scene
         );
-        equipment.position = new Vector3(0.15, 0.08, 0);
+        equipment.position = new Vector3(0.4, 0.1, 0);
         break;
 
       case "water_area":
         equipment = MeshBuilder.CreateCylinder(
           "waterCan",
-          { height: 0.12, diameterTop: 0.06, diameterBottom: 0.1 },
+          { height: 0.25, diameterTop: 0.1, diameterBottom: 0.18 },
           this.scene
         );
-        equipment.position = new Vector3(0.12, 0.18, 0);
+        equipment.position = new Vector3(0.3, 0.4, 0);
         equipment.rotation.z = -0.3;
         break;
 
       case "fertilize_area":
         equipment = MeshBuilder.CreateBox(
           "spreader",
-          { width: 0.18, height: 0.12, depth: 0.1 },
+          { width: 0.35, height: 0.25, depth: 0.2 },
           this.scene
         );
-        equipment.position = new Vector3(0.12, 0.12, 0);
+        equipment.position = new Vector3(0.3, 0.25, 0);
         break;
 
       case "rake_bunker":
         equipment = MeshBuilder.CreateCylinder(
           "rake",
-          { height: 0.4, diameter: 0.03 },
+          { height: 1.2, diameter: 0.05 },
           this.scene
         );
-        equipment.position = new Vector3(0.1, 0.2, 0);
+        equipment.position = new Vector3(0.25, 0.6, 0);
         equipment.rotation.z = 0.3;
         break;
 
       default:
-        equipment = MeshBuilder.CreateBox("tool", { size: 0.05 }, this.scene);
-        equipment.position = new Vector3(0.1, 0.15, 0);
+        equipment = MeshBuilder.CreateBox("tool", { size: 0.1 }, this.scene);
+        equipment.position = new Vector3(0.25, 0.35, 0);
     }
 
     if (equipMat) {
