@@ -18,11 +18,11 @@ import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import "@babylonjs/loaders/glTF";
 
 import { createPlaceholderAsset, assetFileExists } from "./PlaceholderMeshes";
-import { ASSET_MANIFEST, AssetId } from "./AssetManifest";
+import { ASSET_MANIFEST, AssetId, getAssetPath } from "./AssetManifest";
 
 // Re-export for convenience
-export { ASSET_MANIFEST } from "./AssetManifest";
-export type { AssetId } from "./AssetManifest";
+export { ASSET_MANIFEST, getAssetPath, getAssetSpec, getAssetsByCategory } from "./AssetManifest";
+export type { AssetId, AssetSpec } from "./AssetManifest";
 
 export interface LoadedAsset {
   rootMesh: Mesh;
@@ -54,7 +54,7 @@ export async function loadAsset(
     return cached;
   }
 
-  const path = ASSET_MANIFEST[assetId];
+  const path = getAssetPath(assetId);
 
   // Check if GLB file exists, fallback to placeholder if not
   const fileExists = await assetFileExists(path);
