@@ -38,29 +38,15 @@ interface WorkerMeshGroup extends EntityVisualState {
   currentTask: EmployeeTask;
 }
 
-const TASK_COLORS: Record<
-  EmployeeTask,
-  { body: Color3; equipment: Color3 | null }
-> = {
-  mow_grass: {
-    body: new Color3(0.6, 0.4, 0.2),
-    equipment: new Color3(0.3, 0.5, 0.3),
-  },
-  water_area: {
-    body: new Color3(0.2, 0.4, 0.6),
-    equipment: new Color3(0.3, 0.4, 0.7),
-  },
-  fertilize_area: {
-    body: new Color3(0.5, 0.35, 0.2),
-    equipment: new Color3(0.6, 0.5, 0.3),
-  },
-  rake_bunker: {
-    body: new Color3(0.55, 0.45, 0.35),
-    equipment: new Color3(0.6, 0.4, 0.2),
-  },
-  patrol: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
-  return_to_base: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
-  idle: { body: new Color3(0.35, 0.3, 0.25), equipment: null },
+// Equipment colors by task (null = no equipment for this task)
+const TASK_EQUIPMENT_COLORS: Record<EmployeeTask, Color3 | null> = {
+  mow_grass: new Color3(0.3, 0.5, 0.3),
+  water_area: new Color3(0.3, 0.4, 0.7),
+  fertilize_area: new Color3(0.6, 0.5, 0.3),
+  rake_bunker: new Color3(0.6, 0.4, 0.2),
+  patrol: null,
+  return_to_base: null,
+  idle: null,
 };
 
 export class EmployeeVisualSystem {
@@ -76,14 +62,14 @@ export class EmployeeVisualSystem {
   }
 
   private createTaskMaterials(): void {
-    for (const [task, colors] of Object.entries(TASK_COLORS)) {
-      if (colors.equipment) {
+    for (const [task, equipColor] of Object.entries(TASK_EQUIPMENT_COLORS)) {
+      if (equipColor) {
         const equipMat = new StandardMaterial(
           `workerEquip_${task}`,
           this.scene
         );
-        equipMat.diffuseColor = colors.equipment;
-        equipMat.emissiveColor = colors.equipment.scale(0.4);
+        equipMat.diffuseColor = equipColor;
+        equipMat.emissiveColor = equipColor.scale(0.4);
         equipMat.freeze();
         this.taskMaterials.set(`equip_${task}`, equipMat);
       }
@@ -151,8 +137,7 @@ export class EmployeeVisualSystem {
       group.equipment = null;
     }
 
-    const taskColors = TASK_COLORS[task];
-    if (taskColors.equipment) {
+    if (TASK_EQUIPMENT_COLORS[task]) {
       group.equipment = this.createEquipmentMesh(group.container, task);
     }
   }

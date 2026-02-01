@@ -8,19 +8,13 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
 import { AssetId, AssetInstance, LoadedAsset, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
 
 export interface EntityAppearance {
-  readonly bodyColor: Color3;
-  readonly bodyEmissive: Color3;
-  readonly hatColor: Color3;
-  readonly hatEmissive: Color3;
-  readonly scale: number;
-  readonly hasHatBrim: boolean;
   readonly assetId: AssetId;
+  readonly scale: number;
 }
 
 export interface EntityVisualState {
@@ -40,23 +34,13 @@ export interface ElevationProvider {
 }
 
 export const PLAYER_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.11, 0.48, 0.24),
-  bodyEmissive: new Color3(0.06, 0.24, 0.12),
-  hatColor: new Color3(0.9, 0.9, 0.85),
-  hatEmissive: new Color3(0.45, 0.45, 0.42),
-  scale: 1.0,
-  hasHatBrim: true,
   assetId: "character.greenkeeper",
+  scale: 1.0,
 };
 
 export const EMPLOYEE_APPEARANCE: EntityAppearance = {
-  bodyColor: new Color3(0.4, 0.35, 0.3),
-  bodyEmissive: new Color3(0.2, 0.17, 0.15),
-  hatColor: new Color3(0.7, 0.5, 0.2),
-  hatEmissive: new Color3(0.35, 0.25, 0.1),
-  scale: 1.0,
-  hasHatBrim: false,
   assetId: "character.employee",
+  scale: 1.0,
 };
 
 // Asset cache for loaded models
