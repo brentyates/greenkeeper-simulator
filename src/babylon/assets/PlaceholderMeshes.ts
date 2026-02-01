@@ -7,11 +7,20 @@
 
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 
-import { LoadedAsset, AssetId } from "./AssetLoader";
+import { AssetId } from "./AssetManifest";
+
+// Define LoadedAsset here to avoid circular dependency with AssetLoader
+export interface LoadedAsset {
+  rootMesh: Mesh;
+  meshes: AbstractMesh[];
+  animationGroups: AnimationGroup[];
+}
 
 /**
  * Color palette for placeholders
