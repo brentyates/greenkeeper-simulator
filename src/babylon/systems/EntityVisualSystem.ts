@@ -10,7 +10,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
-import { AssetId, AssetInstance, LoadedAsset, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
+import { AssetId, AssetInstance, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
 
 export interface EntityAppearance {
   readonly assetId: AssetId;
@@ -43,19 +43,6 @@ export const EMPLOYEE_APPEARANCE: EntityAppearance = {
   scale: 1.0,
 };
 
-// Asset cache for loaded models
-const assetCache: Map<AssetId, Promise<LoadedAsset>> = new Map();
-
-async function getOrLoadAsset(scene: Scene, assetId: AssetId): Promise<LoadedAsset> {
-  const cached = assetCache.get(assetId);
-  if (cached) {
-    return cached;
-  }
-  const promise = loadAsset(scene, assetId);
-  assetCache.set(assetId, promise);
-  return promise;
-}
-
 /**
  * Create a 3D mesh-based entity
  */
@@ -86,14 +73,18 @@ export function createEntityMesh(
     isAnimating: false,
   };
 
-  // Load the asset asynchronously
-  getOrLoadAsset(scene, appearance.assetId).then((loadedAsset) => {
-    const instance = createInstance(scene, loadedAsset, `${id}_mesh`);
-    instance.root.parent = container;
-    instance.root.position.set(0, 0, 0);
-    instance.root.scaling.setAll(appearance.scale);
-    state.meshInstance = instance;
-  });
+  // Load the asset asynchronously (AssetLoader handles caching)
+  loadAsset(scene, appearance.assetId)
+    .then((loadedAsset) => {
+      const instance = createInstance(scene, loadedAsset, `${id}_mesh`);
+      instance.root.parent = container;
+      instance.root.position.set(0, 0, 0);
+      instance.root.scaling.setAll(appearance.scale);
+      state.meshInstance = instance;
+    })
+    .catch((error) => {
+      console.error(`[EntityVisualSystem] Failed to load asset ${appearance.assetId}:`, error);
+    });
 
   return state;
 }

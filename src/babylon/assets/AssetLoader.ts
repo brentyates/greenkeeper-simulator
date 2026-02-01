@@ -17,18 +17,13 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import "@babylonjs/loaders/glTF";
 
-import { createPlaceholderAsset, assetFileExists } from "./PlaceholderMeshes";
+import { createPlaceholderAsset, assetFileExists, LoadedAsset } from "./PlaceholderMeshes";
 import { ASSET_MANIFEST, AssetId, getAssetPath } from "./AssetManifest";
 
 // Re-export for convenience
 export { ASSET_MANIFEST, getAssetPath, getAssetSpec, getAssetsByCategory } from "./AssetManifest";
 export type { AssetId, AssetSpec } from "./AssetManifest";
-
-export interface LoadedAsset {
-  rootMesh: Mesh;
-  meshes: AbstractMesh[];
-  animationGroups: AnimationGroup[];
-}
+export type { LoadedAsset } from "./PlaceholderMeshes";
 
 export interface AssetInstance {
   root: Mesh;
@@ -36,13 +31,13 @@ export interface AssetInstance {
   animations: Map<string, AnimationGroup>;
 }
 
-// Cache for loaded master assets
-const assetCache = new Map<string, LoadedAsset>();
+// Cache for loading/loaded assets - stores Promises to prevent duplicate loads
+const assetCache = new Map<string, Promise<LoadedAsset>>();
 
 /**
  * Load a GLB asset from the manifest
  * Falls back to placeholder meshes if GLB file doesn't exist
- * Caches the result for future cloning
+ * Caches the Promise to prevent duplicate simultaneous loads
  */
 export async function loadAsset(
   scene: Scene,
@@ -54,6 +49,27 @@ export async function loadAsset(
     return cached;
   }
 
+  // Cache the promise immediately to prevent duplicate loads
+  const loadPromise = loadAssetInternal(scene, assetId, usePlaceholder);
+  assetCache.set(assetId, loadPromise);
+
+  // If loading fails, remove from cache so it can be retried
+  loadPromise.catch(() => {
+    assetCache.delete(assetId);
+  });
+
+  return loadPromise;
+}
+
+/**
+ * Internal asset loading implementation
+ */
+async function loadAssetInternal(
+  scene: Scene,
+  assetId: AssetId,
+  usePlaceholder: boolean
+): Promise<LoadedAsset> {
+
   const path = getAssetPath(assetId);
 
   // Check if GLB file exists, fallback to placeholder if not
@@ -61,9 +77,7 @@ export async function loadAsset(
   if (!fileExists) {
     if (usePlaceholder) {
       console.log(`[AssetLoader] GLB not found: ${path}, using placeholder`);
-      const placeholder = createPlaceholderAsset(scene, assetId);
-      assetCache.set(assetId, placeholder);
-      return placeholder;
+      return createPlaceholderAsset(scene, assetId);
     } else {
       throw new Error(`Asset file not found: ${path}`);
     }
@@ -103,14 +117,11 @@ export async function loadAsset(
     }
   }
 
-  const asset: LoadedAsset = {
+  return {
     rootMesh,
     meshes: result.meshes,
     animationGroups: result.animationGroups,
   };
-
-  assetCache.set(assetId, asset);
-  return asset;
 }
 
 /**
@@ -175,11 +186,18 @@ export function hasAsset(assetId: string): assetId is AssetId {
 /**
  * Clear the asset cache (useful for scene disposal)
  */
-export function clearAssetCache(): void {
-  for (const asset of assetCache.values()) {
-    asset.rootMesh.dispose();
-    for (const group of asset.animationGroups) {
-      group.dispose();
+export async function clearAssetCache(): Promise<void> {
+  // Wait for all pending loads to complete, then dispose
+  const assets = await Promise.all(
+    Array.from(assetCache.values()).map(p => p.catch(() => null))
+  );
+
+  for (const asset of assets) {
+    if (asset) {
+      asset.rootMesh.dispose();
+      for (const group of asset.animationGroups) {
+        group.dispose();
+      }
     }
   }
   assetCache.clear();

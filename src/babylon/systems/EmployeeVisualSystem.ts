@@ -138,7 +138,10 @@ export class EmployeeVisualSystem {
     }
 
     if (TASK_EQUIPMENT_COLORS[task]) {
-      group.equipment = this.createEquipmentMesh(group.container, task);
+      // Parent equipment to meshInstance.root (which rotates with facing angle)
+      // Fall back to container if mesh hasn't loaded yet
+      const parent = group.meshInstance?.root ?? group.container;
+      group.equipment = this.createEquipmentMesh(parent, task);
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "greenkeeper-simulator",
   "version": "1.0.0",
-  "description": "Browser-based 2D pixel art game where you maintain a golf course",
+  "description": "Browser-based 3D isometric game where you maintain a golf course",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,9 +16,9 @@
     "assets:manifest": "tsx tools/scripts/generate-asset-manifest.ts"
   },
   "dependencies": {
-    "@babylonjs/core": "^8.44.0",
-    "@babylonjs/gui": "^8.44.0",
-    "@babylonjs/loaders": "^8.44.0"
+    "@babylonjs/core": "8.49.6",
+    "@babylonjs/gui": "8.49.6",
+    "@babylonjs/loaders": "8.49.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

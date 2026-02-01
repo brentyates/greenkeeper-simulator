@@ -15,7 +15,8 @@ import { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 
 import { AssetId, getAssetSpec } from "./AssetManifest";
 
-// Define LoadedAsset here to avoid circular dependency with AssetLoader
+// LoadedAsset is defined here (canonical definition) to avoid circular dependency
+// AssetLoader imports and re-exports this interface
 export interface LoadedAsset {
   rootMesh: Mesh;
   meshes: AbstractMesh[];
