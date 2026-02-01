@@ -3,8 +3,6 @@
  *
  * Renders entities as 3D meshes loaded via AssetLoader.
  * Handles smooth movement interpolation and rotation to face movement direction.
- *
- * Note: Animations are not yet implemented - meshes just rotate and move.
  */
 
 import { Scene } from "@babylonjs/core/scene";
@@ -14,13 +12,6 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { MOVE_DURATION_MS } from "../../core/movable-entity";
 import { AssetId, AssetInstance, LoadedAsset, loadAsset, createInstance, disposeInstance } from "../assets/AssetLoader";
-
-// Keep these exports for compatibility, though they're not used with meshes
-export const SPRITE_FRAMES_PER_DIRECTION = 6;
-export const SPRITE_DIRECTIONS_COUNT = 8;
-export const SPRITE_ANIMATION_SPEED_MS = 150;
-export const ANIM_TYPE_WALK = 0;
-export const ANIM_TYPE_PUSHING = 1;
 
 export interface EntityAppearance {
   readonly bodyColor: Color3;
@@ -41,10 +32,7 @@ export interface EntityVisualState {
   targetGridY: number;
   visualProgress: number;
   facingAngle: number;
-  animationType: number;
   isAnimating: boolean;
-  // Legacy sprite fields (unused but kept for interface compatibility)
-  direction: number;
 }
 
 export interface ElevationProvider {
@@ -111,9 +99,7 @@ export function createEntityMesh(
     targetGridY: startY,
     visualProgress: 1,
     facingAngle: 0,
-    animationType: ANIM_TYPE_WALK,
     isAnimating: false,
-    direction: 0,
   };
 
   // Load the asset asynchronously
@@ -142,27 +128,6 @@ function calculateFacingAngle(dx: number, dy: number, currentAngle: number): num
 }
 
 /**
- * Legacy direction index for compatibility
- */
-export function getIsometricDirectionIndex(dx: number, dy: number, currentDir: number): number {
-  if (dx === 0 && dy === 0) return currentDir;
-
-  const DIR_S = 0, DIR_N = 1, DIR_W = 2, DIR_E = 3;
-  const DIR_SE = 4, DIR_SW = 5, DIR_NE = 6, DIR_NW = 7;
-
-  if (dx < 0 && dy === 0) return DIR_NE;
-  if (dx > 0 && dy === 0) return DIR_SW;
-  if (dy < 0 && dx === 0) return DIR_NW;
-  if (dy > 0 && dx === 0) return DIR_SE;
-  if (dx < 0 && dy < 0) return DIR_N;
-  if (dx > 0 && dy > 0) return DIR_S;
-  if (dx < 0 && dy > 0) return DIR_E;
-  if (dx > 0 && dy < 0) return DIR_W;
-
-  return currentDir;
-}
-
-/**
  * Update entity position with smooth interpolation and rotation
  */
 export function updateEntityVisualPosition(
@@ -185,7 +150,6 @@ export function updateEntityVisualPosition(
 
     // Update facing direction
     state.facingAngle = calculateFacingAngle(dx, dy, state.facingAngle);
-    state.direction = getIsometricDirectionIndex(dx, dy, state.direction);
     state.isAnimating = true;
 
     state.lastGridX = state.targetGridX;
@@ -257,36 +221,4 @@ export function disposeEntityMesh(state: EntityVisualState): void {
  */
 export function getEntityWorldPosition(state: EntityVisualState): Vector3 {
   return state.container.position.clone();
-}
-
-/**
- * Set animation type (walk vs pushing)
- * Note: Animation playback not yet implemented - just stores the state
- */
-export function setEntityAnimationType(state: EntityVisualState, animationType: number): void {
-  state.animationType = animationType;
-  // TODO: When GLB animations are added, trigger appropriate animation here
-}
-
-/**
- * Show equipment (placeholder - creates simple box attached to entity)
- */
-export function showEquipmentSprite(_state: EntityVisualState, _scene: Scene): void {
-  // Equipment is now handled by attaching to the mesh
-  // For now, this is a no-op - equipment will be part of the character model
-  // or loaded as a separate asset and attached
-}
-
-/**
- * Hide equipment
- */
-export function hideEquipmentSprite(_state: EntityVisualState): void {
-  // No-op for now
-}
-
-/**
- * Update equipment position (no longer needed with parented meshes)
- */
-export function updateEquipmentSpritePosition(_state: EntityVisualState): void {
-  // No-op - equipment is parented to character mesh
 }

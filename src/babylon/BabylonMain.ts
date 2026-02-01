@@ -10,11 +10,6 @@ import {
   PLAYER_APPEARANCE,
   createEntityMesh,
   updateEntityVisualPosition,
-  setEntityAnimationType,
-  showEquipmentSprite,
-  hideEquipmentSprite,
-  ANIM_TYPE_WALK,
-  ANIM_TYPE_PUSHING,
 } from "./systems/EntityVisualSystem";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
@@ -2177,7 +2172,6 @@ export class BabylonMain {
           this.playerVisual.container.position
         );
         if (wasDeactivated) {
-          this.updatePlayerAnimationType();
           if (this.overlayAutoSwitched) {
             this.grassSystem.setOverlayMode("normal");
             this.uiManager.updateOverlayLegend("normal");
@@ -3297,8 +3291,6 @@ export class BabylonMain {
     this.equipmentManager.handleSlot(slot);
     const nowSelected = this.equipmentManager.getSelected();
 
-    this.updatePlayerAnimationType();
-
     if (nowSelected !== null && nowSelected !== wasSelected) {
       const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
         1: null,        // mower - no overlay, stripes show mowing status
@@ -3341,21 +3333,6 @@ export class BabylonMain {
     this.selectEquipment(slotMap[selected]);
   }
 
-  private updatePlayerAnimationType(): void {
-    if (!this.playerVisual) return;
-
-    const isUsingEquipment = this.equipmentManager.isActive();
-    setEntityAnimationType(
-      this.playerVisual,
-      isUsingEquipment ? ANIM_TYPE_PUSHING : ANIM_TYPE_WALK
-    );
-
-    if (isUsingEquipment) {
-      showEquipmentSprite(this.playerVisual, this.babylonEngine.getScene());
-    } else {
-      hideEquipmentSprite(this.playerVisual);
-    }
-  }
 
   /**
    * Get current equipment state.
