@@ -14,6 +14,10 @@ import { AssetId, AssetInstance, loadAsset, createInstance, disposeInstance } fr
 export interface EntityAppearance {
   readonly assetId: AssetId;
   readonly scale: number;
+  /** If true, entity rotates to face movement direction. Default: true */
+  readonly rotatesWithMovement?: boolean;
+  /** Fixed rotation angle in radians (used when rotatesWithMovement is false) */
+  readonly fixedRotation?: number;
 }
 
 export interface EntityVisualState {
@@ -27,6 +31,8 @@ export interface EntityVisualState {
   facingAngle: number;
   isAnimating: boolean;
   isDisposed: boolean;
+  /** If true, facingAngle updates based on movement direction */
+  rotatesWithMovement: boolean;
 }
 
 export interface ElevationProvider {
@@ -63,6 +69,9 @@ export function createEntityMesh(
   const startPos = gridTo3D(startX + 0.5, startY + 0.5, startElevation);
   container.position.copyFrom(startPos);
 
+  const rotatesWithMovement = appearance.rotatesWithMovement !== false;
+  const initialRotation = appearance.fixedRotation ?? 0;
+
   const state: EntityVisualState = {
     container,
     meshInstance: null,
@@ -71,9 +80,10 @@ export function createEntityMesh(
     targetGridX: startX,
     targetGridY: startY,
     visualProgress: 1,
-    facingAngle: 0,
+    facingAngle: initialRotation,
     isAnimating: false,
     isDisposed: false,
+    rotatesWithMovement,
   };
 
   // Load the asset asynchronously (AssetLoader handles caching)
@@ -87,6 +97,8 @@ export function createEntityMesh(
       instance.root.parent = container;
       instance.root.position.set(0, 0, 0);
       instance.root.scaling.setAll(appearance.scale);
+      // Apply initial/fixed rotation
+      instance.root.rotation.y = state.facingAngle;
       state.meshInstance = instance;
     })
     .catch((error) => {
@@ -127,11 +139,12 @@ export function updateEntityVisualPosition(
 
   // Detect movement start
   if (targetX !== state.targetGridX || targetY !== state.targetGridY) {
-    const dx = targetX - gridX;
-    const dy = targetY - gridY;
-
-    // Update facing direction
-    state.facingAngle = calculateFacingAngle(dx, dy, state.facingAngle);
+    // Only update facing direction if entity rotates with movement
+    if (state.rotatesWithMovement) {
+      const dx = targetX - gridX;
+      const dy = targetY - gridY;
+      state.facingAngle = calculateFacingAngle(dx, dy, state.facingAngle);
+    }
     state.isAnimating = true;
 
     state.lastGridX = state.targetGridX;
