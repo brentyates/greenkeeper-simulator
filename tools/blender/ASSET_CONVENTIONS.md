@@ -70,7 +70,8 @@ Optional:
 ## Materials
 - Use **vertex colors** for simple coloring (no textures needed)
 - Or use **solid color materials** (single diffuse color)
-- Avoid complex PBR setups - they get converted to flat shading
+- Materials export as-is - what you see in Blender is what you get in-game
+- Complex PBR may not render as expected in-game; test and adjust
 
 ## Export Checklist
 1. Apply all transforms (Ctrl+A → All Transforms)

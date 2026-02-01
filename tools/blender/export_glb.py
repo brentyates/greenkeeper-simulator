@@ -252,18 +252,6 @@ def prepare_for_export(objects):
         bpy.context.view_layer.objects.active = objects[0]
 
 
-def setup_materials_for_game():
-    """Convert materials to game-friendly settings."""
-    for mat in bpy.data.materials:
-        if mat.use_nodes:
-            for node in mat.node_tree.nodes:
-                if node.type == 'BSDF_PRINCIPLED':
-                    node.inputs['Roughness'].default_value = 1.0
-                    node.inputs['Metallic'].default_value = 0.0
-                    if 'Specular IOR Level' in node.inputs:
-                        node.inputs['Specular IOR Level'].default_value = 0.0
-
-
 def export_glb(output_path, objects):
     """Export selected objects to GLB."""
     prepare_for_export(objects)
@@ -301,7 +289,6 @@ def main():
         print("\nWARNING: No asset_id provided, skipping validation")
         print("Usage: blender file.blend --background --python export_glb.py -- <asset_id> [output.glb]")
 
-    setup_materials_for_game()
     export_glb(args["output"], objects)
 
 
