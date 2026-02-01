@@ -149,10 +149,6 @@ export function calculateMoveDuration(fromX: number, fromY: number, toX: number,
   return Math.max((distance / MOVE_SPEED) * 1000, 80);
 }
 
-export function shouldFlipSprite(direction: Direction): boolean {
-  return direction === 'left' || direction === 'up';
-}
-
 export function calculateDepth(gridX: number, gridY: number, baseDepth: number = 100): number {
   return baseDepth + gridX + gridY;
 }
