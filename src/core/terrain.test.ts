@@ -9,11 +9,9 @@ import {
   isWalkable,
   canMoveFromTo,
   getRampDirection,
-  getTextureForCell,
   getCellsInRadius,
   getCornerHeights,
   getSlopeType,
-  getSlopeTexture,
   getBaseElevationForSlope,
   getTerrainSpeedModifier,
   getTerrainMowable,
@@ -447,104 +445,6 @@ describe('Ramp Direction Detection', () => {
   });
 });
 
-describe('Texture Selection', () => {
-  function makeCell(overrides: Partial<CellState>): CellState {
-    return {
-      x: 0, y: 0,
-      type: 'fairway',
-      height: 50,
-      moisture: 50,
-      nutrients: 50,
-      health: 100,
-      elevation: 0,
-      obstacle: 'none',
-      lastMowed: 0,
-      lastWatered: 0,
-      lastFertilized: 0,
-      ...overrides
-    };
-  }
-
-  it('uses ramp texture when ramp direction is set', () => {
-    const cell = makeCell({});
-    expect(getTextureForCell(cell, 'north')).toBe('iso_ramp_north');
-    expect(getTextureForCell(cell, 'south')).toBe('iso_ramp_south');
-    expect(getTextureForCell(cell, 'east')).toBe('iso_ramp_east');
-    expect(getTextureForCell(cell, 'west')).toBe('iso_ramp_west');
-  });
-
-  it('ignores ramp direction for bunker', () => {
-    const cell = makeCell({ type: 'bunker' });
-    expect(getTextureForCell(cell, 'north')).toBe('iso_bunker');
-  });
-
-  it('ignores ramp direction for water', () => {
-    const cell = makeCell({ type: 'water' });
-    expect(getTextureForCell(cell, 'north')).toBe('iso_water');
-  });
-
-  it('uses dead texture when health < 20', () => {
-    const cell = makeCell({ health: 15 });
-    expect(getTextureForCell(cell, null)).toBe('iso_grass_dead');
-  });
-
-  it('uses dry texture when health < 40', () => {
-    const cell = makeCell({ health: 35 });
-    expect(getTextureForCell(cell, null)).toBe('iso_grass_dry');
-  });
-
-  describe('fairway textures', () => {
-    it('uses mown texture when height <= 20', () => {
-      const cell = makeCell({ type: 'fairway', height: 20, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_fairway_mown');
-    });
-
-    it('uses growing texture when height <= 45', () => {
-      const cell = makeCell({ type: 'fairway', height: 45, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_fairway_growing');
-    });
-
-    it('uses unmown texture when height > 45', () => {
-      const cell = makeCell({ type: 'fairway', height: 46, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_fairway_unmown');
-    });
-  });
-
-  describe('rough textures', () => {
-    it('uses mown texture when height <= 30', () => {
-      const cell = makeCell({ type: 'rough', height: 30, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_rough_mown');
-    });
-
-    it('uses growing texture when height <= 60', () => {
-      const cell = makeCell({ type: 'rough', height: 60, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_rough_growing');
-    });
-
-    it('uses unmown texture when height > 60', () => {
-      const cell = makeCell({ type: 'rough', height: 61, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_rough_unmown');
-    });
-  });
-
-  describe('green textures', () => {
-    it('uses mown texture when height <= 10', () => {
-      const cell = makeCell({ type: 'green', height: 10, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_green_mown');
-    });
-
-    it('uses growing texture when height <= 22', () => {
-      const cell = makeCell({ type: 'green', height: 22, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_green_growing');
-    });
-
-    it('uses unmown texture when height > 22', () => {
-      const cell = makeCell({ type: 'green', height: 23, health: 80 });
-      expect(getTextureForCell(cell, null)).toBe('iso_green_unmown');
-    });
-  });
-});
-
 describe('Area Selection', () => {
   it('returns single cell for radius 0', () => {
     const cells = getCellsInRadius(5, 5, 0);
@@ -705,38 +605,6 @@ describe('Slope Type Detection', () => {
     it('returns flat when all corners are equally raised', () => {
       expect(getSlopeType({ n: 1, e: 1, s: 1, w: 1 })).toBe('flat');
     });
-  });
-});
-
-describe('Slope Texture Generation', () => {
-  it('returns empty string for flat terrain', () => {
-    expect(getSlopeTexture('flat')).toBe('');
-  });
-
-  it('generates correct texture names for single corner slopes', () => {
-    expect(getSlopeTexture('slope_n')).toBe('iso_slope_n');
-    expect(getSlopeTexture('slope_e')).toBe('iso_slope_e');
-    expect(getSlopeTexture('slope_s')).toBe('iso_slope_s');
-    expect(getSlopeTexture('slope_w')).toBe('iso_slope_w');
-  });
-
-  it('generates correct texture names for edge slopes', () => {
-    expect(getSlopeTexture('slope_ne')).toBe('iso_slope_ne');
-    expect(getSlopeTexture('slope_se')).toBe('iso_slope_se');
-    expect(getSlopeTexture('slope_sw')).toBe('iso_slope_sw');
-    expect(getSlopeTexture('slope_nw')).toBe('iso_slope_nw');
-  });
-
-  it('generates correct texture names for valley slopes', () => {
-    expect(getSlopeTexture('valley_n')).toBe('iso_valley_n');
-    expect(getSlopeTexture('valley_e')).toBe('iso_valley_e');
-    expect(getSlopeTexture('valley_s')).toBe('iso_valley_s');
-    expect(getSlopeTexture('valley_w')).toBe('iso_valley_w');
-  });
-
-  it('generates correct texture names for saddle slopes', () => {
-    expect(getSlopeTexture('saddle_ns')).toBe('iso_saddle_ns');
-    expect(getSlopeTexture('saddle_ew')).toBe('iso_saddle_ew');
   });
 });
 
