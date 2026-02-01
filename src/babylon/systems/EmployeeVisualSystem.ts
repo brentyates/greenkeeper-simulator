@@ -134,7 +134,8 @@ export class EmployeeVisualSystem {
       employeeId,
       EMPLOYEE_APPEARANCE,
       startX,
-      startY
+      startY,
+      this.elevationProvider
     );
 
     return {

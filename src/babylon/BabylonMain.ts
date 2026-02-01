@@ -426,7 +426,8 @@ export class BabylonMain {
     );
     this.uiManager = new UIManager(this.babylonEngine.getScene());
     this.irrigationRenderSystem = new IrrigationRenderSystem(
-      this.babylonEngine.getScene()
+      this.babylonEngine.getScene(),
+      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
     );
 
     this.setupInputCallbacks();
@@ -1422,7 +1423,8 @@ export class BabylonMain {
       "player",
       PLAYER_APPEARANCE,
       this.player.gridX,
-      this.player.gridY
+      this.player.gridY,
+      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
     );
   }
 

@@ -50,14 +50,16 @@ export function createEntityMesh(
   id: string,
   appearance: EntityAppearance,
   startX: number,
-  startY: number
+  startY: number,
+  elevationProvider: ElevationProvider
 ): EntityVisualState {
   // Create a container mesh for positioning
   const container = new Mesh(`entity_${id}`, scene);
   container.isVisible = false;
 
-  // Position container at start
-  const startPos = gridTo3D(startX + 0.5, startY + 0.5, 0);
+  // Position container at start with correct terrain elevation
+  const startElevation = elevationProvider.getElevationAt(startX, startY, 0);
+  const startPos = gridTo3D(startX + 0.5, startY + 0.5, startElevation);
   container.position.copyFrom(startPos);
 
   const state: EntityVisualState = {
