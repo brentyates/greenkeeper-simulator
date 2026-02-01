@@ -26,6 +26,7 @@ export interface EntityVisualState {
   visualProgress: number;
   facingAngle: number;
   isAnimating: boolean;
+  isDisposed: boolean;
 }
 
 export interface ElevationProvider {
@@ -72,11 +73,16 @@ export function createEntityMesh(
     visualProgress: 1,
     facingAngle: 0,
     isAnimating: false,
+    isDisposed: false,
   };
 
   // Load the asset asynchronously (AssetLoader handles caching)
   loadAsset(scene, appearance.assetId)
     .then((loadedAsset) => {
+      // Check if entity was disposed while loading
+      if (state.isDisposed) {
+        return;
+      }
       const instance = createInstance(scene, loadedAsset, `${id}_mesh`);
       instance.root.parent = container;
       instance.root.position.set(0, 0, 0);
@@ -185,6 +191,7 @@ export function updateEntityVisualPosition(
  * Dispose entity and free resources
  */
 export function disposeEntityMesh(state: EntityVisualState): void {
+  state.isDisposed = true;
   if (state.meshInstance) {
     disposeInstance(state.meshInstance);
     state.meshInstance = null;

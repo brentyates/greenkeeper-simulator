@@ -43,6 +43,16 @@ export class IrrigationRenderSystem {
     this.createMaterials();
   }
 
+  /**
+   * Dispose a mesh and its material (if it has a per-object material)
+   */
+  private disposeMeshWithMaterial(mesh: Mesh): void {
+    if (mesh.material) {
+      mesh.material.dispose();
+    }
+    mesh.dispose();
+  }
+
   private createMaterials(): void {
     this.pipeMaterial = new StandardMaterial("pipeMat", this.scene);
     this.pipeMaterial.diffuseColor = new Color3(0.4, 0.8, 1.0);
@@ -113,7 +123,7 @@ export class IrrigationRenderSystem {
       if (!currentKeys.has(key)) {
         const mesh = this.pipeMeshes.get(key);
         if (mesh) {
-          mesh.dispose();
+          this.disposeMeshWithMaterial(mesh);
           this.pipeMeshes.delete(key);
         }
       }
@@ -204,7 +214,7 @@ export class IrrigationRenderSystem {
     // Check if connectivity changed
     const newConnections = [...pipe.connectedTo].sort().join(",");
     if (mesh.metadata?.connections !== newConnections) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
       this.pipeMeshes.delete(key);
       this.createPipeMesh(pipe, system);
       return;
@@ -317,7 +327,7 @@ export class IrrigationRenderSystem {
       if (!currentKeys.has(key)) {
         const mesh = this.waterSourceMeshes.get(key);
         if (mesh) {
-          mesh.dispose();
+          this.disposeMeshWithMaterial(mesh);
           this.waterSourceMeshes.delete(key);
         }
       }
@@ -436,31 +446,41 @@ export class IrrigationRenderSystem {
   public hideCoverage(headId: string): void {
     const mesh = this.coverageMeshes.get(headId);
     if (mesh) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
       this.coverageMeshes.delete(headId);
     }
   }
 
   public dispose(): void {
+    // Pipes have per-object materials
     for (const mesh of this.pipeMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
+    // Sprinklers use shared material
     for (const mesh of this.sprinklerMeshes.values()) {
       mesh.dispose();
     }
+    // Coverage meshes have per-object materials
     for (const mesh of this.coverageMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
+    // Leaks use shared material
     for (const mesh of this.leakMeshes.values()) {
       mesh.dispose();
     }
+    // Water sources have per-object materials
     for (const mesh of this.waterSourceMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
     this.pipeMeshes.clear();
     this.sprinklerMeshes.clear();
     this.coverageMeshes.clear();
     this.leakMeshes.clear();
     this.waterSourceMeshes.clear();
+
+    // Dispose shared materials
+    this.pipeMaterial?.dispose();
+    this.sprinklerMaterial?.dispose();
+    this.leakMaterial?.dispose();
   }
 }
