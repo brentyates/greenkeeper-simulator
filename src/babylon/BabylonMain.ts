@@ -10,7 +10,9 @@ import {
   PLAYER_APPEARANCE,
   createEntityMesh,
   updateEntityVisualPosition,
+  disposeEntityMesh,
 } from "./systems/EntityVisualSystem";
+import { clearAssetCache } from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { EmployeePanel } from "./ui/EmployeePanel";
@@ -4329,9 +4331,27 @@ export class BabylonMain {
     this.terrainEditorSystem?.dispose();
     this.terrainEditorUI?.dispose();
     this.editorUITexture?.dispose();
+
+    // Dispose player visual
+    if (this.playerVisual) {
+      disposeEntityMesh(this.playerVisual);
+      this.playerVisual = null;
+    }
+
+    // Dispose employee visual system
+    this.employeeVisualSystem?.dispose();
+    this.employeeVisualSystem = null;
+
+    // Dispose irrigation render system
+    this.irrigationRenderSystem?.dispose();
+
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
     }
+
+    // Clear asset cache to free master meshes
+    clearAssetCache();
+
     this.babylonEngine.dispose();
   }
 

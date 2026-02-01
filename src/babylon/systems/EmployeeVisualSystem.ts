@@ -104,6 +104,23 @@ export class EmployeeVisualSystem {
         this.elevationProvider
       );
       this.updateWorkerTask(group, pos.task);
+
+      // Re-parent equipment if mesh loaded after equipment was created
+      this.ensureEquipmentParent(group);
+    }
+  }
+
+  /**
+   * Ensure equipment is parented to meshInstance.root if available.
+   * This handles the case where equipment was created before mesh finished loading.
+   */
+  private ensureEquipmentParent(group: WorkerMeshGroup): void {
+    if (
+      group.equipment &&
+      group.meshInstance?.root &&
+      group.equipment.parent !== group.meshInstance.root
+    ) {
+      group.equipment.parent = group.meshInstance.root;
     }
   }
 
