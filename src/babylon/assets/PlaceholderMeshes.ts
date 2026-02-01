@@ -23,6 +23,22 @@ const COLORS = {
   pipe: new Color3(0.3, 0.5, 0.8),           // Blue
   sprinkler: new Color3(0.4, 0.7, 0.9),      // Light blue
   prop: new Color3(0.9, 0.8, 0.2),           // Yellow
+  treeTrunk: new Color3(0.4, 0.25, 0.1),     // Brown bark
+  treeLeaves: new Color3(0.15, 0.45, 0.15),  // Forest green
+  shrub: new Color3(0.2, 0.5, 0.2),          // Bush green
+};
+
+// Tree size specs (matching asset_specs.py)
+const TREE_SIZES: Record<string, { height: number; canopyRadius: number }> = {
+  "tree.pine.small": { height: 3.5, canopyRadius: 0.7 },
+  "tree.pine.medium": { height: 6.0, canopyRadius: 1.2 },
+  "tree.pine.large": { height: 10.0, canopyRadius: 2.0 },
+  "tree.oak.small": { height: 4.0, canopyRadius: 1.0 },
+  "tree.oak.medium": { height: 7.5, canopyRadius: 2.0 },
+  "tree.oak.large": { height: 12.0, canopyRadius: 3.0 },
+  "tree.palm": { height: 6.0, canopyRadius: 1.5 },
+  "tree.willow": { height: 6.5, canopyRadius: 2.0 },
+  "tree.cypress": { height: 9.0, canopyRadius: 0.75 },
 };
 
 /**
@@ -179,6 +195,90 @@ function createPipePlaceholder(scene: Scene, name: string, type: string): Mesh {
 }
 
 /**
+ * Create a tree placeholder (trunk + canopy)
+ */
+function createTreePlaceholder(scene: Scene, name: string, assetId: string): Mesh {
+  const size = TREE_SIZES[assetId] || { height: 5, canopyRadius: 1.5 };
+  const trunkHeight = size.height * 0.4;
+  const canopyHeight = size.height * 0.6;
+
+  const trunkMat = new StandardMaterial(`${name}_trunk_mat`, scene);
+  trunkMat.diffuseColor = COLORS.treeTrunk;
+  trunkMat.emissiveColor = COLORS.treeTrunk.scale(0.2);
+
+  const leafMat = new StandardMaterial(`${name}_leaf_mat`, scene);
+  leafMat.diffuseColor = COLORS.treeLeaves;
+  leafMat.emissiveColor = COLORS.treeLeaves.scale(0.3);
+
+  // Trunk
+  const trunk = MeshBuilder.CreateCylinder(`${name}_trunk`, {
+    height: trunkHeight,
+    diameterTop: size.canopyRadius * 0.15,
+    diameterBottom: size.canopyRadius * 0.25,
+  }, scene);
+  trunk.position.y = trunkHeight / 2;
+  trunk.material = trunkMat;
+
+  let canopy: Mesh;
+
+  // Different canopy shapes based on tree type
+  if (assetId.includes("pine") || assetId.includes("cypress")) {
+    // Conical shape for pines/cypress
+    canopy = MeshBuilder.CreateCylinder(`${name}_canopy`, {
+      height: canopyHeight,
+      diameterTop: 0,
+      diameterBottom: size.canopyRadius * 2,
+      tessellation: 8,
+    }, scene);
+  } else if (assetId.includes("palm")) {
+    // Palm: sphere at top (simplified fronds)
+    canopy = MeshBuilder.CreateSphere(`${name}_canopy`, {
+      diameter: size.canopyRadius * 2,
+      segments: 8,
+    }, scene);
+  } else {
+    // Rounded/oak shape: sphere
+    canopy = MeshBuilder.CreateSphere(`${name}_canopy`, {
+      diameter: size.canopyRadius * 2,
+      segments: 8,
+    }, scene);
+  }
+
+  canopy.position.y = trunkHeight + canopyHeight / 2;
+  canopy.material = leafMat;
+
+  const merged = Mesh.MergeMeshes([trunk, canopy], true, false, undefined, false, true);
+  if (merged) {
+    merged.name = name;
+    return merged;
+  }
+
+  trunk.dispose();
+  canopy.name = name;
+  return canopy;
+}
+
+/**
+ * Create a shrub placeholder
+ */
+function createShrubPlaceholder(scene: Scene, name: string): Mesh {
+  const mat = new StandardMaterial(`${name}_mat`, scene);
+  mat.diffuseColor = COLORS.shrub;
+  mat.emissiveColor = COLORS.shrub.scale(0.3);
+
+  // Simple rounded bush shape
+  const mesh = MeshBuilder.CreateSphere(name, {
+    diameter: 1.0,
+    segments: 6,
+  }, scene);
+  mesh.scaling.y = 0.7; // Flatten slightly
+  mesh.position.y = 0.35;
+  mesh.material = mat;
+
+  return mesh;
+}
+
+/**
  * Create a sprinkler head placeholder
  */
 function createSprinklerPlaceholder(scene: Scene, name: string): Mesh {
@@ -213,6 +313,10 @@ export function createPlaceholderAsset(scene: Scene, assetId: AssetId): LoadedAs
   if (assetId.startsWith("character.")) {
     const color = assetId.includes("employee") ? COLORS.employee : COLORS.character;
     rootMesh = createCharacterPlaceholder(scene, assetId, color);
+  } else if (assetId.startsWith("tree.")) {
+    rootMesh = createTreePlaceholder(scene, assetId, assetId);
+  } else if (assetId.startsWith("shrub.")) {
+    rootMesh = createShrubPlaceholder(scene, assetId);
   } else if (assetId.startsWith("equipment.")) {
     rootMesh = createEquipmentPlaceholder(scene, assetId);
   } else if (assetId.startsWith("irrigation.pipe")) {

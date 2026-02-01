@@ -40,6 +40,21 @@ export const ASSET_MANIFEST = {
   "character.greenkeeper": "/assets/models/characters/greenkeeper.glb",
   "character.employee": "/assets/models/characters/employee.glb",
 
+  // Trees
+  "tree.pine.small": "/assets/models/trees/pine_small.glb",
+  "tree.pine.medium": "/assets/models/trees/pine_medium.glb",
+  "tree.pine.large": "/assets/models/trees/pine_large.glb",
+  "tree.oak.small": "/assets/models/trees/oak_small.glb",
+  "tree.oak.medium": "/assets/models/trees/oak_medium.glb",
+  "tree.oak.large": "/assets/models/trees/oak_large.glb",
+  "tree.palm": "/assets/models/trees/palm.glb",
+  "tree.willow": "/assets/models/trees/willow.glb",
+  "tree.cypress": "/assets/models/trees/cypress.glb",
+
+  // Shrubs
+  "shrub.hedge": "/assets/models/shrubs/hedge.glb",
+  "shrub.flowering": "/assets/models/shrubs/flowering.glb",
+
   // Equipment
   "equipment.mower": "/assets/models/equipment/mower.glb",
   "equipment.spreader": "/assets/models/equipment/spreader.glb",
@@ -57,6 +72,9 @@ export const ASSET_MANIFEST = {
   "prop.flag": "/assets/models/props/flag.glb",
   "prop.tee-marker": "/assets/models/props/tee_marker.glb",
   "prop.ball": "/assets/models/props/ball.glb",
+  "prop.bench": "/assets/models/props/bench.glb",
+  "prop.trash-bin": "/assets/models/props/trash_bin.glb",
+  "prop.ball-washer": "/assets/models/props/ball_washer.glb",
 } as const;
 
 export type AssetId = keyof typeof ASSET_MANIFEST;
