@@ -291,6 +291,25 @@ export function createFairwayShape(
   const dy = endY - startY;
   const length = Math.sqrt(dx * dx + dy * dy);
 
+  // Handle zero-length case (start and end are the same point)
+  // Create a small square instead
+  if (length < 0.001) {
+    const halfW = width / 2;
+    const points: ControlPoint[] = [
+      { x: startX - halfW, y: startY - halfW, tension },
+      { x: startX + halfW, y: startY - halfW, tension },
+      { x: startX + halfW, y: startY + halfW, tension },
+      { x: startX - halfW, y: startY + halfW, tension },
+    ];
+    return {
+      id: generateShapeId(),
+      type: 'fairway',
+      points,
+      closed: true,
+      zIndex: getDefaultZIndex('fairway'),
+    };
+  }
+
   // Perpendicular vector
   const px = -dy / length * width / 2;
   const py = dx / length * width / 2;

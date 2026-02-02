@@ -227,6 +227,23 @@ describe('vector-shapes', () => {
 
       expect(Math.abs(topY - bottomY)).toBeCloseTo(10, 1);
     });
+
+    it('handles zero-length (start equals end) without NaN', () => {
+      // This would previously cause division by zero
+      const shape = createFairwayShape(50, 50, 50, 50, 10, 0.8);
+
+      expect(shape.type).toBe('fairway');
+      expect(shape.closed).toBe(true);
+      expect(shape.points.length).toBe(4);
+
+      // All points should be valid numbers
+      for (const p of shape.points) {
+        expect(isFinite(p.x)).toBe(true);
+        expect(isFinite(p.y)).toBe(true);
+        expect(isNaN(p.x)).toBe(false);
+        expect(isNaN(p.y)).toBe(false);
+      }
+    });
   });
 
   describe('getDefaultZIndex', () => {

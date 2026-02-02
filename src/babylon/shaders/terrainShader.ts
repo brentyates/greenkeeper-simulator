@@ -95,17 +95,17 @@ float noise(vec2 p) {
 }
 
 // Fractal Brownian Motion for organic-looking noise
-float fbm(vec2 p, int octaves) {
+// Note: WebGL 1.0 doesn't support non-constant loop bounds well,
+// so we use a fixed 3 octaves which is sufficient for grass detail
+float fbm(vec2 p) {
   float value = 0.0;
   float amplitude = 0.5;
-  float frequency = 1.0;
 
-  for (int i = 0; i < 4; i++) {
-    if (i >= octaves) break;
-    value += amplitude * noise(p * frequency);
-    amplitude *= 0.5;
-    frequency *= 2.0;
-  }
+  value += amplitude * noise(p);
+  amplitude *= 0.5;
+  value += amplitude * noise(p * 2.0);
+  amplitude *= 0.5;
+  value += amplitude * noise(p * 4.0);
 
   return value;
 }
@@ -146,7 +146,7 @@ float mowingStripes(vec2 worldPos, float stripeWidth, float intensity) {
 // Grass variation noise
 vec3 grassNoise(vec2 worldPos, vec3 baseColor, float intensity) {
   // Multi-octave noise for natural variation
-  float n = fbm(worldPos * 8.0, 3);
+  float n = fbm(worldPos * 8.0);
   n = n * 2.0 - 1.0; // Center around 0
 
   // Apply mostly to green channel for grass
@@ -158,7 +158,7 @@ vec3 sandGrain(vec2 worldPos, vec3 baseColor) {
   // High frequency noise for individual grains
   float grain = noise(worldPos * 50.0) - 0.5;
   // Lower frequency for larger patterns
-  float pattern = fbm(worldPos * 5.0, 2) - 0.5;
+  float pattern = fbm(worldPos * 5.0) - 0.5;
 
   return baseColor + vec3(grain * 0.08 + pattern * 0.05);
 }

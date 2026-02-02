@@ -223,6 +223,7 @@ function groupShapesByType(
 
 /**
  * Get minimum signed distance to any polygon of a type
+ * For union of shapes: negative if inside ANY shape, positive only if outside ALL
  */
 function getMinSignedDistance(
   x: number,
@@ -233,8 +234,9 @@ function getMinSignedDistance(
     return Infinity; // No shapes of this type
   }
 
-  let minDist = Infinity;
-  let isInside = false;
+  let minInsideDist = Infinity;  // Smallest distance when inside (will be negated)
+  let minOutsideDist = Infinity; // Smallest distance when outside all shapes
+  let isInsideAny = false;
 
   for (const polygon of polygons) {
     if (polygon.length < 3) continue;
@@ -243,14 +245,18 @@ function getMinSignedDistance(
 
     if (dist < 0) {
       // Inside this polygon
-      isInside = true;
-      minDist = Math.min(minDist, Math.abs(dist));
-    } else if (!isInside) {
-      minDist = Math.min(minDist, dist);
+      isInsideAny = true;
+      // Track the minimum distance to edge while inside
+      minInsideDist = Math.min(minInsideDist, Math.abs(dist));
+    } else {
+      // Outside this polygon - track for case where we're outside all
+      minOutsideDist = Math.min(minOutsideDist, dist);
     }
   }
 
-  return isInside ? -minDist : minDist;
+  // If inside any shape, return negative distance (closest edge while inside)
+  // Otherwise return positive distance to nearest shape
+  return isInsideAny ? -minInsideDist : minOutsideDist;
 }
 
 /**
@@ -260,6 +266,10 @@ function getMinSignedDistance(
  * 255 = fully outside (distance = +maxDistance)
  */
 function encodeDistance(distance: number, maxDistance: number): number {
+  // Handle Infinity (no shapes of this type) - treat as max distance outside
+  if (!isFinite(distance)) {
+    return 255;
+  }
   // Clamp to range
   const clamped = Math.max(-maxDistance, Math.min(maxDistance, distance));
   // Map to 0-255
