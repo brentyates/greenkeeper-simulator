@@ -22,9 +22,11 @@ import {
   WaterSource,
 } from "../../core/irrigation";
 import { gridTo3D } from "../engine/BabylonEngine";
+import { ElevationProvider } from "./EntityVisualSystem";
 
 export class IrrigationRenderSystem {
   private scene: Scene;
+  private elevationProvider: ElevationProvider;
   private pipeMeshes: Map<string, Mesh> = new Map();
   private sprinklerMeshes: Map<string, Mesh> = new Map();
   private coverageMeshes: Map<string, Mesh> = new Map();
@@ -35,9 +37,20 @@ export class IrrigationRenderSystem {
   private leakMaterial: StandardMaterial | null = null;
   private isVisible: boolean = false;
 
-  constructor(scene: Scene) {
+  constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
+    this.elevationProvider = elevationProvider;
     this.createMaterials();
+  }
+
+  /**
+   * Dispose a mesh and its material (if it has a per-object material)
+   */
+  private disposeMeshWithMaterial(mesh: Mesh): void {
+    if (mesh.material) {
+      mesh.material.dispose();
+    }
+    mesh.dispose();
   }
 
   private createMaterials(): void {
@@ -110,7 +123,7 @@ export class IrrigationRenderSystem {
       if (!currentKeys.has(key)) {
         const mesh = this.pipeMeshes.get(key);
         if (mesh) {
-          mesh.dispose();
+          this.disposeMeshWithMaterial(mesh);
           this.pipeMeshes.delete(key);
         }
       }
@@ -119,7 +132,8 @@ export class IrrigationRenderSystem {
 
   private createPipeMesh(pipe: PipeTile, _system: IrrigationSystem): void {
     const key = `${pipe.gridX},${pipe.gridY}`;
-    const pos = gridTo3D(pipe.gridX + 0.5, pipe.gridY + 0.5, 0);
+    const elevation = this.elevationProvider.getElevationAt(pipe.gridX, pipe.gridY, 0);
+    const pos = gridTo3D(pipe.gridX + 0.5, pipe.gridY + 0.5, elevation);
     pos.y += 0.05;
 
     const color = this.getPipeColor(pipe);
@@ -200,7 +214,7 @@ export class IrrigationRenderSystem {
     // Check if connectivity changed
     const newConnections = [...pipe.connectedTo].sort().join(",");
     if (mesh.metadata?.connections !== newConnections) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
       this.pipeMeshes.delete(key);
       this.createPipeMesh(pipe, system);
       return;
@@ -264,7 +278,8 @@ export class IrrigationRenderSystem {
   }
 
   private createSprinklerMesh(head: SprinklerHead): void {
-    const pos = gridTo3D(head.gridX, head.gridY, 0);
+    const elevation = this.elevationProvider.getElevationAt(head.gridX, head.gridY, 0);
+    const pos = gridTo3D(head.gridX, head.gridY, elevation);
     pos.y += 0.05;
 
     const mesh = MeshBuilder.CreateCylinder(
@@ -312,7 +327,7 @@ export class IrrigationRenderSystem {
       if (!currentKeys.has(key)) {
         const mesh = this.waterSourceMeshes.get(key);
         if (mesh) {
-          mesh.dispose();
+          this.disposeMeshWithMaterial(mesh);
           this.waterSourceMeshes.delete(key);
         }
       }
@@ -320,7 +335,8 @@ export class IrrigationRenderSystem {
   }
 
   private createWaterSourceMesh(source: WaterSource): void {
-    const pos = gridTo3D(source.gridX, source.gridY, 0);
+    const elevation = this.elevationProvider.getElevationAt(source.gridX, source.gridY, 0);
+    const pos = gridTo3D(source.gridX, source.gridY, elevation);
     pos.y += 0.2;
 
     const material = new StandardMaterial(`sourceMat_${source.id}`, this.scene);
@@ -375,7 +391,8 @@ export class IrrigationRenderSystem {
 
   private createLeakMesh(pipe: PipeTile): void {
     const key = `${pipe.gridX},${pipe.gridY}`;
-    const pos = gridTo3D(pipe.gridX, pipe.gridY, 0);
+    const elevation = this.elevationProvider.getElevationAt(pipe.gridX, pipe.gridY, 0);
+    const pos = gridTo3D(pipe.gridX, pipe.gridY, elevation);
     pos.y -= 0.05;
 
     const mesh = MeshBuilder.CreateSphere(
@@ -408,7 +425,8 @@ export class IrrigationRenderSystem {
         },
         this.scene
       );
-      mesh.position = gridTo3D(head.gridX, head.gridY, 0);
+      const elevation = this.elevationProvider.getElevationAt(head.gridX, head.gridY, 0);
+      mesh.position = gridTo3D(head.gridX, head.gridY, elevation);
       mesh.position.y += 0.01;
 
       const material = new StandardMaterial(`coverageMat_${key}`, this.scene);
@@ -428,31 +446,41 @@ export class IrrigationRenderSystem {
   public hideCoverage(headId: string): void {
     const mesh = this.coverageMeshes.get(headId);
     if (mesh) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
       this.coverageMeshes.delete(headId);
     }
   }
 
   public dispose(): void {
+    // Pipes have per-object materials
     for (const mesh of this.pipeMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
+    // Sprinklers use shared material
     for (const mesh of this.sprinklerMeshes.values()) {
       mesh.dispose();
     }
+    // Coverage meshes have per-object materials
     for (const mesh of this.coverageMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
+    // Leaks use shared material
     for (const mesh of this.leakMeshes.values()) {
       mesh.dispose();
     }
+    // Water sources have per-object materials
     for (const mesh of this.waterSourceMeshes.values()) {
-      mesh.dispose();
+      this.disposeMeshWithMaterial(mesh);
     }
     this.pipeMeshes.clear();
     this.sprinklerMeshes.clear();
     this.coverageMeshes.clear();
     this.leakMeshes.clear();
     this.waterSourceMeshes.clear();
+
+    // Dispose shared materials
+    this.pipeMaterial?.dispose();
+    this.sprinklerMaterial?.dispose();
+    this.leakMaterial?.dispose();
   }
 }

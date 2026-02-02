@@ -456,40 +456,22 @@ When equipment runs empty:
 
 ## Equipment Positioning
 
-### Isometric Offset
+### 3D Equipment Attachment
 
-Equipment sprites are offset based on player direction:
+Equipment 3D meshes are attached to the player's container and automatically follow movement. The mesh rotates with the player's facing direction.
 
 ```typescript
-function getIsoOffset(direction: Direction): { x: number; y: number } {
-  switch (direction) {
-    case 'up':    return { x: 16, y: -8 };
-    case 'down':  return { x: -16, y: 8 };
-    case 'left':  return { x: -16, y: -8 };
-    case 'right': return { x: 16, y: 8 };
-    default:      return { x: 0, y: 8 };
-  }
-}
+// Equipment is parented to player container for automatic positioning
+equipmentInstance.root.parent = playerContainer;
+equipmentInstance.root.position.set(0, 0, 0.5);  // Offset in front of player
+
+// Equipment rotates with player facing angle
+equipmentInstance.root.rotation.y = playerFacingAngle;
 ```
 
 ### Depth Ordering
 
-Equipment renders at correct depth relative to player:
-
-```typescript
-function getDepthOffset(direction: Direction): number {
-  switch (direction) {
-    case 'up':
-    case 'left':
-      return -1;  // Behind player
-    case 'down':
-    case 'right':
-      return 1;   // In front of player
-    default:
-      return 0;
-  }
-}
-```
+The 3D engine (Babylon.js) handles depth ordering automatically through the z-buffer. No manual depth calculations are needed - equipment meshes render at correct depth relative to the player based on their 3D positions.
 
 ---
 

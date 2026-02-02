@@ -1380,7 +1380,7 @@ When selecting a placed entity:
 - [ ] Connect buildings to existing systems
 
 ### Phase 3: Visual Rendering
-- [ ] Create building sprites/models for each tier
+- [ ] Create building 3D models for each tier
 - [ ] Implement construction animation (scaffolding)
 - [ ] Add condition-based visual degradation
 - [ ] Render footprint on terrain

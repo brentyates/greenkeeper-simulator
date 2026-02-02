@@ -10,12 +10,9 @@ import {
   PLAYER_APPEARANCE,
   createEntityMesh,
   updateEntityVisualPosition,
-  setEntityAnimationType,
-  showEquipmentSprite,
-  hideEquipmentSprite,
-  ANIM_TYPE_WALK,
-  ANIM_TYPE_PUSHING,
+  disposeEntityMesh,
 } from "./systems/EntityVisualSystem";
+import { clearAssetCache } from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { EmployeePanel } from "./ui/EmployeePanel";
@@ -429,7 +426,8 @@ export class BabylonMain {
     );
     this.uiManager = new UIManager(this.babylonEngine.getScene());
     this.irrigationRenderSystem = new IrrigationRenderSystem(
-      this.babylonEngine.getScene()
+      this.babylonEngine.getScene(),
+      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
     );
 
     this.setupInputCallbacks();
@@ -1425,7 +1423,8 @@ export class BabylonMain {
       "player",
       PLAYER_APPEARANCE,
       this.player.gridX,
-      this.player.gridY
+      this.player.gridY,
+      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
     );
   }
 
@@ -2177,7 +2176,6 @@ export class BabylonMain {
           this.playerVisual.container.position
         );
         if (wasDeactivated) {
-          this.updatePlayerAnimationType();
           if (this.overlayAutoSwitched) {
             this.grassSystem.setOverlayMode("normal");
             this.uiManager.updateOverlayLegend("normal");
@@ -3297,8 +3295,6 @@ export class BabylonMain {
     this.equipmentManager.handleSlot(slot);
     const nowSelected = this.equipmentManager.getSelected();
 
-    this.updatePlayerAnimationType();
-
     if (nowSelected !== null && nowSelected !== wasSelected) {
       const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
         1: null,        // mower - no overlay, stripes show mowing status
@@ -3341,21 +3337,6 @@ export class BabylonMain {
     this.selectEquipment(slotMap[selected]);
   }
 
-  private updatePlayerAnimationType(): void {
-    if (!this.playerVisual) return;
-
-    const isUsingEquipment = this.equipmentManager.isActive();
-    setEntityAnimationType(
-      this.playerVisual,
-      isUsingEquipment ? ANIM_TYPE_PUSHING : ANIM_TYPE_WALK
-    );
-
-    if (isUsingEquipment) {
-      showEquipmentSprite(this.playerVisual, this.babylonEngine.getScene());
-    } else {
-      hideEquipmentSprite(this.playerVisual);
-    }
-  }
 
   /**
    * Get current equipment state.
@@ -4352,9 +4333,27 @@ export class BabylonMain {
     this.terrainEditorSystem?.dispose();
     this.terrainEditorUI?.dispose();
     this.editorUITexture?.dispose();
+
+    // Dispose player visual
+    if (this.playerVisual) {
+      disposeEntityMesh(this.playerVisual);
+      this.playerVisual = null;
+    }
+
+    // Dispose employee visual system
+    this.employeeVisualSystem?.dispose();
+    this.employeeVisualSystem = null;
+
+    // Dispose irrigation render system
+    this.irrigationRenderSystem?.dispose();
+
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
     }
+
+    // Clear asset cache to free master meshes
+    clearAssetCache();
+
     this.babylonEngine.dispose();
   }
 

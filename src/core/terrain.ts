@@ -198,27 +198,6 @@ export function getRampDirection(
   return null;
 }
 
-export function getTextureForCell(
-  cell: CellState,
-  rampDir: "north" | "south" | "east" | "west" | null
-): string {
-  if (rampDir && isGrassTerrain(cell.type)) {
-    return `iso_ramp_${rampDir}`;
-  }
-
-  if (cell.type === "bunker") return "iso_bunker";
-  if (cell.type === "water") return "iso_water";
-
-  if (cell.health < 20) return "iso_grass_dead";
-  if (cell.health < 40) return "iso_grass_dry";
-
-  const thresholds = getTerrainThresholds(cell.type);
-  if (cell.height <= thresholds.mownHeight) return `iso_${cell.type}_mown`;
-  if (cell.height <= thresholds.growingHeight)
-    return `iso_${cell.type}_growing`;
-  return `iso_${cell.type}_unmown`;
-}
-
 export function getCellsInRadius(
   centerX: number,
   centerY: number,
@@ -310,11 +289,6 @@ export function getSlopeType(corners: CornerHeights): SlopeType {
   }
 
   return "flat";
-}
-
-export function getSlopeTexture(slopeType: SlopeType): string {
-  if (slopeType === "flat") return "";
-  return `iso_${slopeType}`;
 }
 
 export function getBaseElevationForSlope(corners: CornerHeights): number {

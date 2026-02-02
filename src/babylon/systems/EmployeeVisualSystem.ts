@@ -1,3 +1,10 @@
+/**
+ * EmployeeVisualSystem - Manages 3D mesh rendering for NPC employees
+ *
+ * Creates and updates employee meshes based on their positions and tasks.
+ * Equipment meshes are attached based on current task.
+ */
+
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -31,29 +38,15 @@ interface WorkerMeshGroup extends EntityVisualState {
   currentTask: EmployeeTask;
 }
 
-const TASK_COLORS: Record<
-  EmployeeTask,
-  { body: Color3; equipment: Color3 | null }
-> = {
-  mow_grass: {
-    body: new Color3(0.6, 0.4, 0.2),
-    equipment: new Color3(0.3, 0.5, 0.3),
-  },
-  water_area: {
-    body: new Color3(0.2, 0.4, 0.6),
-    equipment: new Color3(0.3, 0.4, 0.7),
-  },
-  fertilize_area: {
-    body: new Color3(0.5, 0.35, 0.2),
-    equipment: new Color3(0.6, 0.5, 0.3),
-  },
-  rake_bunker: {
-    body: new Color3(0.55, 0.45, 0.35),
-    equipment: new Color3(0.6, 0.4, 0.2),
-  },
-  patrol: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
-  return_to_base: { body: new Color3(0.4, 0.35, 0.3), equipment: null },
-  idle: { body: new Color3(0.35, 0.3, 0.25), equipment: null },
+// Equipment colors by task (null = no equipment for this task)
+const TASK_EQUIPMENT_COLORS: Record<EmployeeTask, Color3 | null> = {
+  mow_grass: new Color3(0.3, 0.5, 0.3),
+  water_area: new Color3(0.3, 0.4, 0.7),
+  fertilize_area: new Color3(0.6, 0.5, 0.3),
+  rake_bunker: new Color3(0.6, 0.4, 0.2),
+  patrol: null,
+  return_to_base: null,
+  idle: null,
 };
 
 export class EmployeeVisualSystem {
@@ -69,17 +62,14 @@ export class EmployeeVisualSystem {
   }
 
   private createTaskMaterials(): void {
-    for (const [task, colors] of Object.entries(TASK_COLORS)) {
-      // Body materials are no longer used with sprites
-      // but we keep the loop for equipment materials
-
-      if (colors.equipment) {
+    for (const [task, equipColor] of Object.entries(TASK_EQUIPMENT_COLORS)) {
+      if (equipColor) {
         const equipMat = new StandardMaterial(
           `workerEquip_${task}`,
           this.scene
         );
-        equipMat.diffuseColor = colors.equipment;
-        equipMat.emissiveColor = colors.equipment.scale(0.4);
+        equipMat.diffuseColor = equipColor;
+        equipMat.emissiveColor = equipColor.scale(0.4);
         equipMat.freeze();
         this.taskMaterials.set(`equip_${task}`, equipMat);
       }
@@ -114,6 +104,23 @@ export class EmployeeVisualSystem {
         this.elevationProvider
       );
       this.updateWorkerTask(group, pos.task);
+
+      // Re-parent equipment if mesh loaded after equipment was created
+      this.ensureEquipmentParent(group);
+    }
+  }
+
+  /**
+   * Ensure equipment is parented to meshInstance.root if available.
+   * This handles the case where equipment was created before mesh finished loading.
+   */
+  private ensureEquipmentParent(group: WorkerMeshGroup): void {
+    if (
+      group.equipment &&
+      group.meshInstance?.root &&
+      group.equipment.parent !== group.meshInstance.root
+    ) {
+      group.equipment.parent = group.meshInstance.root;
     }
   }
 
@@ -127,7 +134,8 @@ export class EmployeeVisualSystem {
       employeeId,
       EMPLOYEE_APPEARANCE,
       startX,
-      startY
+      startY,
+      this.elevationProvider
     );
 
     return {
@@ -141,16 +149,17 @@ export class EmployeeVisualSystem {
     if (group.currentTask === task) return;
 
     group.currentTask = task;
-    // Sprite handles body visualization, so we don't change body material here.
 
     if (group.equipment) {
       group.equipment.dispose();
       group.equipment = null;
     }
 
-    const taskColors = TASK_COLORS[task];
-    if (taskColors.equipment) {
-      group.equipment = this.createEquipmentMesh(group.container, task);
+    if (TASK_EQUIPMENT_COLORS[task]) {
+      // Parent equipment to meshInstance.root (which rotates with facing angle)
+      // Fall back to container if mesh hasn't loaded yet
+      const parent = group.meshInstance?.root ?? group.container;
+      group.equipment = this.createEquipmentMesh(parent, task);
     }
   }
 
@@ -162,44 +171,44 @@ export class EmployeeVisualSystem {
       case "mow_grass":
         equipment = MeshBuilder.CreateBox(
           "mower",
-          { width: 0.2, height: 0.08, depth: 0.15 },
+          { width: 0.3, height: 0.15, depth: 0.5 },
           this.scene
         );
-        equipment.position = new Vector3(0.15, 0.08, 0);
+        equipment.position = new Vector3(0.4, 0.1, 0);
         break;
 
       case "water_area":
         equipment = MeshBuilder.CreateCylinder(
           "waterCan",
-          { height: 0.12, diameterTop: 0.06, diameterBottom: 0.1 },
+          { height: 0.25, diameterTop: 0.1, diameterBottom: 0.18 },
           this.scene
         );
-        equipment.position = new Vector3(0.12, 0.18, 0);
+        equipment.position = new Vector3(0.3, 0.4, 0);
         equipment.rotation.z = -0.3;
         break;
 
       case "fertilize_area":
         equipment = MeshBuilder.CreateBox(
           "spreader",
-          { width: 0.18, height: 0.12, depth: 0.1 },
+          { width: 0.35, height: 0.25, depth: 0.2 },
           this.scene
         );
-        equipment.position = new Vector3(0.12, 0.12, 0);
+        equipment.position = new Vector3(0.3, 0.25, 0);
         break;
 
       case "rake_bunker":
         equipment = MeshBuilder.CreateCylinder(
           "rake",
-          { height: 0.4, diameter: 0.03 },
+          { height: 1.2, diameter: 0.05 },
           this.scene
         );
-        equipment.position = new Vector3(0.1, 0.2, 0);
+        equipment.position = new Vector3(0.25, 0.6, 0);
         equipment.rotation.z = 0.3;
         break;
 
       default:
-        equipment = MeshBuilder.CreateBox("tool", { size: 0.05 }, this.scene);
-        equipment.position = new Vector3(0.1, 0.15, 0);
+        equipment = MeshBuilder.CreateBox("tool", { size: 0.1 }, this.scene);
+        equipment.position = new Vector3(0.25, 0.35, 0);
     }
 
     if (equipMat) {

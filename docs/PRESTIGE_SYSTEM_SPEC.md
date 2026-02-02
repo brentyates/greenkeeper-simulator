@@ -475,7 +475,7 @@ function calculateDemandMultiplier(
 ### Golfer Turn-Away Animation
 
 When a golfer rejects the price:
-1. Golfer sprite approaches pro shop/starter
+1. Golfer approaches pro shop/starter
 2. "Price check" animation (looks at sign)
 3. Shakes head / dismissive gesture
 4. Walks away from course entrance

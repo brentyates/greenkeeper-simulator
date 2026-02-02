@@ -14,7 +14,6 @@ import {
   setEquipmentActive,
   setDirection,
   calculateMoveDuration,
-  shouldFlipSprite,
   calculateDepth,
   PlayerState,
   MapBounds,
@@ -379,25 +378,7 @@ describe('Move Duration Calculation', () => {
   });
 });
 
-describe('Sprite Rendering', () => {
-  describe('shouldFlipSprite', () => {
-    it('returns true for left direction', () => {
-      expect(shouldFlipSprite('left')).toBe(true);
-    });
-
-    it('returns true for up direction', () => {
-      expect(shouldFlipSprite('up')).toBe(true);
-    });
-
-    it('returns false for right direction', () => {
-      expect(shouldFlipSprite('right')).toBe(false);
-    });
-
-    it('returns false for down direction', () => {
-      expect(shouldFlipSprite('down')).toBe(false);
-    });
-  });
-
+describe('Depth Calculation', () => {
   describe('calculateDepth', () => {
     it('uses base depth of 100 by default', () => {
       const depth = calculateDepth(0, 0);

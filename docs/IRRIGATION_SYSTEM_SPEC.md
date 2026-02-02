@@ -260,25 +260,18 @@ Daily Water Bill = (Total Gallons Used ÷ 1000) × Rate Per 1000 Gallons
 ### 5.1 Pipe Rendering
 
 **Style:**
-- Top-down/isometric sprite tiles
+- 3D meshes rendered in isometric view
 - Blue tinted pipes with connection joints
 - Animated water flow (subtle shimmer, 1-2 second loop)
 - Smart connections (straight, elbow, T-junction, cross)
 
-**Sprite States:**
+**3D Models (GLB files):**
 ```
-pipe_straight_NS.png
-pipe_straight_EW.png
-pipe_elbow_NE.png
-pipe_elbow_SE.png
-pipe_elbow_SW.png
-pipe_elbow_NW.png
-pipe_T_N.png  (three-way: south, east, west)
-pipe_T_E.png
-pipe_T_S.png
-pipe_T_W.png
-pipe_cross.png (four-way)
-pipe_leak.png (overlay with water drops)
+irrigation/
+  pipe.straight.glb
+  pipe.corner.glb
+  pipe.tee.glb
+  pipe.cross.glb
 ```
 
 **Color Coding:**
@@ -290,9 +283,9 @@ pipe_leak.png (overlay with water drops)
 ### 5.2 Sprinkler Head Rendering
 
 **Visual:**
-- Small 16×16 sprite on tile
-- Type indicated by sprite (spray = square nozzle, rotary = round, etc.)
-- Active animation: rotating sprite + water particle effect
+- Small 3D mesh on tile (fits 1x1 footprint)
+- Type indicated by model geometry (spray = square nozzle, rotary = round, etc.)
+- Active animation: rotating mesh + water particle effect
 - Coverage overlay: semi-transparent blue circles when placing/editing
 
 **Particle Effects:**
@@ -631,9 +624,9 @@ export interface WaterSource {
 - Update employee panel UI
 
 **Phase 3: Visual System (Week 2)**
-- Create pipe sprites (8-10 variations)
-- Implement pipe rendering in `GrassSystem`
-- Add sprinkler head sprites and animations
+- Create pipe 3D models in Blender (4 variations: straight, corner, tee, cross)
+- Implement pipe rendering via AssetLoader
+- Add sprinkler head 3D models and animations
 - Implement coverage overlay visualization
 
 **Phase 4: UI & Controls (Week 2)**
@@ -801,7 +794,7 @@ function calculateLeakChance(
 ## 12. Next Steps
 
 1. **Review & Approve** this plan with stakeholders
-2. **Create sprites** for pipes and sprinkler heads (art task)
+2. **Create 3D models** for pipes and sprinkler heads in Blender (art task)
 3. **Implement Phase 1** (core data layer + tests)
 4. **Prototype** pipe placement UI in sandbox mode
 5. **Iterate** based on playtest feedback
@@ -818,7 +811,7 @@ Classic SimCity (1989) pipe tiles:
 ┌─┬─┬─┐
 │ │─│ │  Straight pipes with perpendicular connectors
 ├─┼─┼─┤
-│─│ │─│  Blue tinting, simple pixel art
+│─│ │─│  Blue tinting, low-poly 3D aesthetic
 └─┴─┴─┘
 ```
 
