@@ -335,8 +335,8 @@ void main() {
       );
     }
 
-    // Don't apply overlay to water/bunker
-    float grassMask = max(fairwayMask, max(greenMask, max(teeMask, 1.0 - waterMask - bunkerMask)));
+    // Don't apply overlay to water/bunker - mask out non-grass areas
+    float grassMask = 1.0 - max(waterMask, bunkerMask);
     color = mix(color, overlayColor * lighting, grassMask * 0.7);
   }
 

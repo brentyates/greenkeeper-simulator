@@ -100,6 +100,10 @@ export class VectorTerrainSystem {
   // Overlay mode
   private overlayMode: OverlayMode = "normal";
 
+  // Health texture update throttling (update every N frames when in overlay mode)
+  private healthTextureUpdateCounter: number = 0;
+  private static readonly HEALTH_TEXTURE_UPDATE_INTERVAL: number = 10;
+
   constructor(
     scene: Scene,
     courseData: CourseData,
@@ -526,9 +530,9 @@ export class VectorTerrainSystem {
     }
 
     // Create line system with colors array for semi-transparent dark gray
-    const lineColor = new Color4(0.3, 0.3, 0.3, 0.5);
+    // Each color must be a new instance to avoid shared reference issues
     const colors: Color4[][] = lines.map(line =>
-      line.map(() => lineColor)
+      line.map(() => new Color4(0.3, 0.3, 0.3, 0.5))
     );
 
     this.gridLinesMesh = MeshBuilder.CreateLineSystem(
@@ -764,6 +768,11 @@ export class VectorTerrainSystem {
 
   /**
    * Convert overlay mode string to numeric value for shader
+   * TODO: Irrigation overlay (mode 4) currently shows health data, not actual
+   * irrigation coverage. To properly implement irrigation overlay, we need to:
+   * 1. Create a separate irrigation coverage texture from IrrigationState
+   * 2. Pass it to the shader as an additional sampler
+   * 3. Add shader logic to visualize irrigation head coverage areas
    */
   private getOverlayModeValue(): number {
     switch (this.overlayMode) {
@@ -771,7 +780,7 @@ export class VectorTerrainSystem {
       case "moisture": return 1;
       case "nutrients": return 2;
       case "height": return 3;
-      case "irrigation": return 4;  // Use health overlay for irrigation
+      case "irrigation": return 4;  // TODO: Currently shows health, should show irrigation coverage
       default: return 0;
     }
   }
@@ -810,9 +819,13 @@ export class VectorTerrainSystem {
       }
     }
 
-    // Update health texture periodically when in overlay mode
+    // Update health texture periodically when in overlay mode (throttled for performance)
     if (this.overlayMode !== "normal") {
-      this.updateHealthTexture();
+      this.healthTextureUpdateCounter++;
+      if (this.healthTextureUpdateCounter >= VectorTerrainSystem.HEALTH_TEXTURE_UPDATE_INTERVAL) {
+        this.updateHealthTexture();
+        this.healthTextureUpdateCounter = 0;
+      }
     }
 
     // Rebuild SDF if terrain types changed
@@ -963,8 +976,12 @@ export class VectorTerrainSystem {
     if (!this.elevation[y]) this.elevation[y] = [];
     this.elevation[y][x] = elev;
     this.cells[y][x].elevation = elev;
-    // Rebuild mesh for elevation changes
+    // Rebuild mesh, cliffs, and grid lines for elevation changes
     this.createTerrainMesh();
+    this.createCliffFaces();
+    if (this.options.enableGridLines) {
+      this.createGridLines();
+    }
   }
 
   public setTerrainTypeAt(x: number, y: number, type: TerrainType): void {
@@ -981,8 +998,12 @@ export class VectorTerrainSystem {
   }
 
   public rebuildTileAndNeighbors(_x: number, _y: number): void {
-    // For vector system, rebuild the mesh when elevation changes
+    // For vector system, rebuild mesh, cliffs, and grid lines when elevation changes
     this.createTerrainMesh();
+    this.createCliffFaces();
+    if (this.options.enableGridLines) {
+      this.createGridLines();
+    }
   }
 
   public getLayoutGrid(): number[][] {
