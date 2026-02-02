@@ -4281,7 +4281,6 @@ export class BabylonMain {
     // Dispose irrigation render system
     this.irrigationRenderSystem?.dispose();
 
-<<<<<<< HEAD
     for (const instance of this.treeInstances) {
       disposeInstance(instance);
     }
@@ -4291,6 +4290,7 @@ export class BabylonMain {
       disposeInstance(instance);
     }
     this.refillStationInstances = [];
+
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
     }
