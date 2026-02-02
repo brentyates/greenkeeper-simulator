@@ -86,7 +86,16 @@ async function loadAssetInternal(
   const directory = path.substring(0, path.lastIndexOf("/") + 1);
   const filename = path.substring(path.lastIndexOf("/") + 1);
 
-  const result = await SceneLoader.ImportMeshAsync("", directory, filename, scene);
+  let result;
+  try {
+    result = await SceneLoader.ImportMeshAsync("", directory, filename, scene);
+  } catch (loadError) {
+    if (usePlaceholder) {
+      console.log(`[AssetLoader] Failed to parse GLB: ${path}, using placeholder`);
+      return createPlaceholderAsset(scene, assetId);
+    }
+    throw loadError;
+  }
 
   // Find or create root mesh
   let rootMesh: Mesh;

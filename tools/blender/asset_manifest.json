@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "generated": "2026-02-01T15:17:35.154Z",
+    "generated": "2026-02-02T05:45:10.736Z",
     "source": "src/babylon/assets/AssetManifest.ts",
-    "asset_count": 101
+    "asset_count": 102
   },
   "constants": {
     "tile_size": 1,
@@ -12,12 +12,12 @@
     "character.greenkeeper": {
       "path": "/assets/models/characters/greenkeeper.glb",
       "height_range": [
-        1.75,
-        1.85
+        0.6,
+        0.7
       ],
       "footprint": [
-        0.5,
-        0.5
+        0.2,
+        0.2
       ],
       "origin": "base_center",
       "animations": [
@@ -30,12 +30,12 @@
     "character.employee": {
       "path": "/assets/models/characters/employee.glb",
       "height_range": [
-        1.7,
-        1.85
+        0.6,
+        0.7
       ],
       "footprint": [
-        0.5,
-        0.5
+        0.2,
+        0.2
       ],
       "origin": "base_center",
       "animations": [
@@ -84,12 +84,12 @@
     "tree.pine.small": {
       "path": "/assets/models/trees/pine_small.glb",
       "height_range": [
-        3,
-        4
+        1.2,
+        1.6
       ],
       "footprint": [
-        1.5,
-        1.5
+        0.6,
+        0.6
       ],
       "origin": "base_center",
       "notes": "Young pine tree. Conical shape, sparse branches."
@@ -97,12 +97,12 @@
     "tree.pine.medium": {
       "path": "/assets/models/trees/pine_medium.glb",
       "height_range": [
-        5,
-        7
+        2,
+        2.5
       ],
       "footprint": [
-        2.5,
-        2.5
+        0.8,
+        0.8
       ],
       "origin": "base_center",
       "notes": "Mature pine. Classic golf course tree."
@@ -110,12 +110,12 @@
     "tree.pine.large": {
       "path": "/assets/models/trees/pine_large.glb",
       "height_range": [
-        8,
-        12
+        3,
+        4
       ],
       "footprint": [
-        4,
-        4
+        1.2,
+        1.2
       ],
       "origin": "base_center",
       "notes": "Large established pine."
@@ -123,12 +123,12 @@
     "tree.oak.small": {
       "path": "/assets/models/trees/oak_small.glb",
       "height_range": [
-        3,
-        5
+        1.2,
+        1.8
       ],
       "footprint": [
-        2,
-        2
+        0.8,
+        0.8
       ],
       "origin": "base_center",
       "notes": "Young oak. Rounded canopy starting to form."
@@ -136,12 +136,12 @@
     "tree.oak.medium": {
       "path": "/assets/models/trees/oak_medium.glb",
       "height_range": [
-        6,
-        9
+        2,
+        3
       ],
       "footprint": [
-        4,
-        4
+        1.2,
+        1.2
       ],
       "origin": "base_center",
       "notes": "Mature oak with spreading canopy."
@@ -149,12 +149,12 @@
     "tree.oak.large": {
       "path": "/assets/models/trees/oak_large.glb",
       "height_range": [
-        10,
-        15
+        3.5,
+        5
       ],
       "footprint": [
-        6,
-        6
+        2,
+        2
       ],
       "origin": "base_center",
       "notes": "Grand old oak. Dominant landmark tree."
@@ -162,12 +162,12 @@
     "tree.palm": {
       "path": "/assets/models/trees/palm.glb",
       "height_range": [
-        4,
-        8
+        1.5,
+        3
       ],
       "footprint": [
-        1,
-        1
+        0.4,
+        0.4
       ],
       "origin": "base_center",
       "notes": "Palm tree. Thin trunk, frond crown at top."
@@ -175,12 +175,12 @@
     "tree.willow": {
       "path": "/assets/models/trees/willow.glb",
       "height_range": [
-        5,
-        8
+        2,
+        3
       ],
       "footprint": [
-        4,
-        4
+        1.5,
+        1.5
       ],
       "origin": "base_center",
       "notes": "Weeping willow. Drooping branches, near water."
@@ -188,12 +188,12 @@
     "tree.cypress": {
       "path": "/assets/models/trees/cypress.glb",
       "height_range": [
-        6,
-        12
+        2.5,
+        4
       ],
       "footprint": [
-        1.5,
-        1.5
+        0.5,
+        0.5
       ],
       "origin": "base_center",
       "notes": "Tall narrow cypress. Good for lining fairways."
@@ -201,12 +201,12 @@
     "tree.maple.small": {
       "path": "/assets/models/trees/maple_small.glb",
       "height_range": [
-        3,
-        5
+        1.2,
+        1.8
       ],
       "footprint": [
-        2,
-        2
+        0.8,
+        0.8
       ],
       "origin": "base_center",
       "notes": "Young maple. Rounded canopy."
@@ -214,12 +214,12 @@
     "tree.maple.medium": {
       "path": "/assets/models/trees/maple_medium.glb",
       "height_range": [
-        6,
-        9
+        2,
+        3
       ],
       "footprint": [
-        4,
-        4
+        1.2,
+        1.2
       ],
       "origin": "base_center",
       "notes": "Mature maple. Fall color potential."
@@ -227,12 +227,12 @@
     "tree.birch": {
       "path": "/assets/models/trees/birch.glb",
       "height_range": [
-        5,
-        8
+        2,
+        3
       ],
       "footprint": [
-        2,
-        2
+        0.6,
+        0.6
       ],
       "origin": "base_center",
       "notes": "White bark birch. Slender, elegant."
@@ -240,12 +240,12 @@
     "tree.magnolia": {
       "path": "/assets/models/trees/magnolia.glb",
       "height_range": [
-        4,
-        7
+        1.5,
+        2.5
       ],
       "footprint": [
-        3,
-        3
+        1,
+        1
       ],
       "origin": "base_center",
       "notes": "Southern magnolia. Broad leaves, white flowers."
@@ -253,12 +253,12 @@
     "tree.dogwood": {
       "path": "/assets/models/trees/dogwood.glb",
       "height_range": [
-        3,
-        5
+        1.2,
+        1.8
       ],
       "footprint": [
-        2.5,
-        2.5
+        0.8,
+        0.8
       ],
       "origin": "base_center",
       "notes": "Flowering dogwood. Spring blooms."
@@ -383,25 +383,25 @@
     "equipment.mower.push": {
       "path": "/assets/models/equipment/mower_push.glb",
       "height_range": [
-        0.8,
-        1.2
+        0.3,
+        0.45
       ],
       "footprint": [
-        0.5,
-        0.8
+        0.2,
+        0.3
       ],
       "origin": "base_center",
-      "notes": "Push reel mower. Handle height ~1.0m."
+      "notes": "Push reel mower. Handle height ~0.4m."
     },
     "equipment.spreader": {
       "path": "/assets/models/equipment/spreader.glb",
       "height_range": [
-        0.8,
-        1.1
+        0.3,
+        0.4
       ],
       "footprint": [
-        0.5,
-        0.6
+        0.2,
+        0.25
       ],
       "origin": "base_center",
       "notes": "Walk-behind broadcast spreader."
@@ -409,12 +409,12 @@
     "equipment.sprinkler.handheld": {
       "path": "/assets/models/equipment/sprinkler_handheld.glb",
       "height_range": [
-        0.3,
-        0.5
+        0.1,
+        0.2
       ],
       "footprint": [
-        0.2,
-        0.8
+        0.08,
+        0.3
       ],
       "origin": "base_center",
       "notes": "Handheld sprinkler wand with hose."
@@ -422,12 +422,12 @@
     "equipment.rake": {
       "path": "/assets/models/equipment/rake.glb",
       "height_range": [
-        1.4,
-        1.6
+        0.5,
+        0.6
       ],
       "footprint": [
-        0.4,
-        0.1
+        0.15,
+        0.04
       ],
       "origin": "base_center",
       "notes": "Bunker rake. Long handle, wide head."
@@ -1042,6 +1042,19 @@
       ],
       "origin": "base_center",
       "notes": "Starter shack at first tee."
+    },
+    "building.refill.station": {
+      "path": "/assets/models/buildings/refill_station.glb",
+      "height_range": [
+        0.6,
+        0.8
+      ],
+      "footprint": [
+        0.8,
+        0.6
+      ],
+      "origin": "base_center",
+      "notes": "Fuel/supply refill station for maintenance equipment."
     },
     "decor.rock.small": {
       "path": "/assets/models/decor/rock_small.glb",

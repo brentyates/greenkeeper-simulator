@@ -58,8 +58,9 @@ def setup_asset_context(asset_id: str):
     name = "_".join(parts[1:]) if len(parts) > 1 else parts[0]
 
     # Output to project's public/assets/models/
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(TOOLS_DIR)))
-    output_dir = os.path.join(project_root, "public", "assets", "models", category)
+    # TOOLS_DIR is tools/blender, so go up 2 levels to project root
+    project_root = os.path.dirname(os.path.dirname(TOOLS_DIR))
+    output_dir = os.path.join(project_root, "public", "assets", "models", f"{category}s")
     output_path = os.path.join(output_dir, f"{name}.glb")
 
     return {
@@ -165,8 +166,8 @@ def export_asset(context: dict, validate: bool = True, force: bool = False) -> b
         export_yup=True,
         export_apply=True,
         export_normals=True,
-        export_colors=True,
         export_materials='EXPORT',
+        export_attributes=True,
     )
 
     print(f"Export complete: {context['output_path']}")

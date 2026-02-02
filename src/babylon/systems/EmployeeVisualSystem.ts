@@ -6,10 +6,6 @@
  */
 
 import { Scene } from "@babylonjs/core/scene";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { EmployeeTask } from "../../core/employee-work";
 import {
@@ -20,6 +16,13 @@ import {
   updateEntityVisualPosition,
   disposeEntityMesh,
 } from "./EntityVisualSystem";
+import {
+  loadAsset,
+  createInstance,
+  disposeInstance,
+  AssetInstance,
+  AssetId,
+} from "../assets/AssetLoader";
 
 export interface EmployeePosition {
   readonly employeeId: string;
@@ -34,46 +37,38 @@ export interface EmployeePosition {
 export type { ElevationProvider } from "./EntityVisualSystem";
 
 interface WorkerMeshGroup extends EntityVisualState {
-  equipment: Mesh | null;
+  equipmentInstance: AssetInstance | null;
   currentTask: EmployeeTask;
 }
 
-// Equipment colors by task (null = no equipment for this task)
-const TASK_EQUIPMENT_COLORS: Record<EmployeeTask, Color3 | null> = {
-  mow_grass: new Color3(0.3, 0.5, 0.3),
-  water_area: new Color3(0.3, 0.4, 0.7),
-  fertilize_area: new Color3(0.6, 0.5, 0.3),
-  rake_bunker: new Color3(0.6, 0.4, 0.2),
+const TASK_EQUIPMENT_ASSETS: Record<EmployeeTask, AssetId | null> = {
+  mow_grass: "equipment.mower.push",
+  water_area: "equipment.sprinkler.handheld",
+  fertilize_area: "equipment.spreader",
+  rake_bunker: "equipment.rake",
   patrol: null,
   return_to_base: null,
   idle: null,
+};
+
+const TASK_EQUIPMENT_OFFSET: Record<EmployeeTask, Vector3> = {
+  mow_grass: new Vector3(0.4, 0, 0),
+  water_area: new Vector3(0.3, 0.3, 0),
+  fertilize_area: new Vector3(0.3, 0.15, 0),
+  rake_bunker: new Vector3(0.25, 0.5, 0),
+  patrol: Vector3.Zero(),
+  return_to_base: Vector3.Zero(),
+  idle: Vector3.Zero(),
 };
 
 export class EmployeeVisualSystem {
   private scene: Scene;
   private elevationProvider: ElevationProvider;
   private workerMeshes: Map<string, WorkerMeshGroup> = new Map();
-  private taskMaterials: Map<string, StandardMaterial> = new Map();
 
   constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
     this.elevationProvider = elevationProvider;
-    this.createTaskMaterials();
-  }
-
-  private createTaskMaterials(): void {
-    for (const [task, equipColor] of Object.entries(TASK_EQUIPMENT_COLORS)) {
-      if (equipColor) {
-        const equipMat = new StandardMaterial(
-          `workerEquip_${task}`,
-          this.scene
-        );
-        equipMat.diffuseColor = equipColor;
-        equipMat.emissiveColor = equipColor.scale(0.4);
-        equipMat.freeze();
-        this.taskMaterials.set(`equip_${task}`, equipMat);
-      }
-    }
   }
 
   public update(positions: readonly EmployeePosition[], deltaMs: number): void {
@@ -110,17 +105,13 @@ export class EmployeeVisualSystem {
     }
   }
 
-  /**
-   * Ensure equipment is parented to meshInstance.root if available.
-   * This handles the case where equipment was created before mesh finished loading.
-   */
   private ensureEquipmentParent(group: WorkerMeshGroup): void {
     if (
-      group.equipment &&
+      group.equipmentInstance &&
       group.meshInstance?.root &&
-      group.equipment.parent !== group.meshInstance.root
+      group.equipmentInstance.root.parent !== group.meshInstance.root
     ) {
-      group.equipment.parent = group.meshInstance.root;
+      group.equipmentInstance.root.parent = group.meshInstance.root;
     }
   }
 
@@ -140,7 +131,7 @@ export class EmployeeVisualSystem {
 
     return {
       ...baseState,
-      equipment: null,
+      equipmentInstance: null,
       currentTask: "idle",
     };
   }
@@ -150,77 +141,34 @@ export class EmployeeVisualSystem {
 
     group.currentTask = task;
 
-    if (group.equipment) {
-      group.equipment.dispose();
-      group.equipment = null;
+    if (group.equipmentInstance) {
+      disposeInstance(group.equipmentInstance);
+      group.equipmentInstance = null;
     }
 
-    if (TASK_EQUIPMENT_COLORS[task]) {
-      // Parent equipment to meshInstance.root (which rotates with facing angle)
-      // Fall back to container if mesh hasn't loaded yet
+    const assetId = TASK_EQUIPMENT_ASSETS[task];
+    if (assetId) {
       const parent = group.meshInstance?.root ?? group.container;
-      group.equipment = this.createEquipmentMesh(parent, task);
+      const offset = TASK_EQUIPMENT_OFFSET[task];
+
+      loadAsset(this.scene, assetId)
+        .then((loadedAsset) => {
+          if (group.currentTask !== task) return;
+          const instance = createInstance(this.scene, loadedAsset, `equip_${task}`);
+          instance.root.parent = parent;
+          instance.root.position = offset.clone();
+          instance.root.scaling.setAll(0.5);
+          group.equipmentInstance = instance;
+        })
+        .catch((error) => {
+          console.error(`[EmployeeVisualSystem] Failed to load equipment ${assetId}:`, error);
+        });
     }
-  }
-
-  private createEquipmentMesh(parent: Mesh, task: EmployeeTask): Mesh {
-    const equipMat = this.taskMaterials.get(`equip_${task}`);
-    let equipment: Mesh;
-
-    switch (task) {
-      case "mow_grass":
-        equipment = MeshBuilder.CreateBox(
-          "mower",
-          { width: 0.3, height: 0.15, depth: 0.5 },
-          this.scene
-        );
-        equipment.position = new Vector3(0.4, 0.1, 0);
-        break;
-
-      case "water_area":
-        equipment = MeshBuilder.CreateCylinder(
-          "waterCan",
-          { height: 0.25, diameterTop: 0.1, diameterBottom: 0.18 },
-          this.scene
-        );
-        equipment.position = new Vector3(0.3, 0.4, 0);
-        equipment.rotation.z = -0.3;
-        break;
-
-      case "fertilize_area":
-        equipment = MeshBuilder.CreateBox(
-          "spreader",
-          { width: 0.35, height: 0.25, depth: 0.2 },
-          this.scene
-        );
-        equipment.position = new Vector3(0.3, 0.25, 0);
-        break;
-
-      case "rake_bunker":
-        equipment = MeshBuilder.CreateCylinder(
-          "rake",
-          { height: 1.2, diameter: 0.05 },
-          this.scene
-        );
-        equipment.position = new Vector3(0.25, 0.6, 0);
-        equipment.rotation.z = 0.3;
-        break;
-
-      default:
-        equipment = MeshBuilder.CreateBox("tool", { size: 0.1 }, this.scene);
-        equipment.position = new Vector3(0.25, 0.35, 0);
-    }
-
-    if (equipMat) {
-      equipment.material = equipMat;
-    }
-    equipment.parent = parent;
-    return equipment;
   }
 
   private disposeWorkerMesh(group: WorkerMeshGroup): void {
-    if (group.equipment) {
-      group.equipment.dispose();
+    if (group.equipmentInstance) {
+      disposeInstance(group.equipmentInstance);
     }
     disposeEntityMesh(group);
   }
@@ -234,10 +182,5 @@ export class EmployeeVisualSystem {
       this.disposeWorkerMesh(group);
     }
     this.workerMeshes.clear();
-
-    for (const mat of this.taskMaterials.values()) {
-      mat.dispose();
-    }
-    this.taskMaterials.clear();
   }
 }

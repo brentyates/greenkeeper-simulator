@@ -169,8 +169,9 @@ export class BabylonEngine {
     return this.canvas;
   }
 
-  public setZoomLevel(level: "close" | "far" | "tight"): void {
-    const orthoSize = level === "tight" ? 0.8 : level === "close" ? 8 : 35;
+  public setZoomLevel(level: "tight" | "closer" | "close" | "far"): void {
+    const sizes = { tight: 0.8, closer: 4, close: 8, far: 35 };
+    const orthoSize = sizes[level];
     const aspectRatio = this.canvas.width / this.canvas.height;
 
     this.camera.orthoTop = orthoSize;

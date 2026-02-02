@@ -1,8 +1,8 @@
 """
-Procedural generator for tree.pine.medium asset.
+Procedural generator for tree.pine.large asset.
 
 Run with:
-    blender --background --python tools/blender/generators/tree/pine_medium/generate.py
+    blender --background --python tools/blender/generators/tree/pine_large/generate.py
 
 Or interactively in Blender's scripting workspace.
 """
@@ -25,13 +25,13 @@ from _common.geometry import set_origin_to_base
 # ASSET PARAMETERS
 # =============================================================================
 
-ASSET_ID = "tree.pine.medium"
+ASSET_ID = "tree.pine.large"
 
 # Tunable parameters for this specific tree
 PARAMS = {
-    "total_height": 2.25,    # Target: 2.0-2.5m per spec
+    "total_height": 3.5,     # Target: 3.0-4.0m per spec
     "trunk_ratio": 0.25,     # How much is trunk vs foliage
-    "base_radius": 0.35,     # Width of foliage at base (fits 0.8m footprint)
+    "base_radius": 0.5,      # Width of foliage at base (fits 1.2m footprint)
     "seed": 42,              # Random seed for reproducibility
 }
 
@@ -41,7 +41,7 @@ PARAMS = {
 # =============================================================================
 
 def generate():
-    """Generate the tree.pine.medium asset."""
+    """Generate the tree.pine.large asset."""
     print(f"\n{'='*60}")
     print(f"Generating: {ASSET_ID}")
     print(f"{'='*60}")

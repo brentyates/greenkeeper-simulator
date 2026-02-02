@@ -1,10 +1,8 @@
 """
-Procedural generator for tree.pine.medium asset.
+Procedural generator for tree.oak.small asset.
 
 Run with:
-    blender --background --python tools/blender/generators/tree/pine_medium/generate.py
-
-Or interactively in Blender's scripting workspace.
+    blender --background --python tools/blender/generators/tree/oak_small/generate.py
 """
 
 import bpy
@@ -18,21 +16,21 @@ if GENERATORS_DIR not in sys.path:
     sys.path.insert(0, GENERATORS_DIR)
 
 from _common.context import setup_asset_context, export_asset
-from _common.nature import create_simple_pine
+from _common.nature import create_simple_deciduous
 from _common.geometry import set_origin_to_base
 
 # =============================================================================
 # ASSET PARAMETERS
 # =============================================================================
 
-ASSET_ID = "tree.pine.medium"
+ASSET_ID = "tree.oak.small"
 
 # Tunable parameters for this specific tree
 PARAMS = {
-    "total_height": 2.25,    # Target: 2.0-2.5m per spec
-    "trunk_ratio": 0.25,     # How much is trunk vs foliage
-    "base_radius": 0.35,     # Width of foliage at base (fits 0.8m footprint)
-    "seed": 42,              # Random seed for reproducibility
+    "total_height": 3.0,     # Adjusted to hit 1.2-1.8m actual height
+    "trunk_ratio": 0.35,     # How much is trunk vs foliage
+    "crown_radius": 0.35,    # Radius of crown (fits 0.8m footprint)
+    "seed": 124,             # Random seed for reproducibility
 }
 
 
@@ -41,7 +39,7 @@ PARAMS = {
 # =============================================================================
 
 def generate():
-    """Generate the tree.pine.medium asset."""
+    """Generate the tree.oak.small asset."""
     print(f"\n{'='*60}")
     print(f"Generating: {ASSET_ID}")
     print(f"{'='*60}")
@@ -53,10 +51,10 @@ def generate():
     print(f"Generating with height={PARAMS['total_height']}m")
 
     # Generate the tree
-    tree = create_simple_pine(
+    tree = create_simple_deciduous(
         total_height=PARAMS["total_height"],
         trunk_ratio=PARAMS["trunk_ratio"],
-        base_radius=PARAMS["base_radius"],
+        crown_radius=PARAMS["crown_radius"],
         seed=PARAMS["seed"]
     )
 

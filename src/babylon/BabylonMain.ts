@@ -12,7 +12,14 @@ import {
   updateEntityVisualPosition,
   disposeEntityMesh,
 } from "./systems/EntityVisualSystem";
-import { clearAssetCache } from "./assets/AssetLoader";
+import {
+  clearAssetCache,
+  loadAsset,
+  createInstance,
+  disposeInstance,
+  AssetInstance,
+  AssetId,
+} from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { EmployeePanel } from "./ui/EmployeePanel";
@@ -26,10 +33,8 @@ import { WalkOnQueuePanel } from "./ui/WalkOnQueuePanel";
 import { IrrigationToolbar } from "./ui/IrrigationToolbar";
 import { IrrigationInfoPanel } from "./ui/IrrigationInfoPanel";
 import { IrrigationSchedulePanel } from "./ui/IrrigationSchedulePanel";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import "@babylonjs/core/Culling/ray";
@@ -261,7 +266,7 @@ export class BabylonMain {
   private grassSystem: GrassSystem;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
-  private zoomLevel: "close" | "far" = "close";
+  private zoomLevel: "tight" | "closer" | "close" | "far" = "close";
   private lastTime: number = 0;
   private gameTime: number = 6 * 60;
   private gameDay: number = 1;
@@ -276,6 +281,8 @@ export class BabylonMain {
 
   private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
+  private treeInstances: AssetInstance[] = [];
+  private refillStationInstances: AssetInstance[] = [];
 
   private terrainEditorSystem: TerrainEditorSystem | null = null;
   private terrainEditorUI: TerrainEditorUI | null = null;
@@ -1294,125 +1301,36 @@ export class BabylonMain {
 
   private createTree(x: number, y: number, z: number, isPine: boolean): void {
     const scene = this.babylonEngine.getScene();
-    const trunkHeight = isPine ? 1.5 : 1.0;
-    const trunkDiameter = 0.15;
-    const foliageSize = isPine ? 0.6 : 1.0;
+    const assetId: AssetId = isPine ? "tree.pine.medium" : "tree.oak.medium";
+    const treeIndex = this.treeInstances.length;
 
-    const trunk = MeshBuilder.CreateCylinder(
-      "trunk",
-      { height: trunkHeight, diameter: trunkDiameter },
-      scene
-    );
-    trunk.position = new Vector3(x, y + trunkHeight / 2, z);
-    const trunkMat = new StandardMaterial("trunkMat", scene);
-    trunkMat.diffuseColor = new Color3(0.35, 0.22, 0.1);
-    trunkMat.emissiveColor = new Color3(0.18, 0.11, 0.05);
-    trunk.material = trunkMat;
-    this.obstacleMeshes.push(trunk);
-
-    if (isPine) {
-      for (let layer = 0; layer < 3; layer++) {
-        const layerSize = foliageSize - layer * 0.15;
-        const cone = MeshBuilder.CreateCylinder(
-          "foliage",
-          {
-            height: layerSize,
-            diameterTop: 0,
-            diameterBottom: layerSize,
-          },
-          scene
-        );
-        cone.position = new Vector3(
-          x,
-          y + trunkHeight + layer * 0.4 + layerSize / 2,
-          z
-        );
-        const foliageMat = new StandardMaterial("foliageMat", scene);
-        foliageMat.diffuseColor = new Color3(0.15, 0.45, 0.15);
-        foliageMat.emissiveColor = new Color3(0.08, 0.23, 0.08);
-        cone.material = foliageMat;
-        this.obstacleMeshes.push(cone);
-      }
-    } else {
-      const sphere = MeshBuilder.CreateSphere(
-        "foliage",
-        { diameter: foliageSize },
-        scene
-      );
-      sphere.position = new Vector3(x, y + trunkHeight + foliageSize / 2, z);
-      const foliageMat = new StandardMaterial("foliageMat", scene);
-      foliageMat.diffuseColor = new Color3(0.2, 0.5, 0.2);
-      foliageMat.emissiveColor = new Color3(0.1, 0.25, 0.1);
-      sphere.material = foliageMat;
-      this.obstacleMeshes.push(sphere);
-    }
+    loadAsset(scene, assetId)
+      .then((loadedAsset) => {
+        const instance = createInstance(scene, loadedAsset, `tree_${treeIndex}`);
+        instance.root.position = new Vector3(x, y, z);
+        this.treeInstances.push(instance);
+      })
+      .catch((error) => {
+        console.error(`[BabylonMain] Failed to load tree asset ${assetId}:`, error);
+      });
   }
 
   private buildRefillStations(): void {
     const scene = this.babylonEngine.getScene();
 
-    for (const station of REFILL_STATIONS) {
+    for (let i = 0; i < REFILL_STATIONS.length; i++) {
+      const station = REFILL_STATIONS[i];
       const pos = this.grassSystem.gridToWorld(station.x, station.y);
 
-      const base = MeshBuilder.CreateBox(
-        "refillBase",
-        { width: 0.8, height: 0.4, depth: 0.6 },
-        scene
-      );
-      base.position = new Vector3(pos.x, pos.y + 0.2, pos.z);
-      const baseMat = new StandardMaterial("baseMat", scene);
-      baseMat.diffuseColor = new Color3(0.55, 0.27, 0.07);
-      baseMat.emissiveColor = new Color3(0.28, 0.14, 0.04);
-      base.material = baseMat;
-      this.obstacleMeshes.push(base);
-
-      const roof = MeshBuilder.CreateBox(
-        "refillRoof",
-        { width: 1.0, height: 0.1, depth: 0.8 },
-        scene
-      );
-      roof.position = new Vector3(pos.x, pos.y + 0.7, pos.z);
-      const roofMat = new StandardMaterial("roofMat", scene);
-      roofMat.diffuseColor = new Color3(0.61, 0.33, 0.12);
-      roofMat.emissiveColor = new Color3(0.31, 0.17, 0.06);
-      roof.material = roofMat;
-      this.obstacleMeshes.push(roof);
-
-      const pump = MeshBuilder.CreateBox(
-        "pump",
-        { width: 0.25, height: 0.5, depth: 0.2 },
-        scene
-      );
-      pump.position = new Vector3(pos.x, pos.y + 0.25, pos.z + 0.15);
-      const pumpMat = new StandardMaterial("pumpMat", scene);
-      pumpMat.diffuseColor = new Color3(0.4, 0.4, 0.45);
-      pumpMat.emissiveColor = new Color3(0.2, 0.2, 0.23);
-      pump.material = pumpMat;
-      this.obstacleMeshes.push(pump);
-
-      const blueDot = MeshBuilder.CreateSphere(
-        "blueDot",
-        { diameter: 0.12 },
-        scene
-      );
-      blueDot.position = new Vector3(pos.x - 0.08, pos.y + 0.35, pos.z + 0.26);
-      const blueMat = new StandardMaterial("blueMat", scene);
-      blueMat.diffuseColor = new Color3(0.2, 0.4, 0.8);
-      blueMat.emissiveColor = new Color3(0.1, 0.2, 0.4);
-      blueDot.material = blueMat;
-      this.obstacleMeshes.push(blueDot);
-
-      const redDot = MeshBuilder.CreateSphere(
-        "redDot",
-        { diameter: 0.12 },
-        scene
-      );
-      redDot.position = new Vector3(pos.x + 0.08, pos.y + 0.35, pos.z + 0.26);
-      const redMat = new StandardMaterial("redMat", scene);
-      redMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
-      redMat.emissiveColor = new Color3(0.4, 0.1, 0.1);
-      redDot.material = redMat;
-      this.obstacleMeshes.push(redDot);
+      loadAsset(scene, "building.refill.station")
+        .then((loadedAsset) => {
+          const instance = createInstance(scene, loadedAsset, `refill_${i}`);
+          instance.root.position = new Vector3(pos.x, pos.y, pos.z);
+          this.refillStationInstances.push(instance);
+        })
+        .catch((error) => {
+          console.error(`[BabylonMain] Failed to load refill station:`, error);
+        });
     }
   }
 
@@ -2022,7 +1940,9 @@ export class BabylonMain {
   }
 
   private handleZoom(_delta: number): void {
-    this.zoomLevel = this.zoomLevel === "close" ? "far" : "close";
+    const levels: Array<"tight" | "closer" | "close" | "far"> = ["closer", "close", "far"];
+    const currentIndex = levels.indexOf(this.zoomLevel);
+    this.zoomLevel = levels[(currentIndex + 1) % levels.length];
     this.babylonEngine.setZoomLevel(this.zoomLevel);
   }
 
@@ -4346,6 +4266,16 @@ export class BabylonMain {
 
     // Dispose irrigation render system
     this.irrigationRenderSystem?.dispose();
+
+    for (const instance of this.treeInstances) {
+      disposeInstance(instance);
+    }
+    this.treeInstances = [];
+
+    for (const instance of this.refillStationInstances) {
+      disposeInstance(instance);
+    }
+    this.refillStationInstances = [];
 
     for (const mesh of this.obstacleMeshes) {
       mesh.dispose();
