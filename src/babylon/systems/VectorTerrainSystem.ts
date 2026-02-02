@@ -1,19 +1,19 @@
 /**
  * VectorTerrainSystem - SDF-based vector terrain rendering
  *
- * Replaces tile-based terrain with smooth, vector-defined boundaries.
- * Uses signed distance fields for pixel-perfect edges at any zoom level.
+ * Replaces tile-based terrain with smooth, pixel-perfect boundaries.
+ * Uses signed distance fields generated from the grid layout.
  *
  * Architecture:
- * - Vector shapes define terrain boundaries (splines with tension control)
- * - SDF textures are generated from vector shapes
- * - Custom shader samples SDFs for smooth blending
- * - Grid layer maintained for health simulation (synced from vectors)
+ * - SDF textures are generated from grid layout data
+ * - Custom shader samples SDFs for smooth terrain blending
+ * - Grid layer maintained for health simulation
  */
 
 import { Scene } from "@babylonjs/core/scene";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -22,14 +22,6 @@ import { Effect } from "@babylonjs/core/Materials/effect";
 import { Vector2 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 
-import {
-  VectorShape,
-  ControlPoint,
-  TerrainShapeType,
-  createCircleShape,
-  createEllipseShape,
-  createFairwayShape,
-} from "../../core/vector-shapes";
 
 import {
   SDFTextureSet,
@@ -63,6 +55,8 @@ export interface VectorTerrainOptions {
   enableWaterAnim: boolean;
   /** Mesh subdivisions per world unit */
   meshResolution: number;
+  /** Enable grid lines overlay */
+  enableGridLines: boolean;
 }
 
 const DEFAULT_OPTIONS: VectorTerrainOptions = {
@@ -72,14 +66,14 @@ const DEFAULT_OPTIONS: VectorTerrainOptions = {
   enableNoise: true,
   enableWaterAnim: true,
   meshResolution: 1,
+  enableGridLines: false,
 };
 
 export class VectorTerrainSystem {
   private scene: Scene;
   private options: VectorTerrainOptions;
 
-  // Vector data
-  private shapes: VectorShape[] = [];
+  // World dimensions
   private worldWidth: number;
   private worldHeight: number;
   private elevation: number[][];
@@ -91,6 +85,7 @@ export class VectorTerrainSystem {
   private sdfTextures: SDFTextureSet | null = null;
   private healthTexture: RawTexture | null = null;  // Health data for overlays
   private cliffMeshes: Mesh[] = [];  // Edge cliff faces
+  private gridLinesMesh: Mesh | null = null;  // Optional grid overlay
 
   // Grid layer for simulation (synced from vectors)
   private cells: CellState[][] = [];
@@ -119,10 +114,6 @@ export class VectorTerrainSystem {
 
     // Initialize cells for simulation
     this.initCells(courseData);
-
-    // Shapes array is for future vector-based editing
-    // For now, SDF is generated directly from the grid (more reliable)
-    this.shapes = [];
 
     // Register shader
     this.registerShader();
@@ -177,6 +168,7 @@ export class VectorTerrainSystem {
   public build(): void {
     this.createTerrainMesh();
     this.createCliffFaces();
+    this.createGridLines();
     this.generateSDFTextures();
     this.createShaderMaterial();
     this.applyMaterial();
@@ -247,7 +239,7 @@ export class VectorTerrainSystem {
   }
 
   /**
-   * Create cliff faces at terrain edges to prevent floating appearance
+   * Create cliff faces at terrain edges and internal elevation changes
    */
   private createCliffFaces(): void {
     // Dispose old cliff meshes
@@ -273,6 +265,136 @@ export class VectorTerrainSystem {
     const bottomCliff = this.createEdgeCliff("bottom", cliffDepth);
     bottomCliff.material = cliffMaterial;
     this.cliffMeshes.push(bottomCliff);
+
+    // Create internal cliff faces where elevation changes significantly
+    const internalCliff = this.createInternalCliffs(0.5);  // Threshold of 0.5 elevation units
+    if (internalCliff) {
+      internalCliff.material = cliffMaterial;
+      this.cliffMeshes.push(internalCliff);
+    }
+  }
+
+  /**
+   * Create cliff faces at internal elevation boundaries
+   * @param threshold Minimum elevation difference to create a cliff face
+   */
+  private createInternalCliffs(threshold: number): Mesh | null {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const normals: number[] = [];
+    const colors: number[] = [];
+
+    const topColor = new Color4(0.65, 0.53, 0.38, 1);
+    const bottomColor = new Color4(0.48, 0.40, 0.30, 1);
+
+    // Scan for elevation changes in X direction (creates Z-facing cliffs)
+    for (let y = 0; y < this.worldHeight; y++) {
+      for (let x = 0; x < this.worldWidth - 1; x++) {
+        const elev1 = this.elevation[y]?.[x] ?? 0;
+        const elev2 = this.elevation[y]?.[x + 1] ?? 0;
+        const diff = elev2 - elev1;
+
+        if (Math.abs(diff) >= threshold) {
+          // Create a cliff face between cell x and x+1
+          const cliffX = x + 1;  // Position at the boundary
+          const highElev = Math.max(elev1, elev2) * HEIGHT_UNIT;
+          const lowElev = Math.min(elev1, elev2) * HEIGHT_UNIT;
+
+          const baseIdx = positions.length / 3;
+
+          // Cliff face vertices (quad from y to y+1)
+          const y1 = y;
+          const y2 = Math.min(y + 1, this.worldHeight);
+
+          if (diff > 0) {
+            // Cell to the right is higher - cliff faces left
+            positions.push(cliffX, highElev, y1);
+            positions.push(cliffX, highElev, y2);
+            positions.push(cliffX, lowElev, y2);
+            positions.push(cliffX, lowElev, y1);
+          } else {
+            // Cell to the left is higher - cliff faces right
+            positions.push(cliffX, highElev, y2);
+            positions.push(cliffX, highElev, y1);
+            positions.push(cliffX, lowElev, y1);
+            positions.push(cliffX, lowElev, y2);
+          }
+
+          // Colors
+          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+
+          // Indices
+          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+          indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+        }
+      }
+    }
+
+    // Scan for elevation changes in Y direction (creates X-facing cliffs)
+    for (let y = 0; y < this.worldHeight - 1; y++) {
+      for (let x = 0; x < this.worldWidth; x++) {
+        const elev1 = this.elevation[y]?.[x] ?? 0;
+        const elev2 = this.elevation[y + 1]?.[x] ?? 0;
+        const diff = elev2 - elev1;
+
+        if (Math.abs(diff) >= threshold) {
+          // Create a cliff face between cell y and y+1
+          const cliffY = y + 1;  // Position at the boundary
+          const highElev = Math.max(elev1, elev2) * HEIGHT_UNIT;
+          const lowElev = Math.min(elev1, elev2) * HEIGHT_UNIT;
+
+          const baseIdx = positions.length / 3;
+
+          // Cliff face vertices (quad from x to x+1)
+          const x1 = x;
+          const x2 = Math.min(x + 1, this.worldWidth);
+
+          if (diff > 0) {
+            // Cell below is higher - cliff faces up (north)
+            positions.push(x1, highElev, cliffY);
+            positions.push(x2, highElev, cliffY);
+            positions.push(x2, lowElev, cliffY);
+            positions.push(x1, lowElev, cliffY);
+          } else {
+            // Cell above is higher - cliff faces down (south)
+            positions.push(x2, highElev, cliffY);
+            positions.push(x1, highElev, cliffY);
+            positions.push(x1, lowElev, cliffY);
+            positions.push(x2, lowElev, cliffY);
+          }
+
+          // Colors
+          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+
+          // Indices
+          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+          indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+        }
+      }
+    }
+
+    // Return null if no internal cliffs found
+    if (positions.length === 0) return null;
+
+    VertexData.ComputeNormals(positions, indices, normals);
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.normals = normals;
+    vertexData.colors = colors;
+
+    const mesh = new Mesh("internalCliffs", this.scene);
+    vertexData.applyToMesh(mesh);
+    mesh.useVertexColors = true;
+
+    return mesh;
   }
 
   /**
@@ -365,6 +487,73 @@ export class VectorTerrainSystem {
     mesh.useVertexColors = true;
 
     return mesh;
+  }
+
+  /**
+   * Create optional grid lines overlay for debugging/editing
+   */
+  private createGridLines(): void {
+    // Dispose old grid lines mesh
+    if (this.gridLinesMesh) {
+      this.gridLinesMesh.dispose();
+      this.gridLinesMesh = null;
+    }
+
+    // Only create if enabled
+    if (!this.options.enableGridLines) return;
+
+    const lines: Vector3[][] = [];
+    const lineOffset = 0.05;  // Slight offset above terrain
+
+    // Horizontal lines (along X)
+    for (let y = 0; y <= this.worldHeight; y++) {
+      const line: Vector3[] = [];
+      for (let x = 0; x <= this.worldWidth; x++) {
+        const elev = this.getInterpolatedElevation(x, y);
+        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, y));
+      }
+      lines.push(line);
+    }
+
+    // Vertical lines (along Z)
+    for (let x = 0; x <= this.worldWidth; x++) {
+      const line: Vector3[] = [];
+      for (let y = 0; y <= this.worldHeight; y++) {
+        const elev = this.getInterpolatedElevation(x, y);
+        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, y));
+      }
+      lines.push(line);
+    }
+
+    // Create line system with colors array for semi-transparent dark gray
+    const lineColor = new Color4(0.3, 0.3, 0.3, 0.5);
+    const colors: Color4[][] = lines.map(line =>
+      line.map(() => lineColor)
+    );
+
+    this.gridLinesMesh = MeshBuilder.CreateLineSystem(
+      "gridLines",
+      { lines, colors, updatable: false },
+      this.scene
+    );
+  }
+
+  /**
+   * Toggle grid lines visibility
+   */
+  public setGridLinesEnabled(enabled: boolean): void {
+    this.options.enableGridLines = enabled;
+
+    if (enabled && !this.gridLinesMesh) {
+      // Create grid lines if they don't exist
+      this.createGridLines();
+    } else if (!enabled && this.gridLinesMesh) {
+      // Hide existing grid lines
+      this.gridLinesMesh.setEnabled(false);
+    } else if (enabled && this.gridLinesMesh) {
+      // Show existing grid lines
+      this.gridLinesMesh.setEnabled(true);
+    }
   }
 
   /**
@@ -597,15 +786,36 @@ export class VectorTerrainSystem {
   }
 
   /**
-   * Update animation and dirty terrain
+   * Update animation, simulation, and dirty terrain
    */
-  public update(deltaMs: number): void {
+  public update(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void {
+    this.gameTime = gameTimeMinutes;
     this.time += deltaMs / 1000;
 
+    // Update shader time
     if (this.shaderMaterial) {
       this.shaderMaterial.setFloat("time", this.time);
     }
 
+    // Simulate grass growth
+    const deltaMinutes = (deltaMs / 1000) * 2;
+    for (let y = 0; y < this.cells.length; y++) {
+      for (let x = 0; x < this.cells[y].length; x++) {
+        const cell = this.cells[y][x];
+        const result = simulateGrowth(cell, deltaMinutes, weather);
+        cell.height = result.height;
+        cell.moisture = result.moisture;
+        cell.nutrients = result.nutrients;
+        cell.health = result.health;
+      }
+    }
+
+    // Update health texture periodically when in overlay mode
+    if (this.overlayMode !== "normal") {
+      this.updateHealthTexture();
+    }
+
+    // Rebuild SDF if terrain types changed
     if (this.shapesDirty) {
       this.rebuildSDFTextures();
       this.shapesDirty = false;
@@ -649,187 +859,6 @@ export class VectorTerrainSystem {
         }
       }
     }
-  }
-
-  // ============================================
-  // Shape manipulation API
-  // ============================================
-
-  /**
-   * Add a new shape
-   */
-  public addShape(shape: VectorShape): string {
-    this.shapes.push(shape);
-    this.shapesDirty = true;
-    return shape.id;
-  }
-
-  /**
-   * Remove a shape by ID
-   */
-  public removeShape(shapeId: string): boolean {
-    const index = this.shapes.findIndex(s => s.id === shapeId);
-    if (index >= 0) {
-      this.shapes.splice(index, 1);
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Get a shape by ID
-   */
-  public getShape(shapeId: string): VectorShape | undefined {
-    return this.shapes.find(s => s.id === shapeId);
-  }
-
-  /**
-   * Get all shapes
-   */
-  public getShapes(): readonly VectorShape[] {
-    return this.shapes;
-  }
-
-  /**
-   * Update a shape's control points
-   */
-  public updateShapePoints(shapeId: string, points: ControlPoint[]): boolean {
-    const shape = this.shapes.find(s => s.id === shapeId);
-    if (shape) {
-      shape.points = points;
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Move a control point
-   */
-  public moveControlPoint(
-    shapeId: string,
-    pointIndex: number,
-    x: number,
-    y: number
-  ): boolean {
-    const shape = this.shapes.find(s => s.id === shapeId);
-    if (shape && shape.points[pointIndex]) {
-      shape.points[pointIndex].x = x;
-      shape.points[pointIndex].y = y;
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Set tension for a control point
-   */
-  public setControlPointTension(
-    shapeId: string,
-    pointIndex: number,
-    tension: number
-  ): boolean {
-    const shape = this.shapes.find(s => s.id === shapeId);
-    if (shape && shape.points[pointIndex]) {
-      shape.points[pointIndex].tension = Math.max(0, Math.min(1, tension));
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Add a control point to a shape
-   */
-  public addControlPoint(
-    shapeId: string,
-    afterIndex: number,
-    point: ControlPoint
-  ): boolean {
-    const shape = this.shapes.find(s => s.id === shapeId);
-    if (shape) {
-      shape.points.splice(afterIndex + 1, 0, point);
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Remove a control point from a shape
-   */
-  public removeControlPoint(shapeId: string, pointIndex: number): boolean {
-    const shape = this.shapes.find(s => s.id === shapeId);
-    if (shape && shape.points.length > 3) {
-      shape.points.splice(pointIndex, 1);
-      this.shapesDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  // ============================================
-  // Convenience shape creation
-  // ============================================
-
-  /**
-   * Create a circular green
-   */
-  public createGreen(centerX: number, centerY: number, radius: number): string {
-    const shape = createCircleShape('green', centerX, centerY, radius, 12, 1.0);
-    return this.addShape(shape);
-  }
-
-  /**
-   * Create an elliptical bunker
-   */
-  public createBunker(
-    centerX: number,
-    centerY: number,
-    radiusX: number,
-    radiusY: number,
-    rotation: number = 0
-  ): string {
-    const shape = createEllipseShape('bunker', centerX, centerY, radiusX, radiusY, rotation, 8, 0.8);
-    return this.addShape(shape);
-  }
-
-  /**
-   * Create a fairway segment
-   */
-  public createFairway(
-    startX: number,
-    startY: number,
-    endX: number,
-    endY: number,
-    width: number
-  ): string {
-    const shape = createFairwayShape(startX, startY, endX, endY, width, 0.8);
-    return this.addShape(shape);
-  }
-
-  /**
-   * Create a tee box
-   */
-  public createTeeBox(
-    centerX: number,
-    centerY: number,
-    width: number,
-    height: number,
-    rotation: number = 0
-  ): string {
-    const shape = createEllipseShape('tee', centerX, centerY, width / 2, height / 2, rotation, 6, 0.3);
-    return this.addShape(shape);
-  }
-
-  /**
-   * Create a water hazard
-   */
-  public createWaterHazard(centerX: number, centerY: number, radius: number): string {
-    const shape = createCircleShape('water', centerX, centerY, radius, 10, 0.9);
-    return this.addShape(shape);
   }
 
   // ============================================
@@ -879,7 +908,7 @@ export class VectorTerrainSystem {
   /**
    * Set a terrain color
    */
-  public setTerrainColor(type: TerrainShapeType | 'rough' | 'waterDeep', color: Color3): void {
+  public setTerrainColor(type: 'green' | 'fairway' | 'bunker' | 'water' | 'tee' | 'rough' | 'waterDeep', color: Color3): void {
     if (!this.shaderMaterial) return;
 
     const uniformName = `${type}Color`;
@@ -1091,39 +1120,6 @@ export class VectorTerrainSystem {
     }
   }
 
-  // ============================================
-  // Update with simulation
-  // ============================================
-
-  public updateFull(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void {
-    this.gameTime = gameTimeMinutes;
-    this.time += deltaMs / 1000;
-
-    // Update shader time
-    if (this.shaderMaterial) {
-      this.shaderMaterial.setFloat("time", this.time);
-    }
-
-    // Simulate grass growth
-    const deltaMinutes = (deltaMs / 1000) * 2;
-    for (let y = 0; y < this.cells.length; y++) {
-      for (let x = 0; x < this.cells[y].length; x++) {
-        const cell = this.cells[y][x];
-        const result = simulateGrowth(cell, deltaMinutes, weather);
-        cell.height = result.height;
-        cell.moisture = result.moisture;
-        cell.nutrients = result.nutrients;
-        cell.health = result.health;
-      }
-    }
-
-    // Rebuild SDF if terrain types changed
-    if (this.shapesDirty) {
-      this.rebuildSDFTextures();
-      this.shapesDirty = false;
-    }
-  }
-
   public getUpdateCount(): number {
     return 0; // Not tracking updates like GrassSystem
   }
@@ -1180,5 +1176,10 @@ export class VectorTerrainSystem {
       mesh.dispose();
     }
     this.cliffMeshes = [];
+
+    if (this.gridLinesMesh) {
+      this.gridLinesMesh.dispose();
+      this.gridLinesMesh = null;
+    }
   }
 }

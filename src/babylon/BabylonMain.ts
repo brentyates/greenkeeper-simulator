@@ -1,6 +1,8 @@
 import { BabylonEngine } from "./engine/BabylonEngine";
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
+import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
+import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
@@ -258,12 +260,13 @@ export interface GameOptions {
   loadFromSave?: boolean;
   onReturnToMenu?: () => void;
   onScenarioComplete?: (score: number) => void;
+  useVectorTerrain?: boolean;  // Use SDF-based vector terrain rendering
 }
 
 export class BabylonMain {
   private babylonEngine: BabylonEngine;
   private inputManager: InputManager;
-  private grassSystem: GrassSystem;
+  private terrainSystem: TerrainSystem;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
   private zoomLevel: "tight" | "closer" | "close" | "far" = "close";
@@ -425,11 +428,18 @@ export class BabylonMain {
       course.height
     );
     this.inputManager = new InputManager(this.babylonEngine.getScene());
-    this.grassSystem = new GrassSystem(this.babylonEngine.getScene(), course);
+
+    // Create terrain system based on options
+    if (options.useVectorTerrain) {
+      this.terrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
+    } else {
+      this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
+    }
+
     this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
     this.employeeVisualSystem = new EmployeeVisualSystem(
       this.babylonEngine.getScene(),
-      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
+      { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
     this.uiManager = new UIManager(this.babylonEngine.getScene());
     this.irrigationRenderSystem = new IrrigationRenderSystem(
@@ -490,24 +500,24 @@ export class BabylonMain {
 
     const cornerProvider = {
       getCornerHeights: (gridX: number, gridY: number) =>
-        this.grassSystem.getCornerHeightsPublic(gridX, gridY),
+        this.terrainSystem.getCornerHeightsPublic(gridX, gridY),
       getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
-        this.grassSystem.getElevationAt(gridX, gridY, defaultValue),
+        this.terrainSystem.getElevationAt(gridX, gridY, defaultValue),
     };
 
     this.terrainEditorSystem = new TerrainEditorSystem(scene, cornerProvider);
     this.terrainEditorSystem.setTerrainModifier({
       setElevationAt: (x, y, elev) =>
-        this.grassSystem.setElevationAt(x, y, elev),
+        this.terrainSystem.setElevationAt(x, y, elev),
       setTerrainTypeAt: (x, y, type) =>
-        this.grassSystem.setTerrainTypeAt(x, y, type),
+        this.terrainSystem.setTerrainTypeAt(x, y, type),
       rebuildTileAndNeighbors: (x, y) =>
-        this.grassSystem.rebuildTileAndNeighbors(x, y),
+        this.terrainSystem.rebuildTileAndNeighbors(x, y),
     });
 
     this.terrainEditorSystem.initialize(
-      this.grassSystem.getLayoutGrid(),
-      this.grassSystem.getElevationGrid()
+      this.terrainSystem.getLayoutGrid(),
+      this.terrainSystem.getElevationGrid()
     );
 
     this.editorUITexture = AdvancedDynamicTexture.CreateFullscreenUI(
@@ -1031,7 +1041,7 @@ export class BabylonMain {
   }
 
   private resetDailyStats(): void {
-    const courseStats = this.grassSystem.getCourseStats();
+    const courseStats = this.terrainSystem.getCourseStats();
     this.dailyStats = {
       revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
       expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
@@ -1049,7 +1059,7 @@ export class BabylonMain {
   }
 
   private showDaySummary(): void {
-    const courseStats = this.grassSystem.getCourseStats();
+    const courseStats = this.terrainSystem.getCourseStats();
     const avgSatisfaction =
       this.dailyStats.golfersServed > 0
         ? this.dailyStats.totalSatisfaction / this.dailyStats.golfersServed
@@ -1083,7 +1093,7 @@ export class BabylonMain {
   public saveCurrentGame(): void {
     if (!this.currentScenario || !this.scenarioManager) return;
 
-    const cells = this.grassSystem.getAllCells();
+    const cells = this.terrainSystem.getAllCells();
     const scenarioProgress = this.scenarioManager.getProgress();
     const state = createSaveState(
       this.currentScenario.id,
@@ -1171,7 +1181,7 @@ export class BabylonMain {
     }
 
     if (saved.cells && saved.cells.length > 0) {
-      this.grassSystem.restoreCells(saved.cells);
+      this.terrainSystem.restoreCells(saved.cells);
     }
 
     if (saved.irrigationSystem) {
@@ -1278,7 +1288,7 @@ export class BabylonMain {
   }
 
   private buildScene(): void {
-    this.grassSystem.build();
+    this.terrainSystem.build();
     this.buildObstacles();
     this.buildRefillStations();
     this.createPlayer();
@@ -1291,7 +1301,7 @@ export class BabylonMain {
     if (!obstacles) return;
 
     for (const obs of obstacles) {
-      const pos = this.grassSystem.gridToWorld(obs.x, obs.y);
+      const pos = this.terrainSystem.gridToWorld(obs.x, obs.y);
 
       if (obs.type === 1 || obs.type === 2) {
         this.createTree(pos.x, pos.y, pos.z, obs.type === 2);
@@ -1320,7 +1330,7 @@ export class BabylonMain {
 
     for (let i = 0; i < REFILL_STATIONS.length; i++) {
       const station = REFILL_STATIONS[i];
-      const pos = this.grassSystem.gridToWorld(station.x, station.y);
+      const pos = this.terrainSystem.gridToWorld(station.x, station.y);
 
       loadAsset(scene, "building.refill.station")
         .then((loadedAsset) => {
@@ -1369,7 +1379,7 @@ export class BabylonMain {
   private updatePlayerPosition(): void {
     if (!this.playerVisual) return;
 
-    const worldPos = this.grassSystem.gridToWorld(
+    const worldPos = this.terrainSystem.gridToWorld(
       this.player.gridX,
       this.player.gridY
     );
@@ -1414,7 +1424,7 @@ export class BabylonMain {
       isMoving ? this.player.gridX : null,
       isMoving ? this.player.gridY : null,
       deltaMs,
-      this.grassSystem
+      this.terrainSystem
     );
   }
 
@@ -1495,11 +1505,11 @@ export class BabylonMain {
       return false;
     }
 
-    const fromCell = this.grassSystem.getCell(
+    const fromCell = this.terrainSystem.getCell(
       this.player.gridX,
       this.player.gridY
     );
-    const toCell = this.grassSystem.getCell(newX, newY);
+    const toCell = this.terrainSystem.getCell(newX, newY);
 
     if (!canMoveFromTo(fromCell, toCell)) {
       return false;
@@ -1538,7 +1548,7 @@ export class BabylonMain {
       return;
     }
 
-    const targetCell = this.grassSystem.getCell(gridPos.x, gridPos.y);
+    const targetCell = this.terrainSystem.getCell(gridPos.x, gridPos.y);
     if (!targetCell || targetCell.type === "water") return;
 
     if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
@@ -1684,8 +1694,8 @@ export class BabylonMain {
           continue;
         if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
 
-        const fromCell = this.grassSystem.getCell(current.x, current.y);
-        const toCell = this.grassSystem.getCell(neighbor.x, neighbor.y);
+        const fromCell = this.terrainSystem.getCell(current.x, current.y);
+        const toCell = this.terrainSystem.getCell(neighbor.x, neighbor.y);
         if (!canMoveFromTo(fromCell, toCell)) continue;
 
         const g = current.g + 1;
@@ -1724,16 +1734,16 @@ export class BabylonMain {
 
     switch (type) {
       case "mower":
-        this.grassSystem.mowAt(x, y);
+        this.terrainSystem.mowAt(x, y);
         break;
       case "sprinkler":
-        this.grassSystem.waterArea(x, y, state.effectRadius, 15);
+        this.terrainSystem.waterArea(x, y, state.effectRadius, 15);
         break;
       case "spreader":
         const fertilizerEffectiveness = getBestFertilizerEffectiveness(
           this.researchState
         );
-        this.grassSystem.fertilizeArea(
+        this.terrainSystem.fertilizeArea(
           x,
           y,
           state.effectRadius,
@@ -1778,7 +1788,7 @@ export class BabylonMain {
   }
 
   private handleOverlayCycle(): void {
-    const mode = this.grassSystem.cycleOverlayMode();
+    const mode = this.terrainSystem.cycleOverlayMode();
     this.uiManager.updateOverlayLegend(mode);
     this.overlayAutoSwitched = false;
     this.updateIrrigationVisibility();
@@ -1786,7 +1796,7 @@ export class BabylonMain {
 
   private updateIrrigationVisibility(): void {
     if (this.irrigationRenderSystem) {
-      const overlayMode = this.grassSystem.getOverlayMode();
+      const overlayMode = this.terrainSystem.getOverlayMode();
       this.irrigationRenderSystem.setVisible(overlayMode === "irrigation");
     }
   }
@@ -1910,9 +1920,13 @@ export class BabylonMain {
     this.weatherState = createInitialWeatherState(this.gameDay);
     this.weather = this.weatherState.current;
     this.equipmentManager.refill();
-    this.grassSystem.dispose();
-    this.grassSystem = new GrassSystem(this.babylonEngine.getScene(), course);
-    this.grassSystem.build();
+    this.terrainSystem.dispose();
+    if (this.gameOptions.useVectorTerrain) {
+      this.terrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
+    } else {
+      this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
+    }
+    this.terrainSystem.build();
     this.updatePlayerPosition();
     this.resumeGame();
     this.uiManager.showNotification("Game Restarted");
@@ -2065,7 +2079,7 @@ export class BabylonMain {
     this.lastTime = performance.now();
     const course = this.currentCourse;
 
-    const stats = this.grassSystem.getCourseStats();
+    const stats = this.terrainSystem.getCourseStats();
     this.uiManager.updateCourseStatus(
       stats.health,
       stats.moisture,
@@ -2097,7 +2111,7 @@ export class BabylonMain {
         );
         if (wasDeactivated) {
           if (this.overlayAutoSwitched) {
-            this.grassSystem.setOverlayMode("normal");
+            this.terrainSystem.setOverlayMode("normal");
             this.uiManager.updateOverlayLegend("normal");
             this.overlayAutoSwitched = false;
             this.updateIrrigationVisibility();
@@ -2125,7 +2139,7 @@ export class BabylonMain {
         this.gameDay++;
       }
 
-      this.grassSystem.update(
+      this.terrainSystem.update(
         deltaMs * this.timeScale,
         this.gameDay * 1440 + this.gameTime,
         this.weather
@@ -2169,7 +2183,7 @@ export class BabylonMain {
           : 100
       );
 
-      const courseStats = this.grassSystem.getCourseStats();
+      const courseStats = this.terrainSystem.getCourseStats();
       this.uiManager.updateCourseStatus(
         courseStats.health,
         courseStats.moisture,
@@ -2331,7 +2345,7 @@ export class BabylonMain {
     // Hourly prestige update
     if (hours !== this.lastPrestigeUpdateHour) {
       this.lastPrestigeUpdateHour = hours;
-      const cells = this.grassSystem.getAllCells();
+      const cells = this.terrainSystem.getAllCells();
       const conditionsScore = calculateCurrentConditions(cells);
       this.prestigeState = updatePrestigeScore(
         this.prestigeState,
@@ -2488,7 +2502,7 @@ export class BabylonMain {
     // Golfer arrivals (hourly during golf hours: 6am - 7pm)
     if (hours !== this.lastArrivalHour && hours >= 6 && hours <= 19) {
       this.lastArrivalHour = hours;
-      const courseStats = this.grassSystem.getCourseStats();
+      const courseStats = this.terrainSystem.getCourseStats();
       this.golferPool = updateCourseRating(this.golferPool, {
         condition: courseStats.health,
       });
@@ -2570,7 +2584,7 @@ export class BabylonMain {
     }
 
     // Tick golfers (progress through their round)
-    const courseStats = this.grassSystem.getCourseStats();
+    const courseStats = this.terrainSystem.getCourseStats();
     const staffQuality = getManagerBonus(this.employeeRoster) * 10 + 50;
     const tickResult = tickGolfers(
       this.golferPool,
@@ -2642,7 +2656,7 @@ export class BabylonMain {
     }
 
     // Tick employee autonomous work
-    const cells = this.grassSystem.getAllCells();
+    const cells = this.terrainSystem.getAllCells();
     const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
     const workResult = tickEmployeeWork(
       this.employeeWorkState,
@@ -2655,10 +2669,10 @@ export class BabylonMain {
 
     for (const effect of workResult.effects) {
       if (effect.type === "mow") {
-        this.grassSystem.mowAt(effect.gridX, effect.gridY);
+        this.terrainSystem.mowAt(effect.gridX, effect.gridY);
         this.dailyStats.maintenance.tilesMowed++;
       } else if (effect.type === "water") {
-        this.grassSystem.waterArea(
+        this.terrainSystem.waterArea(
           effect.gridX,
           effect.gridY,
           1,
@@ -2666,7 +2680,7 @@ export class BabylonMain {
         );
         this.dailyStats.maintenance.tilesWatered++;
       } else if (effect.type === "fertilize") {
-        this.grassSystem.fertilizeArea(
+        this.terrainSystem.fertilizeArea(
           effect.gridX,
           effect.gridY,
           1,
@@ -2675,7 +2689,7 @@ export class BabylonMain {
         );
         this.dailyStats.maintenance.tilesFertilized++;
       } else if (effect.type === "rake") {
-        this.grassSystem.rakeAt(effect.gridX, effect.gridY);
+        this.terrainSystem.rakeAt(effect.gridX, effect.gridY);
       }
     }
 
@@ -2757,7 +2771,7 @@ export class BabylonMain {
 
     // Tick autonomous equipment (robots)
     if (this.autonomousState.robots.length > 0) {
-      const cells = this.grassSystem.getAllCells();
+      const cells = this.terrainSystem.getAllCells();
       const fleetAIActive =
         this.researchState.completedResearch.includes("fleet_ai");
       const robotResult = tickAutonomousEquipment(
@@ -2784,9 +2798,9 @@ export class BabylonMain {
 
       for (const effect of robotResult.effects) {
         if (effect.type === "mower") {
-          this.grassSystem.mowAt(effect.gridX, effect.gridY);
+          this.terrainSystem.mowAt(effect.gridX, effect.gridY);
         } else if (effect.type === "sprayer") {
-          this.grassSystem.waterArea(
+          this.terrainSystem.waterArea(
             effect.gridX,
             effect.gridY,
             1,
@@ -2796,7 +2810,7 @@ export class BabylonMain {
           const effectiveness = getBestFertilizerEffectiveness(
             this.researchState
           );
-          this.grassSystem.fertilizeArea(
+          this.terrainSystem.fertilizeArea(
             effect.gridX,
             effect.gridY,
             1,
@@ -2881,10 +2895,10 @@ export class BabylonMain {
         const pressure = pipe ? pipe.pressureLevel : 0;
 
         for (const tile of head.coverageTiles) {
-          const cell = this.grassSystem.getCell(tile.x, tile.y);
+          const cell = this.terrainSystem.getCell(tile.x, tile.y);
           if (cell) {
             const waterAmount = 15 * tile.efficiency * (pressure / 100);
-            this.grassSystem.waterArea(tile.x, tile.y, 0, waterAmount);
+            this.terrainSystem.waterArea(tile.x, tile.y, 0, waterAmount);
             this.dailyStats.maintenance.tilesWatered++;
           }
         }
@@ -2938,7 +2952,7 @@ export class BabylonMain {
       const score = Math.round(
         this.economyState.cash +
           this.golferPool.totalVisitorsToday * 10 +
-          this.grassSystem.getCourseStats().health * 100
+          this.terrainSystem.getCourseStats().health * 100
       );
       this.gameOptions.onScenarioComplete?.(score);
       this.uiManager.showNotification(`Scenario Complete! Score: ${score}`);
@@ -3114,7 +3128,7 @@ export class BabylonMain {
     if (this.scenarioManager) {
       this.scenarioManager.incrementDay();
     }
-    const cells = this.grassSystem.getAllCells();
+    const cells = this.terrainSystem.getAllCells();
     const conditionsScore = calculateCurrentConditions(cells);
     this.prestigeState = updatePrestigeScore(
       this.prestigeState,
@@ -3222,19 +3236,19 @@ export class BabylonMain {
         3: "nutrients", // spreader - show nutrient levels
       };
       const targetOverlay = overlayMap[slot];
-      if (targetOverlay && this.grassSystem.getOverlayMode() !== targetOverlay) {
-        this.grassSystem.setOverlayMode(targetOverlay);
+      if (targetOverlay && this.terrainSystem.getOverlayMode() !== targetOverlay) {
+        this.terrainSystem.setOverlayMode(targetOverlay);
         this.uiManager.updateOverlayLegend(targetOverlay);
         this.overlayAutoSwitched = true;
         this.updateIrrigationVisibility();
       } else if (targetOverlay === null && this.overlayAutoSwitched) {
-        this.grassSystem.setOverlayMode("normal");
+        this.terrainSystem.setOverlayMode("normal");
         this.uiManager.updateOverlayLegend("normal");
         this.overlayAutoSwitched = false;
         this.updateIrrigationVisibility();
       }
     } else if (nowSelected === null && this.overlayAutoSwitched) {
-      this.grassSystem.setOverlayMode("normal");
+      this.terrainSystem.setOverlayMode("normal");
       this.uiManager.updateOverlayLegend("normal");
       this.overlayAutoSwitched = false;
       this.updateIrrigationVisibility();
@@ -3432,14 +3446,14 @@ export class BabylonMain {
    * Get elevation at a grid position.
    */
   public getElevationAt(x: number, y: number): number | undefined {
-    return this.grassSystem.getElevationAt(x, y);
+    return this.terrainSystem.getElevationAt(x, y);
   }
 
   /**
    * Set elevation at a grid position (testing only - bypasses normal editing).
    */
   public setElevationAt(x: number, y: number, elevation: number): void {
-    this.grassSystem.setElevationAt(x, y, elevation);
+    this.terrainSystem.setElevationAt(x, y, elevation);
   }
 
   /**
@@ -3450,7 +3464,7 @@ export class BabylonMain {
     y: number,
     state: { height?: number; moisture?: number; nutrients?: number; health?: number }
   ): void {
-    this.grassSystem.setCellState(x, y, state);
+    this.terrainSystem.setCellState(x, y, state);
   }
 
   /**
@@ -3459,14 +3473,14 @@ export class BabylonMain {
   public setAllCellsState(
     state: { height?: number; moisture?: number; nutrients?: number; health?: number }
   ): void {
-    this.grassSystem.setAllCellsState(state);
+    this.terrainSystem.setAllCellsState(state);
   }
 
   /**
    * Get terrain type at a grid position.
    */
   public getTerrainTypeAt(x: number, y: number): string | undefined {
-    return this.grassSystem.getTerrainTypeAt(x, y);
+    return this.terrainSystem.getTerrainTypeAt(x, y);
   }
 
   /**
@@ -3477,7 +3491,7 @@ export class BabylonMain {
     y: number,
     type: "fairway" | "rough" | "green" | "bunker" | "water" | "tee"
   ): void {
-    this.grassSystem.setTerrainTypeAt(x, y, type);
+    this.terrainSystem.setTerrainTypeAt(x, y, type);
   }
 
   /**
@@ -3487,7 +3501,7 @@ export class BabylonMain {
   public setOverlayMode(
     mode: "normal" | "moisture" | "nutrients" | "height" | "irrigation"
   ): void {
-    this.grassSystem.setOverlayMode(mode);
+    this.terrainSystem.setOverlayMode(mode);
 
     // Update background color based on mode
     const scene = this.babylonEngine.getScene();
@@ -3518,7 +3532,7 @@ export class BabylonMain {
     | "nutrients"
     | "height"
     | "irrigation" {
-    return this.grassSystem.getOverlayMode();
+    return this.terrainSystem.getOverlayMode();
   }
 
   /**
@@ -3635,7 +3649,7 @@ export class BabylonMain {
     terrain: { width: number; height: number };
     editorEnabled: boolean;
   } {
-    const layoutGrid = this.grassSystem.getLayoutGrid();
+    const layoutGrid = this.terrainSystem.getLayoutGrid();
     return {
       player: {
         x: this.player.gridX,
@@ -3834,7 +3848,7 @@ export class BabylonMain {
     lastWatered: number;
     lastFertilized: number;
   } | null {
-    const cell = this.grassSystem.getCell(x, y);
+    const cell = this.terrainSystem.getCell(x, y);
     if (!cell) return null;
     return {
       type: cell.type,
@@ -3858,7 +3872,7 @@ export class BabylonMain {
     nutrients: number;
     height: number;
   } {
-    return this.grassSystem.getCourseStats();
+    return this.terrainSystem.getCourseStats();
   }
 
   /**
@@ -3882,7 +3896,7 @@ export class BabylonMain {
       this.gameTime -= 24 * 60;
       this.gameDay++;
     }
-    this.grassSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
+    this.terrainSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
     this.updateEconomySystems(deltaMs);
   }
 
@@ -4133,7 +4147,7 @@ export class BabylonMain {
    * Get count of visual updates to grass rendering (for testing visual updates).
    */
   public getGrassRenderUpdateCount(): number {
-    return this.grassSystem.getUpdateCount();
+    return this.terrainSystem.getUpdateCount();
   }
 
   /**
@@ -4146,7 +4160,7 @@ export class BabylonMain {
   } {
     return {
       isPaused: this.isPaused,
-      overlayMode: this.grassSystem.getOverlayMode(),
+      overlayMode: this.terrainSystem.getOverlayMode(),
       notificationCount: 0, // Can be expanded if UIManager tracks this
     };
   }
@@ -4213,7 +4227,7 @@ export class BabylonMain {
    */
   public forceGrassGrowth(minutes: number): void {
     const deltaMs = minutes * 500;
-    this.grassSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
+    this.terrainSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
   }
 
   /**
@@ -4247,7 +4261,7 @@ export class BabylonMain {
 
   public dispose(): void {
     this.inputManager.dispose();
-    this.grassSystem.dispose();
+    this.terrainSystem.dispose();
     this.equipmentManager.dispose();
     this.uiManager.dispose();
     this.terrainEditorSystem?.dispose();
@@ -4297,7 +4311,7 @@ export class BabylonMain {
   private checkTutorialHints(): void {
     if (this.currentScenario?.id !== "tutorial_basics") return;
 
-    const courseStats = this.grassSystem.getCourseStats();
+    const courseStats = this.terrainSystem.getCourseStats();
     const hours = Math.floor(this.gameTime / 60);
 
     if (this.gameDay === 1 && hours >= 6 && hours < 7) {
@@ -4456,7 +4470,7 @@ export class BabylonMain {
    * Get terrain grid dimensions.
    */
   public getTerrainDimensions(): { width: number; height: number } {
-    const cells = this.grassSystem.getAllCells();
+    const cells = this.terrainSystem.getAllCells();
     return {
       width: cells[0]?.length ?? 0,
       height: cells.length,
@@ -4474,7 +4488,7 @@ export class BabylonMain {
     height: number;
     health: number;
   } | null {
-    const cell = this.grassSystem.getCell(x, y);
+    const cell = this.terrainSystem.getCell(x, y);
     if (!cell) return null;
 
     return {
@@ -4492,7 +4506,7 @@ export class BabylonMain {
    */
   public getTerrainTypes(): string[] {
     const types = new Set<string>();
-    const cells = this.grassSystem.getAllCells();
+    const cells = this.terrainSystem.getAllCells();
     for (const row of cells) {
       for (const cell of row) {
         types.add(cell.type);
@@ -4986,8 +5000,8 @@ export class BabylonMain {
   }
 
   public updateCourseHealthForScenario(): void {
-    if (this.scenarioManager && this.grassSystem) {
-      this.scenarioManager.updateCourseHealth(this.grassSystem.getAllCells());
+    if (this.scenarioManager && this.terrainSystem) {
+      this.scenarioManager.updateCourseHealth(this.terrainSystem.getAllCells());
     }
   }
 
