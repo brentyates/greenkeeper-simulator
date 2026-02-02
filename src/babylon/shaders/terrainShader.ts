@@ -46,12 +46,14 @@ varying vec3 vWorldPosition;
 // SDF Textures
 uniform sampler2D sdfCombined;  // R=fairway, G=green, B=bunker, A=water
 uniform sampler2D sdfTee;       // R=tee
+uniform sampler2D healthData;   // R=moisture, G=nutrients, B=height, A=health
 
 // Parameters
 uniform vec2 worldSize;         // World dimensions for UV calculation
 uniform float time;             // For water animation
 uniform float edgeBlend;        // Edge blend width (world units)
 uniform float maxSdfDistance;   // Max encoded SDF distance
+uniform float overlayMode;      // 0=normal, 1=moisture, 2=nutrients, 3=height, 4=health
 
 // Terrain colors
 uniform vec3 roughColor;
@@ -285,6 +287,59 @@ void main() {
   float elevationShade = 1.0 - vWorldPosition.y * 0.02;
   color *= clamp(elevationShade, 0.9, 1.0);
 
+  // Apply overlay modes
+  if (overlayMode > 0.5) {
+    // Sample health data texture
+    vec4 healthSample = texture2D(healthData, sdfUV);
+    float moisture = healthSample.r;
+    float nutrients = healthSample.g;
+    float grassHeight = healthSample.b;
+    float health = healthSample.a;
+
+    vec3 overlayColor = color;
+
+    // Moisture overlay (mode 1) - blue tint
+    if (overlayMode > 0.5 && overlayMode < 1.5) {
+      float m = moisture;
+      overlayColor = mix(
+        vec3(0.8, 0.4, 0.2),  // Dry (brown/orange)
+        vec3(0.2, 0.4, 0.8),  // Wet (blue)
+        m
+      );
+    }
+    // Nutrients overlay (mode 2) - purple/green
+    else if (overlayMode > 1.5 && overlayMode < 2.5) {
+      float n = nutrients;
+      overlayColor = mix(
+        vec3(0.6, 0.3, 0.5),  // Low nutrients (purple)
+        vec3(0.2, 0.7, 0.3),  // High nutrients (green)
+        n
+      );
+    }
+    // Height overlay (mode 3) - yellow/green
+    else if (overlayMode > 2.5 && overlayMode < 3.5) {
+      float h = grassHeight;
+      overlayColor = mix(
+        vec3(0.3, 0.5, 0.2),  // Short (dark green)
+        vec3(0.7, 0.8, 0.3),  // Tall (yellow-green)
+        h
+      );
+    }
+    // Health overlay (mode 4) - red/green
+    else if (overlayMode > 3.5) {
+      float hl = health;
+      overlayColor = mix(
+        vec3(0.8, 0.2, 0.2),  // Unhealthy (red)
+        vec3(0.2, 0.8, 0.3),  // Healthy (green)
+        hl
+      );
+    }
+
+    // Don't apply overlay to water/bunker
+    float grassMask = max(fairwayMask, max(greenMask, max(teeMask, 1.0 - waterMask - bunkerMask)));
+    color = mix(color, overlayColor * lighting, grassMask * 0.7);
+  }
+
   gl_FragColor = vec4(color, 1.0);
 }
 `;
@@ -310,6 +365,7 @@ export interface TerrainShaderUniforms {
   time: number;
   edgeBlend: number;
   maxSdfDistance: number;
+  overlayMode: number;  // 0=normal, 1=moisture, 2=nutrients, 3=height, 4=health
   roughColor: [number, number, number];
   fairwayColor: [number, number, number];
   greenColor: [number, number, number];
@@ -331,6 +387,7 @@ export function getDefaultUniforms(
     time: 0,
     edgeBlend: 0.3,
     maxSdfDistance: 5,
+    overlayMode: 0,
     roughColor: [defaultTerrainColors.rough.r, defaultTerrainColors.rough.g, defaultTerrainColors.rough.b],
     fairwayColor: [defaultTerrainColors.fairway.r, defaultTerrainColors.fairway.g, defaultTerrainColors.fairway.b],
     greenColor: [defaultTerrainColors.green.r, defaultTerrainColors.green.g, defaultTerrainColors.green.b],

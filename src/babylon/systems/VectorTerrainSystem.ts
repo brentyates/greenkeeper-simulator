@@ -12,29 +12,29 @@
  */
 
 import { Scene } from "@babylonjs/core/scene";
+import { Engine } from "@babylonjs/core/Engines/engine";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
 import { Effect } from "@babylonjs/core/Materials/effect";
 import { Vector2 } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 
 import {
   VectorShape,
   ControlPoint,
   TerrainShapeType,
-  sampleSpline,
-  pointInPolygon,
   createCircleShape,
   createEllipseShape,
   createFairwayShape,
-  gridToVectorShapes,
 } from "../../core/vector-shapes";
 
 import {
   SDFTextureSet,
-  generateSDFTextures,
-  updateSDFTextures,
+  generateSDFFromGrid,
+  updateSDFFromGrid,
   SDFGeneratorOptions,
 } from "./SDFGenerator";
 
@@ -44,9 +44,11 @@ import {
   getDefaultUniforms,
 } from "../shaders/terrainShader";
 
-import { HEIGHT_UNIT } from "../engine/BabylonEngine";
+import { HEIGHT_UNIT, gridTo3D } from "../engine/BabylonEngine";
 import { CourseData } from "../../data/courseData";
-import { CellState, TerrainType, getTerrainType, getInitialValues, calculateHealth, TERRAIN_CODES } from "../../core/terrain";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CellState, TerrainType, getTerrainType, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode } from "../../core/terrain";
+import { simulateGrowth, applyMowing, applyWatering, applyFertilizing, getAverageStats, WeatherEffect } from "../../core/grass-simulation";
 
 export interface VectorTerrainOptions {
   /** SDF resolution multiplier */
@@ -81,20 +83,27 @@ export class VectorTerrainSystem {
   private worldWidth: number;
   private worldHeight: number;
   private elevation: number[][];
+  private layoutGrid: number[][];  // Keep original grid for SDF generation
 
   // Rendering
   private terrainMesh: Mesh | null = null;
   private shaderMaterial: ShaderMaterial | null = null;
   private sdfTextures: SDFTextureSet | null = null;
+  private healthTexture: RawTexture | null = null;  // Health data for overlays
+  private cliffMeshes: Mesh[] = [];  // Edge cliff faces
 
   // Grid layer for simulation (synced from vectors)
   private cells: CellState[][] = [];
 
   // Animation
   private time: number = 0;
+  private gameTime: number = 0;
 
   // Dirty tracking
   private shapesDirty: boolean = false;
+
+  // Overlay mode
+  private overlayMode: OverlayMode = "normal";
 
   constructor(
     scene: Scene,
@@ -106,12 +115,14 @@ export class VectorTerrainSystem {
     this.worldWidth = courseData.width;
     this.worldHeight = courseData.height;
     this.elevation = courseData.elevation || [];
+    this.layoutGrid = courseData.layout;  // Store for grid-based SDF
 
     // Initialize cells for simulation
     this.initCells(courseData);
 
-    // Convert legacy grid layout to vector shapes
-    this.shapes = gridToVectorShapes(courseData.layout, 1);
+    // Shapes array is for future vector-based editing
+    // For now, SDF is generated directly from the grid (more reliable)
+    this.shapes = [];
 
     // Register shader
     this.registerShader();
@@ -165,6 +176,7 @@ export class VectorTerrainSystem {
    */
   public build(): void {
     this.createTerrainMesh();
+    this.createCliffFaces();
     this.generateSDFTextures();
     this.createShaderMaterial();
     this.applyMaterial();
@@ -235,6 +247,127 @@ export class VectorTerrainSystem {
   }
 
   /**
+   * Create cliff faces at terrain edges to prevent floating appearance
+   */
+  private createCliffFaces(): void {
+    // Dispose old cliff meshes
+    for (const mesh of this.cliffMeshes) {
+      mesh.dispose();
+    }
+    this.cliffMeshes = [];
+
+    const cliffDepth = 1.5;  // How far down the cliff extends
+
+    // Create material for cliffs
+    const cliffMaterial = new StandardMaterial("cliffMaterial", this.scene);
+    cliffMaterial.diffuseColor = new Color3(0.6, 0.5, 0.35);
+    cliffMaterial.specularColor = new Color3(0.1, 0.1, 0.1);
+    cliffMaterial.backFaceCulling = false;
+
+    // Create right edge cliff
+    const rightCliff = this.createEdgeCliff("right", cliffDepth);
+    rightCliff.material = cliffMaterial;
+    this.cliffMeshes.push(rightCliff);
+
+    // Create bottom edge cliff
+    const bottomCliff = this.createEdgeCliff("bottom", cliffDepth);
+    bottomCliff.material = cliffMaterial;
+    this.cliffMeshes.push(bottomCliff);
+  }
+
+  /**
+   * Create a cliff strip along an edge
+   */
+  private createEdgeCliff(side: "right" | "bottom", cliffDepth: number): Mesh {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const normals: number[] = [];
+    const colors: number[] = [];
+
+    const topColor = side === "right"
+      ? new Color4(0.72, 0.58, 0.42, 1)
+      : new Color4(0.58, 0.48, 0.35, 1);
+    const bottomColor = side === "right"
+      ? new Color4(0.52, 0.42, 0.3, 1)
+      : new Color4(0.42, 0.35, 0.25, 1);
+
+    const segments = 20;  // Higher resolution for smoother cliff
+
+    if (side === "right") {
+      const x = this.worldWidth;
+      for (let i = 0; i < segments; i++) {
+        const y1 = (i / segments) * this.worldHeight;
+        const y2 = ((i + 1) / segments) * this.worldHeight;
+
+        const elev1 = this.getInterpolatedElevation(x - 0.01, y1) * HEIGHT_UNIT;
+        const elev2 = this.getInterpolatedElevation(x - 0.01, y2) * HEIGHT_UNIT;
+
+        const baseIdx = positions.length / 3;
+
+        // Top edge vertices (along terrain)
+        positions.push(x, elev1, y1);
+        positions.push(x, elev2, y2);
+        // Bottom edge vertices
+        positions.push(x, elev2 - cliffDepth, y2);
+        positions.push(x, elev1 - cliffDepth, y1);
+
+        // Top vertices get top color, bottom get bottom color
+        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+
+        // Two triangles for the quad
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+      }
+    } else {
+      // bottom edge
+      const y = this.worldHeight;
+      for (let i = 0; i < segments; i++) {
+        const x1 = (i / segments) * this.worldWidth;
+        const x2 = ((i + 1) / segments) * this.worldWidth;
+
+        const elev1 = this.getInterpolatedElevation(x1, y - 0.01) * HEIGHT_UNIT;
+        const elev2 = this.getInterpolatedElevation(x2, y - 0.01) * HEIGHT_UNIT;
+
+        const baseIdx = positions.length / 3;
+
+        // Top edge vertices (along terrain)
+        positions.push(x1, elev1, y);
+        positions.push(x2, elev2, y);
+        // Bottom edge vertices
+        positions.push(x2, elev2 - cliffDepth, y);
+        positions.push(x1, elev1 - cliffDepth, y);
+
+        // Top vertices get top color, bottom get bottom color
+        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
+        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
+
+        // Two triangles for the quad
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+      }
+    }
+
+    VertexData.ComputeNormals(positions, indices, normals);
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.normals = normals;
+    vertexData.colors = colors;
+
+    const mesh = new Mesh(`edgeCliff_${side}`, this.scene);
+    vertexData.applyToMesh(mesh);
+    mesh.useVertexColors = true;
+
+    return mesh;
+  }
+
+  /**
    * Get interpolated elevation at a world position
    */
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
@@ -269,29 +402,114 @@ export class VectorTerrainSystem {
   }
 
   /**
-   * Generate SDF textures from current shapes
+   * Generate SDF textures from grid layout
    */
   private generateSDFTextures(): void {
     const sdfOptions: Partial<SDFGeneratorOptions> = {
       resolution: this.options.sdfResolution,
       maxDistance: 5,
-      splineSamples: 20,
     };
 
-    this.sdfTextures = generateSDFTextures(
+    // Use grid-based SDF generation (more reliable than vector conversion)
+    this.sdfTextures = generateSDFFromGrid(
       this.scene,
-      this.shapes,
+      this.layoutGrid,
       this.worldWidth,
       this.worldHeight,
       sdfOptions
     );
+
+    // Create health texture for overlay modes
+    this.createHealthTexture();
+  }
+
+  /**
+   * Create or update the health data texture
+   * Encodes: R=moisture, G=nutrients, B=height, A=health (all normalized 0-1)
+   */
+  private createHealthTexture(): void {
+    const texWidth = this.worldWidth;
+    const texHeight = this.worldHeight;
+    const data = new Uint8Array(texWidth * texHeight * 4);
+
+    for (let y = 0; y < texHeight; y++) {
+      for (let x = 0; x < texWidth; x++) {
+        const cell = this.cells[y]?.[x];
+        const idx = (y * texWidth + x) * 4;
+
+        if (cell && cell.type !== 'water' && cell.type !== 'bunker') {
+          // Normalize values to 0-255 range
+          data[idx + 0] = Math.min(255, Math.max(0, Math.round((cell.moisture / 100) * 255)));
+          data[idx + 1] = Math.min(255, Math.max(0, Math.round((cell.nutrients / 100) * 255)));
+          data[idx + 2] = Math.min(255, Math.max(0, Math.round((cell.height / 5) * 255)));  // Max height ~5 inches
+          data[idx + 3] = Math.min(255, Math.max(0, Math.round((cell.health / 100) * 255)));
+        } else {
+          // Water/bunker - neutral values
+          data[idx + 0] = 128;
+          data[idx + 1] = 128;
+          data[idx + 2] = 128;
+          data[idx + 3] = 128;
+        }
+      }
+    }
+
+    if (this.healthTexture) {
+      // Update existing texture
+      this.healthTexture.update(data);
+    } else {
+      // Create new texture
+      this.healthTexture = RawTexture.CreateRGBATexture(
+        data,
+        texWidth,
+        texHeight,
+        this.scene,
+        false,  // generateMipMaps
+        false,  // invertY
+        Engine.TEXTURE_NEAREST_SAMPLINGMODE  // Use nearest for pixel-perfect cell data
+      );
+      this.healthTexture.name = "healthData";
+      this.healthTexture.wrapU = RawTexture.CLAMP_ADDRESSMODE;
+      this.healthTexture.wrapV = RawTexture.CLAMP_ADDRESSMODE;
+    }
+  }
+
+  /**
+   * Update the health texture when cell data changes
+   */
+  private updateHealthTexture(): void {
+    if (!this.healthTexture) return;
+
+    const texWidth = this.worldWidth;
+    const texHeight = this.worldHeight;
+    const data = new Uint8Array(texWidth * texHeight * 4);
+
+    for (let y = 0; y < texHeight; y++) {
+      for (let x = 0; x < texWidth; x++) {
+        const cell = this.cells[y]?.[x];
+        const idx = (y * texWidth + x) * 4;
+
+        if (cell && cell.type !== 'water' && cell.type !== 'bunker') {
+          data[idx + 0] = Math.min(255, Math.max(0, Math.round((cell.moisture / 100) * 255)));
+          data[idx + 1] = Math.min(255, Math.max(0, Math.round((cell.nutrients / 100) * 255)));
+          data[idx + 2] = Math.min(255, Math.max(0, Math.round((cell.height / 5) * 255)));
+          data[idx + 3] = Math.min(255, Math.max(0, Math.round((cell.health / 100) * 255)));
+        } else {
+          data[idx + 0] = 128;
+          data[idx + 1] = 128;
+          data[idx + 2] = 128;
+          data[idx + 3] = 128;
+        }
+      }
+    }
+
+    this.healthTexture.update(data);
   }
 
   /**
    * Create the terrain shader material
    */
   private createShaderMaterial(): void {
-    if (!this.sdfTextures) return;
+    if (!this.sdfTextures || !this.healthTexture) return;
 
     this.shaderMaterial = new ShaderMaterial(
       "terrainShader",
@@ -309,6 +527,7 @@ export class VectorTerrainSystem {
           "time",
           "edgeBlend",
           "maxSdfDistance",
+          "overlayMode",
           "roughColor",
           "fairwayColor",
           "greenColor",
@@ -320,13 +539,14 @@ export class VectorTerrainSystem {
           "enableNoise",
           "enableWaterAnim",
         ],
-        samplers: ["sdfCombined", "sdfTee"],
+        samplers: ["sdfCombined", "sdfTee", "healthData"],
       }
     );
 
     // Set textures
     this.shaderMaterial.setTexture("sdfCombined", this.sdfTextures.combined);
     this.shaderMaterial.setTexture("sdfTee", this.sdfTextures.tee);
+    this.shaderMaterial.setTexture("healthData", this.healthTexture);
 
     // Set uniforms
     const uniforms = getDefaultUniforms(this.worldWidth, this.worldHeight);
@@ -334,6 +554,7 @@ export class VectorTerrainSystem {
     this.shaderMaterial.setFloat("time", 0);
     this.shaderMaterial.setFloat("edgeBlend", this.options.edgeBlend);
     this.shaderMaterial.setFloat("maxSdfDistance", uniforms.maxSdfDistance);
+    this.shaderMaterial.setFloat("overlayMode", this.getOverlayModeValue());
 
     // Set colors
     this.shaderMaterial.setColor3("roughColor", new Color3(...uniforms.roughColor));
@@ -353,6 +574,20 @@ export class VectorTerrainSystem {
   }
 
   /**
+   * Convert overlay mode string to numeric value for shader
+   */
+  private getOverlayModeValue(): number {
+    switch (this.overlayMode) {
+      case "normal": return 0;
+      case "moisture": return 1;
+      case "nutrients": return 2;
+      case "height": return 3;
+      case "irrigation": return 4;  // Use health overlay for irrigation
+      default: return 0;
+    }
+  }
+
+  /**
    * Apply the shader material to the terrain mesh
    */
   private applyMaterial(): void {
@@ -362,7 +597,7 @@ export class VectorTerrainSystem {
   }
 
   /**
-   * Update animation and dirty shapes
+   * Update animation and dirty terrain
    */
   public update(deltaMs: number): void {
     this.time += deltaMs / 1000;
@@ -373,20 +608,22 @@ export class VectorTerrainSystem {
 
     if (this.shapesDirty) {
       this.rebuildSDFTextures();
-      this.syncGridFromShapes();
       this.shapesDirty = false;
     }
   }
 
   /**
-   * Rebuild SDF textures (called when shapes change)
+   * Rebuild SDF textures (called when layout changes)
    */
   private rebuildSDFTextures(): void {
     if (!this.sdfTextures) return;
 
-    updateSDFTextures(
+    // Sync layout grid from cells
+    this.syncLayoutFromCells();
+
+    updateSDFFromGrid(
       this.sdfTextures,
-      this.shapes,
+      this.layoutGrid,
       this.worldWidth,
       this.worldHeight,
       { resolution: this.options.sdfResolution }
@@ -394,34 +631,21 @@ export class VectorTerrainSystem {
   }
 
   /**
-   * Sync grid cells from vector shapes (for simulation)
+   * Sync layoutGrid from cells (for when cells change via editor)
    */
-  private syncGridFromShapes(): void {
-    // Sort shapes by z-index
-    const sortedShapes = [...this.shapes].sort((a, b) => a.zIndex - b.zIndex);
-
-    // Reset all cells to rough
+  private syncLayoutFromCells(): void {
     for (let y = 0; y < this.cells.length; y++) {
+      if (!this.layoutGrid[y]) this.layoutGrid[y] = [];
       for (let x = 0; x < this.cells[y].length; x++) {
-        if (this.cells[y][x].type !== 'water' && this.cells[y][x].type !== 'bunker') {
-          // Only reset grass types, preserve special handling
-          this.cells[y][x].type = 'rough';
-        }
-      }
-    }
-
-    // Apply shapes in order
-    for (const shape of sortedShapes) {
-      const polygon = sampleSpline(shape.points, shape.closed, 16);
-
-      for (let y = 0; y < this.cells.length; y++) {
-        for (let x = 0; x < this.cells[y].length; x++) {
-          const cellCenterX = x + 0.5;
-          const cellCenterY = y + 0.5;
-
-          if (pointInPolygon(cellCenterX, cellCenterY, polygon)) {
-            this.cells[y][x].type = shape.type as TerrainType;
-          }
+        const cell = this.cells[y][x];
+        switch (cell.type) {
+          case 'fairway': this.layoutGrid[y][x] = 0; break;
+          case 'rough': this.layoutGrid[y][x] = 1; break;
+          case 'green': this.layoutGrid[y][x] = 2; break;
+          case 'bunker': this.layoutGrid[y][x] = 3; break;
+          case 'water': this.layoutGrid[y][x] = 4; break;
+          case 'tee': this.layoutGrid[y][x] = 5; break;
+          default: this.layoutGrid[y][x] = 1; break;
         }
       }
     }
@@ -678,8 +902,252 @@ export class VectorTerrainSystem {
     return this.cells[y]?.[x]?.type;
   }
 
-  public getElevationAt(x: number, y: number): number {
+  public getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number {
+    if (x < 0 || x >= this.worldWidth || y < 0 || y >= this.worldHeight) {
+      return defaultForOutOfBounds ?? 0;
+    }
     return this.elevation[y]?.[x] ?? 0;
+  }
+
+  public getCornerHeightsPublic(gridX: number, gridY: number): { nw: number; ne: number; se: number; sw: number } {
+    const baseElev = this.getElevationAt(gridX, gridY, 0);
+    const nElev = this.getElevationAt(gridX, gridY - 1, baseElev);
+    const sElev = this.getElevationAt(gridX, gridY + 1, baseElev);
+    const wElev = this.getElevationAt(gridX - 1, gridY, baseElev);
+    const eElev = this.getElevationAt(gridX + 1, gridY, baseElev);
+    const nwElev = this.getElevationAt(gridX - 1, gridY - 1, baseElev);
+    const neElev = this.getElevationAt(gridX + 1, gridY - 1, baseElev);
+    const seElev = this.getElevationAt(gridX + 1, gridY + 1, baseElev);
+    const swElev = this.getElevationAt(gridX - 1, gridY + 1, baseElev);
+
+    const limit = 1;
+    return {
+      nw: Math.min(baseElev + limit, Math.max(baseElev, nElev, wElev, nwElev)),
+      ne: Math.min(baseElev + limit, Math.max(baseElev, nElev, eElev, neElev)),
+      se: Math.min(baseElev + limit, Math.max(baseElev, sElev, eElev, seElev)),
+      sw: Math.min(baseElev + limit, Math.max(baseElev, sElev, wElev, swElev)),
+    };
+  }
+
+  public setElevationAt(x: number, y: number, elev: number): void {
+    if (x < 0 || x >= this.worldWidth || y < 0 || y >= this.worldHeight) return;
+    if (!this.elevation[y]) this.elevation[y] = [];
+    this.elevation[y][x] = elev;
+    this.cells[y][x].elevation = elev;
+    // Rebuild mesh for elevation changes
+    this.createTerrainMesh();
+  }
+
+  public setTerrainTypeAt(x: number, y: number, type: TerrainType): void {
+    const cell = this.getCell(x, y);
+    if (!cell) return;
+    const initialValues = getInitialValues(type);
+    cell.type = type;
+    cell.height = initialValues.height;
+    cell.moisture = initialValues.moisture;
+    cell.nutrients = initialValues.nutrients;
+    cell.health = calculateHealth(cell);
+    // Mark dirty to rebuild SDF
+    this.shapesDirty = true;
+  }
+
+  public rebuildTileAndNeighbors(_x: number, _y: number): void {
+    // For vector system, rebuild the mesh when elevation changes
+    this.createTerrainMesh();
+  }
+
+  public getLayoutGrid(): number[][] {
+    return this.cells.map(row =>
+      row.map(cell => {
+        switch (cell.type) {
+          case 'fairway': return 0;
+          case 'rough': return 1;
+          case 'green': return 2;
+          case 'bunker': return 3;
+          case 'water': return 4;
+          case 'tee': return 5;
+          default: return 1;
+        }
+      })
+    );
+  }
+
+  public getElevationGrid(): number[][] {
+    return this.cells.map(row => row.map(cell => cell.elevation));
+  }
+
+  public getCourseStats(): { health: number; moisture: number; nutrients: number; height: number } {
+    return getAverageStats(this.cells);
+  }
+
+  public restoreCells(savedCells: CellState[][]): void {
+    for (let y = 0; y < savedCells.length && y < this.cells.length; y++) {
+      for (let x = 0; x < savedCells[y].length && x < this.cells[y].length; x++) {
+        this.cells[y][x] = { ...savedCells[y][x] };
+      }
+    }
+  }
+
+  public gridToWorld(gridX: number, gridY: number): Vector3 {
+    const cell = this.getCell(gridX, gridY);
+    const avgElev = cell ? cell.elevation : 0;
+    return gridTo3D(gridX + 0.5, gridY + 0.5, avgElev);
+  }
+
+  // ============================================
+  // Maintenance actions
+  // ============================================
+
+  public mowAt(gridX: number, gridY: number): boolean {
+    const cell = this.getCell(gridX, gridY);
+    if (!cell) return false;
+    const result = applyMowing(cell);
+    if (!result) return false;
+    this.cells[gridY][gridX] = result;
+    result.lastMowed = this.gameTime;
+    return true;
+  }
+
+  public rakeAt(gridX: number, gridY: number): boolean {
+    const cell = this.getCell(gridX, gridY);
+    if (!cell || cell.type !== 'bunker') return false;
+    cell.lastMowed = this.gameTime;
+    return true;
+  }
+
+  public waterArea(centerX: number, centerY: number, radius: number, amount: number): number {
+    let affectedCount = 0;
+    const radiusSq = radius * radius;
+
+    for (let y = Math.max(0, Math.floor(centerY - radius)); y <= Math.min(this.worldHeight - 1, Math.ceil(centerY + radius)); y++) {
+      for (let x = Math.max(0, Math.floor(centerX - radius)); x <= Math.min(this.worldWidth - 1, Math.ceil(centerX + radius)); x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        if (dx * dx + dy * dy <= radiusSq) {
+          const cell = this.getCell(x, y);
+          if (cell) {
+            const result = applyWatering(cell, amount);
+            if (result) {
+              this.cells[y][x] = result;
+              result.lastWatered = this.gameTime;
+              affectedCount++;
+            }
+          }
+        }
+      }
+    }
+    return affectedCount;
+  }
+
+  public fertilizeArea(centerX: number, centerY: number, radius: number, amount: number, effectiveness: number = 1.0): number {
+    let affectedCount = 0;
+    const radiusSq = radius * radius;
+
+    for (let y = Math.max(0, Math.floor(centerY - radius)); y <= Math.min(this.worldHeight - 1, Math.ceil(centerY + radius)); y++) {
+      for (let x = Math.max(0, Math.floor(centerX - radius)); x <= Math.min(this.worldWidth - 1, Math.ceil(centerX + radius)); x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        if (dx * dx + dy * dy <= radiusSq) {
+          const cell = this.getCell(x, y);
+          if (cell) {
+            const result = applyFertilizing(cell, amount, effectiveness);
+            if (result) {
+              this.cells[y][x] = result;
+              result.lastFertilized = this.gameTime;
+              affectedCount++;
+            }
+          }
+        }
+      }
+    }
+    return affectedCount;
+  }
+
+  // ============================================
+  // Overlay modes
+  // ============================================
+
+  public cycleOverlayMode(): OverlayMode {
+    const modes: OverlayMode[] = ["normal", "moisture", "nutrients", "height", "irrigation"];
+    const currentIndex = modes.indexOf(this.overlayMode);
+    const newMode = modes[(currentIndex + 1) % modes.length];
+    this.setOverlayMode(newMode);
+    return this.overlayMode;
+  }
+
+  public getOverlayMode(): OverlayMode {
+    return this.overlayMode;
+  }
+
+  public setOverlayMode(mode: OverlayMode): void {
+    this.overlayMode = mode;
+    // Update shader uniform
+    if (this.shaderMaterial) {
+      this.shaderMaterial.setFloat("overlayMode", this.getOverlayModeValue());
+    }
+    // Update health texture to ensure latest data
+    if (mode !== "normal") {
+      this.updateHealthTexture();
+    }
+  }
+
+  // ============================================
+  // Update with simulation
+  // ============================================
+
+  public updateFull(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void {
+    this.gameTime = gameTimeMinutes;
+    this.time += deltaMs / 1000;
+
+    // Update shader time
+    if (this.shaderMaterial) {
+      this.shaderMaterial.setFloat("time", this.time);
+    }
+
+    // Simulate grass growth
+    const deltaMinutes = (deltaMs / 1000) * 2;
+    for (let y = 0; y < this.cells.length; y++) {
+      for (let x = 0; x < this.cells[y].length; x++) {
+        const cell = this.cells[y][x];
+        const result = simulateGrowth(cell, deltaMinutes, weather);
+        cell.height = result.height;
+        cell.moisture = result.moisture;
+        cell.nutrients = result.nutrients;
+        cell.health = result.health;
+      }
+    }
+
+    // Rebuild SDF if terrain types changed
+    if (this.shapesDirty) {
+      this.rebuildSDFTextures();
+      this.shapesDirty = false;
+    }
+  }
+
+  public getUpdateCount(): number {
+    return 0; // Not tracking updates like GrassSystem
+  }
+
+  public setCellState(x: number, y: number, state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>): void {
+    const cell = this.cells[y]?.[x];
+    if (!cell) return;
+    if (state.height !== undefined) cell.height = state.height;
+    if (state.moisture !== undefined) cell.moisture = state.moisture;
+    if (state.nutrients !== undefined) cell.nutrients = state.nutrients;
+    if (state.health !== undefined) cell.health = state.health;
+  }
+
+  public setAllCellsState(state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>): void {
+    for (let y = 0; y < this.cells.length; y++) {
+      for (let x = 0; x < this.cells[y].length; x++) {
+        const cell = this.cells[y][x];
+        if (cell.type === 'water' || cell.type === 'bunker') continue;
+        if (state.height !== undefined) cell.height = state.height;
+        if (state.moisture !== undefined) cell.moisture = state.moisture;
+        if (state.nutrients !== undefined) cell.nutrients = state.nutrients;
+        if (state.health !== undefined) cell.health = state.health;
+      }
+    }
   }
 
   // ============================================
@@ -702,5 +1170,15 @@ export class VectorTerrainSystem {
       this.sdfTextures.tee.dispose();
       this.sdfTextures = null;
     }
+
+    if (this.healthTexture) {
+      this.healthTexture.dispose();
+      this.healthTexture = null;
+    }
+
+    for (const mesh of this.cliffMeshes) {
+      mesh.dispose();
+    }
+    this.cliffMeshes = [];
   }
 }

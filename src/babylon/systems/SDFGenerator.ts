@@ -151,8 +151,8 @@ export function generateSDFTextures(
 export function updateSDFTextures(
   textureSet: SDFTextureSet,
   shapes: VectorShape[],
-  worldWidth: number,
-  worldHeight: number,
+  _worldWidth: number,
+  _worldHeight: number,
   options: Partial<SDFGeneratorOptions> = {}
 ): void {
   const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -335,5 +335,295 @@ export async function generateSDFTexturesAsync(
   });
 }
 
-// Re-export worldWidth and worldHeight as used in async version
-export type { SDFGeneratorOptions };
+
+/**
+ * Terrain type codes matching the grid layout
+ */
+export type GridTerrainCode = 0 | 1 | 2 | 3 | 4 | 5;
+export const GRID_TERRAIN = {
+  FAIRWAY: 0 as GridTerrainCode,
+  ROUGH: 1 as GridTerrainCode,
+  GREEN: 2 as GridTerrainCode,
+  BUNKER: 3 as GridTerrainCode,
+  WATER: 4 as GridTerrainCode,
+  TEE: 5 as GridTerrainCode,
+};
+
+/**
+ * Generate SDF textures directly from grid layout
+ * This bypasses vector shape conversion and works reliably for any grid shape
+ */
+export function generateSDFFromGrid(
+  scene: Scene,
+  layout: number[][],
+  worldWidth: number,
+  worldHeight: number,
+  options: Partial<SDFGeneratorOptions> = {}
+): SDFTextureSet {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+
+  const texWidth = Math.ceil(worldWidth * opts.resolution);
+  const texHeight = Math.ceil(worldHeight * opts.resolution);
+  const scale = 1 / opts.resolution;
+
+  // Generate combined RGBA texture (fairway, green, bunker, water)
+  const combinedData = new Uint8Array(texWidth * texHeight * 4);
+
+  // Generate tee texture (single channel, stored as RGBA for compatibility)
+  const teeData = new Uint8Array(texWidth * texHeight * 4);
+
+  // Pre-compute which cells are which terrain type for fast lookup
+  const gridHeight = layout.length;
+  const gridWidth = layout[0]?.length || 0;
+
+  // Process each pixel
+  for (let py = 0; py < texHeight; py++) {
+    for (let px = 0; px < texWidth; px++) {
+      // Convert pixel to world coordinates
+      const worldX = (px + 0.5) * scale;
+      const worldY = (py + 0.5) * scale;
+
+      const idx = (py * texWidth + px) * 4;
+
+      // Calculate SDF for each terrain type from grid
+      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance);
+      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance);
+      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance);
+      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance);
+      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance);
+
+      // Encode distances to 0-255 range
+      combinedData[idx + 0] = encodeDistance(fairwayDist, opts.maxDistance);
+      combinedData[idx + 1] = encodeDistance(greenDist, opts.maxDistance);
+      combinedData[idx + 2] = encodeDistance(bunkerDist, opts.maxDistance);
+      combinedData[idx + 3] = encodeDistance(waterDist, opts.maxDistance);
+
+      // Tee texture (use R channel, fill others for visibility)
+      teeData[idx + 0] = encodeDistance(teeDist, opts.maxDistance);
+      teeData[idx + 1] = 0;
+      teeData[idx + 2] = 0;
+      teeData[idx + 3] = 255;
+    }
+  }
+
+  // Create Babylon.js textures
+  const combined = RawTexture.CreateRGBATexture(
+    combinedData,
+    texWidth,
+    texHeight,
+    scene,
+    false,  // generateMipMaps
+    false,  // invertY
+    Engine.TEXTURE_BILINEAR_SAMPLINGMODE
+  );
+  combined.name = "sdfCombined";
+  combined.wrapU = RawTexture.CLAMP_ADDRESSMODE;
+  combined.wrapV = RawTexture.CLAMP_ADDRESSMODE;
+
+  const tee = RawTexture.CreateRGBATexture(
+    teeData,
+    texWidth,
+    texHeight,
+    scene,
+    false,
+    false,
+    Engine.TEXTURE_BILINEAR_SAMPLINGMODE
+  );
+  tee.name = "sdfTee";
+  tee.wrapU = RawTexture.CLAMP_ADDRESSMODE;
+  tee.wrapV = RawTexture.CLAMP_ADDRESSMODE;
+
+  return {
+    combined,
+    tee,
+    width: texWidth,
+    height: texHeight,
+    scale,
+  };
+}
+
+/**
+ * Update SDF textures from grid layout
+ */
+export function updateSDFFromGrid(
+  textureSet: SDFTextureSet,
+  layout: number[][],
+  _worldWidth: number,
+  _worldHeight: number,
+  options: Partial<SDFGeneratorOptions> = {}
+): void {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const { width: texWidth, height: texHeight, scale } = textureSet;
+
+  const gridHeight = layout.length;
+  const gridWidth = layout[0]?.length || 0;
+
+  // Generate new texture data
+  const combinedData = new Uint8Array(texWidth * texHeight * 4);
+  const teeData = new Uint8Array(texWidth * texHeight * 4);
+
+  for (let py = 0; py < texHeight; py++) {
+    for (let px = 0; px < texWidth; px++) {
+      const worldX = (px + 0.5) * scale;
+      const worldY = (py + 0.5) * scale;
+      const idx = (py * texWidth + px) * 4;
+
+      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance);
+      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance);
+      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance);
+      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance);
+      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance);
+
+      combinedData[idx + 0] = encodeDistance(fairwayDist, opts.maxDistance);
+      combinedData[idx + 1] = encodeDistance(greenDist, opts.maxDistance);
+      combinedData[idx + 2] = encodeDistance(bunkerDist, opts.maxDistance);
+      combinedData[idx + 3] = encodeDistance(waterDist, opts.maxDistance);
+
+      teeData[idx + 0] = encodeDistance(teeDist, opts.maxDistance);
+      teeData[idx + 1] = 0;
+      teeData[idx + 2] = 0;
+      teeData[idx + 3] = 255;
+    }
+  }
+
+  // Update textures
+  textureSet.combined.update(combinedData);
+  textureSet.tee.update(teeData);
+}
+
+/**
+ * Compute signed distance to a terrain type from grid layout
+ * Uses a search radius to find nearest cells of the target type
+ */
+function getGridSignedDistance(
+  worldX: number,
+  worldY: number,
+  layout: number[][],
+  gridWidth: number,
+  gridHeight: number,
+  targetType: GridTerrainCode,
+  maxDistance: number
+): number {
+  // Get the grid cell we're in
+  const cellX = Math.floor(worldX);
+  const cellY = Math.floor(worldY);
+
+  // Check if current cell is the target type
+  const currentType = layout[cellY]?.[cellX] ?? GRID_TERRAIN.ROUGH;
+  const isInside = currentType === targetType;
+
+  // Search radius (in cells) - based on maxDistance
+  const searchRadius = Math.ceil(maxDistance) + 1;
+
+  let minDistSq = maxDistance * maxDistance;
+
+  // Search nearby cells for boundaries
+  for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+    for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+      const nx = cellX + dx;
+      const ny = cellY + dy;
+
+      // Skip out of bounds
+      if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+
+      const neighborType = layout[ny]?.[nx] ?? GRID_TERRAIN.ROUGH;
+      const neighborIsTarget = neighborType === targetType;
+
+      // If this cell differs from what we want, check distance to its edges
+      if (neighborIsTarget !== isInside) {
+        // Find distance to the boundary between this cell and neighbors
+        // We need to find the closest point on the edge of the target region
+
+        // Check all 4 edges of this cell for potential boundary
+        const edges = getTargetEdges(nx, ny, layout, gridWidth, gridHeight, targetType);
+
+        for (const edge of edges) {
+          const distSq = distanceToEdgeSquared(worldX, worldY, edge);
+          minDistSq = Math.min(minDistSq, distSq);
+        }
+      }
+    }
+  }
+
+  const dist = Math.sqrt(minDistSq);
+  return isInside ? -dist : dist;
+}
+
+interface Edge {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Get edges of a cell that border the target terrain type
+ */
+function getTargetEdges(
+  cellX: number,
+  cellY: number,
+  layout: number[][],
+  gridWidth: number,
+  gridHeight: number,
+  targetType: GridTerrainCode
+): Edge[] {
+  const edges: Edge[] = [];
+  const cellType = layout[cellY]?.[cellX] ?? GRID_TERRAIN.ROUGH;
+  const isTarget = cellType === targetType;
+
+  // Check each neighbor - if it differs, there's a boundary edge
+  // North edge
+  const northType = cellY > 0 ? (layout[cellY - 1]?.[cellX] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
+  if ((northType === targetType) !== isTarget) {
+    edges.push({ x1: cellX, y1: cellY, x2: cellX + 1, y2: cellY });
+  }
+
+  // South edge
+  const southType = cellY < gridHeight - 1 ? (layout[cellY + 1]?.[cellX] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
+  if ((southType === targetType) !== isTarget) {
+    edges.push({ x1: cellX, y1: cellY + 1, x2: cellX + 1, y2: cellY + 1 });
+  }
+
+  // West edge
+  const westType = cellX > 0 ? (layout[cellY]?.[cellX - 1] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
+  if ((westType === targetType) !== isTarget) {
+    edges.push({ x1: cellX, y1: cellY, x2: cellX, y2: cellY + 1 });
+  }
+
+  // East edge
+  const eastType = cellX < gridWidth - 1 ? (layout[cellY]?.[cellX + 1] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
+  if ((eastType === targetType) !== isTarget) {
+    edges.push({ x1: cellX + 1, y1: cellY, x2: cellX + 1, y2: cellY + 1 });
+  }
+
+  return edges;
+}
+
+/**
+ * Compute squared distance from point to line segment
+ */
+function distanceToEdgeSquared(px: number, py: number, edge: Edge): number {
+  const { x1, y1, x2, y2 } = edge;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    // Degenerate edge (point)
+    const ddx = px - x1;
+    const ddy = py - y1;
+    return ddx * ddx + ddy * ddy;
+  }
+
+  // Project point onto line, clamped to segment
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+
+  const ddx = px - closestX;
+  const ddy = py - closestY;
+
+  return ddx * ddx + ddy * ddy;
+}
