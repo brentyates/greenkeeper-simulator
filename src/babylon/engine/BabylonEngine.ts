@@ -12,7 +12,7 @@ import {
 } from "@babylonjs/core/Misc/sceneOptimizer";
 
 export const TILE_SIZE = 1;
-export const HEIGHT_UNIT = 0.125;
+export const HEIGHT_UNIT = 0.2;
 
 export function gridTo3D(
   gridX: number,
@@ -171,9 +171,15 @@ export class BabylonEngine {
 
   public setZoomLevel(level: "tight" | "closer" | "close" | "far"): void {
     const sizes = { tight: 0.8, closer: 4, close: 8, far: 35 };
-    const orthoSize = sizes[level];
-    const aspectRatio = this.canvas.width / this.canvas.height;
+    this.setOrthoSize(sizes[level]);
+  }
 
+  public getOrthoSize(): number {
+    return Math.abs(this.camera.orthoTop || 8);
+  }
+
+  public setOrthoSize(orthoSize: number): void {
+    const aspectRatio = this.canvas.width / this.canvas.height;
     this.camera.orthoTop = orthoSize;
     this.camera.orthoBottom = -orthoSize;
     this.camera.orthoLeft = -orthoSize * aspectRatio;
@@ -190,6 +196,10 @@ export class BabylonEngine {
   public setCameraTarget(target: Vector3): void {
     this.cameraTarget = target;
     this.camera.setTarget(target);
+  }
+
+  public getCameraTarget(): Vector3 {
+    return this.cameraTarget.clone();
   }
 
   public setCameraTargetGrid(

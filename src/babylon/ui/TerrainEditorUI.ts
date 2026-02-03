@@ -6,16 +6,28 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 
-import { EditorTool } from '../../core/terrain-editor-logic';
+import { EditorTool, EditorMode, TopologyMode } from '../../core/terrain-editor-logic';
 import { TerrainType, getTerrainDisplayName } from '../../core/terrain';
+
+export type AxisConstraint = 'x' | 'y' | 'z' | 'xz' | 'all';
 
 export interface TerrainEditorUICallbacks {
   onToolSelect: (tool: EditorTool) => void;
+  onModeChange: (mode: EditorMode) => void;
   onClose: () => void;
   onExport: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onBrushSizeChange: (delta: number) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  onAxisChange?: (axis: AxisConstraint) => void;
+  onMoveBy?: (dx: number, dy: number, dz: number) => void;
+  onTopologyModeChange?: (mode: TopologyMode) => void;
+  onDeleteVertex?: () => void;
+  onSplitEdge?: () => void;
+  onFlipEdge?: () => void;
+  onCollapseEdge?: () => void;
 }
 
 export class TerrainEditorUI {
@@ -24,12 +36,21 @@ export class TerrainEditorUI {
 
   private panel: Rectangle | null = null;
   private toolButtons: Map<EditorTool, Rectangle> = new Map();
+  private modeButtons: Map<EditorMode, Rectangle> = new Map();
+  private axisButtons: Map<AxisConstraint, Rectangle> = new Map();
   private undoButton: Button | null = null;
   private redoButton: Button | null = null;
   private coordsText: TextBlock | null = null;
   private brushSizeText: TextBlock | null = null;
+  private selectionCountText: TextBlock | null = null;
+  private vertexPosText: TextBlock | null = null;
 
-  private activeTool: EditorTool = 'raise';
+  private activeTool: EditorTool = 'terrain_fairway';
+  private activeMode: EditorMode = 'sculpt';
+  private activeAxis: AxisConstraint = 'xz';
+  private activeTopologyMode: TopologyMode = 'vertex';
+  private topologyButtons: Map<TopologyMode, Rectangle> = new Map();
+  private topologyStatusText: TextBlock | null = null;
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: TerrainEditorUICallbacks) {
     this.advancedTexture = advancedTexture;
@@ -40,7 +61,7 @@ export class TerrainEditorUI {
   private createPanel(): void {
     this.panel = new Rectangle('terrainEditorPanel');
     this.panel.width = '340px';
-    this.panel.height = '380px';
+    this.panel.height = '680px';
     this.panel.cornerRadius = 8;
     this.panel.color = '#5a9a6a';
     this.panel.thickness = 2;
@@ -64,9 +85,12 @@ export class TerrainEditorUI {
     this.panel.addControl(stack);
 
     this.createHeader(stack);
-    this.createElevationTools(stack);
+    this.createModeToggle(stack);
     this.createTerrainBrushes(stack);
     this.createBrushSizeControl(stack);
+    this.createTopologySection(stack);
+    this.createSelectionSection(stack);
+    this.createTransformSection(stack);
     this.createActionButtons(stack);
     this.createStatusBar(stack);
   }
@@ -111,37 +135,75 @@ export class TerrainEditorUI {
     parent.addControl(divider);
   }
 
-  private createElevationTools(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('elevLabel');
-    sectionLabel.text = 'ELEVATION';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
-    sectionLabel.height = '28px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '12px';
-    parent.addControl(sectionLabel);
-
-    const grid = new Grid('elevGrid');
-    grid.height = '55px';
+  private createModeToggle(parent: StackPanel): void {
+    const grid = new Grid('modeGrid');
+    grid.height = '40px';
     grid.width = '316px';
-    grid.addColumnDefinition(0.25);
-    grid.addColumnDefinition(0.25);
-    grid.addColumnDefinition(0.25);
-    grid.addColumnDefinition(0.25);
+    grid.paddingTop = '8px';
+    grid.addColumnDefinition(0.5);
+    grid.addColumnDefinition(0.5);
     parent.addControl(grid);
 
-    const tools: { tool: EditorTool; label: string; key: string }[] = [
-      { tool: 'raise', label: 'Raise', key: '1' },
-      { tool: 'lower', label: 'Lower', key: '2' },
-      { tool: 'flatten', label: 'Flat', key: '3' },
-      { tool: 'smooth', label: 'Smooth', key: '4' },
-    ];
+    const sculptBtn = this.createModeButton('sculpt', 'SCULPT');
+    grid.addControl(sculptBtn, 0, 0);
 
-    tools.forEach((t, i) => {
-      const btn = this.createToolButton(t.tool, t.label, t.key);
-      grid.addControl(btn, 0, i);
-    });
+    const paintBtn = this.createModeButton('paint', 'PAINT');
+    grid.addControl(paintBtn, 0, 1);
+
+    this.updateModeButtonStyles();
   }
+
+  private createModeButton(mode: EditorMode, label: string): Rectangle {
+    const container = new Rectangle(`mode_${mode}`);
+    container.width = '95%';
+    container.height = '32px';
+    container.cornerRadius = 4;
+    container.background = '#1a3a2a';
+    container.color = '#3a5a4a';
+    container.thickness = 2;
+
+    const text = new TextBlock();
+    text.text = label;
+    text.color = '#aaccaa';
+    text.fontSize = 12;
+    text.fontWeight = 'bold';
+    container.addControl(text);
+
+    container.onPointerEnterObservable.add(() => {
+      if (this.activeMode !== mode) {
+        container.background = '#2a4a3a';
+      }
+    });
+
+    container.onPointerOutObservable.add(() => {
+      if (this.activeMode !== mode) {
+        container.background = '#1a3a2a';
+      }
+    });
+
+    container.onPointerUpObservable.add(() => {
+      this.callbacks.onModeChange(mode);
+    });
+
+    this.modeButtons.set(mode, container);
+    return container;
+  }
+
+  private updateModeButtonStyles(): void {
+    for (const [mode, btn] of this.modeButtons) {
+      const text = btn.children[0] as TextBlock;
+      if (mode === this.activeMode) {
+        btn.background = '#2a6a4a';
+        btn.color = '#7FFF7F';
+        if (text) text.color = '#7FFF7F';
+      } else {
+        btn.background = '#1a3a2a';
+        btn.color = '#3a5a4a';
+        if (text) text.color = '#aaccaa';
+      }
+    }
+  }
+
 
   private createTerrainBrushes(parent: StackPanel): void {
     const sectionLabel = new TextBlock('terrainLabel');
@@ -156,11 +218,12 @@ export class TerrainEditorUI {
     const grid = new Grid('terrainGrid');
     grid.height = '55px';
     grid.width = '316px';
-    grid.addColumnDefinition(0.2);
-    grid.addColumnDefinition(0.2);
-    grid.addColumnDefinition(0.2);
-    grid.addColumnDefinition(0.2);
-    grid.addColumnDefinition(0.2);
+    grid.addColumnDefinition(1 / 6);
+    grid.addColumnDefinition(1 / 6);
+    grid.addColumnDefinition(1 / 6);
+    grid.addColumnDefinition(1 / 6);
+    grid.addColumnDefinition(1 / 6);
+    grid.addColumnDefinition(1 / 6);
     parent.addControl(grid);
 
     const brushes: { tool: EditorTool; label: string; key: string; color: string }[] = [
@@ -169,6 +232,7 @@ export class TerrainEditorUI {
       { tool: 'terrain_green', label: 'Green', key: 'E', color: '#4aca5a' },
       { tool: 'terrain_bunker', label: 'Bunker', key: 'R', color: '#c4a44a' },
       { tool: 'terrain_water', label: 'Water', key: 'F', color: '#4a7aca' },
+      { tool: 'terrain_tee', label: 'Tee', key: 'T', color: '#7a9a7a' },
     ];
 
     brushes.forEach((b, i) => {
@@ -281,6 +345,373 @@ export class TerrainEditorUI {
     grid.addControl(plusBtn, 0, 2);
   }
 
+  private createTopologySection(parent: StackPanel): void {
+    const sectionLabel = new TextBlock('topologyLabel');
+    sectionLabel.text = 'TOPOLOGY MODE';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '28px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '8px';
+    parent.addControl(sectionLabel);
+
+    const grid = new Grid('topologyGrid');
+    grid.height = '76px';
+    grid.width = '316px';
+    grid.addRowDefinition(0.5);
+    grid.addRowDefinition(0.5);
+    grid.addColumnDefinition(0.25);
+    grid.addColumnDefinition(0.25);
+    grid.addColumnDefinition(0.25);
+    grid.addColumnDefinition(0.25);
+    parent.addControl(grid);
+
+    // Vertex Button
+    const vertexBtn = this.createTopologyButton('vertex', 'Vertex (V)', '#6a9a7a');
+    grid.addControl(vertexBtn, 0, 0);
+
+    // Edge Button
+    const edgeBtn = this.createTopologyButton('edge', 'Edge (E)', '#00cccc');
+    grid.addControl(edgeBtn, 0, 1);
+
+    // Face Button
+    const faceBtn = this.createTopologyButton('face', 'Face', '#ffcc44');
+    grid.addControl(faceBtn, 0, 2);
+
+    // Actions
+    const splitBtn = Button.CreateSimpleButton('splitEdgeBtn', 'Split');
+    splitBtn.width = '95%';
+    splitBtn.height = '28px';
+    splitBtn.color = '#88ff88';
+    splitBtn.fontSize = 11;
+    splitBtn.background = '#1a3a2a';
+    splitBtn.cornerRadius = 4;
+    splitBtn.thickness = 1;
+    splitBtn.onPointerUpObservable.add(() => this.callbacks.onSplitEdge?.());
+    splitBtn.onPointerEnterObservable.add(() => { splitBtn.background = '#2a4a3a'; });
+    splitBtn.onPointerOutObservable.add(() => { splitBtn.background = '#1a3a2a'; });
+    grid.addControl(splitBtn, 1, 0);
+
+    const flipBtn = Button.CreateSimpleButton('flipEdgeBtn', 'Flip');
+    flipBtn.width = '95%';
+    flipBtn.height = '28px';
+    flipBtn.color = '#88ffff';
+    flipBtn.fontSize = 11;
+    flipBtn.background = '#1a3a2a';
+    flipBtn.cornerRadius = 4;
+    flipBtn.thickness = 1;
+    flipBtn.onPointerUpObservable.add(() => this.callbacks.onFlipEdge?.());
+    flipBtn.onPointerEnterObservable.add(() => { flipBtn.background = '#2a4a3a'; });
+    flipBtn.onPointerOutObservable.add(() => { flipBtn.background = '#1a3a2a'; });
+    grid.addControl(flipBtn, 1, 1);
+
+    const deleteBtn = Button.CreateSimpleButton('deleteVertexBtn', 'Delete');
+    deleteBtn.width = '95%';
+    deleteBtn.height = '28px';
+    deleteBtn.color = '#ff8888';
+    deleteBtn.fontSize = 11;
+    deleteBtn.background = '#1a3a2a';
+    deleteBtn.cornerRadius = 4;
+    deleteBtn.thickness = 1;
+    deleteBtn.onPointerUpObservable.add(() => {
+        if (this.activeTopologyMode === 'edge') {
+            this.callbacks.onCollapseEdge?.();
+        } else {
+            this.callbacks.onDeleteVertex?.();
+        }
+    });
+    deleteBtn.onPointerEnterObservable.add(() => { deleteBtn.background = '#3a2a2a'; });
+    deleteBtn.onPointerOutObservable.add(() => { deleteBtn.background = '#1a3a2a'; });
+    grid.addControl(deleteBtn, 1, 2);
+
+    this.topologyStatusText = new TextBlock('topologyStatus');
+    this.topologyStatusText.text = 'Vertex Mode';
+    this.topologyStatusText.color = '#6a9a7a';
+    this.topologyStatusText.fontSize = 10;
+    this.topologyStatusText.height = '20px';
+    this.topologyStatusText.paddingTop = '4px';
+    parent.addControl(this.topologyStatusText);
+    
+    this.updateTopologyModeStyles();
+  }
+
+  private createTopologyButton(mode: TopologyMode, label: string, accentColor: string): Rectangle {
+    const container = new Rectangle(`topology_${mode}`);
+    container.width = '95%';
+    container.height = '28px';
+    container.cornerRadius = 4;
+    container.background = '#1a3a2a';
+    container.color = '#3a5a4a';
+    container.thickness = 2;
+    container.metadata = { accentColor };
+
+    const text = new TextBlock();
+    text.text = label;
+    text.color = '#aaccaa';
+    text.fontSize = 11;
+    text.fontWeight = 'bold';
+    container.addControl(text);
+
+    container.onPointerEnterObservable.add(() => {
+      if (this.activeTopologyMode !== mode) {
+        container.background = '#2a4a3a';
+      }
+    });
+
+    container.onPointerOutObservable.add(() => {
+      if (this.activeTopologyMode !== mode) {
+        container.background = '#1a3a2a';
+      }
+    });
+
+    container.onPointerUpObservable.add(() => {
+      this.callbacks.onTopologyModeChange?.(mode);
+    });
+
+    this.topologyButtons.set(mode, container);
+    return container;
+  }
+
+  private updateTopologyModeStyles(): void {
+    for (const [mode, btn] of this.topologyButtons) {
+      const text = btn.children[0] as TextBlock;
+      const accent = btn.metadata?.accentColor ?? '#7FFF7F';
+
+      if (mode === this.activeTopologyMode) {
+        btn.background = '#2a6a4a';
+        btn.color = accent;
+        if (text) text.color = accent;
+      } else {
+        btn.background = '#1a3a2a';
+        btn.color = '#3a5a4a';
+        if (text) text.color = '#aaccaa';
+      }
+    }
+
+    if (this.topologyStatusText) {
+       let status = 'Vertex Mode';
+       if (this.activeTopologyMode === 'edge') status = 'Click edge to select (Shift+Click to toggle)';
+       if (this.activeTopologyMode === 'face') status = 'Click face to select (Shift+Click to toggle)';
+       this.topologyStatusText.text = status;
+       
+       const activeBtn = this.topologyButtons.get(this.activeTopologyMode);
+       this.topologyStatusText.color = activeBtn?.metadata?.accentColor ?? '#6a9a7a';
+    }
+  }
+
+  private createSelectionSection(parent: StackPanel): void {
+    const sectionLabel = new TextBlock('selectionLabel');
+    sectionLabel.text = 'SELECTION';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '28px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '8px';
+    parent.addControl(sectionLabel);
+
+    const grid = new Grid('selectionGrid');
+    grid.height = '36px';
+    grid.width = '316px';
+    grid.addColumnDefinition(0.35);
+    grid.addColumnDefinition(0.35);
+    grid.addColumnDefinition(0.3);
+    parent.addControl(grid);
+
+    const selectAllBtn = Button.CreateSimpleButton('selectAllBtn', 'Select All');
+    selectAllBtn.width = '90%';
+    selectAllBtn.height = '28px';
+    selectAllBtn.color = '#aaccaa';
+    selectAllBtn.fontSize = 11;
+    selectAllBtn.background = '#1a3a2a';
+    selectAllBtn.cornerRadius = 4;
+    selectAllBtn.thickness = 1;
+    selectAllBtn.onPointerUpObservable.add(() => this.callbacks.onSelectAll?.());
+    selectAllBtn.onPointerEnterObservable.add(() => { selectAllBtn.background = '#2a4a3a'; });
+    selectAllBtn.onPointerOutObservable.add(() => { selectAllBtn.background = '#1a3a2a'; });
+    grid.addControl(selectAllBtn, 0, 0);
+
+    const deselectBtn = Button.CreateSimpleButton('deselectBtn', 'Deselect');
+    deselectBtn.width = '90%';
+    deselectBtn.height = '28px';
+    deselectBtn.color = '#aaccaa';
+    deselectBtn.fontSize = 11;
+    deselectBtn.background = '#1a3a2a';
+    deselectBtn.cornerRadius = 4;
+    deselectBtn.thickness = 1;
+    deselectBtn.onPointerUpObservable.add(() => this.callbacks.onDeselectAll?.());
+    deselectBtn.onPointerEnterObservable.add(() => { deselectBtn.background = '#2a4a3a'; });
+    deselectBtn.onPointerOutObservable.add(() => { deselectBtn.background = '#1a3a2a'; });
+    grid.addControl(deselectBtn, 0, 1);
+
+    this.selectionCountText = new TextBlock('selCountText');
+    this.selectionCountText.text = '0 sel';
+    this.selectionCountText.color = '#6a9a7a';
+    this.selectionCountText.fontSize = 11;
+    grid.addControl(this.selectionCountText, 0, 2);
+  }
+
+  private createTransformSection(parent: StackPanel): void {
+    const sectionLabel = new TextBlock('transformLabel');
+    sectionLabel.text = 'MOVEMENT CONSTRAINT';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '28px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '8px';
+    parent.addControl(sectionLabel);
+
+    const axisGrid = new Grid('axisGrid');
+    axisGrid.height = '32px';
+    axisGrid.width = '316px';
+    axisGrid.addColumnDefinition(0.25);
+    axisGrid.addColumnDefinition(0.25);
+    axisGrid.addColumnDefinition(0.25);
+    axisGrid.addColumnDefinition(0.25);
+    parent.addControl(axisGrid);
+
+    // User-friendly labels instead of X/Y/Z
+    const axes: { axis: AxisConstraint; label: string; color: string }[] = [
+      { axis: 'y', label: 'Elev', color: '#44cc44' },      // Green for vertical
+      { axis: 'x', label: 'E/W', color: '#cc4444' },       // Red for X axis
+      { axis: 'z', label: 'N/S', color: '#4444cc' },       // Blue for Z axis
+      { axis: 'xz', label: 'Horiz', color: '#cccc44' },    // Yellow for horizontal plane
+    ];
+
+    axes.forEach((a, i) => {
+      const btn = this.createAxisButton(a.axis, a.label, a.color);
+      axisGrid.addControl(btn, 0, i);
+    });
+
+    this.updateAxisButtonStyles();
+
+    // Quick movement buttons
+    this.createMovementButtons(parent);
+
+    this.vertexPosText = new TextBlock('vertexPosText');
+    this.vertexPosText.text = 'No selection';
+    this.vertexPosText.color = '#6a9a7a';
+    this.vertexPosText.fontSize = 11;
+    this.vertexPosText.height = '24px';
+    this.vertexPosText.paddingTop = '6px';
+    parent.addControl(this.vertexPosText);
+  }
+
+  private createMovementButtons(parent: StackPanel): void {
+    const moveLabel = new TextBlock('moveLabel');
+    moveLabel.text = 'QUICK MOVE';
+    moveLabel.color = '#8aba9a';
+    moveLabel.fontSize = 11;
+    moveLabel.height = '24px';
+    moveLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    moveLabel.paddingTop = '6px';
+    parent.addControl(moveLabel);
+
+    const moveGrid = new Grid('moveGrid');
+    moveGrid.height = '70px';
+    moveGrid.width = '316px';
+    moveGrid.addRowDefinition(0.5);
+    moveGrid.addRowDefinition(0.5);
+    moveGrid.addColumnDefinition(0.25);
+    moveGrid.addColumnDefinition(0.25);
+    moveGrid.addColumnDefinition(0.25);
+    moveGrid.addColumnDefinition(0.25);
+    parent.addControl(moveGrid);
+
+    // Row 1: Raise, North, Lower
+    const raiseBtn = this.createMoveButton('Raise', '#44cc44', () => this.callbacks.onMoveBy?.(0, 1, 0));
+    moveGrid.addControl(raiseBtn, 0, 0);
+
+    const northBtn = this.createMoveButton('North', '#4444cc', () => this.callbacks.onMoveBy?.(0, 0, -1));
+    moveGrid.addControl(northBtn, 0, 1);
+
+    const lowerBtn = this.createMoveButton('Lower', '#44cc44', () => this.callbacks.onMoveBy?.(0, -1, 0));
+    moveGrid.addControl(lowerBtn, 0, 2);
+
+    // Placeholder for symmetry
+    const emptySpace = new Rectangle('emptySpace');
+    emptySpace.thickness = 0;
+    emptySpace.background = 'transparent';
+    moveGrid.addControl(emptySpace, 0, 3);
+
+    // Row 2: West, South, East
+    const westBtn = this.createMoveButton('West', '#cc4444', () => this.callbacks.onMoveBy?.(-1, 0, 0));
+    moveGrid.addControl(westBtn, 1, 0);
+
+    const southBtn = this.createMoveButton('South', '#4444cc', () => this.callbacks.onMoveBy?.(0, 0, 1));
+    moveGrid.addControl(southBtn, 1, 1);
+
+    const eastBtn = this.createMoveButton('East', '#cc4444', () => this.callbacks.onMoveBy?.(1, 0, 0));
+    moveGrid.addControl(eastBtn, 1, 2);
+  }
+
+  private createMoveButton(label: string, accentColor: string, onClick: () => void): Button {
+    const btn = Button.CreateSimpleButton(`move_${label}`, label);
+    btn.width = '90%';
+    btn.height = '28px';
+    btn.color = accentColor;
+    btn.fontSize = 10;
+    btn.fontWeight = 'bold';
+    btn.background = '#1a3a2a';
+    btn.cornerRadius = 4;
+    btn.thickness = 1;
+    btn.onPointerUpObservable.add(onClick);
+    btn.onPointerEnterObservable.add(() => { btn.background = '#2a4a3a'; });
+    btn.onPointerOutObservable.add(() => { btn.background = '#1a3a2a'; });
+    return btn;
+  }
+
+  private createAxisButton(axis: AxisConstraint, label: string, accentColor?: string): Rectangle {
+    const container = new Rectangle(`axis_${axis}`);
+    container.width = '90%';
+    container.height = '28px';
+    container.cornerRadius = 4;
+    container.background = '#1a3a2a';
+    container.color = '#3a5a4a';
+    container.thickness = 2;
+    container.metadata = { accentColor: accentColor ?? '#aaccaa' };
+
+    const text = new TextBlock();
+    text.text = label;
+    text.color = accentColor ?? '#aaccaa';
+    text.fontSize = 11;
+    text.fontWeight = 'bold';
+    container.addControl(text);
+
+    container.onPointerEnterObservable.add(() => {
+      if (this.activeAxis !== axis) {
+        container.background = '#2a4a3a';
+      }
+    });
+
+    container.onPointerOutObservable.add(() => {
+      if (this.activeAxis !== axis) {
+        container.background = '#1a3a2a';
+      }
+    });
+
+    container.onPointerUpObservable.add(() => {
+      this.callbacks.onAxisChange?.(axis);
+    });
+
+    this.axisButtons.set(axis, container);
+    return container;
+  }
+
+  private updateAxisButtonStyles(): void {
+    for (const [axis, btn] of this.axisButtons) {
+      const text = btn.children[0] as TextBlock;
+      if (axis === this.activeAxis) {
+        btn.background = '#2a6a4a';
+        btn.color = '#7FFF7F';
+        if (text) text.color = '#7FFF7F';
+      } else {
+        btn.background = '#1a3a2a';
+        btn.color = '#3a5a4a';
+        if (text) text.color = '#aaccaa';
+      }
+    }
+  }
+
   private createActionButtons(parent: StackPanel): void {
     const divider = new Rectangle('divider2');
     divider.height = '1px';
@@ -387,6 +818,11 @@ export class TerrainEditorUI {
     this.activeTool = tool;
   }
 
+  public setActiveMode(mode: EditorMode): void {
+    this.activeMode = mode;
+    this.updateModeButtonStyles();
+  }
+
   public setUndoEnabled(enabled: boolean): void {
     if (this.undoButton) {
       this.undoButton.alpha = enabled ? 1.0 : 0.4;
@@ -419,11 +855,56 @@ export class TerrainEditorUI {
     }
   }
 
+  public setSelectionCount(count: number): void {
+    if (this.selectionCountText) {
+      this.selectionCountText.text = count === 1 ? '1 sel' : `${count} sel`;
+      this.selectionCountText.color = count > 0 ? '#7FFF7F' : '#6a9a7a';
+    }
+  }
+
+  public setActiveAxis(axis: AxisConstraint): void {
+    this.activeAxis = axis;
+    this.updateAxisButtonStyles();
+  }
+
+  public updateVertexPosition(x: number | null, y: number | null, z: number | null): void {
+    if (this.vertexPosText) {
+      if (x === null && y === null && z === null) {
+        this.vertexPosText.text = 'No selection';
+      } else {
+        // User-friendly labels: E/W for X, Elev for Y, N/S for Z
+        const ewStr = x !== null ? x.toFixed(2) : '-';
+        const elevStr = y !== null ? y.toFixed(2) : '-';
+        const nsStr = z !== null ? z.toFixed(2) : '-';
+        this.vertexPosText.text = `E/W: ${ewStr}  Elev: ${elevStr}  N/S: ${nsStr}`;
+      }
+    }
+  }
+
+  public clearVertexPosition(): void {
+    if (this.vertexPosText) {
+      this.vertexPosText.text = 'No selection';
+    }
+  }
+
+  public setTopologyMode(mode: TopologyMode): void {
+    this.activeTopologyMode = mode;
+    this.updateTopologyModeStyles();
+  }
+
+  public setActiveTopologyMode(mode: TopologyMode): void {
+    this.activeTopologyMode = mode;
+    this.updateTopologyModeStyles();
+  }
+
+
   public dispose(): void {
     if (this.panel) {
       this.panel.dispose();
       this.panel = null;
     }
     this.toolButtons.clear();
+    this.modeButtons.clear();
+    this.axisButtons.clear();
   }
 }

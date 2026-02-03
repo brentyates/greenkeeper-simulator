@@ -137,7 +137,7 @@ export class GrassSystem {
     this.waterMaterial.freeze();
   }
 
-  public build(): void {
+  public build(_courseData: CourseData): void {
     const { width, height } = this.courseData;
 
     for (let y = height - 1; y >= 0; y--) {

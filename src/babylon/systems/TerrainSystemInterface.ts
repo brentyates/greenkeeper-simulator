@@ -5,12 +5,13 @@
  */
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CourseData } from "../../data/courseData";
 import { CellState, TerrainType, OverlayMode } from "../../core/terrain";
 import { WeatherEffect } from "../../core/grass-simulation";
 
 export interface TerrainSystem {
   // Build/lifecycle
-  build(): void;
+  build(courseData: CourseData): void;
   dispose(): void;
 
   // Update methods
@@ -58,4 +59,5 @@ export interface TerrainSystem {
 
   // Testing/debugging
   getUpdateCount(): number;
+  getResolution?(): number;
 }

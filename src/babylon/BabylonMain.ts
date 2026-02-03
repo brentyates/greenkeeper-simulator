@@ -1,4 +1,5 @@
-import { BabylonEngine } from "./engine/BabylonEngine";
+import { BabylonEngine, gridTo3D, HEIGHT_UNIT } from "./engine/BabylonEngine";
+
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
 import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
@@ -37,7 +38,7 @@ import { IrrigationInfoPanel } from "./ui/IrrigationInfoPanel";
 import { IrrigationSchedulePanel } from "./ui/IrrigationSchedulePanel";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import "@babylonjs/core/Culling/ray";
 
@@ -47,8 +48,8 @@ import {
   CourseData,
   getCourseById,
 } from "../data/courseData";
-import { canMoveFromTo } from "../core/terrain";
-import { EditorTool } from "../core/terrain-editor-logic";
+import { canMoveFromTo, TerrainType } from "../core/terrain";
+import { EditorTool, TopologyMode } from "../core/terrain-editor-logic";
 import { ScenarioDefinition } from "../data/scenarioData";
 
 import {
@@ -267,9 +268,13 @@ export class BabylonMain {
   private babylonEngine: BabylonEngine;
   private inputManager: InputManager;
   private terrainSystem: TerrainSystem;
+  private vectorTerrainSystem: VectorTerrainSystem | null = null;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
-  private zoomLevel: "tight" | "closer" | "close" | "far" = "close";
+  private orthoSize: number = 8;
+  private targetOrthoSize: number = 8;
+  private readonly MIN_ORTHO_SIZE = 2;
+  private readonly MAX_ORTHO_SIZE = 50;
   private lastTime: number = 0;
   private gameTime: number = 6 * 60;
   private gameDay: number = 1;
@@ -290,6 +295,7 @@ export class BabylonMain {
   private terrainEditorSystem: TerrainEditorSystem | null = null;
   private terrainEditorUI: TerrainEditorUI | null = null;
   private editorUITexture: AdvancedDynamicTexture | null = null;
+  private terrainEditorPausedGame: boolean = false;
   private employeeVisualSystem: EmployeeVisualSystem | null = null;
   private irrigationRenderSystem: IrrigationRenderSystem | null = null;
   private irrigationSystem: IrrigationSystem = createInitialIrrigationSystem();
@@ -431,7 +437,8 @@ export class BabylonMain {
 
     // Create terrain system based on options
     if (options.useVectorTerrain) {
-      this.terrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
+      this.vectorTerrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
+      this.terrainSystem = this.vectorTerrainSystem;
     } else {
       this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     }
@@ -444,7 +451,7 @@ export class BabylonMain {
     this.uiManager = new UIManager(this.babylonEngine.getScene());
     this.irrigationRenderSystem = new IrrigationRenderSystem(
       this.babylonEngine.getScene(),
-      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
+      { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
 
     this.setupInputCallbacks();
@@ -502,23 +509,80 @@ export class BabylonMain {
       getCornerHeights: (gridX: number, gridY: number) =>
         this.terrainSystem.getCornerHeightsPublic(gridX, gridY),
       getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
-        this.terrainSystem.getElevationAt(gridX, gridY, defaultValue),
+        (this.terrainSystem as any).getMeshElevationAt ? (this.terrainSystem as any).getMeshElevationAt(gridX, gridY, defaultValue) : this.terrainSystem.getElevationAt(gridX, gridY),
+      gridTo3D: (gridX: number, gridY: number, elev: number) => {
+        if (this.terrainSystem.gridToWorld) {
+          const pos = this.terrainSystem.gridToWorld(gridX, gridY);
+          return new Vector3(pos.x, elev * HEIGHT_UNIT, pos.z);
+        }
+        return gridTo3D(gridX, gridY, elev);
+      }
     };
 
     this.terrainEditorSystem = new TerrainEditorSystem(scene, cornerProvider);
-    this.terrainEditorSystem.setTerrainModifier({
-      setElevationAt: (x, y, elev) =>
-        this.terrainSystem.setElevationAt(x, y, elev),
-      setTerrainTypeAt: (x, y, type) =>
-        this.terrainSystem.setTerrainTypeAt(x, y, type),
-      rebuildTileAndNeighbors: (x, y) =>
-        this.terrainSystem.rebuildTileAndNeighbors(x, y),
-    });
 
-    this.terrainEditorSystem.initialize(
-      this.terrainSystem.getLayoutGrid(),
-      this.terrainSystem.getElevationGrid()
-    );
+    const baseModifier = {
+      setElevationAt: (x: number, y: number, elev: number) =>
+        this.terrainSystem.setElevationAt(x, y, elev),
+      setTerrainTypeAt: (x: number, y: number, type: TerrainType) =>
+        this.terrainSystem.setTerrainTypeAt(x, y, type),
+      rebuildTileAndNeighbors: (x: number, y: number) =>
+        this.terrainSystem.rebuildTileAndNeighbors(x, y),
+    };
+
+    if (this.vectorTerrainSystem) {
+      const vts = this.vectorTerrainSystem;
+      this.terrainEditorSystem.setTerrainModifier({
+        ...baseModifier,
+        getVertexPosition: (vx, vy) => vts.getVertexPosition(vx, vy),
+        setVertexPosition: (vx, vy, pos) => vts.setVertexPosition(vx, vy, pos),
+        setVertexPositions: (changes) => vts.setVertexPositions(changes),
+        moveVertices: (vertices, delta) => vts.moveVertices(vertices, delta),
+        getVertexElevation: (vx, vy) => vts.getVertexElevation(vx, vy),
+        setVertexElevation: (vx, vy, z) => vts.setVertexElevation(vx, vy, z),
+        setVertexElevations: (changes) => vts.setVertexElevations(changes),
+        worldToVertex: (worldX, worldZ) => vts.worldToVertex(worldX, worldZ),
+        findNearestVertex: (worldX, worldZ) => vts.findNearestVertex(worldX, worldZ),
+        vertexToWorld: (vx, vy) => vts.vertexToWorld(vx, vy),
+        getVertexDimensions: () => vts.getVertexDimensions(),
+        getWorldDimensions: () => vts.getWorldDimensions(),
+        getVertexPositionsGrid: () => vts.getVertexPositionsGrid(),
+        getVertexElevationsGrid: () => vts.getVertexElevationsGrid(),
+        getLayoutGrid: () => vts.getLayoutGrid(),
+        rebuildMesh: () => vts.rebuildMesh(),
+        paintTerrainType: (cells, type) => vts.paintTerrainType(cells, type),
+        isTopologyMode: () => vts.isTopologyMode(),
+        enableTopologyMode: () => vts.enableTopologyMode(),
+        disableTopologyMode: () => vts.disableTopologyMode(),
+        setTopologyMode: (mode) => vts.setTopologyMode(mode),
+        getTopologyMode: () => vts.getTopologyMode(),
+        setHoveredFace: (faceId) => vts.setHoveredFace(faceId),
+        getHoveredFace: () => vts.getHoveredFace(),
+        selectFace: (faceId, additive) => vts.selectFace(faceId, additive),
+        deselectFace: (faceId) => vts.deselectFace(faceId),
+        toggleFaceSelection: (faceId) => vts.toggleFaceSelection(faceId),
+        clearSelectedFaces: () => vts.clearFaceSelection(),
+        getSelectedFaceIds: () => vts.getSelectedFaceIds(),
+        findFaceAtPosition: (worldX, worldZ) => vts.findFaceAtPosition(worldX, worldZ),
+        moveSelectedFaces: (dx, dy, dz) => vts.moveSelectedFaces(dx, dy, dz),
+        setFaceTerrain: (faceId, type) => vts.setFaceTerrain(faceId, type),
+        getSelectedFaceVertexIds: () => vts.getSelectedFaceVertexIds(),
+        getSelectedEdgeVertexIds: () => vts.getSelectedEdgeVertexIds(),
+        getSelectedVerticesFromSelection: () => vts.getSelectedVerticesFromSelection(),
+        findNearestEdgeAt: (x, z) => vts.findNearestEdgeAt(x, z),
+        setHoveredEdge: (edgeId) => vts.setHoveredEdge(edgeId),
+        selectEdge: (edgeId, additive) => vts.selectEdge(edgeId, additive),
+        toggleEdgeSelection: (edgeId) => vts.toggleEdgeSelection(edgeId),
+        deselectAllEdges: () => vts.deselectAllEdges(),
+        getSelectedEdgeIds: () => vts.getSelectedEdgeIds(),
+        getSelectedEdge: () => vts.getSelectedEdge(),
+        subdivideSelectedEdge: () => vts.subdivideSelectedEdge(),
+        flipSelectedEdge: () => vts.flipSelectedEdge(),
+        collapseEdge: (edgeId) => vts.collapseEdge(edgeId),
+      });
+    } else {
+      this.terrainEditorSystem.setTerrainModifier(baseModifier);
+    }
 
     this.editorUITexture = AdvancedDynamicTexture.CreateFullscreenUI(
       "EditorUI",
@@ -527,11 +591,37 @@ export class BabylonMain {
     );
     this.terrainEditorUI = new TerrainEditorUI(this.editorUITexture, {
       onToolSelect: (tool: EditorTool) => this.handleEditorToolSelect(tool),
+      onModeChange: (mode) => this.terrainEditorSystem?.setMode(mode),
       onClose: () => this.handleEditorToggle(),
       onExport: () => this.handleEditorExport(),
       onUndo: () => this.handleEditorUndo(),
       onRedo: () => this.handleEditorRedo(),
       onBrushSizeChange: (delta: number) => this.handleEditorBrushSize(delta),
+      onSelectAll: () => this.terrainEditorSystem?.selectAllVertices(),
+      onDeselectAll: () => this.terrainEditorSystem?.deselectAllVertices(),
+      onAxisChange: (axis) => {
+        this.terrainEditorSystem?.setAxisConstraint(axis);
+        this.terrainEditorUI?.setActiveAxis(axis);
+      },
+      onMoveBy: (dx, dy, dz) => {
+        this.terrainEditorSystem?.moveSelectedVerticesBy(dx, dy, dz);
+        this.updateVertexPositionDisplay();
+      },
+      onTopologyModeChange: (mode) => {
+        this.terrainEditorSystem?.setTopologyMode(mode);
+      },
+      onDeleteVertex: () => {
+        this.terrainEditorSystem?.handleDeleteSelectedTopologyVertices();
+      },
+      onSplitEdge: () => {
+        this.terrainEditorSystem?.subdivideSelectedEdge();
+      },
+      onFlipEdge: () => {
+        this.terrainEditorSystem?.flipSelectedEdge();
+      },
+      onCollapseEdge: () => {
+        this.terrainEditorSystem?.collapseSelectedEdge();
+      },
     });
 
     this.terrainEditorSystem.setCallbacks({
@@ -540,12 +630,52 @@ export class BabylonMain {
         this.terrainEditorUI?.setActiveTool(
           this.terrainEditorSystem!.getTool()
         );
+        this.terrainEditorUI?.setActiveMode(
+          this.terrainEditorSystem!.getMode()
+        );
+        this.terrainEditorUI?.setActiveAxis(
+          this.terrainEditorSystem!.getAxisConstraint()
+        );
+        if (this.vectorTerrainSystem) {
+          if (this.terrainEditorSystem!.getMode() === 'sculpt') {
+            this.vectorTerrainSystem.setWireframeEnabled(true);
+          }
+          this.vectorTerrainSystem.setAxisIndicatorEnabled(true);
+        }
+
+        this.terrainEditorPausedGame = true;
+        if (this.playerVisual) {
+          this.playerVisual.container.setEnabled(false);
+        }
+        this.employeeVisualSystem?.setVisible(false);
       },
       onDisable: () => {
         this.terrainEditorUI?.hide();
+        if (this.vectorTerrainSystem) {
+          this.vectorTerrainSystem.setWireframeEnabled(false);
+          this.vectorTerrainSystem.setAxisIndicatorEnabled(false);
+        }
+
+        this.terrainEditorPausedGame = false;
+        if (this.playerVisual) {
+          this.playerVisual.container.setEnabled(true);
+          this.snapEntityToTerrain(this.playerVisual, this.player.gridX, this.player.gridY);
+          this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
+        }
+        this.employeeVisualSystem?.setVisible(true);
+        this.employeeVisualSystem?.snapAllToTerrain();
       },
       onToolChange: (tool: EditorTool) => {
         this.terrainEditorUI?.setActiveTool(tool);
+      },
+      onModeChange: (mode) => {
+        this.terrainEditorUI?.setActiveMode(mode);
+        if (this.vectorTerrainSystem) {
+          // Always show wireframe (topology grid) in either mode
+          this.vectorTerrainSystem.setWireframeEnabled(true);
+          // Stop using the generated regular grid lines as they might not match topology
+          this.vectorTerrainSystem.setGridLinesEnabled(false);
+        }
       },
       onBrushSizeChange: (size: number) => {
         this.terrainEditorUI?.setBrushSize(size);
@@ -554,7 +684,25 @@ export class BabylonMain {
         this.terrainEditorUI?.setUndoEnabled(canUndo);
         this.terrainEditorUI?.setRedoEnabled(canRedo);
       },
+      onSelectionChange: (count: number) => {
+        this.terrainEditorUI?.setSelectionCount(count);
+        this.updateVertexPositionDisplay();
+      },
+      onTopologyModeChange: (mode: TopologyMode) => {
+        this.terrainEditorUI?.setActiveTopologyMode(mode);
+      },
     });
+  }
+
+  private updateVertexPositionDisplay(): void {
+    if (!this.terrainEditorSystem) return;
+
+    const centroid = this.terrainEditorSystem.getSelectionCentroid();
+    if (centroid) {
+      this.terrainEditorUI?.updateVertexPosition(centroid.x, centroid.y, centroid.z);
+    } else {
+      this.terrainEditorUI?.clearVertexPosition();
+    }
   }
 
   private setupEmployeePanel(): void {
@@ -1203,6 +1351,10 @@ export class BabylonMain {
     this.inputManager.setCallbacks({
       // Core movement - use public API for consistency
       onMove: (direction: Direction) => {
+        if (this.terrainEditorSystem?.isEnabled()) {
+          // Camera movement is handled in updateLoop for smooth input
+          return;
+        }
         const dirMap: Record<Direction, "up" | "down" | "left" | "right"> = {
           up: "up",
           down: "down",
@@ -1228,12 +1380,11 @@ export class BabylonMain {
       onMute: () => this.handleMute(),
       onTimeSpeedUp: () => this.handleTimeSpeed(1),
       onTimeSlowDown: () => this.handleTimeSpeed(-1),
-      onZoomIn: () => this.handleZoom(1),
-      onZoomOut: () => this.handleZoom(-1),
+      onZoom: (delta: number) => this.handleZoom(delta),
       onDebugReload: () => this.handleDebugReload(),
       onDebugExport: () => this.handleDebugExport(),
-      onClick: (screenX: number, screenY: number) =>
-        this.handleClick(screenX, screenY),
+      onClick: (screenX: number, screenY: number, shiftKey?: boolean) =>
+        this.handleClick(screenX, screenY, shiftKey),
 
       // Terrain editor - use public API where available
       onEditorToggle: () => {
@@ -1268,7 +1419,41 @@ export class BabylonMain {
       onEquipmentStore: () => this.handleEquipmentStore(),
       onAmenityPanel: () => this.handleAmenityPanel(),
       onWalkOnQueuePanel: () => this.handleWalkOnQueuePanel(),
+      onSelectAll: () => {
+        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
+          this.terrainEditorSystem.selectAllVertices();
+        }
+      },
+      onDeselectAll: () => {
+        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
+          this.terrainEditorSystem.deselectAllVertices();
+        }
+      },
+      onAxisConstraint: (axis) => {
+        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
+          this.terrainEditorSystem.setAxisConstraint(axis);
+          this.terrainEditorUI?.setActiveAxis(axis);
+        }
+      },
+      onEdgeModeToggle: () => {
+         this.terrainEditorSystem?.setTopologyMode('edge');
+      },
+      onFaceModeToggle: () => {
+         this.terrainEditorSystem?.setTopologyMode('face');
+      },
+      onDeleteVertex: () => {
+        this.terrainEditorSystem?.handleDeleteSelectedTopologyVertices();
+      },
+      onSubdivideEdge: () => {
+        this.terrainEditorSystem?.subdivideSelectedEdge();
+      },
+      onFlipEdge: () => {
+        this.terrainEditorSystem?.flipSelectedEdge();
+      },
       isInputBlocked: () => this.isAnyPopupOpen(),
+      isEditorActive: () => this.terrainEditorSystem?.isEnabled() ?? false,
+      isEdgeModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'edge',
+      isFaceModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'face',
     });
   }
 
@@ -1288,11 +1473,11 @@ export class BabylonMain {
   }
 
   private buildScene(): void {
-    this.terrainSystem.build();
+    this.terrainSystem.build(this.currentCourse);
     this.buildObstacles();
     this.buildRefillStations();
     this.createPlayer();
-    this.babylonEngine.setZoomLevel(this.zoomLevel);
+    this.babylonEngine.setOrthoSize(this.orthoSize);
     this.updatePlayerPosition();
   }
 
@@ -1352,7 +1537,7 @@ export class BabylonMain {
       PLAYER_APPEARANCE,
       this.player.gridX,
       this.player.gridY,
-      { getElevationAt: (x, y, d) => this.grassSystem.getElevationAt(x, y, d) }
+      { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
   }
 
@@ -1394,7 +1579,23 @@ export class BabylonMain {
     return this.playerVisual !== null && this.playerVisual.visualProgress < 1;
   }
 
+  private snapEntityToTerrain(visual: EntityVisualState, gridX: number, gridY: number): void {
+    const elevation = this.terrainSystem.getElevationAt(gridX, gridY, 0);
+    const worldPos = gridTo3D(gridX + 0.5, gridY + 0.5, elevation);
+    visual.container.position.copyFrom(worldPos);
+    visual.lastGridX = gridX;
+    visual.lastGridY = gridY;
+    visual.targetGridX = gridX;
+    visual.targetGridY = gridY;
+    visual.visualProgress = 1;
+  }
+
   private updateMovement(deltaMs: number): void {
+    if (this.terrainEditorSystem?.isEnabled()) {
+      this.updateEditorCamera(deltaMs);
+      return;
+    }
+
     if (!this.playerVisual) return;
 
     const wasMoving = this.isPlayerMoving();
@@ -1408,6 +1609,56 @@ export class BabylonMain {
     if (wasMoving && !this.isPlayerMoving()) {
       this.checkContinuousMovement();
     }
+  }
+
+  private updateEditorCamera(deltaMs: number): void {
+    const camera = this.babylonEngine.getCamera();
+    const orthoSize = this.babylonEngine.getOrthoSize();
+    
+    // Scale speed with zoom level: fast when zoomed out, slow when zoomed in
+    const speed = orthoSize * 1.5; 
+    const moveDist = (speed * deltaMs) / 1000;
+    const target = this.babylonEngine.getCameraTarget();
+
+    const input = {
+      up: this.isDirectionKeyHeld('up'),
+      down: this.isDirectionKeyHeld('down'),
+      left: this.isDirectionKeyHeld('left'),
+      right: this.isDirectionKeyHeld('right'),
+    };
+
+    if (!input.up && !input.down && !input.left && !input.right) return;
+
+    // Calculate view-relative flattened vectors
+    // Get camera directional vectors
+    const forward = camera.getDirection(Vector3.Forward());
+    const right = camera.getDirection(Vector3.Right());
+
+    // Flatten to XZ plane (ignore Y component for ground movement)
+    forward.y = 0;
+    forward.normalize();
+    
+    right.y = 0; 
+    right.normalize();
+
+    // Scale vectors by move distance
+    forward.scaleInPlace(moveDist);
+    right.scaleInPlace(moveDist);
+
+    if (input.up) {
+      target.addInPlace(forward);
+    }
+    if (input.down) {
+      target.subtractInPlace(forward);
+    }
+    if (input.right) {
+      target.addInPlace(right);
+    }
+    if (input.left) {
+      target.subtractInPlace(right);
+    }
+
+    this.babylonEngine.setCameraTarget(target);
   }
 
   private updatePlayerVisualProgress(deltaMs: number): void {
@@ -1473,6 +1724,7 @@ export class BabylonMain {
 
   private handleMove(direction: Direction): void {
     if (this.isPaused) return;
+    if (this.terrainEditorSystem?.isEnabled()) return;
 
     this.player = { ...this.player, pendingDirection: direction, path: [] };
 
@@ -1527,16 +1779,22 @@ export class BabylonMain {
     }
   }
 
-  private handleClick(screenX: number, screenY: number): void {
+  private handleClick(screenX: number, screenY: number, shiftKey?: boolean): void {
     if (this.isPaused) return;
+
+    if (this.terrainEditorSystem?.isEnabled()) {
+      this.handleMouseMove(screenX, screenY);
+
+      if (this.terrainEditorSystem.getMode() === 'paint') {
+        this.terrainEditorSystem.handleClick(shiftKey);
+      } else {
+        this.terrainEditorSystem.handleSelectionClick(shiftKey ?? false);
+      }
+      return;
+    }
 
     const gridPos = this.screenToGridFromScreen(screenX, screenY);
     if (!gridPos) return;
-
-    if (this.terrainEditorSystem?.isEnabled()) {
-      this.terrainEditorSystem.handleClick();
-      return;
-    }
 
     const course = this.currentCourse;
     if (
@@ -1926,7 +2184,7 @@ export class BabylonMain {
     } else {
       this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     }
-    this.terrainSystem.build();
+    this.terrainSystem.build(course);
     this.updatePlayerPosition();
     this.resumeGame();
     this.uiManager.showNotification("Game Restarted");
@@ -1953,11 +2211,26 @@ export class BabylonMain {
     this.timeScale = speeds[newIndex];
   }
 
-  private handleZoom(_delta: number): void {
-    const levels: Array<"tight" | "closer" | "close" | "far"> = ["closer", "close", "far"];
-    const currentIndex = levels.indexOf(this.zoomLevel);
-    this.zoomLevel = levels[(currentIndex + 1) % levels.length];
-    this.babylonEngine.setZoomLevel(this.zoomLevel);
+  private handleZoom(delta: number): void {
+    const zoomFactor = 0.001;
+    const newTarget = this.targetOrthoSize * (1 + delta * zoomFactor);
+    this.targetOrthoSize = Math.max(
+      this.MIN_ORTHO_SIZE,
+      Math.min(this.MAX_ORTHO_SIZE, newTarget)
+    );
+  }
+
+
+
+  private updateZoom(deltaMs: number): void {
+    const diff = this.targetOrthoSize - this.orthoSize;
+    if (Math.abs(diff) < 0.001) {
+      this.orthoSize = this.targetOrthoSize;
+      return;
+    }
+    const lerpFactor = 1 - Math.exp(-deltaMs * 0.015);
+    this.orthoSize += diff * lerpFactor;
+    this.babylonEngine.setOrthoSize(this.orthoSize);
   }
 
   private handleEditorToggle(): void {
@@ -1968,13 +2241,8 @@ export class BabylonMain {
     this.terrainEditorSystem?.setTool(tool);
   }
 
-  private handleEditorToolNumber(toolNumber: number): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    const tools: EditorTool[] = ["raise", "lower", "flatten", "smooth"];
-    if (toolNumber >= 1 && toolNumber <= tools.length) {
-      this.terrainEditorSystem.setTool(tools[toolNumber - 1]);
-    }
+  private handleEditorToolNumber(_toolNumber: number): void {
+    // Legacy elevation tools (1-4) are disabled
   }
 
   private handleEditorBrushSelect(brush: string): void {
@@ -2018,9 +2286,10 @@ export class BabylonMain {
   private handleMouseMove(screenX: number, screenY: number): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
 
-    const gridPos = this.screenToGridFromScreen(screenX, screenY);
-    if (gridPos) {
-      this.terrainEditorSystem.handleMouseMove(gridPos.x, gridPos.y);
+    const result = this.screenToGridAndWorld(screenX, screenY);
+    if (result) {
+      const worldPos = result.worldPos ? new Vector3(result.worldPos.x, 0, result.worldPos.z) : undefined;
+      this.terrainEditorSystem.handleMouseMove(result.gridX, result.gridY, worldPos, result.uv);
 
       const hoverInfo = this.terrainEditorSystem.getHoverInfo();
       if (hoverInfo) {
@@ -2036,26 +2305,142 @@ export class BabylonMain {
     }
   }
 
+  private screenToGridAndWorld(
+    screenX: number,
+    screenY: number
+): { gridX: number; gridY: number; worldPos?: { x: number; z: number }; uv?: Vector2 | null } | null {
+    const scene = this.babylonEngine.getScene();
+    const canvas = scene.getEngine().getRenderingCanvas();
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const canvasX = (screenX - rect.left) * scaleX;
+    const canvasY = (screenY - rect.top) * scaleY;
+
+    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
+      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "vectorTerrain";
+    });
+
+    if (pickResult?.hit && pickResult.pickedPoint) {
+      const worldX = pickResult.pickedPoint.x;
+      const worldZ = pickResult.pickedPoint.z;
+      const res = this.terrainSystem.getResolution?.() ?? 1;
+      const gridX = Math.floor(worldX * res);
+      const gridY = Math.floor(worldZ * res);
+
+      const course = this.currentCourse;
+      const isInBounds = gridX >= 0 && gridX < course.width * res && gridY >= 0 && gridY < course.height * res;
+
+      if (!isInBounds && !this.terrainEditorSystem?.isEnabled()) {
+        return null;
+      }
+
+      return { gridX, gridY, worldPos: { x: worldX, z: worldZ }, uv: pickResult.getTextureCoordinates() };
+    }
+
+    const camera = this.babylonEngine.getCamera();
+    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
+
+    if (ray.direction.y === 0) return null;
+
+    const t = -ray.origin.y / ray.direction.y;
+    if (t < 0) return null;
+
+    const groundX = ray.origin.x + ray.direction.x * t;
+    const groundZ = ray.origin.z + ray.direction.z * t;
+
+    const gridX = Math.floor(groundX);
+    const gridY = Math.floor(groundZ);
+
+    const course = this.currentCourse;
+    const isInBounds = gridX >= 0 && gridX < course.width && gridY >= 0 && gridY < course.height;
+
+    if (!isInBounds && !this.terrainEditorSystem?.isEnabled()) {
+      return null;
+    }
+
+    return { gridX, gridY, worldPos: { x: groundX, z: groundZ }, uv: null };
+  }
+
   private handleDragStart(screenX: number, screenY: number): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
 
-    const gridPos = this.screenToGridFromScreen(screenX, screenY);
-    if (gridPos) {
-      this.terrainEditorSystem.handleDragStart(gridPos.x, gridPos.y);
+    this.handleMouseMove(screenX, screenY);
+
+    const result = this.screenToGridAndWorld(screenX, screenY);
+    if (!result) return;
+
+    if (this.terrainEditorSystem.isHoveredElementSelected()) {
+      if (result.worldPos) {
+        this.terrainEditorSystem.handleVertexMoveStart(result.worldPos.x, result.worldPos.z, screenY);
+      }
+      return;
     }
+
+    this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY, screenY);
   }
 
   private handleDrag(screenX: number, screenY: number): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
 
-    const gridPos = this.screenToGridFromScreen(screenX, screenY);
-    if (gridPos) {
-      this.terrainEditorSystem.handleDrag(gridPos.x, gridPos.y);
+    if (this.terrainEditorSystem.isMovingSelectedVertices()) {
+      const worldPos = this.screenToWorldPosition(screenX, screenY);
+      if (worldPos) {
+        this.terrainEditorSystem.handleVertexMoveDrag(worldPos.x, worldPos.z, screenY);
+      }
+      return;
     }
+
+    const result = this.screenToGridAndWorld(screenX, screenY);
+    if (!result) return;
+
+    this.terrainEditorSystem.handleDrag(result.gridX, result.gridY, screenY);
+  }
+
+  private screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null {
+    const scene = this.babylonEngine.getScene();
+    const canvas = scene.getEngine().getRenderingCanvas();
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const canvasX = (screenX - rect.left) * scaleX;
+    const canvasY = (screenY - rect.top) * scaleY;
+
+    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
+      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "vectorTerrain";
+    });
+
+    if (pickResult?.hit && pickResult.pickedPoint) {
+      return { x: pickResult.pickedPoint.x, z: pickResult.pickedPoint.z };
+    }
+
+    const camera = this.babylonEngine.getCamera();
+    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
+
+    if (ray.direction.y === 0) return null;
+
+    const t = -ray.origin.y / ray.direction.y;
+    if (t < 0) return null;
+
+    return {
+      x: ray.origin.x + ray.direction.x * t,
+      z: ray.origin.z + ray.direction.z * t,
+    };
   }
 
   private handleDragEnd(): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
+
+    if (this.terrainEditorSystem.isMovingSelectedVertices()) {
+      this.terrainEditorSystem.handleVertexMoveEnd();
+      this.updateVertexPositionDisplay();
+      return;
+    }
+
     this.terrainEditorSystem.handleDragEnd();
   }
 
@@ -2093,14 +2478,26 @@ export class BabylonMain {
     );
 
     this.babylonEngine.getScene().onBeforeRenderObservable.add(() => {
-      if (this.isPaused) {
-        this.lastTime = performance.now();
-        return;
-      }
-
       const now = performance.now();
       const deltaMs = now - this.lastTime;
       this.lastTime = now;
+
+      this.updateZoom(deltaMs);
+
+      if (this.isPaused) {
+        return;
+      }
+
+      if (this.terrainEditorPausedGame) {
+        // Still update terrain system with 0 delta to process dirty flags (live updates)
+        this.terrainSystem.update(0, this.gameDay * 1440 + this.gameTime, this.weather);
+
+        // Allow editor camera movement even when game is paused
+        if (this.terrainEditorSystem?.isEnabled()) {
+          this.updateEditorCamera(deltaMs);
+        }
+        return;
+      }
 
       this.updateMovement(deltaMs);
 

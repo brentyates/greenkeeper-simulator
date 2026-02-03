@@ -385,12 +385,15 @@ export function generateSDFFromGrid(
 
       const idx = (py * texWidth + px) * 4;
 
+      const resX = gridWidth / worldWidth;
+      const resY = gridHeight / worldHeight;
+
       // Calculate SDF for each terrain type from grid
-      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance);
-      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance);
-      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance);
-      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance);
-      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance);
+      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance, resX, resY);
+      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance, resX, resY);
+      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance, resX, resY);
+      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance, resX, resY);
+      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance, resX, resY);
 
       // Encode distances to 0-255 range
       combinedData[idx + 0] = encodeDistance(fairwayDist, opts.maxDistance);
@@ -468,11 +471,14 @@ export function updateSDFFromGrid(
       const worldY = (py + 0.5) * scale;
       const idx = (py * texWidth + px) * 4;
 
-      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance);
-      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance);
-      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance);
-      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance);
-      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance);
+      const resX = gridWidth / _worldWidth;
+      const resY = gridHeight / _worldHeight;
+
+      const fairwayDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.FAIRWAY, opts.maxDistance, resX, resY);
+      const greenDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.GREEN, opts.maxDistance, resX, resY);
+      const bunkerDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.BUNKER, opts.maxDistance, resX, resY);
+      const waterDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.WATER, opts.maxDistance, resX, resY);
+      const teeDist = getGridSignedDistance(worldX, worldY, layout, gridWidth, gridHeight, GRID_TERRAIN.TEE, opts.maxDistance, resX, resY);
 
       combinedData[idx + 0] = encodeDistance(fairwayDist, opts.maxDistance);
       combinedData[idx + 1] = encodeDistance(greenDist, opts.maxDistance);
@@ -502,128 +508,43 @@ function getGridSignedDistance(
   gridWidth: number,
   gridHeight: number,
   targetType: GridTerrainCode,
-  maxDistance: number
+  maxDistance: number,
+  resX: number = 1,
+  resY: number = 1
 ): number {
   // Get the grid cell we're in
-  const cellX = Math.floor(worldX);
-  const cellY = Math.floor(worldY);
+  const cellX = Math.floor(worldX * resX);
+  const cellY = Math.floor(worldY * resY);
 
   // Check if current cell is the target type
   const currentType = layout[cellY]?.[cellX] ?? GRID_TERRAIN.ROUGH;
   const isInside = currentType === targetType;
 
-  // Search radius (in cells) - based on maxDistance
-  const searchRadius = Math.ceil(maxDistance) + 1;
+  let minDist = maxDistance;
+  const searchRadiusX = Math.ceil(maxDistance * resX);
+  const searchRadiusY = Math.ceil(maxDistance * resY);
 
-  let minDistSq = maxDistance * maxDistance;
-
-  // Search nearby cells for boundaries
-  for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-    for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+  for (let dy = -searchRadiusY; dy <= searchRadiusY; dy++) {
+    for (let dx = -searchRadiusX; dx <= searchRadiusX; dx++) {
       const nx = cellX + dx;
       const ny = cellY + dy;
 
-      // Skip out of bounds
-      if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+      if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+        const neighborType = layout[ny][nx];
+        const neighborIsTarget = neighborType === targetType;
 
-      const neighborType = layout[ny]?.[nx] ?? GRID_TERRAIN.ROUGH;
-      const neighborIsTarget = neighborType === targetType;
-
-      // If this cell differs from what we want, check distance to its edges
-      if (neighborIsTarget !== isInside) {
-        // Find distance to the boundary between this cell and neighbors
-        // We need to find the closest point on the edge of the target region
-
-        // Check all 4 edges of this cell for potential boundary
-        const edges = getTargetEdges(nx, ny, layout, gridWidth, gridHeight, targetType);
-
-        for (const edge of edges) {
-          const distSq = distanceToEdgeSquared(worldX, worldY, edge);
-          minDistSq = Math.min(minDistSq, distSq);
+        if (neighborIsTarget !== isInside) {
+          // Boundary cell found. Calculate distance to nearest cell edge/center.
+          // For smoothness, we measure distance to the cell center of the nearest differing cell.
+          const centerX = (nx + 0.5) / resX;
+          const centerY = (ny + 0.5) / resY;
+          const dist = Math.sqrt((worldX - centerX) ** 2 + (worldY - centerY) ** 2);
+          if (dist < minDist) minDist = dist;
         }
       }
     }
   }
 
-  const dist = Math.sqrt(minDistSq);
-  return isInside ? -dist : dist;
+  return isInside ? -minDist : minDist;
 }
 
-interface Edge {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
-/**
- * Get edges of a cell that border the target terrain type
- */
-function getTargetEdges(
-  cellX: number,
-  cellY: number,
-  layout: number[][],
-  gridWidth: number,
-  gridHeight: number,
-  targetType: GridTerrainCode
-): Edge[] {
-  const edges: Edge[] = [];
-  const cellType = layout[cellY]?.[cellX] ?? GRID_TERRAIN.ROUGH;
-  const isTarget = cellType === targetType;
-
-  // Check each neighbor - if it differs, there's a boundary edge
-  // North edge
-  const northType = cellY > 0 ? (layout[cellY - 1]?.[cellX] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
-  if ((northType === targetType) !== isTarget) {
-    edges.push({ x1: cellX, y1: cellY, x2: cellX + 1, y2: cellY });
-  }
-
-  // South edge
-  const southType = cellY < gridHeight - 1 ? (layout[cellY + 1]?.[cellX] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
-  if ((southType === targetType) !== isTarget) {
-    edges.push({ x1: cellX, y1: cellY + 1, x2: cellX + 1, y2: cellY + 1 });
-  }
-
-  // West edge
-  const westType = cellX > 0 ? (layout[cellY]?.[cellX - 1] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
-  if ((westType === targetType) !== isTarget) {
-    edges.push({ x1: cellX, y1: cellY, x2: cellX, y2: cellY + 1 });
-  }
-
-  // East edge
-  const eastType = cellX < gridWidth - 1 ? (layout[cellY]?.[cellX + 1] ?? GRID_TERRAIN.ROUGH) : GRID_TERRAIN.ROUGH;
-  if ((eastType === targetType) !== isTarget) {
-    edges.push({ x1: cellX + 1, y1: cellY, x2: cellX + 1, y2: cellY + 1 });
-  }
-
-  return edges;
-}
-
-/**
- * Compute squared distance from point to line segment
- */
-function distanceToEdgeSquared(px: number, py: number, edge: Edge): number {
-  const { x1, y1, x2, y2 } = edge;
-
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lenSq = dx * dx + dy * dy;
-
-  if (lenSq === 0) {
-    // Degenerate edge (point)
-    const ddx = px - x1;
-    const ddy = py - y1;
-    return ddx * ddx + ddy * ddy;
-  }
-
-  // Project point onto line, clamped to segment
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
-
-  const closestX = x1 + t * dx;
-  const closestY = y1 + t * dy;
-
-  const ddx = px - closestX;
-  const ddy = py - closestY;
-
-  return ddx * ddx + ddy * ddy;
-}

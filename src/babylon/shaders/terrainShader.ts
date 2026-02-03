@@ -12,6 +12,7 @@ precision highp float;
 attribute vec3 position;
 attribute vec3 normal;
 attribute vec2 uv;
+attribute float terrainType;
 
 // Uniforms
 uniform mat4 world;
@@ -22,6 +23,7 @@ varying vec3 vPosition;
 varying vec3 vNormal;
 varying vec2 vUV;
 varying vec3 vWorldPosition;
+varying float vTerrainType;
 
 void main() {
   vec4 worldPos = world * vec4(position, 1.0);
@@ -29,6 +31,7 @@ void main() {
   vPosition = position;
   vNormal = normalize((world * vec4(normal, 0.0)).xyz);
   vUV = uv;
+  vTerrainType = terrainType;
 
   gl_Position = worldViewProjection * vec4(position, 1.0);
 }
@@ -42,18 +45,16 @@ varying vec3 vPosition;
 varying vec3 vNormal;
 varying vec2 vUV;
 varying vec3 vWorldPosition;
+varying float vTerrainType;
 
-// SDF Textures
-uniform sampler2D sdfCombined;  // R=fairway, G=green, B=bunker, A=water
-uniform sampler2D sdfTee;       // R=tee
+// SDF Textures (Kept for compatibility/overlays, but primary type comes from attribute)
 uniform sampler2D healthData;   // R=moisture, G=nutrients, B=height, A=health
 
 // Parameters
-uniform vec2 worldSize;         // World dimensions for UV calculation
-uniform float time;             // For water animation
-uniform float edgeBlend;        // Edge blend width (world units)
-uniform float maxSdfDistance;   // Max encoded SDF distance
-uniform float overlayMode;      // 0=normal, 1=moisture, 2=nutrients, 3=height, 4=health
+uniform vec2 worldSize;
+uniform float time;
+uniform float edgeBlend;
+uniform float overlayMode;
 
 // Terrain colors
 uniform vec3 roughColor;
@@ -65,30 +66,31 @@ uniform vec3 waterDeepColor;
 uniform vec3 teeColor;
 
 // Feature toggles
-uniform float enableStripes;    // Mowing stripes on fairway
-uniform float enableNoise;      // Grass noise variation
-uniform float enableWaterAnim;  // Water animation
+uniform float enableStripes;
+uniform float enableNoise;
+uniform float enableWaterAnim;
 
 // Constants
 const float PI = 3.14159265359;
+const float CODE_FAIRWAY = 0.0;
+const float CODE_ROUGH = 1.0;
+const float CODE_GREEN = 2.0;
+const float CODE_BUNKER = 3.0;
+const float CODE_WATER = 4.0;
+const float CODE_TEE = 5.0;
 
-//
-// Noise functions for procedural detail
-//
+// ... (noise functions omitted for brevity, assuming they are unchanged - Need to include them if I replace the whole string)
+// Actually I need to replace only the relevant parts or the whole string if I can't target specifically.
 
-// Hash function for pseudo-random values
+// Hash function
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
-// Value noise
 float noise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
-
-  // Smooth interpolation
   vec2 u = f * f * (3.0 - 2.0 * f);
-
   return mix(
     mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
@@ -96,248 +98,143 @@ float noise(vec2 p) {
   );
 }
 
-// Fractal Brownian Motion for organic-looking noise
-// Note: WebGL 1.0 doesn't support non-constant loop bounds well,
-// so we use a fixed 3 octaves which is sufficient for grass detail
 float fbm(vec2 p) {
   float value = 0.0;
   float amplitude = 0.5;
-
   value += amplitude * noise(p);
   amplitude *= 0.5;
   value += amplitude * noise(p * 2.0);
   amplitude *= 0.5;
   value += amplitude * noise(p * 4.0);
-
   return value;
 }
 
-//
-// SDF helpers
-//
-
-// Decode SDF value from texture (0-255 encoded as 0-1)
-float decodeSDF(float encoded) {
-  return (encoded * 2.0 - 1.0) * maxSdfDistance;
-}
-
-// Smooth edge mask from SDF
-// Returns 0 outside, 1 inside, smooth transition at edge
-float sdfMask(float sdfValue, float blendWidth) {
-  return 1.0 - smoothstep(-blendWidth, blendWidth, sdfValue);
-}
-
-// Sharp edge mask (no blending)
-float sdfMaskSharp(float sdfValue) {
-  return sdfValue < 0.0 ? 1.0 : 0.0;
-}
-
-//
 // Procedural detail functions
-//
-
-// Mowing stripes effect
 float mowingStripes(vec2 worldPos, float stripeWidth, float intensity) {
-  // Horizontal stripes (along X axis)
   float stripe = sin(worldPos.y * PI / stripeWidth);
-  // Smooth the stripe edges
   stripe = smoothstep(-0.3, 0.3, stripe);
   return stripe * intensity;
 }
 
-// Grass variation noise
 vec3 grassNoise(vec2 worldPos, vec3 baseColor, float intensity) {
-  // Multi-octave noise for natural variation
   float n = fbm(worldPos * 8.0);
-  n = n * 2.0 - 1.0; // Center around 0
-
-  // Apply mostly to green channel for grass
+  n = n * 2.0 - 1.0;
   return baseColor + vec3(n * 0.3, n * 1.0, n * 0.2) * intensity;
 }
 
-// Bunker sand grain
 vec3 sandGrain(vec2 worldPos, vec3 baseColor) {
-  // High frequency noise for individual grains
   float grain = noise(worldPos * 50.0) - 0.5;
-  // Lower frequency for larger patterns
   float pattern = fbm(worldPos * 5.0) - 0.5;
-
   return baseColor + vec3(grain * 0.08 + pattern * 0.05);
 }
 
-// Water animation
-vec3 waterEffect(vec2 worldPos, vec3 shallowColor, vec3 deepColor, float distFromShore, float time) {
-  // Depth-based color
-  float depthFactor = smoothstep(0.0, 3.0, -distFromShore);
-  vec3 baseWater = mix(shallowColor, deepColor, depthFactor);
-
-  // Animated waves
+vec3 waterEffect(vec2 worldPos, vec3 waterColor, vec3 deepColor, float distFromShore, float time) {
+  vec3 baseWater = waterColor;
   float wave1 = sin(worldPos.x * 3.0 + time * 2.0) * 0.5 + 0.5;
   float wave2 = sin(worldPos.y * 4.0 + time * 1.5 + 1.0) * 0.5 + 0.5;
   float wave = (wave1 + wave2) * 0.5;
-
-  // Caustics pattern (simplified)
-  float caustic = noise(worldPos * 8.0 + time * 0.5);
-  caustic = pow(caustic, 3.0) * 0.3;
-
-  // Combine effects
-  vec3 waterFinal = baseWater;
-  waterFinal += vec3(0.05, 0.08, 0.1) * wave * 0.5;
-  waterFinal += vec3(0.1, 0.15, 0.2) * caustic;
-
-  // Subtle shimmer
-  float shimmer = noise(worldPos * 20.0 + time * 3.0);
-  waterFinal += vec3(shimmer * 0.03);
-
+  vec3 waterFinal = baseWater + vec3(0.02, 0.03, 0.04) * wave;
+  float shimmer = noise(worldPos * 15.0 + time * 2.0);
+  waterFinal += vec3(shimmer * 0.02);
   return waterFinal;
 }
 
-//
-// Main shader
-//
-
 void main() {
-  // Calculate UV for SDF sampling based on world position
-  vec2 sdfUV = vWorldPosition.xz / worldSize;
+  vec2 sdfUV = vUV; // Kept for overlays
 
-  // Clamp UVs to valid range
-  sdfUV = clamp(sdfUV, 0.0, 1.0);
+  // Determine masks based on vTerrainType attribute
+  // We use a small epsilon for float comparison logic
+  float type = floor(vTerrainType + 0.5);
 
-  // Sample SDF textures
-  vec4 sdfCombinedSample = texture2D(sdfCombined, sdfUV);
-  vec4 sdfTeeSample = texture2D(sdfTee, sdfUV);
+  float fairwayMask = (abs(type - CODE_FAIRWAY) < 0.1) ? 1.0 : 0.0;
+  float greenMask = (abs(type - CODE_GREEN) < 0.1) ? 1.0 : 0.0;
+  float bunkerMask = (abs(type - CODE_BUNKER) < 0.1) ? 1.0 : 0.0;
+  float waterMask = (abs(type - CODE_WATER) < 0.1) ? 1.0 : 0.0;
+  float teeMask = (abs(type - CODE_TEE) < 0.1) ? 1.0 : 0.0;
+  // Rough is default/background, or code 1
+  float roughMask = (abs(type - CODE_ROUGH) < 0.1) ? 1.0 : 0.0;
 
-  // Decode SDF values
-  float fairwayDist = decodeSDF(sdfCombinedSample.r);
-  float greenDist = decodeSDF(sdfCombinedSample.g);
-  float bunkerDist = decodeSDF(sdfCombinedSample.b);
-  float waterDist = decodeSDF(sdfCombinedSample.a);
-  float teeDist = decodeSDF(sdfTeeSample.r);
+  // Start with rough as base?
+  // If we have explicit rough mask, we can just mix.
+  // Actually, let's just pick the color directly.
 
-  // Calculate masks with smooth edges
-  float fairwayMask = sdfMask(fairwayDist, edgeBlend);
-  float greenMask = sdfMask(greenDist, edgeBlend);
-  float bunkerMask = sdfMask(bunkerDist, edgeBlend * 0.5); // Sharper bunker edges
-  float waterMask = sdfMask(waterDist, edgeBlend * 1.5);   // Softer water edges
-  float teeMask = sdfMask(teeDist, edgeBlend);
-
-  // Start with rough as base
-  vec3 color = roughColor;
-
-  // Apply grass noise to base if enabled
-  if (enableNoise > 0.5) {
-    color = grassNoise(vWorldPosition.xz, color, 0.03);
+  vec3 color = roughColor; // Default
+  
+  if (roughMask > 0.5) {
+      color = roughColor;
+      if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz, color, 0.03);
+  }
+  else if (fairwayMask > 0.5) {
+      color = fairwayColor;
+      if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz, color, 0.04);
+      if (enableStripes > 0.5) {
+         float stripe = mowingStripes(vWorldPosition.xz, 1.0, 0.08);
+         color = mix(color - vec3(0.04), color + vec3(0.04), stripe);
+      }
+  }
+  else if (greenMask > 0.5) {
+      color = greenColor;
+      if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz * 2.0, color, 0.02);
+      if (enableStripes > 0.5) {
+         float stripe = mowingStripes(vWorldPosition.xz, 0.3, 0.04);
+         color = mix(color - vec3(0.02), color + vec3(0.02), stripe);
+      }
+  }
+  else if (teeMask > 0.5) {
+      color = teeColor;
+      if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz * 1.5, color, 0.03);
+      if (enableStripes > 0.5) {
+         float stripe = mowingStripes(vWorldPosition.xz, 0.5, 0.06);
+         color = mix(color - vec3(0.03), color + vec3(0.03), stripe);
+      }
+  }
+  else if (bunkerMask > 0.5) {
+      color = bunkerColor;
+      color = sandGrain(vWorldPosition.xz, color);
+  }
+  else if (waterMask > 0.5) {
+      color = waterColor;
+      if (enableWaterAnim > 0.5) {
+         // rough approximate dist logic or just uniform
+         float dist = 1.0; 
+         color = waterEffect(vWorldPosition.xz, waterColor, waterDeepColor, dist, time);
+      }
   }
 
-  // Layer terrain types (order matters - later types overlay earlier)
-  // Fairway
-  vec3 fairwayFinal = fairwayColor;
-  if (enableNoise > 0.5) {
-    fairwayFinal = grassNoise(vWorldPosition.xz, fairwayFinal, 0.04);
-  }
-  if (enableStripes > 0.5) {
-    float stripe = mowingStripes(vWorldPosition.xz, 1.0, 0.08);
-    fairwayFinal = mix(fairwayFinal - vec3(0.04), fairwayFinal + vec3(0.04), stripe);
-  }
-  color = mix(color, fairwayFinal, fairwayMask);
-
-  // Tee box
-  vec3 teeFinal = teeColor;
-  if (enableNoise > 0.5) {
-    teeFinal = grassNoise(vWorldPosition.xz * 1.5, teeFinal, 0.03);
-  }
-  if (enableStripes > 0.5) {
-    float stripe = mowingStripes(vWorldPosition.xz, 0.5, 0.06);
-    teeFinal = mix(teeFinal - vec3(0.03), teeFinal + vec3(0.03), stripe);
-  }
-  color = mix(color, teeFinal, teeMask);
-
-  // Green (tightest mowing)
-  vec3 greenFinal = greenColor;
-  if (enableNoise > 0.5) {
-    greenFinal = grassNoise(vWorldPosition.xz * 2.0, greenFinal, 0.02);
-  }
-  if (enableStripes > 0.5) {
-    float stripe = mowingStripes(vWorldPosition.xz, 0.3, 0.04);
-    greenFinal = mix(greenFinal - vec3(0.02), greenFinal + vec3(0.02), stripe);
-  }
-  color = mix(color, greenFinal, greenMask);
-
-  // Bunker (sand texture)
-  vec3 bunkerFinal = bunkerColor;
-  bunkerFinal = sandGrain(vWorldPosition.xz, bunkerFinal);
-  color = mix(color, bunkerFinal, bunkerMask);
-
-  // Water (with animation)
-  vec3 waterFinal = waterColor;
-  if (enableWaterAnim > 0.5) {
-    waterFinal = waterEffect(vWorldPosition.xz, waterColor, waterDeepColor, waterDist, time);
-  }
-  color = mix(color, waterFinal, waterMask);
-
-  // Simple lighting
+  // Lighting
   vec3 lightDir = normalize(vec3(-1.0, 2.0, -1.0));
   float diffuse = max(dot(vNormal, lightDir), 0.0);
-  float ambient = 0.4;
-  float lighting = ambient + diffuse * 0.6;
+  float ambient = 0.5;
+  float lighting = ambient + diffuse * 0.5;
 
   color *= lighting;
 
-  // Subtle elevation-based shading
-  float elevationShade = 1.0 - vWorldPosition.y * 0.02;
-  color *= clamp(elevationShade, 0.9, 1.0);
-
-  // Apply overlay modes
+  // Overlays
   if (overlayMode > 0.5) {
-    // Sample health data texture
-    vec4 healthSample = texture2D(healthData, sdfUV);
-    float moisture = healthSample.r;
-    float nutrients = healthSample.g;
-    float grassHeight = healthSample.b;
-    float health = healthSample.a;
+     vec4 healthSample = texture2D(healthData, sdfUV);
+     float moisture = healthSample.r;
+     float nutrients = healthSample.g;
+     float grassHeight = healthSample.b;
+     float health = healthSample.a;
 
-    vec3 overlayColor = color;
+     vec3 overlayColor = color;
 
-    // Moisture overlay (mode 1) - blue tint
     if (overlayMode > 0.5 && overlayMode < 1.5) {
-      float m = moisture;
-      overlayColor = mix(
-        vec3(0.8, 0.4, 0.2),  // Dry (brown/orange)
-        vec3(0.2, 0.4, 0.8),  // Wet (blue)
-        m
-      );
+      overlayColor = mix(vec3(0.8, 0.4, 0.2), vec3(0.2, 0.4, 0.8), moisture);
     }
-    // Nutrients overlay (mode 2) - purple/green
     else if (overlayMode > 1.5 && overlayMode < 2.5) {
-      float n = nutrients;
-      overlayColor = mix(
-        vec3(0.6, 0.3, 0.5),  // Low nutrients (purple)
-        vec3(0.2, 0.7, 0.3),  // High nutrients (green)
-        n
-      );
+      overlayColor = mix(vec3(0.6, 0.3, 0.5), vec3(0.2, 0.7, 0.3), nutrients);
     }
-    // Height overlay (mode 3) - yellow/green
     else if (overlayMode > 2.5 && overlayMode < 3.5) {
-      float h = grassHeight;
-      overlayColor = mix(
-        vec3(0.3, 0.5, 0.2),  // Short (dark green)
-        vec3(0.7, 0.8, 0.3),  // Tall (yellow-green)
-        h
-      );
+      overlayColor = mix(vec3(0.3, 0.5, 0.2), vec3(0.7, 0.8, 0.3), grassHeight);
     }
-    // Health overlay (mode 4) - red/green
     else if (overlayMode > 3.5) {
-      float hl = health;
-      overlayColor = mix(
-        vec3(0.8, 0.2, 0.2),  // Unhealthy (red)
-        vec3(0.2, 0.8, 0.3),  // Healthy (green)
-        hl
-      );
+      overlayColor = mix(vec3(0.8, 0.2, 0.2), vec3(0.2, 0.8, 0.3), health);
     }
-
-    // Don't apply overlay to water/bunker - mask out non-grass areas
-    float grassMask = 1.0 - max(waterMask, bunkerMask);
-    color = mix(color, overlayColor * lighting, grassMask * 0.7);
+    
+    // Mask out non-grass
+    float grassRatio = 1.0 - max(waterMask, bunkerMask);
+    color = mix(color, overlayColor * lighting, grassRatio * 0.7);
   }
 
   gl_FragColor = vec4(color, 1.0);
