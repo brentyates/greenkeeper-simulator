@@ -4,7 +4,7 @@ import {
 } from "./terrain";
 
 export type EditorMode = 'sculpt' | 'paint';
-export type TopologyMode = 'vertex' | 'edge' | 'face';
+export type TopologyMode = 'vertex' | 'edge' | 'face' | 'none';
 export type SculptTool = 'raise' | 'lower' | 'smooth' | 'flatten' | 'level';
 export type TerrainBrush =
   | 'terrain_fairway'

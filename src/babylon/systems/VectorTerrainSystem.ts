@@ -129,6 +129,7 @@ export class VectorTerrainSystem {
   private hoveredTopologyVertexId: number | null = null;
   private selectedEdgeId: number | null = null;
   private selectedEdgeIds: Set<number> = new Set();
+  private brushHoveredEdgeIds: Set<number> = new Set();
   private edgeHighlightMesh: Mesh | null = null;
   private selectedEdgeHighlightMesh: Mesh | null = null;
   private allEdgesMesh: Mesh | null = null;
@@ -136,6 +137,7 @@ export class VectorTerrainSystem {
   private selectedTopologyVertices: Set<number> = new Set();
   private hoveredFaceId: number | null = null;
   private selectedFaceIds: Set<number> = new Set();
+  private brushHoveredFaceIds: Set<number> = new Set();
   private faceHighlightMesh: Mesh | null = null;
   private faceSpatialIndex: Array<Set<number>> = [];
 
@@ -561,8 +563,7 @@ export class VectorTerrainSystem {
   }
 
   public getWorldDimensions(): { width: number; height: number } {
-    const res = this.options.meshResolution;
-    return { width: this.worldWidth * res, height: this.worldHeight * res };
+    return { width: this.worldWidth, height: this.worldHeight };
   }
 
   public getMeshResolution(): number {
@@ -678,6 +679,11 @@ export class VectorTerrainSystem {
     return this.hoveredEdgeId;
   }
 
+  public setBrushHoveredEdges(edgeIds: number[]): void {
+    this.brushHoveredEdgeIds = new Set(edgeIds);
+    this.updateEdgeHighlight();
+  }
+
   public selectEdge(edgeId: number | null, additive: boolean = false): void {
     if (!additive) {
       this.selectedEdgeIds.clear();
@@ -788,6 +794,7 @@ export class VectorTerrainSystem {
 
     const normalColor = new Color4(0.5, 0.75, 0.5, 0.8);
     const hoveredColor = new Color4(0, 1, 1, 1);
+    const brushHoveredColor = new Color4(0.4, 0.9, 0.9, 0.9);
     const selectedColor = new Color4(1, 0.5, 0, 1);
 
     for (const [edgeId, edge] of this.topology.edges) {
@@ -805,6 +812,8 @@ export class VectorTerrainSystem {
         color = selectedColor;
       } else if (edgeId === this.hoveredEdgeId) {
         color = hoveredColor;
+      } else if (this.brushHoveredEdgeIds.has(edgeId)) {
+        color = brushHoveredColor;
       }
 
       colors.push([color, color]);
@@ -969,12 +978,14 @@ export class VectorTerrainSystem {
     if (mode === 'edge') {
       this.createAllEdgesMesh();
     } else {
+      this.brushHoveredEdgeIds.clear();
       this.deselectAllEdges();
       this.clearAllEdgesMesh();
     }
 
     // Handle Face Mode Logic
     if (mode !== 'face') {
+        this.brushHoveredFaceIds.clear();
         this.clearFaceHighlight();
     }
 
@@ -997,6 +1008,11 @@ export class VectorTerrainSystem {
 
   public getHoveredFace(): number | null {
     return this.hoveredFaceId;
+  }
+
+  public setBrushHoveredFaces(faceIds: number[]): void {
+    this.brushHoveredFaceIds = new Set(faceIds);
+    this.rebuildFaceHighlightMesh();
   }
 
   public selectFace(faceId: number, additive: boolean = false): void {
@@ -1197,11 +1213,15 @@ export class VectorTerrainSystem {
     const lineOffset = 0.03;
 
     const hoveredColor = new Color4(1, 1, 0, 0.4);
+    const brushHoveredColor = new Color4(0.8, 0.9, 0.3, 0.3);
     const selectedColor = new Color4(0, 1, 1, 0.5);
 
     const facesToRender = new Set<number>(this.selectedFaceIds);
     if (this.hoveredFaceId !== null && !this.selectedFaceIds.has(this.hoveredFaceId)) {
       facesToRender.add(this.hoveredFaceId);
+    }
+    for (const faceId of this.brushHoveredFaceIds) {
+      facesToRender.add(faceId);
     }
 
     let vertexIndex = 0;
@@ -1215,7 +1235,12 @@ export class VectorTerrainSystem {
 
       if (!v0 || !v1 || !v2) continue;
 
-      const color = this.selectedFaceIds.has(faceId) ? selectedColor : hoveredColor;
+      let color = brushHoveredColor;
+      if (this.selectedFaceIds.has(faceId)) {
+        color = selectedColor;
+      } else if (faceId === this.hoveredFaceId) {
+        color = hoveredColor;
+      }
 
       positions.push(v0.position.x, v0.position.y * HEIGHT_UNIT + lineOffset, v0.position.z);
       positions.push(v1.position.x, v1.position.y * HEIGHT_UNIT + lineOffset, v1.position.z);
@@ -2153,6 +2178,7 @@ export class VectorTerrainSystem {
       }
     }
     this.shapesDirty = true;
+    this.meshDirty = true;
   }
 
   public rebuildTileAndNeighbors(_x: number, _y: number): void {

@@ -579,6 +579,10 @@ export class BabylonMain {
         subdivideSelectedEdge: () => vts.subdivideSelectedEdge(),
         flipSelectedEdge: () => vts.flipSelectedEdge(),
         collapseEdge: (edgeId) => vts.collapseEdge(edgeId),
+        getEdgesInBrush: (x, z, r) => vts.getEdgesInBrush(x, z, r),
+        setBrushHoveredEdges: (edgeIds) => vts.setBrushHoveredEdges(edgeIds),
+        getFacesInBrush: (x, z, r) => vts.getFacesInBrush(x, z, r),
+        setBrushHoveredFaces: (faceIds) => vts.setBrushHoveredFaces(faceIds),
       });
       this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
     } else {
@@ -1618,11 +1622,9 @@ export class BabylonMain {
   private updateEditorCamera(deltaMs: number): void {
     const camera = this.babylonEngine.getCamera();
     const orthoSize = this.babylonEngine.getOrthoSize();
-    
-    // Scale speed with zoom level: fast when zoomed out, slow when zoomed in
-    const speed = orthoSize * 1.5; 
+
+    const speed = orthoSize * 1.5;
     const moveDist = (speed * deltaMs) / 1000;
-    const target = this.babylonEngine.getCameraTarget();
 
     const input = {
       up: this.isDirectionKeyHeld('up'),
@@ -1633,36 +1635,25 @@ export class BabylonMain {
 
     if (!input.up && !input.down && !input.left && !input.right) return;
 
-    // Calculate view-relative flattened vectors
-    // Get camera directional vectors
     const forward = camera.getDirection(Vector3.Forward());
     const right = camera.getDirection(Vector3.Right());
 
-    // Flatten to XZ plane (ignore Y component for ground movement)
     forward.y = 0;
     forward.normalize();
-    
-    right.y = 0; 
+    right.y = 0;
     right.normalize();
 
-    // Scale vectors by move distance
-    forward.scaleInPlace(moveDist);
-    right.scaleInPlace(moveDist);
+    const delta = Vector3.Zero();
 
-    if (input.up) {
-      target.addInPlace(forward);
-    }
-    if (input.down) {
-      target.subtractInPlace(forward);
-    }
-    if (input.right) {
-      target.addInPlace(right);
-    }
-    if (input.left) {
-      target.subtractInPlace(right);
-    }
+    if (input.up) delta.addInPlace(forward);
+    if (input.down) delta.subtractInPlace(forward);
+    if (input.right) delta.addInPlace(right);
+    if (input.left) delta.subtractInPlace(right);
 
-    this.babylonEngine.setCameraTarget(target);
+    delta.scaleInPlace(moveDist);
+
+    camera.target.addInPlace(delta);
+    camera.position.addInPlace(delta);
   }
 
   private updatePlayerVisualProgress(deltaMs: number): void {
