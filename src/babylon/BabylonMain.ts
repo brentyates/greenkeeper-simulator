@@ -580,6 +580,7 @@ export class BabylonMain {
         flipSelectedEdge: () => vts.flipSelectedEdge(),
         collapseEdge: (edgeId) => vts.collapseEdge(edgeId),
       });
+      this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
     } else {
       this.terrainEditorSystem.setTerrainModifier(baseModifier);
     }
@@ -597,6 +598,7 @@ export class BabylonMain {
       onUndo: () => this.handleEditorUndo(),
       onRedo: () => this.handleEditorRedo(),
       onBrushSizeChange: (delta: number) => this.handleEditorBrushSize(delta),
+      onBrushStrengthChange: (strength: number) => this.handleEditorBrushStrength(strength),
       onSelectAll: () => this.terrainEditorSystem?.selectAllVertices(),
       onDeselectAll: () => this.terrainEditorSystem?.deselectAllVertices(),
       onAxisChange: (axis) => {
@@ -604,7 +606,7 @@ export class BabylonMain {
         this.terrainEditorUI?.setActiveAxis(axis);
       },
       onMoveBy: (dx, dy, dz) => {
-        this.terrainEditorSystem?.moveSelectedVerticesBy(dx, dy, dz);
+        this.terrainEditorSystem?.moveSelectedVerticesBy({ x: dx, y: dy, z: dz });
         this.updateVertexPositionDisplay();
       },
       onTopologyModeChange: (mode) => {
@@ -1383,8 +1385,8 @@ export class BabylonMain {
       onZoom: (delta: number) => this.handleZoom(delta),
       onDebugReload: () => this.handleDebugReload(),
       onDebugExport: () => this.handleDebugExport(),
-      onClick: (screenX: number, screenY: number, shiftKey?: boolean) =>
-        this.handleClick(screenX, screenY, shiftKey),
+      onClick: (screenX: number, screenY: number) =>
+        this.handleClick(screenX, screenY),
 
       // Terrain editor - use public API where available
       onEditorToggle: () => {
@@ -1396,6 +1398,8 @@ export class BabylonMain {
         this.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>
         this.handleEditorBrushSize(delta),
+      onEditorBrushStrengthChange: (delta: number) =>
+        this.handleEditorBrushStrengthDelta(delta),
 
       onUndo: () => {
         this.undoTerrainEdit();
@@ -1779,16 +1783,15 @@ export class BabylonMain {
     }
   }
 
-  private handleClick(screenX: number, screenY: number, shiftKey?: boolean): void {
+  private handleClick(screenX: number, screenY: number): void {
     if (this.isPaused) return;
 
     if (this.terrainEditorSystem?.isEnabled()) {
       this.handleMouseMove(screenX, screenY);
 
-      if (this.terrainEditorSystem.getMode() === 'paint') {
-        this.terrainEditorSystem.handleClick(shiftKey);
-      } else {
-        this.terrainEditorSystem.handleSelectionClick(shiftKey ?? false);
+      const result = this.screenToGridAndWorld(screenX, screenY);
+      if (result) {
+        this.terrainEditorSystem.handleClick(result.gridX, result.gridY);
       }
       return;
     }
@@ -2239,6 +2242,7 @@ export class BabylonMain {
 
   private handleEditorToolSelect(tool: EditorTool): void {
     this.terrainEditorSystem?.setTool(tool);
+    this.updateEditorCursor();
   }
 
   private handleEditorToolNumber(_toolNumber: number): void {
@@ -2250,11 +2254,49 @@ export class BabylonMain {
 
     if (brush.startsWith("terrain_")) {
       this.terrainEditorSystem.setTool(brush as EditorTool);
+      this.updateEditorCursor();
+    }
+  }
+
+  private updateEditorCursor(): void {
+    if (!this.terrainEditorSystem?.isEnabled()) {
+      const canvas = this.babylonEngine.getScene().getEngine().getRenderingCanvas();
+      if (canvas) canvas.style.cursor = "default";
+      return;
+    }
+
+    const mode = this.terrainEditorSystem.getMode();
+    const tool = this.terrainEditorSystem.getActiveTool();
+    const canvas = this.babylonEngine.getScene().getEngine().getRenderingCanvas();
+    if (!canvas) return;
+
+    if (mode === 'paint') {
+      canvas.style.cursor = "crosshair";
+    } else if (tool === 'raise' || tool === 'lower') {
+      canvas.style.cursor = "ns-resize";
+    } else if (tool === 'smooth') {
+        canvas.style.cursor = "wait"; // Or a custom circle if we had one
+    } else {
+      canvas.style.cursor = "move";
     }
   }
 
   private handleEditorBrushSize(delta: number): void {
-    this.terrainEditorSystem?.changeBrushSize(delta);
+    if (!this.terrainEditorSystem) return;
+    this.terrainEditorSystem.changeBrushSize(delta);
+    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
+  }
+
+  private handleEditorBrushStrength(strength: number): void {
+    if (!this.terrainEditorSystem) return;
+    this.terrainEditorSystem.setBrushStrength(strength);
+    this.terrainEditorUI?.setBrushStrength(this.terrainEditorSystem.getBrushStrength());
+  }
+
+  private handleEditorBrushStrengthDelta(delta: number): void {
+    if (!this.terrainEditorSystem) return;
+    const current = this.terrainEditorSystem.getBrushStrength();
+    this.handleEditorBrushStrength(current + delta);
   }
 
   private handleEditorUndo(): void {
@@ -2289,7 +2331,7 @@ export class BabylonMain {
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (result) {
       const worldPos = result.worldPos ? new Vector3(result.worldPos.x, 0, result.worldPos.z) : undefined;
-      this.terrainEditorSystem.handleMouseMove(result.gridX, result.gridY, worldPos, result.uv);
+      this.terrainEditorSystem.handleMouseMove(result.gridX, result.gridY, worldPos);
 
       const hoverInfo = this.terrainEditorSystem.getHoverInfo();
       if (hoverInfo) {
@@ -2372,14 +2414,14 @@ export class BabylonMain {
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (!result) return;
 
-    if (this.terrainEditorSystem.isHoveredElementSelected()) {
+    if (this.terrainEditorSystem.isHoveredElementSelected() && !this.terrainEditorSystem.isSculptBrushActive()) {
       if (result.worldPos) {
         this.terrainEditorSystem.handleVertexMoveStart(result.worldPos.x, result.worldPos.z, screenY);
       }
       return;
     }
 
-    this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY, screenY);
+    this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY);
   }
 
   private handleDrag(screenX: number, screenY: number): void {
@@ -2396,7 +2438,7 @@ export class BabylonMain {
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (!result) return;
 
-    this.terrainEditorSystem.handleDrag(result.gridX, result.gridY, screenY);
+    this.terrainEditorSystem.handleDrag(result.gridX, result.gridY);
   }
 
   private screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null {
@@ -3743,6 +3785,9 @@ export class BabylonMain {
       terrain_fairway: "terrain_fairway",
       terrain_bunker: "terrain_bunker",
       terrain_water: "terrain_water",
+      terrain_rough: "terrain_rough",
+      terrain_green: "terrain_green",
+      terrain_tee: "terrain_tee",
     };
 
     const editorTool = toolMap[tool];
@@ -3753,7 +3798,7 @@ export class BabylonMain {
 
   /**
    * Set terrain editor brush size.
-   * @param size - 1, 2, or 3
+   * @param size - world diameter in meters
    */
   public setEditorBrushSize(size: number): void {
     if (this.terrainEditorSystem) {
@@ -3775,7 +3820,7 @@ export class BabylonMain {
     // TILE_SIZE is 1, CORNER_THRESHOLD is 0.25, so we use 0.1 to be safely in the corner
     const worldPos = new Vector3(gridX + 0.1, 0, gridY + 0.1);
     this.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
-    this.terrainEditorSystem.handleClick();
+    this.terrainEditorSystem.handleClick(gridX, gridY);
   }
 
   /**
@@ -3786,15 +3831,14 @@ export class BabylonMain {
    */
   public dragTerrainStart(
     gridX: number,
-    gridY: number,
-    screenY?: number
+    gridY: number
   ): void {
     if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
       return;
     }
 
     this.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.terrainEditorSystem.handleDragStart(gridX, gridY, screenY);
+    this.terrainEditorSystem.handleDragStart(gridX, gridY);
   }
 
   /**
@@ -3803,13 +3847,13 @@ export class BabylonMain {
    * @param gridY - Grid Y coordinate
    * @param screenY - Optional screen Y coordinate for vertical drag
    */
-  public dragTerrainMove(gridX: number, gridY: number, screenY?: number): void {
+  public dragTerrainMove(gridX: number, gridY: number): void {
     if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
       return;
     }
 
     this.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.terrainEditorSystem.handleDrag(gridX, gridY, screenY);
+    this.terrainEditorSystem.handleDrag(gridX, gridY);
   }
 
   /**
@@ -4651,8 +4695,8 @@ export class BabylonMain {
       enabled: this.terrainEditorSystem.isEnabled(),
       tool: this.terrainEditorSystem.getCurrentTool(),
       brushSize: this.terrainEditorSystem.getBrushSize(),
-      canUndo: this.terrainEditorSystem.canUndo(),
-      canRedo: this.terrainEditorSystem.canRedo(),
+      canUndo: this.terrainEditorSystem.canUndo,
+      canRedo: this.terrainEditorSystem.canRedo,
     };
   }
 

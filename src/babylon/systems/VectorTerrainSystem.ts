@@ -22,6 +22,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { Ray } from "@babylonjs/core/Culling/ray";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
@@ -46,7 +47,7 @@ import { HEIGHT_UNIT } from "../engine/BabylonEngine";
 import { CourseData } from "../../data/courseData";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CellState, TerrainType, getTerrainType, getTerrainCode, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode } from "../../core/terrain";
-import { TopologyMode } from "../../core/terrain-editor-logic";
+import { TopologyMode, getFacesInBrush, getEdgesInBrush } from "../../core/terrain-editor-logic";
 import { simulateGrowth, applyMowing, applyWatering, applyFertilizing, getAverageStats, WeatherEffect } from "../../core/grass-simulation";
 import {
   TerrainMeshTopology,
@@ -472,14 +473,39 @@ export class VectorTerrainSystem {
   public setVertexElevations(changes: Array<{ vx: number; vy: number; z: number }>): void {
     if (!this.topology) return;
 
+    let foundCount = 0;
+    let failCount = 0;
+    
+    // Diagnostic log for large modifications
+    if (changes.length > 5) {
+      console.log(`[VectorTerrainSystem] setVertexElevations: changes=${changes.length}, gridToVertexId size=${this.gridToVertexId.size}`);
+    }
+
     for (const change of changes) {
-      const vertexId = this.getTopologyVertexIdForGrid(change.vx, change.vy);
-      if (vertexId === null) continue;
+      // Robust rounding to avoid precision issues in string key
+      const vx = Math.round(change.vx);
+      const vy = Math.round(change.vy);
+      const vertexId = this.getTopologyVertexIdForGrid(vx, vy);
+      
+      if (vertexId === null) {
+        if (failCount < 5) {
+          console.log(`[VectorTerrainSystem] lookup failed for vx=${vx} (${change.vx}), vy=${vy} (${change.vy})`);
+        }
+        failCount++;
+        continue;
+      }
 
       const vertex = this.topology.vertices.get(vertexId);
       if (vertex) {
         vertex.position.y = change.z;
+        foundCount++;
+      } else {
+        failCount++;
       }
+    }
+    
+    if (changes.length > 1) {
+      console.log(`[VectorTerrainSystem] setVertexElevations: total_changes=${changes.length}, found=${foundCount}, failed=${failCount}`);
     }
     this.meshDirty = true;
   }
@@ -539,6 +565,10 @@ export class VectorTerrainSystem {
     return { width: this.worldWidth * res, height: this.worldHeight * res };
   }
 
+  public getMeshResolution(): number {
+    return this.options.meshResolution;
+  }
+
   public getVertexPositionsGrid(): Vec3[][] {
     if (!this.topology) return this.vertexPositions;
 
@@ -556,6 +586,32 @@ export class VectorTerrainSystem {
       }
     }
     return result;
+  }
+
+  public getFacesInBrush(worldX: number, worldZ: number, radius: number): number[] {
+    if (!this.topology) return [];
+    return getFacesInBrush(worldX, worldZ, radius, this.topology);
+  }
+
+  public getEdgesInBrush(worldX: number, worldZ: number, radius: number): number[] {
+    if (!this.topology) return [];
+    return getEdgesInBrush(worldX, worldZ, radius, this.topology);
+  }
+
+  public pick(ray: Ray): { gridX: number; gridY: number; worldPos: { x: number; z: number }; faceId: number | null } | null {
+    if (!this.terrainMesh) return null;
+    const pickResult = ray.intersectsMesh(this.terrainMesh);
+    if (!pickResult || !pickResult.hit || !pickResult.pickedPoint) return null;
+
+    const worldPos = { x: pickResult.pickedPoint.x, z: pickResult.pickedPoint.z };
+    const res = this.options.meshResolution;
+
+    return {
+      gridX: Math.floor(worldPos.x * res),
+      gridY: Math.floor(worldPos.z * res),
+      worldPos,
+      faceId: pickResult.faceId
+    };
   }
 
   public getVertexElevationsGrid(): number[][] {

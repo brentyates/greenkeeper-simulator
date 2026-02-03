@@ -28,6 +28,7 @@ export interface InputCallbacks {
   onEditorToolSelect?: (tool: number) => void;
   onEditorBrushSelect?: (brush: string) => void;
   onEditorBrushSizeChange?: (delta: number) => void;
+  onEditorBrushStrengthChange?: (delta: number) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onMouseMove?: (screenX: number, screenY: number) => void;
@@ -160,9 +161,25 @@ export class InputManager {
     } else if (key === "-" || key === "_") {
       this.callbacks.onTimeSlowDown?.();
     } else if (key === "[") {
-      this.callbacks.onZoom?.(50);
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushSizeChange?.(-1);
+      } else {
+        this.callbacks.onZoom?.(50);
+      }
     } else if (key === "]") {
-      this.callbacks.onZoom?.(-50);
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushSizeChange?.(1);
+      } else {
+        this.callbacks.onZoom?.(-50);
+      }
+    } else if (key === "{") {
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushStrengthChange?.(-0.1);
+      }
+    } else if (key === "}") {
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushStrengthChange?.(0.1);
+      }
     } else if (key === "f5") {
       event.preventDefault?.();
       this.callbacks.onDebugReload?.();

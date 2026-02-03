@@ -235,16 +235,12 @@ export function getVerticesInBrush(
   vertexWidth: number,
   vertexHeight: number
 ): Array<{ vx: number; vy: number }> {
-  if (radius <= 1) {
-    return [{ vx: centerVx, vy: centerVy }];
-  }
-
   const vertices: Array<{ vx: number; vy: number }> = [];
-  const r = radius - 1;
+  const r = Math.ceil(radius);
 
   for (let dvy = -r; dvy <= r; dvy++) {
     for (let dvx = -r; dvx <= r; dvx++) {
-      if (dvx * dvx + dvy * dvy <= r * r) {
+      if (dvx * dvx + dvy * dvy <= radius * radius + 0.1) {
         const vx = centerVx + dvx;
         const vy = centerVy + dvy;
         if (vx >= 0 && vx < vertexWidth && vy >= 0 && vy < vertexHeight) {
@@ -252,6 +248,15 @@ export function getVerticesInBrush(
         }
       }
     }
+  }
+
+  // Ensure at least the center is returned if radius is very small
+  if (vertices.length === 0) {
+    vertices.push({ vx: centerVx, vy: centerVy });
+  }
+
+  if (radius > 1) {
+    console.log(`[getVerticesInBrush] radius: ${radius}, count: ${vertices.length}`);
   }
 
   return vertices;
@@ -262,20 +267,76 @@ export function getCellsInBrush(
   centerY: number,
   radius: number
 ): Array<{ x: number; y: number }> {
-  if (radius <= 1) {
-    return [{ x: centerX, y: centerY }];
-  }
-
   const cells: Array<{ x: number; y: number }> = [];
-  const r = radius - 1;
+  const r = Math.ceil(radius);
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= r * r) {
+      if (dx * dx + dy * dy <= radius * radius + 0.1) {
         cells.push({ x: centerX + dx, y: centerY + dy });
       }
     }
   }
+  
+  if (cells.length === 0) {
+    cells.push({ x: centerX, y: centerY });
+  }
+  
   return cells;
+}
+
+export function getEdgesInBrush(
+  worldX: number,
+  worldZ: number,
+  radius: number,
+  topology: { edges: Map<number, { v1: number, v2: number }>, vertices: Map<number, { position: Vec3 }> }
+): number[] {
+  const edgeIds: number[] = [];
+  const radiusSq = radius * radius;
+
+  for (const [id, edge] of topology.edges) {
+    const v1 = topology.vertices.get(edge.v1);
+    const v2 = topology.vertices.get(edge.v2);
+    if (!v1 || !v2) continue;
+
+    // Center of the edge
+    const cx = (v1.position.x + v2.position.x) / 2;
+    const cz = (v1.position.z + v2.position.z) / 2;
+
+    const dx = cx - worldX;
+    const dz = cz - worldZ;
+    if (dx * dx + dz * dz <= radiusSq) {
+      edgeIds.push(id);
+    }
+  }
+  return edgeIds;
+}
+
+export function getFacesInBrush(
+  worldX: number,
+  worldZ: number,
+  radius: number,
+  topology: { triangles: Map<number, { vertices: [number, number, number] }>, vertices: Map<number, { position: Vec3 }> }
+): number[] {
+  const faceIds: number[] = [];
+  const radiusSq = radius * radius;
+
+  for (const [id, tri] of topology.triangles) {
+    const v1 = topology.vertices.get(tri.vertices[0]);
+    const v2 = topology.vertices.get(tri.vertices[1]);
+    const v3 = topology.vertices.get(tri.vertices[2]);
+    if (!v1 || !v2 || !v3) continue;
+
+    // Centroid of the triangle
+    const cx = (v1.position.x + v2.position.x + v3.position.x) / 3;
+    const cz = (v1.position.z + v2.position.z + v3.position.z) / 3;
+
+    const dx = cx - worldX;
+    const dz = cz - worldZ;
+    if (dx * dx + dz * dz <= radiusSq) {
+      faceIds.push(id);
+    }
+  }
+  return faceIds;
 }
 
 export function applyRaiseVertex(
@@ -285,7 +346,11 @@ export function applyRaiseVertex(
   amount: number = 1
 ): VertexModification | null {
   const oldZ = vertexElevations[vy]?.[vx];
-  if (oldZ === undefined) return null;
+  if (oldZ === undefined) {
+    // Only log if it's near the center maybe? No, let's just log it for now.
+    // console.log(`[applyRaiseVertex] missing elevation at ${vx},${vy}`);
+    return null;
+  }
 
   return {
     vx,
@@ -322,7 +387,8 @@ export function applySmoothVertices(
   vertexElevations: number[][],
   radius: number,
   vertexWidth: number,
-  vertexHeight: number
+  vertexHeight: number,
+  brushStrength: number = 1.0
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
   const vertices = getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
@@ -339,9 +405,10 @@ export function applySmoothVertices(
     if (oldZ === undefined) continue;
 
     const diff = avgElev - oldZ;
-    const newZ = oldZ + diff * 0.5;
+    // Blend towards average based on strength
+    const newZ = oldZ + diff * 0.1 * brushStrength;
 
-    if (Math.abs(newZ - oldZ) > 0.01) {
+    if (Math.abs(newZ - oldZ) > 0.001) {
       modifications.push({ vx: v.vx, vy: v.vy, oldZ, newZ });
     }
   }
@@ -430,10 +497,12 @@ export function applySculptTool(
   switch (tool) {
     case 'raise': {
       const vertices = getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
+      console.log(`[applySculptTool] raise: vertices to check: ${vertices.length}, center: ${centerVx},${centerVy}`);
       for (const v of vertices) {
         const mod = applyRaiseVertex(v.vx, v.vy, vertexElevations, brushStrength);
         if (mod) modifications.push(mod);
       }
+      console.log(`[applySculptTool] raise: modifications count: ${modifications.length}`);
       break;
     }
     case 'lower': {
@@ -445,7 +514,9 @@ export function applySculptTool(
       break;
     }
     case 'smooth': {
-      return applySmoothVertices(centerVx, centerVy, vertexElevations, brushSize, vertexWidth, vertexHeight);
+      // For smoothing, we want a slightly larger neighborhood even for small brushes
+      const effectiveRadius = Math.max(brushSize, 1.5);
+      return applySmoothVertices(centerVx, centerVy, vertexElevations, effectiveRadius, vertexWidth, vertexHeight, brushStrength);
     }
     case 'flatten': {
       return applyFlattenVertices(centerVx, centerVy, vertexElevations, brushSize, vertexWidth, vertexHeight);

@@ -3,6 +3,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { getCellsInBrush, getVerticesInBrush, vertexKey } from "../../core/terrain-editor-logic";
 
@@ -50,6 +51,7 @@ export class TileHighlightSystem {
   private selectionMeshes: Mesh[] = [];
   private boxSelectMesh: Mesh | null = null;
   private highlightMode: HighlightMode = 'cell';
+  private brushOutlineMesh: Mesh | null = null;
   private showSelectedVertices: boolean = true;
 
   constructor(scene: Scene, cornerProvider: CornerHeightsProvider) {
@@ -105,6 +107,21 @@ export class TileHighlightSystem {
     this.selectedMaterial.alpha = 0.9;
     this.selectedMaterial.disableLighting = true;
     this.selectedMaterial.backFaceCulling = false;
+  }
+
+  private createBrushOutlineMesh(): void {
+    if (this.brushOutlineMesh) return;
+
+    // Create a thin torus or disc with wireframe for the brush outline
+    this.brushOutlineMesh = Mesh.CreateTorus("brushOutline", 1.0, 0.02, 32, this.scene);
+    this.brushOutlineMesh.isPickable = false;
+    this.brushOutlineMesh.renderingGroupId = 2; // Above terrain and highlights
+    
+    const mat = new StandardMaterial("brushOutlineMat", this.scene);
+    mat.diffuseColor = new Color3(1, 1, 1);
+    mat.emissiveColor = new Color3(1, 1, 1);
+    mat.disableLighting = true;
+    this.brushOutlineMesh.material = mat;
   }
 
   public setHighlightPosition(gridX: number, gridY: number): void {
@@ -206,48 +223,81 @@ export class TileHighlightSystem {
       this.boxSelectMesh.dispose();
       this.boxSelectMesh = null;
     }
+    if (this.brushOutlineMesh) {
+      this.brushOutlineMesh.isVisible = false;
+    }
   }
 
   private updateHighlight(): void {
     this.disposeHighlightMeshes();
 
     if (this.highlightMode === 'none') {
+      this.updateBrushOutline();
       return;
     }
 
     if (this.highlightMode === 'vertex') {
       this.updateVertexHighlight();
+      this.updateBrushOutline();
       return;
     }
 
-    if (this.currentX < 0 || this.currentY < 0) {
-      return;
-    }
-
-    if (this.currentCorner) {
-      this.highlightMesh = this.createHighlightCornerMesh(
-        this.currentX,
-        this.currentY,
-        this.currentCorner
-      );
-    } else if (this.brushSize <= 1) {
-      this.highlightMesh = this.createHighlightMeshAt(
-        this.currentX,
-        this.currentY
-      );
-    } else {
-      const positions = getCellsInBrush(
-        this.currentX,
-        this.currentY,
-        this.brushSize
-      );
-      for (const pos of positions) {
-        const mesh = this.createHighlightMeshAt(pos.x, pos.y);
-        if (mesh) {
-          this.brushMeshes.push(mesh);
+    if (this.currentX >= 0 && this.currentY >= 0) {
+      if (this.currentCorner) {
+        this.highlightMesh = this.createHighlightCornerMesh(
+          this.currentX,
+          this.currentY,
+          this.currentCorner
+        );
+      } else if (this.brushSize <= 1) {
+        this.highlightMesh = this.createHighlightMeshAt(
+          this.currentX,
+          this.currentY
+        );
+      } else {
+        // Use world diameter for torus scaling, and resolution-aware grid units for highlights
+        const worldRadius = this.brushSize * 0.5;
+        const gridRadius = worldRadius; // For cells, resolution is 1.0
+        
+        const positions = getCellsInBrush(
+          this.currentX,
+          this.currentY,
+          gridRadius
+        );
+        for (const pos of positions) {
+          const mesh = this.createHighlightMeshAt(pos.x, pos.y);
+          if (mesh) {
+            this.brushMeshes.push(mesh);
+          }
         }
       }
     }
+
+    this.updateBrushOutline();
+  }
+
+  private updateBrushOutline(): void {
+    if (this.currentX < 0 || this.currentY < 0) {
+      if (this.brushOutlineMesh) this.brushOutlineMesh.isVisible = false;
+      return;
+    }
+
+    this.createBrushOutlineMesh();
+    if (!this.brushOutlineMesh) return;
+
+    this.brushOutlineMesh.isVisible = true;
+    
+    // Position at the hover point
+    const corners = this.cornerProvider.getCornerHeights(this.currentX, this.currentY);
+    const elev = this.cornerProvider.getElevationAt(this.currentX, this.currentY, corners.nw);
+    const pos = this.cornerProvider.gridTo3D(this.currentX + 0.5, this.currentY + 0.5, elev);
+    
+    this.brushOutlineMesh.position = pos;
+    this.brushOutlineMesh.position.y += 0.2; // Slightly above ground
+    
+    // Scale based on brush size (diameter)
+    const worldRadius = this.brushSize * 0.5;
+    this.brushOutlineMesh.scaling = new Vector3(worldRadius * 2, worldRadius * 2, worldRadius * 2);
   }
 
   private updateVertexHighlight(): void {
@@ -521,6 +571,10 @@ export class TileHighlightSystem {
     if (this.selectedMaterial) {
       this.selectedMaterial.dispose();
       this.selectedMaterial = null;
+    }
+    if (this.brushOutlineMesh) {
+      this.brushOutlineMesh.dispose();
+      this.brushOutlineMesh = null;
     }
   }
 }
