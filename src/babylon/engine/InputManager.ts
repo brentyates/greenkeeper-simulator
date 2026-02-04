@@ -7,6 +7,8 @@ import { Direction } from "../../core/movement";
 export type { Direction };
 export type EquipmentSlot = 1 | 2 | 3;
 
+export type AxisConstraint = 'x' | 'y' | 'z' | 'xz' | 'all';
+
 export interface InputCallbacks {
   onMove?: (direction: Direction) => void;
   onEquipmentSelect?: (slot: EquipmentSlot) => void;
@@ -17,16 +19,16 @@ export interface InputCallbacks {
   onMute?: () => void;
   onTimeSpeedUp?: () => void;
   onTimeSlowDown?: () => void;
-  onZoomIn?: () => void;
-  onZoomOut?: () => void;
+  onZoom?: (delta: number) => void;
   onDebugReload?: () => void;
   onDebugExport?: () => void;
   onDebugScreenshot?: () => void;
-  onClick?: (screenX: number, screenY: number) => void;
+  onClick?: (screenX: number, screenY: number, shiftKey?: boolean) => void;
   onEditorToggle?: () => void;
   onEditorToolSelect?: (tool: number) => void;
   onEditorBrushSelect?: (brush: string) => void;
   onEditorBrushSizeChange?: (delta: number) => void;
+  onEditorBrushStrengthChange?: (delta: number) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onMouseMove?: (screenX: number, screenY: number) => void;
@@ -42,7 +44,18 @@ export interface InputCallbacks {
   onDragEnd?: () => void;
   onPinchZoom?: (delta: number) => void;
   onSwipe?: (direction: Direction) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  onAxisConstraint?: (axis: AxisConstraint) => void;
+  onEdgeModeToggle?: () => void;
+  onDeleteVertex?: () => void;
+  onSubdivideEdge?: () => void;
+  onFlipEdge?: () => void;
+  onFaceModeToggle?: () => void;
   isInputBlocked?: () => boolean;
+  isEditorActive?: () => boolean;
+  isEdgeModeActive?: () => boolean;
+  isFaceModeActive?: () => boolean;
 }
 
 export class InputManager {
@@ -121,7 +134,21 @@ export class InputManager {
       event.preventDefault?.();
       this.callbacks.onEquipmentToggle?.();
     } else if (key === "e") {
-      this.callbacks.onRefill?.();
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEdgeModeToggle?.();
+      } else {
+        this.callbacks.onRefill?.();
+      }
+    } else if (key === "delete" || key === "backspace") {
+      if (this.callbacks.isEditorActive?.()) {
+        event.preventDefault?.();
+        this.callbacks.onDeleteVertex?.();
+      }
+    } else if (key === "enter") {
+      if (this.callbacks.isEdgeModeActive?.()) {
+        event.preventDefault?.();
+        this.callbacks.onSubdivideEdge?.();
+      }
     } else if (key === "tab") {
       event.preventDefault?.();
       this.callbacks.onOverlayCycle?.();
@@ -134,9 +161,25 @@ export class InputManager {
     } else if (key === "-" || key === "_") {
       this.callbacks.onTimeSlowDown?.();
     } else if (key === "[") {
-      this.callbacks.onZoomOut?.();
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushSizeChange?.(-1);
+      } else {
+        this.callbacks.onZoom?.(50);
+      }
     } else if (key === "]") {
-      this.callbacks.onZoomIn?.();
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushSizeChange?.(1);
+      } else {
+        this.callbacks.onZoom?.(-50);
+      }
+    } else if (key === "{") {
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushStrengthChange?.(-0.1);
+      }
+    } else if (key === "}") {
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onEditorBrushStrengthChange?.(0.1);
+      }
     } else if (key === "f5") {
       event.preventDefault?.();
       this.callbacks.onDebugReload?.();
@@ -152,7 +195,16 @@ export class InputManager {
     } else if (key === "r") {
       this.callbacks.onEditorBrushSelect?.("terrain_bunker");
     } else if (key === "f") {
-      this.callbacks.onEditorBrushSelect?.("terrain_water");
+      if (this.callbacks.isEditorActive?.()) {
+        const shift = (event as KeyboardEvent).shiftKey;
+        if (shift && this.callbacks.isEdgeModeActive?.()) {
+            this.callbacks.onFlipEdge?.();
+        } else {
+            this.callbacks.onFaceModeToggle?.();
+        }
+      } else {
+        this.callbacks.onEditorBrushSelect?.("terrain_water");
+      }
     } else if (key === ",") {
       this.callbacks.onEditorBrushSizeChange?.(-1);
     } else if (key === ".") {
@@ -171,6 +223,14 @@ export class InputManager {
       this.callbacks.onAmenityPanel?.();
     } else if (key === "o") {
       this.callbacks.onWalkOnQueuePanel?.();
+    } else if (key === "x" && this.callbacks.isEditorActive?.()) {
+      this.callbacks.onAxisConstraint?.('x');
+    } else if (key === "c" && this.callbacks.isEditorActive?.()) {
+      this.callbacks.onAxisConstraint?.('y');
+    } else if (key === "z" && this.callbacks.isEditorActive?.() && !(event as KeyboardEvent).ctrlKey && !(event as KeyboardEvent).metaKey) {
+      this.callbacks.onAxisConstraint?.('z');
+    } else if (key === "v" && this.callbacks.isEditorActive?.()) {
+      this.callbacks.onAxisConstraint?.('xz');
     }
   }
 
@@ -201,7 +261,8 @@ export class InputManager {
 
       if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         this.isDragging = true;
-        this.callbacks.onClick?.(x, y);
+        const shiftKey = (pointerInfo.event as PointerEvent).shiftKey;
+        this.callbacks.onClick?.(x, y, shiftKey);
         this.callbacks.onDragStart?.(x, y);
       } else if (pointerInfo.type === PointerEventTypes.POINTERUP) {
         if (this.isDragging) {
@@ -220,10 +281,8 @@ export class InputManager {
       if (!this.enabled) return;
       if (this.callbacks.isInputBlocked?.()) return;
       event.preventDefault();
-      if (event.deltaY > 0) {
-        this.callbacks.onZoomOut?.();
-      } else if (event.deltaY < 0) {
-        this.callbacks.onZoomIn?.();
+      if (event.deltaY !== 0) {
+        this.callbacks.onZoom?.(event.deltaY);
       }
     };
     this.scene.getEngine().getRenderingCanvas()?.addEventListener("wheel", this.wheelHandler, { passive: false });
@@ -274,15 +333,10 @@ export class InputManager {
 
         if (this.lastPinchDistance > 0) {
           const delta = distance - this.lastPinchDistance;
-          // Normalize delta for zoom callback
           const normalizedDelta = delta / 10;
           this.callbacks.onPinchZoom?.(normalizedDelta);
-
-          // Also call zoom callbacks
-          if (delta > 0) {
-            this.callbacks.onZoomIn?.();
-          } else if (delta < 0) {
-            this.callbacks.onZoomOut?.();
+          if (delta !== 0) {
+            this.callbacks.onZoom?.(-delta);
           }
         }
 

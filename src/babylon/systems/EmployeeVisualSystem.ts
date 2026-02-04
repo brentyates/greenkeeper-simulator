@@ -8,6 +8,7 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { EmployeeTask } from "../../core/employee-work";
+import { gridTo3D } from "../engine/BabylonEngine";
 import {
   EntityVisualState,
   ElevationProvider,
@@ -175,6 +176,23 @@ export class EmployeeVisualSystem {
 
   public getWorkerCount(): number {
     return this.workerMeshes.size;
+  }
+
+  public setVisible(visible: boolean): void {
+    for (const group of this.workerMeshes.values()) {
+      group.container.setEnabled(visible);
+    }
+  }
+
+  public snapAllToTerrain(): void {
+    for (const group of this.workerMeshes.values()) {
+      const elevation = this.elevationProvider.getElevationAt(
+        group.targetGridX, group.targetGridY, 0
+      );
+      const worldPos = gridTo3D(group.targetGridX + 0.5, group.targetGridY + 0.5, elevation);
+      group.container.position.copyFrom(worldPos);
+      group.visualProgress = 1;
+    }
   }
 
   public dispose(): void {

@@ -139,6 +139,7 @@ class GameApp {
     this.game = startBabylonGame('renderCanvas', {
       scenario,
       loadFromSave,
+      useVectorTerrain: true,
       onReturnToMenu: () => this.returnToMenu(),
       onScenarioComplete: (score: number) => this.handleScenarioComplete(scenario.id, score)
     });
