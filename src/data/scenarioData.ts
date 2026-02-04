@@ -10,6 +10,7 @@ export interface ScenarioDefinition {
   conditions: ScenarioConditions;
   difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert';
   unlockAfter?: string; // ID of previous scenario
+  isSandbox?: boolean;
 }
 
 export const SCENARIOS: ScenarioDefinition[] = [

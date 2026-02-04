@@ -1,6 +1,7 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
 import { HoleData } from '../core/golf-logic';
 import { VectorShape, createEllipseShape, createCircleShape } from '../core/vector-shapes';
+import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 
 export type { TerrainType, ObstacleType };
 
@@ -509,7 +510,8 @@ export type CourseId =
   | '9_hole'
   | '18_hole_championship'
   | '18_hole_original'
-  | '27_hole';
+  | '27_hole'
+  | (string & {});
 
 const COURSE_REGISTRY: Partial<Record<CourseId, CourseData>> = {
   'sunrise_valley_1': COURSE_HOLE_1,
@@ -523,7 +525,14 @@ const COURSE_REGISTRY: Partial<Record<CourseId, CourseData>> = {
 };
 
 export function getCourseById(courseId: string): CourseData | undefined {
-  return COURSE_REGISTRY[courseId as CourseId];
+  const registered = COURSE_REGISTRY[courseId as CourseId];
+  if (registered) return registered;
+
+  if (courseId.startsWith('custom_')) {
+    const custom = loadCustomCourse(courseId);
+    if (custom) return customCourseToCourseData(custom);
+  }
+  return undefined;
 }
 
 export const DEFAULT_COURSE = COURSE_3_HOLE;

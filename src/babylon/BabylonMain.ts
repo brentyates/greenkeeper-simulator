@@ -6,6 +6,7 @@ import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
+import { createVectorTerrainModifier } from "./systems/createTerrainModifier";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import {
@@ -271,10 +272,6 @@ export class BabylonMain {
   private vectorTerrainSystem: VectorTerrainSystem | null = null;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
-  private orthoSize: number = 8;
-  private targetOrthoSize: number = 8;
-  private readonly MIN_ORTHO_SIZE = 2;
-  private readonly MAX_ORTHO_SIZE = 50;
   private lastTime: number = 0;
   private gameTime: number = 6 * 60;
   private gameDay: number = 1;
@@ -534,55 +531,7 @@ export class BabylonMain {
       const vts = this.vectorTerrainSystem;
       this.terrainEditorSystem.setTerrainModifier({
         ...baseModifier,
-        getVertexPosition: (vx, vy) => vts.getVertexPosition(vx, vy),
-        setVertexPosition: (vx, vy, pos) => vts.setVertexPosition(vx, vy, pos),
-        setVertexPositions: (changes) => vts.setVertexPositions(changes),
-        moveVertices: (vertices, delta) => vts.moveVertices(vertices, delta),
-        getVertexElevation: (vx, vy) => vts.getVertexElevation(vx, vy),
-        setVertexElevation: (vx, vy, z) => vts.setVertexElevation(vx, vy, z),
-        setVertexElevations: (changes) => vts.setVertexElevations(changes),
-        worldToVertex: (worldX, worldZ) => vts.worldToVertex(worldX, worldZ),
-        findNearestVertex: (worldX, worldZ) => vts.findNearestVertex(worldX, worldZ),
-        vertexToWorld: (vx, vy) => vts.vertexToWorld(vx, vy),
-        getVertexDimensions: () => vts.getVertexDimensions(),
-        getWorldDimensions: () => vts.getWorldDimensions(),
-        getVertexPositionsGrid: () => vts.getVertexPositionsGrid(),
-        getVertexElevationsGrid: () => vts.getVertexElevationsGrid(),
-        getLayoutGrid: () => vts.getLayoutGrid(),
-        rebuildMesh: () => vts.rebuildMesh(),
-        paintTerrainType: (cells, type) => vts.paintTerrainType(cells, type),
-        isTopologyMode: () => vts.isTopologyMode(),
-        enableTopologyMode: () => vts.enableTopologyMode(),
-        disableTopologyMode: () => vts.disableTopologyMode(),
-        setTopologyMode: (mode) => vts.setTopologyMode(mode),
-        getTopologyMode: () => vts.getTopologyMode(),
-        setHoveredFace: (faceId) => vts.setHoveredFace(faceId),
-        getHoveredFace: () => vts.getHoveredFace(),
-        selectFace: (faceId, additive) => vts.selectFace(faceId, additive),
-        deselectFace: (faceId) => vts.deselectFace(faceId),
-        toggleFaceSelection: (faceId) => vts.toggleFaceSelection(faceId),
-        clearSelectedFaces: () => vts.clearFaceSelection(),
-        getSelectedFaceIds: () => vts.getSelectedFaceIds(),
-        findFaceAtPosition: (worldX, worldZ) => vts.findFaceAtPosition(worldX, worldZ),
-        moveSelectedFaces: (dx, dy, dz) => vts.moveSelectedFaces(dx, dy, dz),
-        setFaceTerrain: (faceId, type) => vts.setFaceTerrain(faceId, type),
-        getSelectedFaceVertexIds: () => vts.getSelectedFaceVertexIds(),
-        getSelectedEdgeVertexIds: () => vts.getSelectedEdgeVertexIds(),
-        getSelectedVerticesFromSelection: () => vts.getSelectedVerticesFromSelection(),
-        findNearestEdgeAt: (x, z) => vts.findNearestEdgeAt(x, z),
-        setHoveredEdge: (edgeId) => vts.setHoveredEdge(edgeId),
-        selectEdge: (edgeId, additive) => vts.selectEdge(edgeId, additive),
-        toggleEdgeSelection: (edgeId) => vts.toggleEdgeSelection(edgeId),
-        deselectAllEdges: () => vts.deselectAllEdges(),
-        getSelectedEdgeIds: () => vts.getSelectedEdgeIds(),
-        getSelectedEdge: () => vts.getSelectedEdge(),
-        subdivideSelectedEdge: () => vts.subdivideSelectedEdge(),
-        flipSelectedEdge: () => vts.flipSelectedEdge(),
-        collapseEdge: (edgeId) => vts.collapseEdge(edgeId),
-        getEdgesInBrush: (x, z, r) => vts.getEdgesInBrush(x, z, r),
-        setBrushHoveredEdges: (edgeIds) => vts.setBrushHoveredEdges(edgeIds),
-        getFacesInBrush: (x, z, r) => vts.getFacesInBrush(x, z, r),
-        setBrushHoveredFaces: (faceIds) => vts.setBrushHoveredFaces(faceIds),
+        ...createVectorTerrainModifier(vts),
       });
       this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
     } else {
@@ -1485,7 +1434,6 @@ export class BabylonMain {
     this.buildObstacles();
     this.buildRefillStations();
     this.createPlayer();
-    this.babylonEngine.setOrthoSize(this.orthoSize);
     this.updatePlayerPosition();
   }
 
@@ -1620,40 +1568,12 @@ export class BabylonMain {
   }
 
   private updateEditorCamera(deltaMs: number): void {
-    const camera = this.babylonEngine.getCamera();
-    const orthoSize = this.babylonEngine.getOrthoSize();
-
-    const speed = orthoSize * 1.5;
-    const moveDist = (speed * deltaMs) / 1000;
-
-    const input = {
-      up: this.isDirectionKeyHeld('up'),
-      down: this.isDirectionKeyHeld('down'),
-      left: this.isDirectionKeyHeld('left'),
-      right: this.isDirectionKeyHeld('right'),
-    };
-
-    if (!input.up && !input.down && !input.left && !input.right) return;
-
-    const forward = camera.getDirection(Vector3.Forward());
-    const right = camera.getDirection(Vector3.Right());
-
-    forward.y = 0;
-    forward.normalize();
-    right.y = 0;
-    right.normalize();
-
-    const delta = Vector3.Zero();
-
-    if (input.up) delta.addInPlace(forward);
-    if (input.down) delta.subtractInPlace(forward);
-    if (input.right) delta.addInPlace(right);
-    if (input.left) delta.subtractInPlace(right);
-
-    delta.scaleInPlace(moveDist);
-
-    camera.target.addInPlace(delta);
-    camera.position.addInPlace(delta);
+    this.babylonEngine.updateCameraPan(deltaMs, {
+      up: this.inputManager.isDirectionKeyHeld('up'),
+      down: this.inputManager.isDirectionKeyHeld('down'),
+      left: this.inputManager.isDirectionKeyHeld('left'),
+      right: this.inputManager.isDirectionKeyHeld('right'),
+    });
   }
 
   private updatePlayerVisualProgress(deltaMs: number): void {
@@ -1684,36 +1604,11 @@ export class BabylonMain {
 
     if (
       this.player.pendingDirection &&
-      this.isDirectionKeyHeld(this.player.pendingDirection)
+      this.inputManager.isDirectionKeyHeld(this.player.pendingDirection)
     ) {
       this.tryMove(this.player.pendingDirection);
     } else {
       this.player = { ...this.player, pendingDirection: null };
-    }
-  }
-
-  private isDirectionKeyHeld(direction: Direction): boolean {
-    switch (direction) {
-      case "up":
-        return (
-          this.inputManager.isKeyDown("arrowup") ||
-          this.inputManager.isKeyDown("w")
-        );
-      case "down":
-        return (
-          this.inputManager.isKeyDown("arrowdown") ||
-          this.inputManager.isKeyDown("s")
-        );
-      case "left":
-        return (
-          this.inputManager.isKeyDown("arrowleft") ||
-          this.inputManager.isKeyDown("a")
-        );
-      case "right":
-        return (
-          this.inputManager.isKeyDown("arrowright") ||
-          this.inputManager.isKeyDown("d")
-        );
     }
   }
 
@@ -2206,25 +2101,13 @@ export class BabylonMain {
   }
 
   private handleZoom(delta: number): void {
-    const zoomFactor = 0.001;
-    const newTarget = this.targetOrthoSize * (1 + delta * zoomFactor);
-    this.targetOrthoSize = Math.max(
-      this.MIN_ORTHO_SIZE,
-      Math.min(this.MAX_ORTHO_SIZE, newTarget)
-    );
+    this.babylonEngine.handleZoom(delta);
   }
 
 
 
   private updateZoom(deltaMs: number): void {
-    const diff = this.targetOrthoSize - this.orthoSize;
-    if (Math.abs(diff) < 0.001) {
-      this.orthoSize = this.targetOrthoSize;
-      return;
-    }
-    const lerpFactor = 1 - Math.exp(-deltaMs * 0.015);
-    this.orthoSize += diff * lerpFactor;
-    this.babylonEngine.setOrthoSize(this.orthoSize);
+    this.babylonEngine.updateSmoothZoom(deltaMs);
   }
 
   private handleEditorToggle(): void {
@@ -2433,36 +2316,7 @@ export class BabylonMain {
   }
 
   private screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null {
-    const scene = this.babylonEngine.getScene();
-    const canvas = scene.getEngine().getRenderingCanvas();
-    if (!canvas) return null;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = (screenX - rect.left) * scaleX;
-    const canvasY = (screenY - rect.top) * scaleY;
-
-    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "vectorTerrain";
-    });
-
-    if (pickResult?.hit && pickResult.pickedPoint) {
-      return { x: pickResult.pickedPoint.x, z: pickResult.pickedPoint.z };
-    }
-
-    const camera = this.babylonEngine.getCamera();
-    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
-
-    if (ray.direction.y === 0) return null;
-
-    const t = -ray.origin.y / ray.direction.y;
-    if (t < 0) return null;
-
-    return {
-      x: ray.origin.x + ray.direction.x * t,
-      z: ray.origin.z + ray.direction.z * t,
-    };
+    return this.babylonEngine.screenToWorldPosition(screenX, screenY);
   }
 
   private handleDragEnd(): void {

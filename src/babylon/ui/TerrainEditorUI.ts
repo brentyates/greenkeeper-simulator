@@ -1,4 +1,3 @@
-import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
@@ -6,6 +5,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 
+import { UIParent } from './UIParent';
 import { EditorTool, EditorMode, TopologyMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
 import { TerrainType, getTerrainDisplayName } from '../../core/terrain';
 
@@ -32,7 +32,7 @@ export interface TerrainEditorUICallbacks {
 }
 
 export class TerrainEditorUI {
-  private advancedTexture: AdvancedDynamicTexture;
+  private parent: UIParent;
   private callbacks: TerrainEditorUICallbacks;
 
   private panel: Rectangle | null = null;
@@ -56,8 +56,8 @@ export class TerrainEditorUI {
   private sculptToolsPanel: StackPanel | null = null;
   private paintToolsPanel: StackPanel | null = null;
 
-  constructor(advancedTexture: AdvancedDynamicTexture, callbacks: TerrainEditorUICallbacks) {
-    this.advancedTexture = advancedTexture;
+  constructor(parent: UIParent, callbacks: TerrainEditorUICallbacks) {
+    this.parent = parent;
     this.callbacks = callbacks;
     this.createPanel();
   }
@@ -80,7 +80,7 @@ export class TerrainEditorUI {
     this.panel.shadowBlur = 10;
     this.panel.shadowOffsetX = 3;
     this.panel.shadowOffsetY = 3;
-    this.advancedTexture.addControl(this.panel);
+    this.parent.addControl(this.panel);
 
     const stack = new StackPanel('editorStack');
     stack.width = '316px';

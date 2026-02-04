@@ -4,6 +4,9 @@ import { hasSave, deleteSave } from './core/save-game';
 import { getProgressManager } from './systems/ProgressManager';
 import { LaunchScreen } from './babylon/ui/LaunchScreen';
 import { UserManual } from './babylon/ui/UserManual';
+import { CourseDesigner, CourseDesignerOptions } from './babylon/CourseDesigner';
+import { CourseSetupDialog, CourseSetupResult } from './babylon/ui/CourseSetupDialog';
+import { CustomCourseData, createSandboxScenario } from './data/customCourseData';
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
@@ -39,7 +42,8 @@ declare global {
     getGuideSection: () => string | null;
     listGuideSections: () => { id: string; label: string }[];
     showMainMenu: () => void;
-    getMenuState: () => 'main' | 'guide' | 'game' | null;
+    getMenuState: () => 'main' | 'guide' | 'game' | 'designer' | null;
+    designer: CourseDesigner | null;
   }
 }
 
@@ -51,6 +55,8 @@ class GameApp {
   private launchScreen: LaunchScreen | null = null;
   private userManual: UserManual | null = null;
   private game: BabylonMain | null = null;
+  private designer: CourseDesigner | null = null;
+  private setupDialog: CourseSetupDialog | null = null;
   private progressManager = getProgressManager();
 
   constructor(canvasId: string) {
@@ -88,7 +94,16 @@ class GameApp {
       },
       onOpenManual: () => {
         this.showUserManual();
-      }
+      },
+      onOpenDesigner: () => {
+        this.showCourseSetupDialog();
+      },
+      onPlayCustomCourse: (course: CustomCourseData) => {
+        this.startCustomGame(course);
+      },
+      onEditCustomCourse: (course: CustomCourseData) => {
+        this.startDesigner({ editCourse: course });
+      },
     }, this.menuTexture);
 
     // Create user manual with same shared texture
@@ -110,27 +125,7 @@ class GameApp {
   }
 
   public startGame(scenario: ScenarioDefinition, loadFromSave: boolean = false): void {
-    // Clean up menu resources
-    if (this.launchScreen) {
-      this.launchScreen.dispose();
-      this.launchScreen = null;
-    }
-    if (this.userManual) {
-      this.userManual.dispose();
-      this.userManual = null;
-    }
-    if (this.menuTexture) {
-      this.menuTexture.dispose();
-      this.menuTexture = null;
-    }
-    if (this.menuScene) {
-      this.menuScene.dispose();
-      this.menuScene = null;
-    }
-    if (this.engine) {
-      this.engine.dispose();
-      this.engine = null;
-    }
+    this.disposeMenu();
 
     // Record last played scenario
     this.progressManager.setLastPlayedScenario(scenario.id);
@@ -166,6 +161,76 @@ class GameApp {
 
     // Show launch screen again
     this.showLaunchScreen();
+  }
+
+  private disposeMenu(): void {
+    if (this.setupDialog) {
+      this.setupDialog.dispose();
+      this.setupDialog = null;
+    }
+    if (this.launchScreen) {
+      this.launchScreen.dispose();
+      this.launchScreen = null;
+    }
+    if (this.userManual) {
+      this.userManual.dispose();
+      this.userManual = null;
+    }
+    if (this.menuTexture) {
+      this.menuTexture.dispose();
+      this.menuTexture = null;
+    }
+    if (this.menuScene) {
+      this.menuScene.dispose();
+      this.menuScene = null;
+    }
+    if (this.engine) {
+      this.engine.dispose();
+      this.engine = null;
+    }
+  }
+
+  private showCourseSetupDialog(): void {
+    if (!this.menuTexture) return;
+
+    this.setupDialog = new CourseSetupDialog(this.menuTexture, {
+      onCreate: (result: CourseSetupResult) => {
+        this.setupDialog?.dispose();
+        this.setupDialog = null;
+        this.startDesigner({
+          blank: { width: result.width, height: result.height, name: result.name },
+          templateCourseId: result.templateCourseId,
+        });
+      },
+      onCancel: () => {
+        this.setupDialog?.dispose();
+        this.setupDialog = null;
+      },
+    });
+  }
+
+  public startDesigner(options: CourseDesignerOptions): void {
+    this.disposeMenu();
+
+    this.designer = new CourseDesigner('renderCanvas', {
+      ...options,
+      onExit: () => this.returnFromDesigner(),
+    });
+    window.designer = this.designer;
+  }
+
+  private returnFromDesigner(): void {
+    if (this.designer) {
+      this.designer.dispose();
+      this.designer = null;
+      window.designer = null;
+    }
+    this.showLaunchScreen();
+  }
+
+  private startCustomGame(course: CustomCourseData): void {
+    const scenario = createSandboxScenario(course);
+    this.startGame(scenario, false);
   }
 
   private showUserManual(): void {
@@ -237,7 +302,10 @@ class GameApp {
     }
   }
 
-  public getMenuState(): 'main' | 'guide' | 'game' | null {
+  public getMenuState(): 'main' | 'guide' | 'game' | 'designer' | null {
+    if (this.designer) {
+      return 'designer';
+    }
     if (this.game) {
       return 'game';
     }
@@ -254,7 +322,8 @@ class GameApp {
 // Create and start the app
 const app = new GameApp('renderCanvas');
 window.app = app;
-window.game = null; // Will be set when game starts
+window.game = null;
+window.designer = null;
 app.start();
 
 window.captureScreenshot = async (): Promise<string> => {

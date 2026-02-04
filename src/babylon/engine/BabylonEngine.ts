@@ -38,6 +38,11 @@ export class BabylonEngine {
   private cameraTarget: Vector3 = Vector3.Zero();
   private resizeHandler: (() => void) | null = null;
 
+  private orthoSize: number = 8;
+  private targetOrthoSize: number = 8;
+  private readonly MIN_ORTHO_SIZE = 2;
+  private readonly MAX_ORTHO_SIZE = 50;
+
   constructor(canvasId: string, mapWidth: number = 50, mapHeight: number = 38) {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
@@ -209,6 +214,88 @@ export class BabylonEngine {
   ): void {
     this.cameraTarget = this.gridTo3D(gridX + 0.5, gridY + 0.5, elevation);
     this.camera.setTarget(this.cameraTarget);
+  }
+
+  public handleZoom(delta: number): void {
+    const zoomFactor = 0.001;
+    const newTarget = this.targetOrthoSize * (1 + delta * zoomFactor);
+    this.targetOrthoSize = Math.max(
+      this.MIN_ORTHO_SIZE,
+      Math.min(this.MAX_ORTHO_SIZE, newTarget)
+    );
+  }
+
+  public updateSmoothZoom(deltaMs: number): void {
+    const diff = this.targetOrthoSize - this.orthoSize;
+    if (Math.abs(diff) < 0.001) {
+      this.orthoSize = this.targetOrthoSize;
+      return;
+    }
+    const lerpFactor = 1 - Math.exp(-deltaMs * 0.015);
+    this.orthoSize += diff * lerpFactor;
+    this.setOrthoSize(this.orthoSize);
+  }
+
+  public setTargetOrthoSize(size: number): void {
+    this.targetOrthoSize = Math.max(this.MIN_ORTHO_SIZE, Math.min(this.MAX_ORTHO_SIZE, size));
+    this.orthoSize = this.targetOrthoSize;
+    this.setOrthoSize(this.orthoSize);
+  }
+
+  public updateCameraPan(deltaMs: number, directions: { up: boolean; down: boolean; left: boolean; right: boolean }): void {
+    if (!directions.up && !directions.down && !directions.left && !directions.right) return;
+
+    const speed = this.getOrthoSize() * 1.5;
+    const moveDist = (speed * deltaMs) / 1000;
+
+    const forward = this.camera.getDirection(Vector3.Forward());
+    const right = this.camera.getDirection(Vector3.Right());
+
+    forward.y = 0;
+    forward.normalize();
+    right.y = 0;
+    right.normalize();
+
+    const delta = Vector3.Zero();
+
+    if (directions.up) delta.addInPlace(forward);
+    if (directions.down) delta.subtractInPlace(forward);
+    if (directions.right) delta.addInPlace(right);
+    if (directions.left) delta.subtractInPlace(right);
+
+    delta.scaleInPlace(moveDist);
+
+    this.camera.target.addInPlace(delta);
+    this.camera.position.addInPlace(delta);
+  }
+
+  public screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null {
+    const canvas = this.engine.getRenderingCanvas();
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const canvasX = (screenX - rect.left) * scaleX;
+    const canvasY = (screenY - rect.top) * scaleY;
+
+    const pickResult = this.scene.pick(canvasX, canvasY, (mesh) => {
+      return mesh.name.startsWith('terrain') || mesh.name.startsWith('tile_') || mesh.name === 'vectorTerrain';
+    });
+
+    if (pickResult?.hit && pickResult.pickedPoint) {
+      return { x: pickResult.pickedPoint.x, z: pickResult.pickedPoint.z };
+    }
+
+    const ray = this.scene.createPickingRay(canvasX, canvasY, null, this.camera);
+    if (ray.direction.y === 0) return null;
+    const t = -ray.origin.y / ray.direction.y;
+    if (t < 0) return null;
+
+    return {
+      x: ray.origin.x + ray.direction.x * t,
+      z: ray.origin.z + ray.direction.z * t,
+    };
   }
 
   public dispose(): void {

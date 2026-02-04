@@ -71,7 +71,7 @@ export function createInitialEditorState(): EditorState {
   return {
     enabled: false,
     mode: 'sculpt',
-    activeTool: 'terrain_fairway',
+    activeTool: 'raise',
     brushSize: 1,
     brushStrength: 1.0,
     isDragging: false,
@@ -231,16 +231,17 @@ export function getTerrainTypeFromBrush(brush: TerrainBrush): TerrainType {
 export function getVerticesInBrush(
   centerVx: number,
   centerVy: number,
-  radius: number,
+  brushSize: number,
   vertexWidth: number,
   vertexHeight: number
 ): Array<{ vx: number; vy: number }> {
   const vertices: Array<{ vx: number; vy: number }> = [];
-  const r = Math.ceil(radius);
+  const geoRadius = brushSize - 1;
+  const r = Math.ceil(geoRadius);
 
   for (let dvy = -r; dvy <= r; dvy++) {
     for (let dvx = -r; dvx <= r; dvx++) {
-      if (dvx * dvx + dvy * dvy <= radius * radius + 0.1) {
+      if (dvx * dvx + dvy * dvy <= geoRadius * geoRadius + 0.1) {
         const vx = centerVx + dvx;
         const vy = centerVy + dvy;
         if (vx >= 0 && vx < vertexWidth && vy >= 0 && vy < vertexHeight) {
@@ -250,13 +251,8 @@ export function getVerticesInBrush(
     }
   }
 
-  // Ensure at least the center is returned if radius is very small
   if (vertices.length === 0) {
     vertices.push({ vx: centerVx, vy: centerVy });
-  }
-
-  if (radius > 1) {
-    console.log(`[getVerticesInBrush] radius: ${radius}, count: ${vertices.length}`);
   }
 
   return vertices;
@@ -265,22 +261,23 @@ export function getVerticesInBrush(
 export function getCellsInBrush(
   centerX: number,
   centerY: number,
-  radius: number
+  brushSize: number
 ): Array<{ x: number; y: number }> {
   const cells: Array<{ x: number; y: number }> = [];
-  const r = Math.ceil(radius);
+  const geoRadius = brushSize - 1;
+  const r = Math.ceil(geoRadius);
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= radius * radius + 0.1) {
+      if (dx * dx + dy * dy <= geoRadius * geoRadius + 0.1) {
         cells.push({ x: centerX + dx, y: centerY + dy });
       }
     }
   }
-  
+
   if (cells.length === 0) {
     cells.push({ x: centerX, y: centerY });
   }
-  
+
   return cells;
 }
 

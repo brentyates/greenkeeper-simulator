@@ -12,6 +12,7 @@ import { ScenarioDefinition, SCENARIOS } from '../../data/scenarioData';
 import { getProgressManager, ProgressManager } from '../../systems/ProgressManager';
 import { getCourseById } from '../../data/courseData';
 import { hasSave } from '../../core/save-game';
+import { listCustomCourses, CustomCourseData } from '../../data/customCourseData';
 import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 
@@ -19,6 +20,9 @@ export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
   onContinueScenario?: (scenario: ScenarioDefinition) => void;
   onOpenManual?: () => void;
+  onOpenDesigner?: () => void;
+  onPlayCustomCourse?: (course: CustomCourseData) => void;
+  onEditCustomCourse?: (course: CustomCourseData) => void;
 }
 
 export class LaunchScreen {
@@ -67,10 +71,11 @@ export class LaunchScreen {
     mainGrid.paddingTop = '20px';
     mainGrid.paddingBottom = '10px';
 
-    // Define rows: title (120px), header (40px), content (flex), action bar (80px)
+    // Define rows: title (120px), header (40px), scenarios (flex), custom courses (120px), action bar (80px)
     mainGrid.addRowDefinition(120, true);
     mainGrid.addRowDefinition(40, true);
     mainGrid.addRowDefinition(1.0);
+    mainGrid.addRowDefinition(130, true);
     mainGrid.addRowDefinition(80, true);
     mainGrid.addColumnDefinition(1.0);
 
@@ -81,6 +86,9 @@ export class LaunchScreen {
 
     // Scenario selection area
     this.createScenarioSection(mainGrid);
+
+    // Custom courses section
+    this.createCustomCoursesSection(mainGrid);
 
     // Bottom action bar
     this.createActionBar(mainGrid);
@@ -408,7 +416,7 @@ export class LaunchScreen {
     actionBar.height = '100%';
     actionBar.thickness = 0;
     actionBar.background = 'rgba(26, 58, 42, 0.5)';
-    parent.addControl(actionBar, 3, 0);
+    parent.addControl(actionBar, 4, 0);
 
     const buttonRow = new StackPanel('buttonRow');
     buttonRow.isVertical = false;
@@ -504,8 +512,174 @@ export class LaunchScreen {
       focusGroup: 'launch-buttons'
     }, this.focusManager);
     buttonRow.addControl(this.guideButton.control);
+
+    // Spacer
+    const spacer4 = new Rectangle('spacer4');
+    spacer4.width = '20px';
+    spacer4.height = '1px';
+    spacer4.thickness = 0;
+    spacer4.background = 'transparent';
+    buttonRow.addControl(spacer4);
+
+    // Course Designer button
+    const designerButton = createAccessibleButton({
+      label: '🎨 DESIGNER',
+      backgroundColor: '#5a5a7a',
+      onClick: () => {
+        if (this.callbacks.onOpenDesigner) {
+          this.callbacks.onOpenDesigner();
+        }
+      },
+      focusGroup: 'launch-buttons'
+    }, this.focusManager);
+    buttonRow.addControl(designerButton.control);
   }
 
+
+  private createCustomCoursesSection(parent: Grid): void {
+    const container = new Rectangle('customCoursesContainer');
+    container.width = '100%';
+    container.height = '100%';
+    container.thickness = 0;
+    container.background = 'rgba(26, 42, 32, 0.4)';
+    parent.addControl(container, 3, 0);
+
+    const stack = new StackPanel('customStack');
+    stack.width = '100%';
+    stack.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    container.addControl(stack);
+
+    const header = new TextBlock('customHeader');
+    header.text = 'CUSTOM COURSES';
+    header.color = '#7a9a7a';
+    header.fontSize = 12;
+    header.fontFamily = 'Arial, sans-serif';
+    header.height = '24px';
+    header.paddingTop = '6px';
+    stack.addControl(header);
+
+    const scrollViewer = new ScrollViewer('customScroll');
+    scrollViewer.width = '95%';
+    scrollViewer.height = '95px';
+    scrollViewer.barColor = '#4a8a5a';
+    scrollViewer.barBackground = '#1a3a2a';
+    scrollViewer.thickness = 0;
+    stack.addControl(scrollViewer);
+
+    const cardRow = new StackPanel('customCardRow');
+    cardRow.isVertical = false;
+    cardRow.height = '85px';
+    scrollViewer.addControl(cardRow);
+
+    const courses = listCustomCourses();
+    for (const course of courses) {
+      const card = this.createCustomCourseCard(course);
+      cardRow.addControl(card);
+    }
+
+    if (courses.length === 0) {
+      const empty = new TextBlock('emptyCustom');
+      empty.text = 'No custom courses yet';
+      empty.color = '#4a6a5a';
+      empty.fontSize = 11;
+      empty.fontFamily = 'Arial, sans-serif';
+      empty.width = '200px';
+      empty.height = '30px';
+      cardRow.addControl(empty);
+    }
+  }
+
+  private createCustomCourseCard(course: CustomCourseData): Rectangle {
+    const card = new Rectangle(`custom_${course.id}`);
+    card.width = '160px';
+    card.height = '80px';
+    card.cornerRadius = 6;
+    card.thickness = 1;
+    card.color = '#4a6a5a';
+    card.background = '#1a3a2a';
+    card.paddingLeft = '4px';
+    card.paddingRight = '4px';
+
+    const stack = new StackPanel();
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    stack.paddingRight = '8px';
+    card.addControl(stack);
+
+    const name = new TextBlock();
+    name.text = course.name;
+    name.color = 'white';
+    name.fontSize = 11;
+    name.fontFamily = 'Arial, sans-serif';
+    name.height = '18px';
+    name.textWrapping = true;
+    name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(name);
+
+    const date = new Date(course.updatedAt);
+    const dateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+
+    const info = new TextBlock();
+    info.text = `${course.width}x${course.height}  ${dateStr}`;
+    info.color = '#88aa88';
+    info.fontSize = 9;
+    info.fontFamily = 'Arial, sans-serif';
+    info.height = '14px';
+    info.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(info);
+
+    const btnRow = new StackPanel();
+    btnRow.isVertical = false;
+    btnRow.height = '24px';
+    btnRow.paddingTop = '4px';
+    stack.addControl(btnRow);
+
+    const playBtn = new Rectangle('playBtn');
+    playBtn.width = '50px';
+    playBtn.height = '20px';
+    playBtn.cornerRadius = 3;
+    playBtn.background = '#2a5a3a';
+    playBtn.color = '#7FFF7F';
+    playBtn.thickness = 1;
+    playBtn.isPointerBlocker = true;
+    const playText = new TextBlock();
+    playText.text = 'Play';
+    playText.color = 'white';
+    playText.fontSize = 9;
+    playText.isPointerBlocker = false;
+    playBtn.addControl(playText);
+    playBtn.onPointerUpObservable.add(() => this.callbacks.onPlayCustomCourse?.(course));
+    btnRow.addControl(playBtn);
+
+    const spacer = new Rectangle();
+    spacer.width = '6px';
+    spacer.height = '1px';
+    spacer.thickness = 0;
+    spacer.background = 'transparent';
+    btnRow.addControl(spacer);
+
+    const editBtn = new Rectangle('editBtn');
+    editBtn.width = '50px';
+    editBtn.height = '20px';
+    editBtn.cornerRadius = 3;
+    editBtn.background = '#3a4a5a';
+    editBtn.color = '#7faFFF';
+    editBtn.thickness = 1;
+    editBtn.isPointerBlocker = true;
+    const editText = new TextBlock();
+    editText.text = 'Edit';
+    editText.color = 'white';
+    editText.fontSize = 9;
+    editText.isPointerBlocker = false;
+    editBtn.addControl(editText);
+    editBtn.onPointerUpObservable.add(() => this.callbacks.onEditCustomCourse?.(course));
+    btnRow.addControl(editBtn);
+
+    card.onPointerEnterObservable.add(() => { card.background = '#2a4a3a'; });
+    card.onPointerOutObservable.add(() => { card.background = '#1a3a2a'; });
+
+    return card;
+  }
 
   private getDifficultyColor(difficulty: string): string {
     switch (difficulty) {

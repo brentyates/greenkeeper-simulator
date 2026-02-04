@@ -815,3 +815,53 @@ export function getAssetPath(assetId: AssetId): string {
 
 // Total asset count
 export const ASSET_COUNT = Object.keys(ASSET_MANIFEST).length;
+
+const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  character: 'Characters',
+  tree: 'Trees',
+  shrub: 'Shrubs',
+  flower: 'Flowers',
+  equipment: 'Equipment',
+  vehicle: 'Vehicles',
+  irrigation: 'Irrigation',
+  course: 'Course Features',
+  amenity: 'Amenities',
+  building: 'Buildings',
+  decor: 'Decorative',
+  fence: 'Fencing',
+  bridge: 'Bridges & Paths',
+  path: 'Bridges & Paths',
+  water: 'Water Features',
+  wildlife: 'Wildlife',
+};
+
+export function getAssetCategories(): string[] {
+  const seen = new Set<string>();
+  const categories: string[] = [];
+  for (const key of Object.keys(ASSET_MANIFEST)) {
+    const category = key.split('.')[0];
+    const display = CATEGORY_DISPLAY_NAMES[category] ?? category;
+    if (!seen.has(display)) {
+      seen.add(display);
+      categories.push(display);
+    }
+  }
+  return categories;
+}
+
+export function getAssetsByCategory(displayName: string): { id: string; spec: AssetSpec }[] {
+  const rawCategories = Object.entries(CATEGORY_DISPLAY_NAMES)
+    .filter(([, display]) => display === displayName)
+    .map(([raw]) => raw);
+
+  if (rawCategories.length === 0) return [];
+
+  return Object.entries(ASSET_MANIFEST)
+    .filter(([key]) => rawCategories.includes(key.split('.')[0]))
+    .map(([id, spec]) => ({ id, spec }));
+}
+
+export function getAssetDisplayName(assetId: string): string {
+  const parts = assetId.split('.');
+  return parts.slice(1).join(' ').replace(/_/g, ' ');
+}

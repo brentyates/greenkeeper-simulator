@@ -52,7 +52,7 @@ export interface InputCallbacks {
   onSubdivideEdge?: () => void;
   onFlipEdge?: () => void;
   onFaceModeToggle?: () => void;
-  isInputBlocked?: () => boolean;
+  isInputBlocked?: (x: number, y: number) => boolean;
   isEditorActive?: () => boolean;
   isEdgeModeActive?: () => boolean;
   isFaceModeActive?: () => boolean;
@@ -279,7 +279,7 @@ export class InputManager {
 
     this.wheelHandler = (event: WheelEvent) => {
       if (!this.enabled) return;
-      if (this.callbacks.isInputBlocked?.()) return;
+      if (this.callbacks.isInputBlocked?.(event.clientX, event.clientY)) return;
       event.preventDefault();
       if (event.deltaY !== 0) {
         this.callbacks.onZoom?.(event.deltaY);
@@ -410,6 +410,15 @@ export class InputManager {
     }
 
     return null;
+  }
+
+  public isDirectionKeyHeld(direction: 'up' | 'down' | 'left' | 'right'): boolean {
+    switch (direction) {
+      case 'up': return this.isKeyDown('arrowup') || this.isKeyDown('w');
+      case 'down': return this.isKeyDown('arrowdown') || this.isKeyDown('s');
+      case 'left': return this.isKeyDown('arrowleft') || this.isKeyDown('a');
+      case 'right': return this.isKeyDown('arrowright') || this.isKeyDown('d');
+    }
   }
 
   public dispose(): void {
