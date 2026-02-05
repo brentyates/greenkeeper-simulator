@@ -2059,19 +2059,6 @@ export class VectorTerrainSystem {
     return this.getElevationAt(meshX / res, meshY / res, defaultForOutOfBounds);
   }
 
-  public getCornerHeightsPublic(gridX: number, gridY: number): { nw: number; ne: number; se: number; sw: number } {
-    const res = this.options.meshResolution;
-    const wx = gridX / res;
-    const wy = gridY / res;
-    const step = 1 / res;
-    return {
-      nw: this.getInterpolatedElevation(wx, wy),
-      ne: this.getInterpolatedElevation(wx + step, wy),
-      se: this.getInterpolatedElevation(wx + step, wy + step),
-      sw: this.getInterpolatedElevation(wx, wy + step),
-    };
-  }
-
   public setElevationAt(meshX: number, meshY: number, elev: number): void {
     const res = this.options.meshResolution;
     const worldX = meshX / res;

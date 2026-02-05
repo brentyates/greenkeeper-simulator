@@ -25,8 +25,6 @@ export interface TerrainSystem {
   // Elevation
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
   setElevationAt(x: number, y: number, elev: number): void;
-  getCornerHeightsPublic(gridX: number, gridY: number): { nw: number; ne: number; se: number; sw: number };
-
   // Terrain type
   getTerrainTypeAt(x: number, y: number): string | undefined;
   setTerrainTypeAt(x: number, y: number, type: TerrainType): void;

@@ -9,11 +9,7 @@ import { getCellsInBrush, getVerticesInBrush, vertexKey } from "../../core/terra
 export type HighlightMode = 'cell' | 'vertex' | 'none';
 export type VertexState = 'normal' | 'hovered' | 'selected' | 'selected_hovered';
 
-export interface CornerHeightsProvider {
-  getCornerHeights(
-    gridX: number,
-    gridY: number
-  ): { nw: number; ne: number; se: number; sw: number };
+export interface ElevationProvider {
   getElevationAt(gridX: number, gridY: number, defaultValue?: number): number;
   gridTo3D(gridX: number, gridY: number, elev: number): import("@babylonjs/core/Maths/math.vector").Vector3;
 }
@@ -31,7 +27,7 @@ export interface SelectionProvider {
 
 export class TileHighlightSystem {
   private scene: Scene;
-  private cornerProvider: CornerHeightsProvider;
+  private elevationProvider: ElevationProvider;
   private vertexProvider: VertexPositionProvider | null = null;
   private selectionProvider: SelectionProvider | null = null;
   private highlightMesh: Mesh | null = null;
@@ -52,9 +48,9 @@ export class TileHighlightSystem {
   private highlightMode: HighlightMode = 'cell';
   private showSelectedVertices: boolean = true;
 
-  constructor(scene: Scene, cornerProvider: CornerHeightsProvider) {
+  constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
-    this.cornerProvider = cornerProvider;
+    this.elevationProvider = elevationProvider;
     this.createMaterial();
   }
 
@@ -396,32 +392,26 @@ export class TileHighlightSystem {
     gridY: number,
     corner: "nw" | "ne" | "se" | "sw"
   ): Mesh | null {
-    const corners = this.cornerProvider.getCornerHeights(gridX, gridY);
-
     let cornerX = gridX;
     let cornerZ = gridY;
-    let cornerElev = 0;
 
     switch (corner) {
       case "nw":
-        cornerElev = corners.nw;
         break;
       case "ne":
         cornerX += 1;
-        cornerElev = corners.ne;
         break;
       case "se":
         cornerX += 1;
         cornerZ += 1;
-        cornerElev = corners.se;
         break;
       case "sw":
         cornerZ += 1;
-        cornerElev = corners.sw;
         break;
     }
 
-    const center = this.cornerProvider.gridTo3D(cornerX, cornerZ, cornerElev);
+    const cornerElev = this.elevationProvider.getElevationAt(cornerX, cornerZ);
+    const center = this.elevationProvider.gridTo3D(cornerX, cornerZ, cornerElev);
     const size = 0.15;
     const yOffset = 0.02;
 
@@ -457,13 +447,17 @@ export class TileHighlightSystem {
   }
 
   private createHighlightMeshAt(gridX: number, gridY: number): Mesh | null {
-    const corners = this.cornerProvider.getCornerHeights(gridX, gridY);
     const yOffset = 0.02;
 
-    const nw = this.cornerProvider.gridTo3D(gridX, gridY, corners.nw);
-    const ne = this.cornerProvider.gridTo3D(gridX + 1, gridY, corners.ne);
-    const se = this.cornerProvider.gridTo3D(gridX + 1, gridY + 1, corners.se);
-    const sw = this.cornerProvider.gridTo3D(gridX, gridY + 1, corners.sw);
+    const nwElev = this.elevationProvider.getElevationAt(gridX, gridY);
+    const neElev = this.elevationProvider.getElevationAt(gridX + 1, gridY);
+    const seElev = this.elevationProvider.getElevationAt(gridX + 1, gridY + 1);
+    const swElev = this.elevationProvider.getElevationAt(gridX, gridY + 1);
+
+    const nw = this.elevationProvider.gridTo3D(gridX, gridY, nwElev);
+    const ne = this.elevationProvider.gridTo3D(gridX + 1, gridY, neElev);
+    const se = this.elevationProvider.gridTo3D(gridX + 1, gridY + 1, seElev);
+    const sw = this.elevationProvider.gridTo3D(gridX, gridY + 1, swElev);
 
     const positions: number[] = [];
     const indices: number[] = [];

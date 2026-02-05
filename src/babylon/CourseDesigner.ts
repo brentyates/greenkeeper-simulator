@@ -155,13 +155,12 @@ export class CourseDesigner {
   private setupTerrainEditor(): TerrainEditorSystem {
     const scene = this.babylonEngine.getScene();
 
-    const cornerProvider = {
-      getCornerHeights: (_gridX: number, _gridY: number) => ({ nw: 0, ne: 0, se: 0, sw: 0 }),
+    const elevationProvider = {
       getElevationAt: (_gridX: number, _gridY: number) => 0,
       gridTo3D: (gridX: number, gridY: number, elev: number) => gridTo3D(gridX, gridY, elev),
     };
 
-    const editor = new TerrainEditorSystem(scene, cornerProvider);
+    const editor = new TerrainEditorSystem(scene, elevationProvider);
 
     const vts = this.vectorTerrainSystem;
     editor.setTerrainModifier({

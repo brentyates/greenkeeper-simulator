@@ -502,9 +502,7 @@ export class BabylonMain {
   private setupTerrainEditor(): void {
     const scene = this.babylonEngine.getScene();
 
-    const cornerProvider = {
-      getCornerHeights: (gridX: number, gridY: number) =>
-        this.terrainSystem.getCornerHeightsPublic(gridX, gridY),
+    const elevationProvider = {
       getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
         (this.terrainSystem as any).getMeshElevationAt ? (this.terrainSystem as any).getMeshElevationAt(gridX, gridY, defaultValue) : this.terrainSystem.getElevationAt(gridX, gridY),
       gridTo3D: (gridX: number, gridY: number, elev: number) => {
@@ -516,7 +514,7 @@ export class BabylonMain {
       }
     };
 
-    this.terrainEditorSystem = new TerrainEditorSystem(scene, cornerProvider);
+    this.terrainEditorSystem = new TerrainEditorSystem(scene, elevationProvider);
 
     const baseModifier = {
       setElevationAt: (x: number, y: number, elev: number) =>

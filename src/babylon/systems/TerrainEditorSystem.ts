@@ -34,7 +34,7 @@ import {
 } from "../../core/terrain";
 import {
   TileHighlightSystem,
-  CornerHeightsProvider,
+  ElevationProvider,
   VertexPositionProvider,
   SelectionProvider,
 } from "./TileHighlightSystem";
@@ -152,9 +152,9 @@ export class TerrainEditorSystem {
   private selectedFaces: Set<number> = new Set();
   private meshResolution: number = 2.0;
 
-  constructor(scene: Scene, cornerProvider: CornerHeightsProvider) {
+  constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.state = createInitialEditorState();
-    this.highlightSystem = new TileHighlightSystem(scene, cornerProvider);
+    this.highlightSystem = new TileHighlightSystem(scene, elevationProvider);
   }
 
   private getVertexDims(): { width: number; height: number } {

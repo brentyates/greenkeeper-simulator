@@ -1452,14 +1452,6 @@ export class GrassSystem {
     this.createCliffFacesForCell(x, y);
   }
 
-  public getCornerHeightsPublic(
-    gridX: number,
-    gridY: number
-  ): { nw: number; ne: number; se: number; sw: number } {
-    const cell = this.getCell(gridX, gridY);
-    return this.getCornerHeights(gridX, gridY, cell ? cell.elevation : 0);
-  }
-
   public getLayoutGrid(): number[][] {
     return this.cells.map((row) =>
       row.map((cell) => getTerrainCode(cell.type))
