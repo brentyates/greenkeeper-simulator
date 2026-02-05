@@ -11,6 +11,8 @@ import {
   buildMeshArrays,
   captureTopologyState,
   restoreTopologyState,
+  computeFaceSlopeAngle,
+  MAX_WALKABLE_SLOPE_DEGREES,
   Vec3,
 } from './mesh-topology';
 
@@ -335,9 +337,10 @@ describe('mesh-topology', () => {
 
       const result = buildMeshArrays(topology, 1);
 
-      expect(result.positions.length).toBe(4 * 3);
-      expect(result.uvs.length).toBe(4 * 2);
-      expect(result.normals.length).toBe(4 * 3);
+      expect(result.positions.length).toBe(6 * 3);
+      expect(result.uvs.length).toBe(6 * 2);
+      expect(result.normals.length).toBe(6 * 3);
+      expect(result.faceIds.length).toBe(6);
       expect(result.indices.length).toBe(2 * 3);
     });
 
@@ -400,6 +403,98 @@ describe('mesh-topology', () => {
 
       const restoredVertex = topology.vertices.get(0);
       expect(restoredVertex?.position.x).toBe(0);
+    });
+  });
+
+  describe('computeFaceSlopeAngle', () => {
+    it('returns 0 degrees for a flat face', () => {
+      const grid: Vec3[][] = [
+        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+      ];
+      const topology = gridToTopology(grid, 1, 1, 1);
+      const faceId = Array.from(topology.triangles.keys())[0];
+
+      const angle = computeFaceSlopeAngle(topology, faceId, 1);
+      expect(angle).toBeCloseTo(0, 1);
+    });
+
+    it('returns 45 degrees for a 45-degree slope', () => {
+      const grid: Vec3[][] = [
+        [{ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }],
+        [{ x: 0, y: 1, z: 1 }, { x: 1, y: 0, z: 1 }],
+      ];
+      const topology = gridToTopology(grid, 1, 1, 1);
+
+      const faceId = Array.from(topology.triangles.keys())[0];
+      const angle = computeFaceSlopeAngle(topology, faceId, 1);
+      expect(angle).toBeCloseTo(45, 0);
+    });
+
+    it('returns 90 degrees for a vertical face', () => {
+      const topology = createEmptyTopology(1, 1);
+      const v0Id = topology.nextVertexId++;
+      topology.vertices.set(v0Id, {
+        id: v0Id, position: { x: 0, y: 0, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+      const v1Id = topology.nextVertexId++;
+      topology.vertices.set(v1Id, {
+        id: v1Id, position: { x: 0, y: 1, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+      const v2Id = topology.nextVertexId++;
+      topology.vertices.set(v2Id, {
+        id: v2Id, position: { x: 0, y: 0.5, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+
+      const triId = topology.nextTriangleId++;
+      topology.triangles.set(triId, {
+        id: triId,
+        vertices: [v0Id, v1Id, v2Id],
+        edges: [0, 0, 0],
+        terrainCode: 0,
+      });
+
+      const angle = computeFaceSlopeAngle(topology, triId, 1);
+      expect(angle).toBeCloseTo(90, 1);
+    });
+
+    it('returns 90 degrees for a degenerate triangle', () => {
+      const topology = createEmptyTopology(1, 1);
+      const v0Id = topology.nextVertexId++;
+      topology.vertices.set(v0Id, {
+        id: v0Id, position: { x: 0, y: 0, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+      const v1Id = topology.nextVertexId++;
+      topology.vertices.set(v1Id, {
+        id: v1Id, position: { x: 1, y: 0, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+      const v2Id = topology.nextVertexId++;
+      topology.vertices.set(v2Id, {
+        id: v2Id, position: { x: 2, y: 0, z: 0 },
+        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+      });
+
+      const triId = topology.nextTriangleId++;
+      topology.triangles.set(triId, {
+        id: triId,
+        vertices: [v0Id, v1Id, v2Id],
+        edges: [0, 0, 0],
+        terrainCode: 0,
+      });
+
+      const angle = computeFaceSlopeAngle(topology, triId, 1);
+      expect(angle).toBe(90);
+    });
+  });
+
+  describe('MAX_WALKABLE_SLOPE_DEGREES', () => {
+    it('is 45', () => {
+      expect(MAX_WALKABLE_SLOPE_DEGREES).toBe(45);
     });
   });
 });

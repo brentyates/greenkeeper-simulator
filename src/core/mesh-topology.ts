@@ -809,6 +809,7 @@ export function buildMeshArrays(
   uvs: number[];
   normals: number[];
   terrainTypes: number[];
+  faceIds: number[];
   vertexIdMap: Map<number, number[]>;
 } {
   const positions: number[] = [];
@@ -816,58 +817,60 @@ export function buildMeshArrays(
   const uvs: number[] = [];
   const normals: number[] = [];
   const terrainTypes: number[] = [];
+  const faceIds: number[] = [];
 
-  // Map vertexId -> list of indices in the buffers
   const vertexIdMap = new Map<number, number[]>();
-  
-  // Cache for unique vertex+terrain combinations
-  // Key: "${vertexId}_${terrainCode}" -> index
-  const uniqueVertexMap = new Map<string, number>();
 
   let nextIndex = 0;
 
-  for (const [, tri] of topology.triangles) {
-    const terrainCode = tri.terrainCode ?? 0; // Default to 0 if undefined
-
+  for (const [triId, tri] of topology.triangles) {
+    const terrainCode = tri.terrainCode ?? 0;
     const triIndices: number[] = [];
 
     for (const vId of tri.vertices) {
-        const key = `${vId}_${terrainCode}`;
-        let idx = uniqueVertexMap.get(key);
+      const vertex = topology.vertices.get(vId);
+      if (!vertex) continue;
 
-        if (idx === undefined) {
-            const vertex = topology.vertices.get(vId);
-            if (!vertex) continue;
+      const idx = nextIndex++;
 
-            idx = nextIndex++;
-            uniqueVertexMap.set(key, idx);
+      const existing = vertexIdMap.get(vId) || [];
+      existing.push(idx);
+      vertexIdMap.set(vId, existing);
 
-            // Add to vertexIdMap
-            const existing = vertexIdMap.get(vId) || [];
-            existing.push(idx);
-            vertexIdMap.set(vId, existing);
+      positions.push(vertex.position.x, vertex.position.y * heightUnit, vertex.position.z);
+      uvs.push(vertex.gridUV.u, vertex.gridUV.v);
+      normals.push(0, 1, 0);
+      terrainTypes.push(terrainCode);
+      faceIds.push(triId);
 
-            positions.push(vertex.position.x);
-            positions.push(vertex.position.y * heightUnit);
-            positions.push(vertex.position.z);
-
-            uvs.push(vertex.gridUV.u);
-            uvs.push(vertex.gridUV.v);
-
-            normals.push(0, 1, 0); // Placeholder, computed later
-            terrainTypes.push(terrainCode);
-        }
-        triIndices.push(idx);
+      triIndices.push(idx);
     }
 
     if (triIndices.length === 3) {
-        indices.push(triIndices[0], triIndices[1], triIndices[2]);
+      indices.push(triIndices[0], triIndices[1], triIndices[2]);
     }
   }
 
   computeNormals(positions, indices, normals);
 
-  return { positions, indices, uvs, normals, terrainTypes, vertexIdMap };
+  for (const [, bufferIndices] of vertexIdMap) {
+    if (bufferIndices.length <= 1) continue;
+    let nx = 0, ny = 0, nz = 0;
+    for (const idx of bufferIndices) {
+      nx += normals[idx * 3];
+      ny += normals[idx * 3 + 1];
+      nz += normals[idx * 3 + 2];
+    }
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    for (const idx of bufferIndices) {
+      normals[idx * 3] = nx;
+      normals[idx * 3 + 1] = ny;
+      normals[idx * 3 + 2] = nz;
+    }
+  }
+
+  return { positions, indices, uvs, normals, terrainTypes, faceIds, vertexIdMap };
 }
 
 function computeNormals(positions: number[], indices: number[], normals: number[]): void {
@@ -1233,6 +1236,40 @@ function segmentsIntersect(
 ): boolean {
     return ccw(ax, az, cx, cz, dx, dz) !== ccw(bx, bz, cx, cz, dx, dz) &&
            ccw(ax, az, bx, bz, cx, cz) !== ccw(ax, az, bx, bz, dx, dz);
+}
+
+export const MAX_WALKABLE_SLOPE_DEGREES = 45;
+
+export function computeFaceSlopeAngle(
+  topology: TerrainMeshTopology,
+  faceId: number,
+  heightUnit: number
+): number {
+  const tri = topology.triangles.get(faceId);
+  if (!tri) return 90;
+
+  const v0 = topology.vertices.get(tri.vertices[0]);
+  const v1 = topology.vertices.get(tri.vertices[1]);
+  const v2 = topology.vertices.get(tri.vertices[2]);
+  if (!v0 || !v1 || !v2) return 90;
+
+  const ax = v1.position.x - v0.position.x;
+  const ay = (v1.position.y - v0.position.y) * heightUnit;
+  const az = v1.position.z - v0.position.z;
+
+  const bx = v2.position.x - v0.position.x;
+  const by = (v2.position.y - v0.position.y) * heightUnit;
+  const bz = v2.position.z - v0.position.z;
+
+  const nx = ay * bz - az * by;
+  const ny = az * bx - ax * bz;
+  const nz = ax * by - ay * bx;
+
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (len < 1e-10) return 90;
+
+  const normalY = ny / len;
+  return Math.acos(Math.min(1, Math.max(-1, normalY))) * (180 / Math.PI);
 }
 
 export function sanitizeTopology(topology: TerrainMeshTopology): void {

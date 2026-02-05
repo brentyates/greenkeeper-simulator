@@ -1,4 +1,5 @@
-import { CellState, TerrainType } from './terrain';
+import { CellState, TerrainType, getTerrainType } from './terrain';
+import { FaceState, isGrassFace } from './face-state';
 import { AmenityState, AmenityUpgrade, createInitialAmenityState, calculateAmenityScore, applyUpgrade as applyAmenityUpgrade } from './amenities';
 import { ReputationState, createInitialReputationState, calculateReputationScore } from './reputation';
 import { ExclusivityState, createInitialExclusivityState, calculateExclusivityScore, MembershipModel, DressCode, setMembershipModel, setWaitlistLength, setAdvanceBookingDays, setDressCode, earnAward as earnExclusivityAward, removeAward as removeExclusivityAward } from './exclusivity';
@@ -243,6 +244,58 @@ export function calculateCurrentConditions(cells: CellState[][]): CurrentConditi
   const greenScore = calculateTerrainTypeScore(cells, 'green');
   const fairwayScore = calculateTerrainTypeScore(cells, 'fairway');
   const teeBoxScore = calculateTerrainTypeScore(cells, 'tee');
+
+  const bunkerScore = 100;
+  const hazardScore = 100;
+
+  const composite = Math.round(
+    (averageHealth * CONDITION_WEIGHTS.averageHealth +
+     greenScore * CONDITION_WEIGHTS.greenScore +
+     fairwayScore * CONDITION_WEIGHTS.fairwayScore +
+     bunkerScore * CONDITION_WEIGHTS.bunkerScore +
+     hazardScore * CONDITION_WEIGHTS.hazardScore +
+     teeBoxScore * CONDITION_WEIGHTS.teeBoxScore) * 10
+  );
+
+  return {
+    averageHealth: Math.round(averageHealth),
+    greenScore: Math.round(greenScore),
+    fairwayScore: Math.round(fairwayScore),
+    bunkerScore,
+    hazardScore,
+    teeBoxScore: Math.round(teeBoxScore),
+    composite: Math.max(0, Math.min(1000, composite)),
+  };
+}
+
+function faceTerrainTypeScore(faceStates: Map<number, FaceState>, targetType: TerrainType): number {
+  let totalHealth = 0;
+  let count = 0;
+  for (const [, fs] of faceStates) {
+    if (getTerrainType(fs.terrainCode) === targetType) {
+      totalHealth += fs.health;
+      count++;
+    }
+  }
+  if (count === 0) return 100;
+  return totalHealth / count;
+}
+
+export function calculateCurrentConditionsFromFaces(faceStates: Map<number, FaceState>): CurrentConditionsScore {
+  let totalHealth = 0;
+  let grassCount = 0;
+
+  for (const [, fs] of faceStates) {
+    if (isGrassFace(fs.terrainCode)) {
+      totalHealth += fs.health;
+      grassCount++;
+    }
+  }
+
+  const averageHealth = grassCount > 0 ? totalHealth / grassCount : 100;
+  const greenScore = faceTerrainTypeScore(faceStates, 'green');
+  const fairwayScore = faceTerrainTypeScore(faceStates, 'fairway');
+  const teeBoxScore = faceTerrainTypeScore(faceStates, 'tee');
 
   const bunkerScore = 100;
   const hazardScore = 100;

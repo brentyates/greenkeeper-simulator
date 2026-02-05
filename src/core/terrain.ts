@@ -151,13 +151,16 @@ export function isWalkable(cell: CellState | null): boolean {
 
 export function canMoveFromTo(
   fromCell: CellState | null,
-  toCell: CellState | null
+  toCell: CellState | null,
+  slopeChecker?: (x: number, y: number) => boolean
 ): boolean {
   if (!fromCell || !toCell) return false;
   if (!isWalkable(toCell)) return false;
 
   const elevationDiff = Math.abs(toCell.elevation - fromCell.elevation);
   if (elevationDiff > 1) return false;
+
+  if (slopeChecker && !slopeChecker(toCell.x, toCell.y)) return false;
 
   return true;
 }
@@ -332,4 +335,19 @@ export function getAdjacentPositions(
   }
 
   return positions;
+}
+
+import { TerrainMeshTopology, computeFaceSlopeAngle, MAX_WALKABLE_SLOPE_DEGREES } from './mesh-topology';
+
+export function isFaceWalkableBySlope(
+  topology: TerrainMeshTopology,
+  faceId: number,
+  heightUnit: number,
+  maxSlopeDegrees: number = MAX_WALKABLE_SLOPE_DEGREES
+): boolean {
+  const tri = topology.triangles.get(faceId);
+  if (!tri) return false;
+  if (getTerrainType(tri.terrainCode) === 'water') return false;
+  if (computeFaceSlopeAngle(topology, faceId, heightUnit) > maxSlopeDegrees) return false;
+  return true;
 }

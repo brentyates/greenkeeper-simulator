@@ -9,6 +9,7 @@ import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
 import { MarketingState } from './marketing';
 import { CellState } from './terrain';
+import { FaceState } from './face-state';
 import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
@@ -43,6 +44,7 @@ export interface SaveGameState {
   irrigationSystem?: IrrigationSystem;
 
   cells: CellState[][];
+  faceStates?: FaceState[];
 }
 
 const SAVE_VERSION = 1;
@@ -70,7 +72,8 @@ export function createSaveState(
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
   cells: CellState[][],
-  irrigationSystem?: IrrigationSystem
+  irrigationSystem?: IrrigationSystem,
+  faceStates?: Map<number, FaceState>
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -97,7 +100,16 @@ export function createSaveState(
     weatherState,
     irrigationSystem,
     cells,
+    faceStates: faceStates ? Array.from(faceStates.values()) : undefined,
   };
+}
+
+export function deserializeFaceStates(saved: FaceState[]): Map<number, FaceState> {
+  const map = new Map<number, FaceState>();
+  for (const state of saved) {
+    map.set(state.faceId, state);
+  }
+  return map;
 }
 
 export function saveGame(state: SaveGameState): boolean {

@@ -13,7 +13,6 @@ import {
   EntityVisualState,
   PLAYER_APPEARANCE,
   createEntityMesh,
-  updateEntityVisualPosition,
   disposeEntityMesh,
 } from "./systems/EntityVisualSystem";
 import {
@@ -122,8 +121,8 @@ import {
 import {
   PlayerEntity,
   createPlayerEntity,
-  setEntityPath,
   teleportEntity,
+  PLAYER_BASE_SPEED,
 } from "../core/movable-entity";
 import {
   GolferPoolState,
@@ -163,7 +162,7 @@ import { ScenarioManager } from "../core/scenario";
 import {
   PrestigeState,
   createInitialPrestigeState,
-  calculateCurrentConditions,
+  calculateCurrentConditionsFromFaces,
   updatePrestigeScore,
   calculateDemandMultiplier,
   takeDailySnapshot,
@@ -229,6 +228,7 @@ import {
   deleteSave,
   getSaveInfo,
   listSaves,
+  deserializeFaceStates,
 } from "../core/save-game";
 import {
   AutonomousEquipmentState,
@@ -283,6 +283,8 @@ export class BabylonMain {
   private player: PlayerEntity = createPlayerEntity("player", 25, 19);
   private playerVisual: EntityVisualState | null = null;
   private cameraFollowPlayer: boolean = true;
+  private lastEquipmentFaceId: number | null = null;
+  private clickToMoveWaypoints: Array<{ x: number; z: number }> = [];
 
   private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
@@ -1195,6 +1197,7 @@ export class BabylonMain {
     if (!this.currentScenario || !this.scenarioManager) return;
 
     const cells = this.terrainSystem.getAllCells();
+    const faceStates = this.terrainSystem.getAllFaceStates();
     const scenarioProgress = this.scenarioManager.getProgress();
     const state = createSaveState(
       this.currentScenario.id,
@@ -1218,7 +1221,8 @@ export class BabylonMain {
       this.autonomousState,
       this.weatherState,
       cells,
-      this.irrigationSystem
+      this.irrigationSystem,
+      faceStates
     );
 
     if (saveGame(state)) {
@@ -1234,7 +1238,13 @@ export class BabylonMain {
 
     this.gameTime = saved.gameTime;
     this.gameDay = saved.gameDay;
-    this.player = teleportEntity(this.player, saved.playerX, saved.playerY);
+    this.player = {
+      ...teleportEntity(this.player, saved.playerX, saved.playerY),
+      worldX: saved.playerX + 0.5,
+      worldZ: saved.playerY + 0.5,
+    };
+    this.clickToMoveWaypoints = [];
+    this.lastEquipmentFaceId = null;
     this.score = saved.score;
     this.economyState = saved.economyState;
     this.employeeRoster = saved.employeeRoster;
@@ -1281,7 +1291,9 @@ export class BabylonMain {
       this.weather = this.weatherState.current;
     }
 
-    if (saved.cells && saved.cells.length > 0) {
+    if (saved.faceStates && saved.faceStates.length > 0) {
+      this.terrainSystem.restoreFaceStates(deserializeFaceStates(saved.faceStates));
+    } else if (saved.cells && saved.cells.length > 0) {
       this.terrainSystem.restoreCells(saved.cells);
     }
 
@@ -1502,7 +1514,13 @@ export class BabylonMain {
       return;
     }
 
-    this.player = teleportEntity(this.player, x, y);
+    this.player = {
+      ...teleportEntity(this.player, x, y),
+      worldX: x + 0.5,
+      worldZ: y + 0.5,
+    };
+    this.clickToMoveWaypoints = [];
+    this.lastEquipmentFaceId = null;
 
     if (this.playerVisual) {
       this.playerVisual.lastGridX = x;
@@ -1518,19 +1536,23 @@ export class BabylonMain {
   private updatePlayerPosition(): void {
     if (!this.playerVisual) return;
 
-    const worldPos = this.terrainSystem.gridToWorld(
-      this.player.gridX,
-      this.player.gridY
-    );
-    this.playerVisual.container.position = worldPos.clone();
+    const elev = this.terrainSystem.getElevationAt(
+      this.player.worldX,
+      this.player.worldZ,
+      0
+    ) * HEIGHT_UNIT;
+    this.playerVisual.container.position.set(this.player.worldX, elev, this.player.worldZ);
 
     if (this.cameraFollowPlayer) {
-      this.babylonEngine.setCameraTarget(worldPos);
+      this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
     }
   }
 
   private isPlayerMoving(): boolean {
-    return this.playerVisual !== null && this.playerVisual.visualProgress < 1;
+    return this.playerVisual !== null && (
+      this.player.pendingDirection !== null ||
+      this.clickToMoveWaypoints.length > 0
+    );
   }
 
   private snapEntityToTerrain(visual: EntityVisualState, gridX: number, gridY: number): void {
@@ -1544,6 +1566,34 @@ export class BabylonMain {
     visual.visualProgress = 1;
   }
 
+  private getHeldDirectionVector(): { dx: number; dz: number } {
+    let dx = 0;
+    let dz = 0;
+    if (this.inputManager.isDirectionKeyHeld('up')) dx -= 1;
+    if (this.inputManager.isDirectionKeyHeld('down')) dx += 1;
+    if (this.inputManager.isDirectionKeyHeld('left')) dz -= 1;
+    if (this.inputManager.isDirectionKeyHeld('right')) dz += 1;
+    return { dx, dz };
+  }
+
+  private movePlayerTo(targetX: number, targetZ: number): void {
+    this.player = {
+      ...this.player,
+      worldX: targetX,
+      worldZ: targetZ,
+      gridX: Math.floor(targetX),
+      gridY: Math.floor(targetZ),
+    };
+
+    const currentFace = this.terrainSystem.findFaceAtPosition(targetX, targetZ);
+    if (currentFace !== null && currentFace !== this.lastEquipmentFaceId) {
+      if (this.equipmentManager.isActive()) {
+        this.applyEquipmentEffect(Math.floor(targetX), Math.floor(targetZ));
+      }
+      this.lastEquipmentFaceId = currentFace;
+    }
+  }
+
   private updateMovement(deltaMs: number): void {
     if (this.terrainEditorSystem?.isEnabled()) {
       this.updateEditorCamera(deltaMs);
@@ -1552,16 +1602,80 @@ export class BabylonMain {
 
     if (!this.playerVisual) return;
 
-    const wasMoving = this.isPlayerMoving();
+    const clampedDelta = Math.min(deltaMs, 100);
 
-    this.updatePlayerVisualProgress(deltaMs);
+    const dir = this.getHeldDirectionVector();
+    const hasKeyInput = dir.dx !== 0 || dir.dz !== 0;
+
+    if (hasKeyInput) {
+      this.clickToMoveWaypoints = [];
+
+      const len = Math.sqrt(dir.dx * dir.dx + dir.dz * dir.dz);
+      const ndx = dir.dx / len;
+      const ndz = dir.dz / len;
+
+      const terrainSpeed = this.terrainSystem.getTerrainSpeedAt(this.player.worldX, this.player.worldZ);
+      const speed = PLAYER_BASE_SPEED * Math.max(terrainSpeed, 0.3);
+      const delta = speed * (clampedDelta / 1000);
+      const targetX = this.player.worldX + ndx * delta;
+      const targetZ = this.player.worldZ + ndz * delta;
+
+      if (this.terrainSystem.isPositionWalkable(targetX, targetZ)) {
+        this.movePlayerTo(targetX, targetZ);
+      } else if (this.terrainSystem.isPositionWalkable(targetX, this.player.worldZ)) {
+        this.movePlayerTo(targetX, this.player.worldZ);
+      } else if (this.terrainSystem.isPositionWalkable(this.player.worldX, targetZ)) {
+        this.movePlayerTo(this.player.worldX, targetZ);
+      }
+
+      this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
+      this.playerVisual.isAnimating = true;
+    } else if (this.clickToMoveWaypoints.length > 0) {
+      const wp = this.clickToMoveWaypoints[0];
+      const dx = wp.x - this.player.worldX;
+      const dz = wp.z - this.player.worldZ;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < 0.1) {
+        this.clickToMoveWaypoints.shift();
+      } else {
+        const ndx = dx / dist;
+        const ndz = dz / dist;
+        const terrainSpeed = this.terrainSystem.getTerrainSpeedAt(this.player.worldX, this.player.worldZ);
+        const speed = PLAYER_BASE_SPEED * Math.max(terrainSpeed, 0.3);
+        const delta = Math.min(speed * (clampedDelta / 1000), dist);
+        const targetX = this.player.worldX + ndx * delta;
+        const targetZ = this.player.worldZ + ndz * delta;
+
+        if (this.terrainSystem.isPositionWalkable(targetX, targetZ)) {
+          this.movePlayerTo(targetX, targetZ);
+        } else {
+          this.clickToMoveWaypoints = [];
+        }
+
+        this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
+        this.playerVisual.isAnimating = true;
+      }
+    } else {
+      this.playerVisual.isAnimating = false;
+      if (this.player.pendingDirection !== null) {
+        this.player = { ...this.player, pendingDirection: null };
+      }
+    }
+
+    if (this.playerVisual.meshInstance) {
+      this.playerVisual.meshInstance.root.rotation.y = this.playerVisual.facingAngle;
+    }
+
+    const elev = this.terrainSystem.getElevationAt(
+      this.player.worldX,
+      this.player.worldZ,
+      0
+    ) * HEIGHT_UNIT;
+    this.playerVisual.container.position.set(this.player.worldX, elev, this.player.worldZ);
 
     if (this.cameraFollowPlayer) {
       this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
-    }
-
-    if (wasMoving && !this.isPlayerMoving()) {
-      this.checkContinuousMovement();
     }
   }
 
@@ -1574,97 +1688,12 @@ export class BabylonMain {
     });
   }
 
-  private updatePlayerVisualProgress(deltaMs: number): void {
-    if (!this.playerVisual) return;
-
-    const isMoving = this.playerVisual.visualProgress < 1 ||
-      this.playerVisual.targetGridX !== this.player.gridX ||
-      this.playerVisual.targetGridY !== this.player.gridY;
-
-    updateEntityVisualPosition(
-      this.playerVisual,
-      this.playerVisual.targetGridX,
-      this.playerVisual.targetGridY,
-      isMoving ? this.player.gridX : null,
-      isMoving ? this.player.gridY : null,
-      deltaMs,
-      this.terrainSystem
-    );
-  }
-
-  private checkContinuousMovement(): void {
-    if (this.player.path.length > 0) {
-      const next = this.player.path[0];
-      this.player = { ...this.player, path: this.player.path.slice(1) };
-      this.startMoveTo(next.x, next.y);
-      return;
-    }
-
-    if (
-      this.player.pendingDirection &&
-      this.inputManager.isDirectionKeyHeld(this.player.pendingDirection)
-    ) {
-      this.tryMove(this.player.pendingDirection);
-    } else {
-      this.player = { ...this.player, pendingDirection: null };
-    }
-  }
-
   private handleMove(direction: Direction): void {
     if (this.isPaused) return;
     if (this.terrainEditorSystem?.isEnabled()) return;
 
     this.player = { ...this.player, pendingDirection: direction, path: [] };
-
-    if (!this.isPlayerMoving()) {
-      this.tryMove(direction);
-    }
-  }
-
-  private tryMove(direction: Direction): boolean {
-    const course = this.currentCourse;
-    let newX = this.player.gridX;
-    let newY = this.player.gridY;
-
-    switch (direction) {
-      case "up":
-        newX--;
-        break;
-      case "down":
-        newX++;
-        break;
-      case "left":
-        newY--;
-        break;
-      case "right":
-        newY++;
-        break;
-    }
-
-    if (newX < 0 || newX >= course.width || newY < 0 || newY >= course.height) {
-      return false;
-    }
-
-    const fromCell = this.terrainSystem.getCell(
-      this.player.gridX,
-      this.player.gridY
-    );
-    const toCell = this.terrainSystem.getCell(newX, newY);
-
-    if (!canMoveFromTo(fromCell, toCell)) {
-      return false;
-    }
-
-    this.startMoveTo(newX, newY);
-    return true;
-  }
-
-  private startMoveTo(newX: number, newY: number): void {
-    this.player = { ...this.player, gridX: newX, gridY: newY };
-
-    if (this.equipmentManager.isActive()) {
-      this.applyEquipmentEffect(newX, newY);
-    }
+    this.clickToMoveWaypoints = [];
   }
 
   private handleClick(screenX: number, screenY: number): void {
@@ -1700,18 +1729,19 @@ export class BabylonMain {
       return;
     }
 
+    const slopeChecker = (x: number, y: number) =>
+      this.terrainSystem.isPositionWalkable(x + 0.5, y + 0.5);
+
     const path = this.findPath(
       this.player.gridX,
       this.player.gridY,
       gridPos.x,
-      gridPos.y
+      gridPos.y,
+      slopeChecker
     );
     if (path.length > 0) {
-      this.player = setEntityPath(this.player, path);
-      this.player = { ...this.player, pendingDirection: null };
-      if (!this.isPlayerMoving()) {
-        this.checkContinuousMovement();
-      }
+      this.clickToMoveWaypoints = path.map(p => ({ x: p.x + 0.5, z: p.y + 0.5 }));
+      this.player = { ...this.player, pendingDirection: null, path: [] };
     }
   }
 
@@ -1779,7 +1809,8 @@ export class BabylonMain {
     startX: number,
     startY: number,
     endX: number,
-    endY: number
+    endY: number,
+    slopeChecker?: (x: number, y: number) => boolean
   ): { x: number; y: number }[] {
     interface PathNode {
       x: number;
@@ -1841,7 +1872,7 @@ export class BabylonMain {
 
         const fromCell = this.terrainSystem.getCell(current.x, current.y);
         const toCell = this.terrainSystem.getCell(neighbor.x, neighbor.y);
-        if (!canMoveFromTo(fromCell, toCell)) continue;
+        if (!canMoveFromTo(fromCell, toCell, slopeChecker)) continue;
 
         const g = current.g + 1;
         const h = heuristic(neighbor.x, neighbor.y);
@@ -2627,8 +2658,7 @@ export class BabylonMain {
     // Hourly prestige update
     if (hours !== this.lastPrestigeUpdateHour) {
       this.lastPrestigeUpdateHour = hours;
-      const cells = this.terrainSystem.getAllCells();
-      const conditionsScore = calculateCurrentConditions(cells);
+      const conditionsScore = calculateCurrentConditionsFromFaces(this.terrainSystem.getAllFaceStates());
       this.prestigeState = updatePrestigeScore(
         this.prestigeState,
         conditionsScore
@@ -2940,12 +2970,15 @@ export class BabylonMain {
     // Tick employee autonomous work
     const cells = this.terrainSystem.getAllCells();
     const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
+    const empSlopeChecker = (x: number, y: number) =>
+      this.terrainSystem.isPositionWalkable(x + 0.5, y + 0.5);
     const workResult = tickEmployeeWork(
       this.employeeWorkState,
       this.employeeRoster.employees,
       cells,
       gameMinutes,
-      absoluteGameTime
+      absoluteGameTime,
+      empSlopeChecker
     );
     this.employeeWorkState = workResult.state;
 
@@ -3410,8 +3443,7 @@ export class BabylonMain {
     if (this.scenarioManager) {
       this.scenarioManager.incrementDay();
     }
-    const cells = this.terrainSystem.getAllCells();
-    const conditionsScore = calculateCurrentConditions(cells);
+    const conditionsScore = calculateCurrentConditionsFromFaces(this.terrainSystem.getAllFaceStates());
     this.prestigeState = updatePrestigeScore(
       this.prestigeState,
       conditionsScore
@@ -3760,6 +3792,12 @@ export class BabylonMain {
     this.terrainSystem.setAllCellsState(state);
   }
 
+  public setAllFaceStates(
+    state: { moisture?: number; nutrients?: number; grassHeight?: number; health?: number }
+  ): void {
+    this.terrainSystem.setAllFaceStates(state);
+  }
+
   /**
    * Get terrain type at a grid position.
    */
@@ -3826,7 +3864,7 @@ export class BabylonMain {
   public async waitForPlayerIdle(): Promise<void> {
     return new Promise((resolve) => {
       const checkIdle = () => {
-        if (this.player.path.length === 0 && this.player.moveProgress === 0) {
+        if (!this.isPlayerMoving()) {
           resolve();
         } else {
           setTimeout(checkIdle, 16); // Check every frame
@@ -3938,7 +3976,7 @@ export class BabylonMain {
       player: {
         x: this.player.gridX,
         y: this.player.gridY,
-        isMoving: this.player.path.length > 0 || this.player.moveProgress > 0,
+        isMoving: this.isPlayerMoving(),
       },
       equipment: this.getEquipmentState(),
       time: {
@@ -4754,11 +4792,7 @@ export class BabylonMain {
    * Get terrain grid dimensions.
    */
   public getTerrainDimensions(): { width: number; height: number } {
-    const cells = this.terrainSystem.getAllCells();
-    return {
-      width: cells[0]?.length ?? 0,
-      height: cells.length,
-    };
+    return this.terrainSystem.getGridDimensions();
   }
 
   /**
@@ -5285,7 +5319,7 @@ export class BabylonMain {
 
   public updateCourseHealthForScenario(): void {
     if (this.scenarioManager && this.terrainSystem) {
-      this.scenarioManager.updateCourseHealth(this.terrainSystem.getAllCells());
+      this.scenarioManager.updateCourseHealthFromFaces(this.terrainSystem.getAllFaceStates());
     }
   }
 

@@ -23,12 +23,14 @@ import {
   getGrassState,
   getTerrainCode,
   getAdjacentPositions,
+  isFaceWalkableBySlope,
   CellState,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
   OBSTACLE_CODES,
 } from './terrain';
+import { gridToTopology, Vec3 } from './mesh-topology';
 
 describe('Terrain Type Mapping', () => {
   it('maps code 0 to fairway', () => {
@@ -826,5 +828,55 @@ describe('getAdjacentPositions', () => {
     expect(positions).toContainEqual({ x: 6, y: 4 });
     expect(positions).toContainEqual({ x: 6, y: 6 });
     expect(positions).toContainEqual({ x: 4, y: 6 });
+  });
+});
+
+describe('isFaceWalkableBySlope', () => {
+  it('returns false for water face regardless of slope', () => {
+    const grid: Vec3[][] = [
+      [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+      [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+    ];
+    const topology = gridToTopology(grid, 1, 1, 1);
+    const faceId = Array.from(topology.triangles.keys())[0];
+    topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.WATER;
+
+    expect(isFaceWalkableBySlope(topology, faceId, 1)).toBe(false);
+  });
+
+  it('returns true for flat grass face', () => {
+    const grid: Vec3[][] = [
+      [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+      [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+    ];
+    const topology = gridToTopology(grid, 1, 1, 1);
+    const faceId = Array.from(topology.triangles.keys())[0];
+    topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
+
+    expect(isFaceWalkableBySlope(topology, faceId, 1)).toBe(true);
+  });
+
+  it('returns false for steep grass face above 45 degrees', () => {
+    const grid: Vec3[][] = [
+      [{ x: 0, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }],
+      [{ x: 0, y: 2, z: 1 }, { x: 1, y: 0, z: 1 }],
+    ];
+    const topology = gridToTopology(grid, 1, 1, 1);
+    const faceId = Array.from(topology.triangles.keys())[0];
+    topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
+
+    expect(isFaceWalkableBySlope(topology, faceId, 1)).toBe(false);
+  });
+
+  it('returns true for bunker below threshold', () => {
+    const grid: Vec3[][] = [
+      [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+      [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+    ];
+    const topology = gridToTopology(grid, 1, 1, 1);
+    const faceId = Array.from(topology.triangles.keys())[0];
+    topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.BUNKER;
+
+    expect(isFaceWalkableBySlope(topology, faceId, 1)).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ attribute vec3 position;
 attribute vec3 normal;
 attribute vec2 uv;
 attribute float terrainType;
+attribute float faceId;
 
 // Uniforms
 uniform mat4 world;
@@ -24,6 +25,7 @@ varying vec3 vNormal;
 varying vec2 vUV;
 varying vec3 vWorldPosition;
 varying float vTerrainType;
+varying float vFaceId;
 
 void main() {
   vec4 worldPos = world * vec4(position, 1.0);
@@ -32,6 +34,7 @@ void main() {
   vNormal = normalize((world * vec4(normal, 0.0)).xyz);
   vUV = uv;
   vTerrainType = terrainType;
+  vFaceId = faceId;
 
   gl_Position = worldViewProjection * vec4(position, 1.0);
 }
@@ -46,9 +49,11 @@ varying vec3 vNormal;
 varying vec2 vUV;
 varying vec3 vWorldPosition;
 varying float vTerrainType;
+varying float vFaceId;
 
-// SDF Textures (Kept for compatibility/overlays, but primary type comes from attribute)
-uniform sampler2D healthData;   // R=moisture, G=nutrients, B=height, A=health
+// Face data texture (1 texel per face: R=moisture, G=nutrients, B=height, A=health)
+uniform sampler2D faceData;
+uniform float faceDataSize;
 
 // Parameters
 uniform vec2 worldSize;
@@ -151,8 +156,6 @@ vec3 waterEffect(vec2 worldPos, vec3 waterColor, vec3 deepColor, float distFromS
 }
 
 void main() {
-  vec2 sdfUV = vUV; // Kept for overlays
-
   // Determine masks based on vTerrainType attribute
   // We use a small epsilon for float comparison logic
   float type = floor(vTerrainType + 0.5);
@@ -242,13 +245,15 @@ void main() {
     }
   }
 
-  // Overlays
-  if (overlayMode > 0.5) {
-     vec4 healthSample = texture2D(healthData, sdfUV);
-     float moisture = healthSample.r;
-     float nutrients = healthSample.g;
-     float grassHeight = healthSample.b;
-     float health = healthSample.a;
+  // Overlays (per-face data lookup)
+  if (overlayMode > 0.5 && faceDataSize > 0.5) {
+     float fid = floor(vFaceId + 0.5);
+     float u = (fid + 0.5) / faceDataSize;
+     vec4 faceSample = texture2D(faceData, vec2(u, 0.5));
+     float moisture = faceSample.r;
+     float nutrients = faceSample.g;
+     float grassHeight = faceSample.b;
+     float health = faceSample.a;
 
      vec3 overlayColor = color;
 
@@ -264,8 +269,7 @@ void main() {
     else if (overlayMode > 3.5) {
       overlayColor = mix(vec3(0.8, 0.2, 0.2), vec3(0.2, 0.8, 0.3), health);
     }
-    
-    // Mask out non-grass
+
     float grassRatio = 1.0 - max(waterMask, bunkerMask);
     color = mix(color, overlayColor * lighting, grassRatio * 0.7);
   }

@@ -288,7 +288,8 @@ export function findPath(
   startX: number,
   startY: number,
   endX: number,
-  endY: number
+  endY: number,
+  slopeChecker?: (x: number, y: number) => boolean
 ): GridPosition[] {
   interface PathNode {
     x: number;
@@ -349,7 +350,7 @@ export function findPath(
 
       const fromCell = cells[current.y]?.[current.x];
       const toCell = cells[neighbor.y]?.[neighbor.x];
-      if (!fromCell || !toCell || !canMoveFromTo(fromCell, toCell)) continue;
+      if (!fromCell || !toCell || !canMoveFromTo(fromCell, toCell, slopeChecker)) continue;
 
       const alreadyInOpenSet = openSet.some(n => n.x === neighbor.x && n.y === neighbor.y);
       if (alreadyInOpenSet) continue;
@@ -386,7 +387,8 @@ export function tickEmployeeWork(
   employees: readonly Employee[],
   cells: CellState[][],
   deltaMinutes: number,
-  gameTime: number = 0
+  gameTime: number = 0,
+  slopeChecker?: (x: number, y: number) => boolean
 ): EmployeeWorkTickResult {
   const effects: WorkEffect[] = [];
   const completions: TaskCompletion[] = [];
@@ -497,7 +499,7 @@ export function tickEmployeeWork(
     );
 
     if (target) {
-      const path = findPath(cells, currentX, currentY, target.gridX, target.gridY);
+      const path = findPath(cells, currentX, currentY, target.gridX, target.gridY, slopeChecker);
       if (path.length > 0) {
         claimedTargets.add(`${target.gridX},${target.gridY}`);
         return {

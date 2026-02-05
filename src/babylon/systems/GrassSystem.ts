@@ -41,6 +41,7 @@ import {
 } from "../../core/grass-simulation";
 
 import { CourseData } from "../../data/courseData";
+import { FaceState } from "../../core/face-state";
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -1468,6 +1469,39 @@ export class GrassSystem {
 
   public getUpdateCount(): number {
     return this.updateCount;
+  }
+
+  public getFaceState(_faceId: number): FaceState | undefined {
+    return undefined;
+  }
+
+  public getAllFaceStates(): Map<number, FaceState> {
+    return new Map();
+  }
+
+  public restoreFaceStates(_saved: Map<number, FaceState>): void {
+  }
+
+  public setFaceState(_faceId: number, _state: Partial<FaceState>): void {
+  }
+
+  public setAllFaceStates(_state: Partial<Pick<FaceState, 'moisture' | 'nutrients' | 'grassHeight' | 'health'>>): void {
+  }
+
+  public findFaceAtPosition(_worldX: number, _worldZ: number): number | null {
+    return null;
+  }
+
+  public isPositionWalkable(_worldX: number, _worldZ: number): boolean {
+    return true;
+  }
+
+  public getTerrainSpeedAt(_worldX: number, _worldZ: number): number {
+    return 1.0;
+  }
+
+  public getGridDimensions(): { width: number; height: number } {
+    return { width: this.courseData.width, height: this.courseData.height };
   }
 
   public dispose(): void {

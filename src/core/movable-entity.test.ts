@@ -15,6 +15,7 @@ import {
   EmployeeEntity,
   GolferEntity,
   MOVE_SPEED,
+  PLAYER_BASE_SPEED,
 } from './movable-entity';
 
 describe('movable-entity', () => {
@@ -32,6 +33,8 @@ describe('movable-entity', () => {
       expect(player.pendingDirection).toBeNull();
       expect(player.equipmentSlot).toBe(0);
       expect(player.equipmentActive).toBe(false);
+      expect(player.worldX).toBe(10.5);
+      expect(player.worldZ).toBe(20.5);
     });
 
     it('creates a player with custom efficiency', () => {
@@ -231,6 +234,20 @@ describe('movable-entity', () => {
   describe('MOVE_SPEED', () => {
     it('is defined and positive', () => {
       expect(MOVE_SPEED).toBeGreaterThan(0);
+    });
+  });
+
+  describe('PLAYER_BASE_SPEED', () => {
+    it('is defined and positive', () => {
+      expect(PLAYER_BASE_SPEED).toBeGreaterThan(0);
+    });
+  });
+
+  describe('world coordinates', () => {
+    it('creates player with cell-center world coordinates', () => {
+      const player = createPlayerEntity('player1', 3, 7);
+      expect(player.worldX).toBe(3.5);
+      expect(player.worldZ).toBe(7.5);
     });
   });
 });

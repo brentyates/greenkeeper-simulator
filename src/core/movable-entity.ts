@@ -19,6 +19,8 @@ export interface PlayerEntity extends MovableEntity {
   readonly pendingDirection: 'up' | 'down' | 'left' | 'right' | null;
   readonly equipmentSlot: number;
   readonly equipmentActive: boolean;
+  readonly worldX: number;
+  readonly worldZ: number;
 }
 
 export type EmployeeTask =
@@ -78,6 +80,8 @@ export function createPlayerEntity(
     pendingDirection: null,
     equipmentSlot: 0,
     equipmentActive: false,
+    worldX: gridX + 0.5,
+    worldZ: gridY + 0.5,
   };
 }
 
@@ -124,6 +128,7 @@ export function createGolferEntity(
 
 export const MOVE_SPEED = 3.0;
 export const MOVE_DURATION_MS = 150;
+export const PLAYER_BASE_SPEED = 6.5;
 
 export function getNextPosition(entity: MovableEntity): GridPosition | null {
   return entity.path.length > 0 ? entity.path[0] : null;
