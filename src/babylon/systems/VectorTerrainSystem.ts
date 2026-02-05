@@ -103,6 +103,8 @@ export class VectorTerrainSystem {
   private shaderMaterial: ShaderMaterial | null = null;
   private sdfTextures: SDFTextureSet | null = null;
   private healthTexture: RawTexture | null = null;
+  private overlayTexture: RawTexture | null = null;
+  private defaultOverlayTexture: RawTexture | null = null;
   private cliffMeshes: Mesh[] = [];
   private gridLinesMesh: Mesh | null = null;
 
@@ -1867,8 +1869,16 @@ export class VectorTerrainSystem {
           "enableStripes",
           "enableNoise",
           "enableWaterAnim",
+          "overlayOpacity",
+          "overlayOffsetX",
+          "overlayOffsetZ",
+          "overlayScaleX",
+          "overlayScaleZ",
+          "overlayFlipX",
+          "overlayFlipY",
+          "overlayRotation",
         ],
-        samplers: ["sdfCombined", "sdfTee", "healthData"],
+        samplers: ["sdfCombined", "sdfTee", "healthData", "overlayImage"],
       }
     );
 
@@ -1894,6 +1904,20 @@ export class VectorTerrainSystem {
     this.shaderMaterial.setFloat("enableStripes", this.options.enableStripes ? 1 : 0);
     this.shaderMaterial.setFloat("enableNoise", this.options.enableNoise ? 1 : 0);
     this.shaderMaterial.setFloat("enableWaterAnim", this.options.enableWaterAnim ? 1 : 0);
+
+    this.defaultOverlayTexture = RawTexture.CreateRGBATexture(
+      new Uint8Array([0, 0, 0, 0]),
+      1, 1, this.scene, false, false
+    );
+    this.shaderMaterial.setTexture("overlayImage", this.defaultOverlayTexture);
+    this.shaderMaterial.setFloat("overlayOpacity", 0);
+    this.shaderMaterial.setFloat("overlayOffsetX", 0);
+    this.shaderMaterial.setFloat("overlayOffsetZ", 0);
+    this.shaderMaterial.setFloat("overlayScaleX", 1);
+    this.shaderMaterial.setFloat("overlayScaleZ", 1);
+    this.shaderMaterial.setFloat("overlayFlipX", 0);
+    this.shaderMaterial.setFloat("overlayFlipY", 0);
+    this.shaderMaterial.setFloat("overlayRotation", 0);
 
     this.shaderMaterial.backFaceCulling = false;
   }
@@ -2348,6 +2372,54 @@ export class VectorTerrainSystem {
   }
 
   // ============================================
+  // Image Overlay
+  // ============================================
+
+  public setImageOverlayTexture(texture: RawTexture): void {
+    this.overlayTexture = texture;
+    this.shaderMaterial?.setTexture("overlayImage", texture);
+  }
+
+  public setImageOverlayOpacity(opacity: number): void {
+    this.shaderMaterial?.setFloat("overlayOpacity", opacity);
+  }
+
+  public setImageOverlayTransform(offsetX: number, offsetZ: number, scaleX: number, scaleZ: number): void {
+    this.shaderMaterial?.setFloat("overlayOffsetX", offsetX);
+    this.shaderMaterial?.setFloat("overlayOffsetZ", offsetZ);
+    this.shaderMaterial?.setFloat("overlayScaleX", scaleX);
+    this.shaderMaterial?.setFloat("overlayScaleZ", scaleZ);
+  }
+
+  public setImageOverlayFlip(flipX: boolean, flipY: boolean): void {
+    this.shaderMaterial?.setFloat("overlayFlipX", flipX ? 1 : 0);
+    this.shaderMaterial?.setFloat("overlayFlipY", flipY ? 1 : 0);
+  }
+
+  public setImageOverlayRotation(steps: number): void {
+    this.shaderMaterial?.setFloat("overlayRotation", steps % 4);
+  }
+
+  public clearImageOverlay(): void {
+    if (this.overlayTexture) {
+      this.overlayTexture.dispose();
+      this.overlayTexture = null;
+    }
+    if (this.defaultOverlayTexture) {
+      this.shaderMaterial?.setTexture("overlayImage", this.defaultOverlayTexture);
+    }
+    this.shaderMaterial?.setFloat("overlayOpacity", 0);
+  }
+
+  public getWorldWidth(): number {
+    return this.worldWidth;
+  }
+
+  public getWorldHeight(): number {
+    return this.worldHeight;
+  }
+
+  // ============================================
   // Cleanup
   // ============================================
 
@@ -2371,6 +2443,15 @@ export class VectorTerrainSystem {
     if (this.healthTexture) {
       this.healthTexture.dispose();
       this.healthTexture = null;
+    }
+
+    if (this.overlayTexture) {
+      this.overlayTexture.dispose();
+      this.overlayTexture = null;
+    }
+    if (this.defaultOverlayTexture) {
+      this.defaultOverlayTexture.dispose();
+      this.defaultOverlayTexture = null;
     }
 
     for (const mesh of this.cliffMeshes) {

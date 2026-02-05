@@ -6,6 +6,8 @@ import { createVectorTerrainModifier } from './systems/createTerrainModifier';
 import { AssetPlacementSystem } from './systems/AssetPlacementSystem';
 import { TerrainEditorUI } from './ui/TerrainEditorUI';
 import { AssetBrowserUI } from './ui/AssetBrowserUI';
+import { OverlayPanelUI } from './ui/OverlayPanelUI';
+import { createFileInput, loadImageAsTexture } from './utils/imageOverlayLoader';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
@@ -50,7 +52,19 @@ export class CourseDesigner {
 
   private terrainModeBtn: Rectangle | null = null;
   private assetModeBtn: Rectangle | null = null;
+  private overlayModeBtn: Rectangle | null = null;
   private courseNameText: TextBlock | null = null;
+  private overlayPanelUI: OverlayPanelUI | null = null;
+  private overlayFileInput: HTMLInputElement | null = null;
+  private overlayLoaded = false;
+  private overlayVisible = true;
+  private overlayOpacity = 50;
+  private overlayScale = 1.0;
+  private overlayOffsetX = 0;
+  private overlayOffsetZ = 0;
+  private overlayFlipX = false;
+  private overlayFlipY = false;
+  private overlayRotation = 0;
 
   constructor(canvasId: string, options: CourseDesignerOptions) {
     this.options = options;
@@ -259,6 +273,84 @@ export class CourseDesigner {
       },
     }, scene);
 
+    this.overlayPanelUI = new OverlayPanelUI(contentContainer, {
+      onLoadImage: () => this.overlayFileInput?.click(),
+      onOpacityChange: (opacity) => {
+        this.overlayOpacity = opacity;
+        if (this.overlayVisible) {
+          this.vectorTerrainSystem.setImageOverlayOpacity(opacity / 100);
+        }
+      },
+      onScaleChange: (scale) => {
+        this.overlayScale = scale;
+        this.applyOverlayTransform();
+      },
+      onOffsetXChange: (offsetX) => {
+        this.overlayOffsetX = offsetX;
+        this.applyOverlayTransform();
+      },
+      onOffsetZChange: (offsetZ) => {
+        this.overlayOffsetZ = offsetZ;
+        this.applyOverlayTransform();
+      },
+      onFlipX: () => {
+        this.overlayFlipX = !this.overlayFlipX;
+        this.vectorTerrainSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
+      },
+      onFlipY: () => {
+        this.overlayFlipY = !this.overlayFlipY;
+        this.vectorTerrainSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
+      },
+      onRotate: () => {
+        this.overlayRotation = (this.overlayRotation + 1) % 4;
+        this.vectorTerrainSystem.setImageOverlayRotation(this.overlayRotation);
+      },
+      onToggle: () => {
+        if (!this.overlayLoaded) return;
+        this.overlayVisible = !this.overlayVisible;
+        this.vectorTerrainSystem.setImageOverlayOpacity(
+          this.overlayVisible ? this.overlayOpacity / 100 : 0
+        );
+      },
+      onClear: () => {
+        this.vectorTerrainSystem.clearImageOverlay();
+        this.vectorTerrainSystem.setImageOverlayFlip(false, false);
+        this.vectorTerrainSystem.setImageOverlayRotation(0);
+        this.overlayLoaded = false;
+        this.overlayVisible = true;
+        this.overlayOpacity = 50;
+        this.overlayScale = 1.0;
+        this.overlayOffsetX = 0;
+        this.overlayOffsetZ = 0;
+        this.overlayFlipX = false;
+        this.overlayFlipY = false;
+        this.overlayRotation = 0;
+        this.overlayPanelUI?.resetControls();
+      },
+    });
+
+    this.overlayFileInput = createFileInput('image/*,.svg', (file) => {
+      const scene = this.babylonEngine.getScene();
+      loadImageAsTexture(file, scene, (texture, _w, _h) => {
+        this.vectorTerrainSystem.setImageOverlayTexture(texture);
+        this.overlayLoaded = true;
+        this.overlayVisible = true;
+        this.overlayOpacity = 50;
+        this.overlayScale = 1.0;
+        this.overlayOffsetX = 0;
+        this.overlayOffsetZ = 0;
+
+        const worldW = this.vectorTerrainSystem.getWorldWidth();
+        const worldH = this.vectorTerrainSystem.getWorldHeight();
+        this.overlayScale = 1.0;
+        this.vectorTerrainSystem.setImageOverlayTransform(0, 0, worldW, worldH);
+        this.vectorTerrainSystem.setImageOverlayOpacity(this.overlayOpacity / 100);
+
+        this.overlayPanelUI?.resetControls();
+        this.overlayPanelUI?.show();
+      });
+    });
+
     this.setupToolbar(rootGrid);
   }
 
@@ -307,6 +399,9 @@ export class CourseDesigner {
 
     this.assetModeBtn = this.createToolbarButton(row, 'ASSETS', false);
     this.assetModeBtn.onPointerUpObservable.add(() => this.setDesignerMode('asset'));
+
+    this.overlayModeBtn = this.createToolbarButton(row, 'OVERLAY', false);
+    this.overlayModeBtn.onPointerUpObservable.add(() => this.toggleOverlayPanel());
 
     this.createToolbarActionButton(row, 'SAVE', '#2a5a3a', () => this.save());
     this.createToolbarActionButton(row, 'EXIT', '#5a3a3a', () => this.exit());
@@ -594,6 +689,25 @@ export class CourseDesigner {
     this.assetBrowserUI?.showActions(asset !== null);
   }
 
+  private applyOverlayTransform(): void {
+    const worldW = this.vectorTerrainSystem.getWorldWidth();
+    const worldH = this.vectorTerrainSystem.getWorldHeight();
+    this.vectorTerrainSystem.setImageOverlayTransform(
+      this.overlayOffsetX,
+      this.overlayOffsetZ,
+      worldW * this.overlayScale,
+      worldH * this.overlayScale
+    );
+  }
+
+  private toggleOverlayPanel(): void {
+    if (this.overlayPanelUI?.isVisible()) {
+      this.overlayPanelUI.hide();
+    } else {
+      this.overlayPanelUI?.show();
+    }
+  }
+
   public save(): void {
     const vts = this.vectorTerrainSystem;
 
@@ -620,6 +734,11 @@ export class CourseDesigner {
     this.assetPlacementSystem.dispose();
     this.terrainEditorUI?.hide();
     this.assetBrowserUI?.dispose();
+    this.overlayPanelUI?.dispose();
+    if (this.overlayFileInput) {
+      this.overlayFileInput.remove();
+      this.overlayFileInput = null;
+    }
     this.uiTexture?.dispose();
     this.vectorTerrainSystem.dispose();
     this.babylonEngine.stop();

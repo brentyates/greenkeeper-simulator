@@ -70,6 +70,17 @@ uniform float enableStripes;
 uniform float enableNoise;
 uniform float enableWaterAnim;
 
+// Image overlay
+uniform sampler2D overlayImage;
+uniform float overlayOpacity;
+uniform float overlayOffsetX;
+uniform float overlayOffsetZ;
+uniform float overlayScaleX;
+uniform float overlayScaleZ;
+uniform float overlayFlipX;
+uniform float overlayFlipY;
+uniform float overlayRotation;
+
 // Constants
 const float PI = 3.14159265359;
 const float CODE_FAIRWAY = 0.0;
@@ -209,6 +220,28 @@ void main() {
 
   color *= lighting;
 
+  // Image overlay
+  if (overlayOpacity > 0.001) {
+    vec2 overlayUV = (vWorldPosition.xz - vec2(overlayOffsetX, overlayOffsetZ)) / vec2(overlayScaleX, overlayScaleZ);
+    vec2 centered = overlayUV - 0.5;
+    if (overlayRotation > 0.5 && overlayRotation < 1.5) {
+      centered = vec2(centered.y, -centered.x);
+    } else if (overlayRotation > 1.5 && overlayRotation < 2.5) {
+      centered = vec2(-centered.x, -centered.y);
+    } else if (overlayRotation > 2.5) {
+      centered = vec2(-centered.y, centered.x);
+    }
+    overlayUV = centered + 0.5;
+    if (overlayUV.x >= 0.0 && overlayUV.x <= 1.0 && overlayUV.y >= 0.0 && overlayUV.y <= 1.0) {
+      overlayUV.y = 1.0 - overlayUV.y;
+      if (overlayFlipX > 0.5) overlayUV.x = 1.0 - overlayUV.x;
+      if (overlayFlipY > 0.5) overlayUV.y = 1.0 - overlayUV.y;
+      vec4 overlayColor = texture2D(overlayImage, overlayUV);
+      float alpha = overlayColor.a * overlayOpacity;
+      color = mix(color, overlayColor.rgb, alpha);
+    }
+  }
+
   // Overlays
   if (overlayMode > 0.5) {
      vec4 healthSample = texture2D(healthData, sdfUV);
@@ -273,6 +306,14 @@ export interface TerrainShaderUniforms {
   enableStripes: number;
   enableNoise: number;
   enableWaterAnim: number;
+  overlayOpacity: number;
+  overlayOffsetX: number;
+  overlayOffsetZ: number;
+  overlayScaleX: number;
+  overlayScaleZ: number;
+  overlayFlipX: number;
+  overlayFlipY: number;
+  overlayRotation: number;
 }
 
 export function getDefaultUniforms(
@@ -295,5 +336,13 @@ export function getDefaultUniforms(
     enableStripes: 1,
     enableNoise: 1,
     enableWaterAnim: 1,
+    overlayOpacity: 0,
+    overlayOffsetX: 0,
+    overlayOffsetZ: 0,
+    overlayScaleX: 1,
+    overlayScaleZ: 1,
+    overlayFlipX: 0,
+    overlayFlipY: 0,
+    overlayRotation: 0,
   };
 }
