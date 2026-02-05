@@ -449,6 +449,10 @@ export class GrassSystem {
     return this.cells[gridY]?.[gridX]?.elevation ?? 0;
   }
 
+  public getMeshElevationAt(meshX: number, meshY: number, defaultForOutOfBounds?: number): number {
+    return this.getElevationAt(meshX, meshY, defaultForOutOfBounds);
+  }
+
   private getCornerHeights(
     gridX: number,
     gridY: number,

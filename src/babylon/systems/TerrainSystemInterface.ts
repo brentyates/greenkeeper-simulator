@@ -24,6 +24,7 @@ export interface TerrainSystem {
 
   // Elevation
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
+  getMeshElevationAt(meshX: number, meshY: number, defaultForOutOfBounds?: number): number;
   setElevationAt(x: number, y: number, elev: number): void;
   // Terrain type
   getTerrainTypeAt(x: number, y: number): string | undefined;

@@ -504,7 +504,7 @@ export class BabylonMain {
 
     const elevationProvider = {
       getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
-        (this.terrainSystem as any).getMeshElevationAt ? (this.terrainSystem as any).getMeshElevationAt(gridX, gridY, defaultValue) : this.terrainSystem.getElevationAt(gridX, gridY),
+        this.terrainSystem.getMeshElevationAt(gridX, gridY, defaultValue),
       gridTo3D: (gridX: number, gridY: number, elev: number) => {
         if (this.terrainSystem.gridToWorld) {
           const pos = this.terrainSystem.gridToWorld(gridX, gridY);
