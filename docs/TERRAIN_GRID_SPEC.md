@@ -30,7 +30,7 @@ The fundamental building blocks of the terrain mesh.
 interface TerrainVertex {
   id: number;                    // Unique identifier
   position: { x: number; y: number; z: number };  // World-space 3D position
-  gridUV: { u: number; v: number };  // Texture mapping coordinates
+  gridUV: { u: number; v: number };  // Normalized grid anchor (see below)
   neighbors: Set<number>;        // Adjacent vertex IDs (via edges)
 }
 ```
@@ -38,8 +38,28 @@ interface TerrainVertex {
 **Key Properties:**
 - Vertices define mesh shape through their positions
 - The `y` component represents elevation (height above ground)
-- Grid UV coordinates enable consistent texture mapping after topology changes
 - Neighbor tracking enables efficient adjacency queries
+
+**Understanding `gridUV` (Grid Anchor Coordinates):**
+
+Despite the name, `gridUV` is NOT a texture coordinate. It's a **normalized position anchor** (0-1 range) that remembers where the vertex logically belongs on the original course grid:
+
+```typescript
+// Calculated during grid-to-topology conversion:
+gridUV: {
+  u: (vertexX / meshResolution) / worldWidth,   // 0-1 across course width
+  v: (vertexY / meshResolution) / worldHeight,  // 0-1 across course height
+}
+```
+
+**Why it exists:** When you sculpt terrain (move vertices in 3D), the `position` changes but `gridUV` stays fixed. This allows the system to look up which grid cell a vertex belongs to for:
+- Terrain type data (which cell's terrain code applies)
+- Cell state lookup (moisture, nutrients, grass height)
+- Consistent data mapping after topology edits (subdivide, collapse)
+
+**Key distinction:**
+- `position` = where the vertex IS in 3D space (changes during sculpting)
+- `gridUV` = where the vertex BELONGS on the logical grid (stable reference)
 
 ### Edges
 
@@ -331,44 +351,49 @@ Usage: Rendering, physics, asset placement
 
 ## Elevation System
 
-### Corner Heights (RCT-Inspired)
+### Per-Vertex Elevation
 
-Each grid cell has four corner heights, enabling slope detection:
+Elevation is stored directly in each vertex's `position.y` component. This enables:
+- **Continuous slopes:** Any angle, not just discrete RCT-style steps
+- **Smooth terrain:** Natural contours via vertex interpolation
+- **Fine control:** Move individual vertices for precise shaping
 
 ```typescript
-interface RCTCornerHeights {
-  nw: number;  // North-west corner
-  ne: number;  // North-east corner
-  se: number;  // South-east corner
-  sw: number;  // South-west corner
-}
+// Elevation is simply the Y component of position
+vertex.position.y = elevationValue * HEIGHT_UNIT;
 ```
 
-### Slope Classification
+### Elevation During Sculpting
 
-| Slope Type | Description | Corner Pattern |
-|------------|-------------|----------------|
-| `flat` | All corners equal height | nw = ne = se = sw |
-| `slope_n` | Rising to north | ne, nw higher |
-| `slope_e` | Rising to east | ne, se higher |
-| `slope_s` | Rising to south | se, sw higher |
-| `slope_w` | Rising to west | nw, sw higher |
-| `slope_ne` | Rising to NE corner | ne highest |
-| `slope_se` | Rising to SE corner | se highest |
-| `slope_sw` | Rising to SW corner | sw highest |
-| `slope_nw` | Rising to NW corner | nw highest |
-| `valley_n` | Dip at north | nw, ne lower |
-| `valley_e` | Dip at east | ne, se lower |
-| `valley_s` | Dip at south | se, sw lower |
-| `valley_w` | Dip at west | nw, sw lower |
-| `saddle_ns` | N/S corners high | Saddle point |
-| `saddle_ew` | E/W corners high | Saddle point |
+When using sculpt tools (raise, lower, smooth, flatten), the system:
+1. Finds all vertices within the brush radius
+2. Modifies each vertex's `position.y` based on tool and falloff
+3. Recomputes normals for affected triangles
+4. Marks mesh as dirty for re-rendering
 
-### Constraints
+### Slope Calculation
 
-- **Maximum slope delta:** 2 height units between adjacent corners
-- **Elevation range:** 0 to configurable maximum (typically 20)
-- **Vertex interpolation:** Smooth elevation across mesh resolution subdivisions
+Slopes are computed from triangle face normals, not discrete classifications:
+
+```typescript
+// Per-face normal from vertex positions
+function computeFaceNormal(v0: Vec3, v1: Vec3, v2: Vec3): Vec3 {
+  const edge1 = subtract(v1, v0);
+  const edge2 = subtract(v2, v0);
+  return normalize(cross(edge1, edge2));
+}
+
+// Slope angle from normal
+const slopeAngle = Math.acos(normal.y) * (180 / Math.PI);
+```
+
+### Elevation Constraints
+
+- **Elevation range:** 0 to configurable maximum (typically 20 units)
+- **No discrete steps:** Unlike RCT, any floating-point elevation is valid
+- **Mesh resolution:** Higher `meshResolution` = smoother elevation gradients
+
+> **Note:** Legacy code in `terrain.ts` contains RCT-style corner heights and slope classifications (`slope_n`, `saddle_ns`, etc.). This is deprecated and scheduled for removal. See CLAUDE.md migration plan.
 
 ---
 
@@ -519,10 +544,12 @@ The designer UI coordinates between:
 - Subdivision and edge operations
 - Non-destructive editing with full undo
 
-### RollerCoaster Tycoon
+### RollerCoaster Tycoon (Historical)
 
-- Corner-based slope system
-- Intuitive height adjustment
+> **Note:** The RCT corner-based slope system was used in an earlier version but is now **deprecated**. The current system uses per-vertex elevation instead.
+
+- ~~Corner-based slope system~~ → Per-vertex elevation
+- Cell-based terrain type grid (still used for gameplay data)
 - Clear visual feedback for terrain types
 
 ---
