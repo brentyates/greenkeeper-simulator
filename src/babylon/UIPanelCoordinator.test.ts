@@ -32,14 +32,6 @@ const mockTeeSheetPanel = {
   dispose: vi.fn(),
 };
 
-const mockMarketingDashboard = {
-  update: vi.fn(),
-  show: vi.fn(),
-  hide: vi.fn(),
-  isVisible: vi.fn(),
-  dispose: vi.fn(),
-};
-
 const mockEquipmentStorePanel = {
   update: vi.fn(),
   show: vi.fn(),
@@ -49,14 +41,6 @@ const mockEquipmentStorePanel = {
 };
 
 const mockAmenityPanel = {
-  update: vi.fn(),
-  show: vi.fn(),
-  hide: vi.fn(),
-  isVisible: vi.fn(),
-  dispose: vi.fn(),
-};
-
-const mockWalkOnQueuePanel = {
   update: vi.fn(),
   show: vi.fn(),
   hide: vi.fn(),
@@ -99,10 +83,8 @@ let capturedEmployeeCallbacks: any;
 let capturedResearchCallbacks: any;
 let capturedDaySummaryCallbacks: any;
 let capturedTeeSheetCallbacks: any;
-let capturedMarketingCallbacks: any;
 let capturedEquipmentStoreCallbacks: any;
 let capturedAmenityCallbacks: any;
-let capturedWalkOnCallbacks: any;
 let capturedIrrigationToolbarCallbacks: any;
 let capturedIrrigationInfoCallbacks: any;
 let capturedIrrigationScheduleCallbacks: any;
@@ -136,13 +118,6 @@ vi.mock("./ui/TeeSheetPanel", () => ({
   }),
 }));
 
-vi.mock("./ui/MarketingDashboard", () => ({
-  MarketingDashboard: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
-    capturedMarketingCallbacks = callbacks;
-    return mockMarketingDashboard;
-  }),
-}));
-
 vi.mock("./ui/EquipmentStorePanel", () => ({
   EquipmentStorePanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedEquipmentStoreCallbacks = callbacks;
@@ -154,13 +129,6 @@ vi.mock("./ui/AmenityPanel", () => ({
   AmenityPanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedAmenityCallbacks = callbacks;
     return mockAmenityPanel;
-  }),
-}));
-
-vi.mock("./ui/WalkOnQueuePanel", () => ({
-  WalkOnQueuePanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
-    capturedWalkOnCallbacks = callbacks;
-    return mockWalkOnQueuePanel;
   }),
 }));
 
@@ -270,11 +238,6 @@ vi.mock("../core/tee-times", () => ({
   updateSpacing: vi.fn().mockReturnValue({ teeTimes: [] }),
 }));
 
-vi.mock("../core/marketing", () => ({
-  startCampaign: vi.fn(),
-  stopCampaign: vi.fn().mockReturnValue({ campaigns: [] }),
-}));
-
 vi.mock("../core/autonomous-equipment", () => ({
   purchaseRobot: vi.fn(),
   sellRobot: vi.fn(),
@@ -290,7 +253,6 @@ import { hireEmployee, fireEmployee, postJobOpening, acceptApplication, getPosti
 import { startResearch, cancelResearch, setFundingLevel } from "../core/research";
 import { addExpense, addIncome } from "../core/economy";
 import { checkInTeeTime, cancelTeeTime, markNoShow, updateSpacing } from "../core/tee-times";
-import { startCampaign, stopCampaign } from "../core/marketing";
 import { purchaseRobot, sellRobot } from "../core/autonomous-equipment";
 import { upgradeAmenity } from "../core/prestige";
 import { getUpgradeCost } from "../core/amenities";
@@ -313,9 +275,7 @@ function createMockState(): GameState {
     researchState: { currentResearch: null, researchQueue: [], completedResearch: [], fundingLevel: "normal" },
     prestigeState: { tier: "bronze", amenities: {} },
     teeTimeState: { teeTimes: [], spacing: 10 },
-    walkOnState: { queue: [], metrics: { walkOnsTurnedAwayToday: 0 } },
     revenueState: { totalRevenue: 0 },
-    marketingState: { campaigns: [] },
     autonomousState: { robots: [] },
     irrigationSystem: {
       pipes: [],
@@ -436,23 +396,6 @@ describe("UIPanelCoordinator", () => {
     });
   });
 
-  describe("handleMarketingPanel", () => {
-    beforeEach(() => coordinator.setupAll());
-
-    it("hides when visible", () => {
-      mockMarketingDashboard.isVisible.mockReturnValue(true);
-      coordinator.handleMarketingPanel();
-      expect(mockMarketingDashboard.hide).toHaveBeenCalled();
-    });
-
-    it("shows and updates when not visible", () => {
-      mockMarketingDashboard.isVisible.mockReturnValue(false);
-      coordinator.handleMarketingPanel();
-      expect(mockMarketingDashboard.update).toHaveBeenCalled();
-      expect(mockMarketingDashboard.show).toHaveBeenCalled();
-    });
-  });
-
   describe("handleEquipmentStore", () => {
     beforeEach(() => coordinator.setupAll());
 
@@ -484,23 +427,6 @@ describe("UIPanelCoordinator", () => {
       coordinator.handleAmenityPanel();
       expect(mockAmenityPanel.update).toHaveBeenCalled();
       expect(mockAmenityPanel.show).toHaveBeenCalled();
-    });
-  });
-
-  describe("handleWalkOnQueuePanel", () => {
-    beforeEach(() => coordinator.setupAll());
-
-    it("hides when visible", () => {
-      mockWalkOnQueuePanel.isVisible.mockReturnValue(true);
-      coordinator.handleWalkOnQueuePanel();
-      expect(mockWalkOnQueuePanel.hide).toHaveBeenCalled();
-    });
-
-    it("shows and updates when not visible", () => {
-      mockWalkOnQueuePanel.isVisible.mockReturnValue(false);
-      coordinator.handleWalkOnQueuePanel();
-      expect(mockWalkOnQueuePanel.update).toHaveBeenCalled();
-      expect(mockWalkOnQueuePanel.show).toHaveBeenCalled();
     });
   });
 
@@ -571,10 +497,8 @@ describe("UIPanelCoordinator", () => {
       expect(mockResearchPanel.dispose).toHaveBeenCalled();
       expect(mockDaySummaryPopup.dispose).toHaveBeenCalled();
       expect(mockTeeSheetPanel.dispose).toHaveBeenCalled();
-      expect(mockMarketingDashboard.dispose).toHaveBeenCalled();
       expect(mockEquipmentStorePanel.dispose).toHaveBeenCalled();
       expect(mockAmenityPanel.dispose).toHaveBeenCalled();
-      expect(mockWalkOnQueuePanel.dispose).toHaveBeenCalled();
       expect(mockIrrigationToolbar.dispose).toHaveBeenCalled();
       expect(mockIrrigationInfoPanel.dispose).toHaveBeenCalled();
       expect(mockIrrigationSchedulePanel.dispose).toHaveBeenCalled();
@@ -599,10 +523,6 @@ describe("UIPanelCoordinator", () => {
       coordinator.handleTeeSheetPanel();
     });
 
-    it("handleMarketingPanel does not throw", () => {
-      coordinator.handleMarketingPanel();
-    });
-
     it("handleEquipmentStore does not throw", () => {
       coordinator.handleEquipmentStore();
     });
@@ -611,9 +531,6 @@ describe("UIPanelCoordinator", () => {
       coordinator.handleAmenityPanel();
     });
 
-    it("handleWalkOnQueuePanel does not throw", () => {
-      coordinator.handleWalkOnQueuePanel();
-    });
   });
 
   describe("employee panel callbacks", () => {
@@ -878,60 +795,6 @@ describe("UIPanelCoordinator", () => {
     });
   });
 
-  describe("marketing dashboard callbacks", () => {
-    beforeEach(() => coordinator.setupAll());
-
-    it("onStartCampaign with setup cost and successful expense", () => {
-      vi.mocked(startCampaign).mockReturnValue({ state: { campaigns: [] }, setupCost: 200 } as any);
-      vi.mocked(addExpense).mockReturnValue({ cash: 9800, transactions: [] } as any);
-
-      capturedMarketingCallbacks.onStartCampaign("c1", 7);
-
-      expect(startCampaign).toHaveBeenCalled();
-      expect(addExpense).toHaveBeenCalled();
-      expect(mockMarketingDashboard.update).toHaveBeenCalled();
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Campaign started!");
-    });
-
-    it("onStartCampaign with zero setup cost", () => {
-      vi.mocked(startCampaign).mockReturnValue({ state: { campaigns: [] }, setupCost: 0 } as any);
-
-      capturedMarketingCallbacks.onStartCampaign("c1", 7);
-
-      expect(addExpense).not.toHaveBeenCalled();
-      expect(mockMarketingDashboard.update).toHaveBeenCalled();
-    });
-
-    it("onStartCampaign with setup cost but addExpense fails", () => {
-      vi.mocked(startCampaign).mockReturnValue({ state: { campaigns: [] }, setupCost: 200 } as any);
-      vi.mocked(addExpense).mockReturnValue(null as any);
-
-      capturedMarketingCallbacks.onStartCampaign("c1", 7);
-
-      expect(mockMarketingDashboard.update).toHaveBeenCalled();
-    });
-
-    it("onStartCampaign returns null", () => {
-      vi.mocked(startCampaign).mockReturnValue(null as any);
-
-      capturedMarketingCallbacks.onStartCampaign("c1", 7);
-
-      expect(mockMarketingDashboard.update).not.toHaveBeenCalled();
-    });
-
-    it("onStopCampaign", () => {
-      capturedMarketingCallbacks.onStopCampaign("c1");
-      expect(stopCampaign).toHaveBeenCalled();
-      expect(mockMarketingDashboard.update).toHaveBeenCalled();
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Campaign stopped");
-    });
-
-    it("onClose hides dashboard", () => {
-      capturedMarketingCallbacks.onClose();
-      expect(mockMarketingDashboard.hide).toHaveBeenCalled();
-    });
-  });
-
   describe("equipment store callbacks", () => {
     beforeEach(() => coordinator.setupAll());
 
@@ -1051,46 +914,6 @@ describe("UIPanelCoordinator", () => {
     it("onClose hides panel", () => {
       capturedAmenityCallbacks.onClose();
       expect(mockAmenityPanel.hide).toHaveBeenCalled();
-    });
-  });
-
-  describe("walk-on queue panel callbacks", () => {
-    beforeEach(() => coordinator.setupAll());
-
-    it("onAssignToSlot shows notification and updates", () => {
-      capturedWalkOnCallbacks.onAssignToSlot("g1");
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Assigned golfer to next available slot");
-      expect(mockWalkOnQueuePanel.update).toHaveBeenCalled();
-    });
-
-    it("onTurnAway with found golfer", () => {
-      state.walkOnState = {
-        queue: [{ golferId: "g1", name: "Bob", status: "waiting" }],
-        metrics: { walkOnsTurnedAwayToday: 0 },
-      } as any;
-
-      capturedWalkOnCallbacks.onTurnAway("g1");
-
-      expect(state.walkOnState.queue[0].status).toBe("turned_away");
-      expect(state.walkOnState.metrics.walkOnsTurnedAwayToday).toBe(1);
-      expect(mockWalkOnQueuePanel.update).toHaveBeenCalled();
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Turned away Bob");
-    });
-
-    it("onTurnAway with golfer not found", () => {
-      state.walkOnState = {
-        queue: [],
-        metrics: { walkOnsTurnedAwayToday: 0 },
-      } as any;
-
-      capturedWalkOnCallbacks.onTurnAway("g999");
-
-      expect(mockWalkOnQueuePanel.update).not.toHaveBeenCalled();
-    });
-
-    it("onClose hides panel", () => {
-      capturedWalkOnCallbacks.onClose();
-      expect(mockWalkOnQueuePanel.hide).toHaveBeenCalled();
     });
   });
 

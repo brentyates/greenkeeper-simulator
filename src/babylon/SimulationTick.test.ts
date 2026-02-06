@@ -6,7 +6,6 @@ import type { EmployeeRoster, ApplicationState } from "../core/employees";
 import type { GolferPoolState, WeatherCondition } from "../core/golfers";
 import type { WeatherState } from "../core/weather";
 import type { TeeTimeSystemState } from "../core/tee-times";
-import type { WalkOnState } from "../core/walk-ons";
 import type { RevenueState } from "../core/tee-revenue";
 import type { PrestigeState } from "../core/prestige";
 import type { IrrigationSystem } from "../core/irrigation";
@@ -77,18 +76,8 @@ vi.mock("../core/tee-times", () => ({
   resetDailyMetrics: vi.fn((state: TeeTimeSystemState) => state),
 }));
 
-vi.mock("../core/walk-ons", () => ({
-  processWalkOns: vi.fn((state: WalkOnState) => ({ state, served: 0, turnedAway: 0 })),
-  resetDailyWalkOnMetrics: vi.fn((state: WalkOnState) => state),
-}));
-
 vi.mock("../core/tee-revenue", () => ({
   finalizeDailyRevenue: vi.fn((state: RevenueState) => state),
-}));
-
-vi.mock("../core/marketing", () => ({
-  processDailyCampaigns: vi.fn(() => ({ state: { activeCampaigns: [], campaignHistory: [], cooldowns: {}, metrics: { totalSpent: 0, totalBookingsInfluenced: 0, totalRevenueInfluenced: 0, roi: 0 }, baselineBookingsPerDay: 20, baselineRevenuePerDay: 2000 }, completedCampaignNames: [], dailyCost: 0 })),
-  calculateCombinedDemandMultiplier: vi.fn(() => 1.0),
 }));
 
 vi.mock("../core/autonomous-equipment", () => ({
@@ -158,14 +147,7 @@ import {
   applyBookingSimulation,
   resetDailyMetrics as resetTeeTimeDailyMetrics,
 } from "../core/tee-times";
-import {
-  processWalkOns,
-  resetDailyWalkOnMetrics,
-} from "../core/walk-ons";
 import { finalizeDailyRevenue } from "../core/tee-revenue";
-import {
-  processDailyCampaigns,
-} from "../core/marketing";
 import { tickAutonomousEquipment as coreTickAutonomousEquipment } from "../core/autonomous-equipment";
 import {
   updatePipePressures,
@@ -234,11 +216,6 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
       currentDay: 1,
       bookingMetrics: { totalBookingsToday: 0, cancellationsToday: 0, noShowsToday: 0, lateCancellationsToday: 0 },
     },
-    walkOnState: {
-      policy: { allowWalkOns: true, reserveWalkOnSlots: 1, walkOnPremium: 1.1, walkOnDiscount: 0.9, maxQueueSize: 12, maxWaitMinutes: 45 },
-      queue: [],
-      metrics: { walkOnsServedToday: 0, walkOnsTurnedAwayToday: 0, walkOnsGaveUpToday: 0, averageWaitTime: 0, totalWaitTime: 0, reputationPenalty: 0 },
-    },
     revenueState: {
       greenFeeStructure: { weekdayRate: 45, weekendRate: 65, twilightRate: 30, primeMorningPremium: 1.2, memberRate: 0.7, guestOfMemberRate: 0.85, dynamicPricingEnabled: false, demandMultiplierRange: [0.8, 1.3] },
       cartFeeStructure: { pricingModel: "per_person" as const, standardCartFee: 20, walkingDiscount: 0, cartRequired: false, cartIncluded: false },
@@ -246,14 +223,6 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
       tipConfig: { baseTipPercentage: 0.15, satisfactionModifier: 1.0, tipPooling: false, housePercentage: 0 },
       todaysRevenue: { greenFees: 0, cartFees: 0, addOnServices: 0, tips: 0, proShop: 0, foodAndBeverage: 0, rangeRevenue: 0, lessonRevenue: 0, eventFees: 0, grossRevenue: 100, operatingCosts: 0, netRevenue: 0 },
       revenueHistory: [],
-    },
-    marketingState: {
-      activeCampaigns: [],
-      campaignHistory: [],
-      cooldowns: {},
-      metrics: { totalSpent: 0, totalBookingsInfluenced: 0, totalRevenueInfluenced: 0, roi: 0 },
-      baselineBookingsPerDay: 20,
-      baselineRevenuePerDay: 2000,
     },
     autonomousState: { robots: [], chargingStationX: 0, chargingStationY: 0 },
     prestigeState: {
@@ -581,24 +550,6 @@ describe("SimulationTick", () => {
       expect(generateDailySlots).not.toHaveBeenCalled();
     });
 
-    it("processes walk-ons during operating hours (6-19)", () => {
-      const { state, systems } = createMockContext({ gameTime: 480, lastTeeTimeUpdateHour: 7 });
-      runSimulationTick(state, systems, 16);
-      expect(processWalkOns).toHaveBeenCalled();
-    });
-
-    it("does not process walk-ons before hour 6", () => {
-      const { state, systems } = createMockContext({ gameTime: 300, lastTeeTimeUpdateHour: 4 });
-      runSimulationTick(state, systems, 16);
-      expect(processWalkOns).not.toHaveBeenCalled();
-    });
-
-    it("does not process walk-ons after hour 19", () => {
-      const { state, systems } = createMockContext({ gameTime: 1200, lastTeeTimeUpdateHour: 19 });
-      runSimulationTick(state, systems, 16);
-      expect(processWalkOns).not.toHaveBeenCalled();
-    });
-
     it("processes end-of-day at hour 22", () => {
       const { state, systems } = createMockContext({ gameTime: 1320, lastTeeTimeUpdateHour: 21 });
       runSimulationTick(state, systems, 16);
@@ -625,74 +576,6 @@ describe("SimulationTick", () => {
       const { state, systems } = setupEndOfDay();
       runSimulationTick(state, systems, 16);
       expect(finalizeDailyRevenue).toHaveBeenCalledWith(state.revenueState);
-    });
-
-    it("processes marketing campaigns", () => {
-      const { state, systems } = setupEndOfDay();
-      runSimulationTick(state, systems, 16);
-      expect(processDailyCampaigns).toHaveBeenCalled();
-    });
-
-    it("shows notification for completed campaigns", () => {
-      const { state, systems } = setupEndOfDay();
-      vi.mocked(processDailyCampaigns).mockReturnValue({
-        state: state.marketingState,
-        completedCampaignNames: ["Test Campaign"],
-        dailyCost: 0,
-      });
-      runSimulationTick(state, systems, 16);
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith(
-        expect.stringContaining("Test Campaign")
-      );
-    });
-
-    it("does not show campaign notification when no completed campaigns", () => {
-      const { state, systems } = setupEndOfDay();
-      vi.mocked(processDailyCampaigns).mockReturnValue({
-        state: state.marketingState,
-        completedCampaignNames: [],
-        dailyCost: 0,
-      });
-      runSimulationTick(state, systems, 16);
-      expect(systems.uiManager.showNotification).not.toHaveBeenCalledWith(
-        expect.stringContaining("Campaign completed")
-      );
-    });
-
-    it("charges marketing daily cost when > 0", () => {
-      const { state, systems } = setupEndOfDay();
-      const updatedEconomy = { ...state.economyState, cash: 9900 };
-      vi.mocked(processDailyCampaigns).mockReturnValue({
-        state: state.marketingState,
-        completedCampaignNames: [],
-        dailyCost: 100,
-      });
-      vi.mocked(addExpense).mockReturnValue(updatedEconomy);
-      runSimulationTick(state, systems, 16);
-      expect(state.dailyStats.expenses.other).toBe(100);
-    });
-
-    it("skips marketing expense when dailyCost is 0", () => {
-      const { state, systems } = setupEndOfDay();
-      vi.mocked(processDailyCampaigns).mockReturnValue({
-        state: state.marketingState,
-        completedCampaignNames: [],
-        dailyCost: 0,
-      });
-      runSimulationTick(state, systems, 16);
-      expect(state.dailyStats.expenses.other).toBe(0);
-    });
-
-    it("does not update economy when marketing addExpense returns null", () => {
-      const { state, systems } = setupEndOfDay();
-      vi.mocked(processDailyCampaigns).mockReturnValue({
-        state: state.marketingState,
-        completedCampaignNames: [],
-        dailyCost: 100,
-      });
-      vi.mocked(addExpense).mockReturnValue(null as any);
-      runSimulationTick(state, systems, 16);
-      expect(state.dailyStats.expenses.other).toBe(0);
     });
 
     it("charges daily utilities", () => {
@@ -726,11 +609,10 @@ describe("SimulationTick", () => {
       expect(systems.saveCallback).toHaveBeenCalled();
     });
 
-    it("resets daily metrics for walk-ons, tee-times, prestige, and golfers", () => {
+    it("resets daily metrics for tee-times, prestige, and golfers", () => {
       const { state, systems } = setupEndOfDay();
       vi.mocked(addExpense).mockReturnValue(state.economyState);
       runSimulationTick(state, systems, 16);
-      expect(resetDailyWalkOnMetrics).toHaveBeenCalled();
       expect(resetTeeTimeDailyMetrics).toHaveBeenCalled();
       expect(resetPrestigeDailyStats).toHaveBeenCalled();
       expect(resetGolferDailyStats).toHaveBeenCalled();

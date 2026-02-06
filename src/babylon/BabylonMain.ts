@@ -738,9 +738,7 @@ export class BabylonMain {
       this.state.researchState,
       this.state.prestigeState,
       this.state.teeTimeState,
-      this.state.walkOnState,
       this.state.revenueState,
-      this.state.marketingState,
       this.state.applicationState,
       scenarioProgress,
       this.state.autonomousState,
@@ -811,9 +809,7 @@ export class BabylonMain {
       ...saved.teeTimeState,
       teeTimes: reconstructedTeeTimes,
     };
-    this.state.walkOnState = saved.walkOnState;
     this.state.revenueState = saved.revenueState;
-    this.state.marketingState = saved.marketingState;
     this.state.applicationState =
       saved.applicationState ||
       createInitialApplicationState(
@@ -927,13 +923,11 @@ export class BabylonMain {
       onEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       onResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       onTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      onMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
       onIrrigationPanel: () => this.handleIrrigationPanel(),
       onHoleBuilderPanel: () => this.handleHoleBuilderPanel(),
       onEquipmentStore: () => this.uiPanelCoordinator.handleEquipmentStore(),
       onAmenityPanel: () => this.uiPanelCoordinator.handleAmenityPanel(),
       onCourseLayoutPanel: () => this.uiPanelCoordinator.handleCourseLayoutPanel(),
-      onWalkOnQueuePanel: () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       onSelectAll: () => {
         const es = editorSystem();
         if (es?.isEnabled() && es.getMode() === 'sculpt') {
@@ -1272,13 +1266,11 @@ export class BabylonMain {
       () => this.uiPanelCoordinator.handleEmployeePanel(),
       () => this.uiPanelCoordinator.handleResearchPanel(),
       () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      () => this.uiPanelCoordinator.handleMarketingPanel(),
       () => this.handleIrrigationPanel(),
       () => this.handleHoleBuilderPanel(),
       () => this.uiPanelCoordinator.handleEquipmentStore(),
       () => this.uiPanelCoordinator.handleAmenityPanel(),
       () => this.uiPanelCoordinator.handleCourseLayoutPanel(),
-      () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       (delta: number) => this.handleTimeSpeed(delta),
       this.state.timeScale
     );
@@ -1535,13 +1527,8 @@ export class BabylonMain {
         workersIdle: workers.length - activeWorkers,
         bookedTeeTimes,
         totalTeeTimes: todayTeeTimes.length,
-        walkOnQueue: this.state.walkOnState.queue.length,
-        walkOnsTurnedAway: this.state.walkOnState.metrics.walkOnsTurnedAwayToday,
         researchName: activeResearchName,
         researchProgress,
-        activeCampaigns: this.state.marketingState.activeCampaigns.filter(
-          (campaign) => campaign.status === "active"
-        ).length,
         robotsWorking,
         robotsBroken,
         sprinklersPumping,
@@ -1769,7 +1756,6 @@ export class BabylonMain {
       handleEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       handleResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       handleTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      handleMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
       handleOverlayCycle: () => this.handleOverlayCycle(),
       handleRefill: () => this.handleRefill(),
       handleMute: () => this.handleMute(),
@@ -1879,7 +1865,7 @@ export class BabylonMain {
     if (this.state.gameDay === 2 && hours >= 7) {
       this.showTutorialHint(
         "panels",
-        "🎓 Press H=Employees, Y=Research, G=TeeSheet, K=Marketing"
+        "🎓 Press H=Employees, Y=Research, G=TeeSheet"
       );
     }
 
