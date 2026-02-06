@@ -1,21 +1,15 @@
 import { BabylonEngine, gridTo3D, HEIGHT_UNIT } from "./engine/BabylonEngine";
+import { GameAPI, GameContext } from "./GameAPI";
+import { SimulationContext, runSimulationTick } from "./SimulationTick";
 
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
 import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
-import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
-import { createVectorTerrainModifier } from "./systems/createTerrainModifier";
-import { BUILT_IN_TEMPLATES } from "../data/shape-templates";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
-import {
-  EntityVisualState,
-  PLAYER_APPEARANCE,
-  createEntityMesh,
-  disposeEntityMesh,
-} from "./systems/EntityVisualSystem";
+import { EntityVisualState } from "./systems/EntityVisualSystem";
 import {
   clearAssetCache,
   loadAsset,
@@ -25,23 +19,15 @@ import {
   AssetId,
 } from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
-import { TerrainEditorUI } from "./ui/TerrainEditorUI";
-import { EmployeePanel } from "./ui/EmployeePanel";
-import { ResearchPanel } from "./ui/ResearchPanel";
-import { DaySummaryPopup, DaySummaryData } from "./ui/DaySummaryPopup";
-import { TeeSheetPanel } from "./ui/TeeSheetPanel";
-import { MarketingDashboard } from "./ui/MarketingDashboard";
-import { EquipmentStorePanel } from "./ui/EquipmentStorePanel";
-import { AmenityPanel } from "./ui/AmenityPanel";
-import { WalkOnQueuePanel } from "./ui/WalkOnQueuePanel";
-import { IrrigationToolbar } from "./ui/IrrigationToolbar";
-import { IrrigationInfoPanel } from "./ui/IrrigationInfoPanel";
-import { IrrigationSchedulePanel } from "./ui/IrrigationSchedulePanel";
+import { DaySummaryData } from "./ui/DaySummaryPopup";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Culling/ray";
+
+import { PlayerController } from "./PlayerController";
+import { UIPanelCoordinator } from "./UIPanelCoordinator";
+import { TerrainEditorController } from "./TerrainEditorController";
 
 import {
   COURSE_HOLE_1,
@@ -49,8 +35,6 @@ import {
   CourseData,
   getCourseById,
 } from "../data/courseData";
-import { canMoveFromTo, TerrainType } from "../core/terrain";
-import { EditorTool, TopologyMode, InteractionMode } from "../core/terrain-editor-logic";
 import { ScenarioDefinition } from "../data/scenarioData";
 
 import {
@@ -58,106 +42,35 @@ import {
   createInitialEconomyState,
   addIncome,
   addExpense,
-  takeLoan,
-  makeLoanPayment,
-  payOffLoan,
-  getTotalDebt,
-  getNetWorth,
-  DEFAULT_LOAN_TERMS,
-  getTransactionsInRange,
-  calculateFinancialSummary,
 } from "../core/economy";
 import {
   IrrigationSystem,
   createInitialIrrigationSystem,
-  addPipe,
-  removePipe,
-  addSprinklerHead,
-  removeSprinklerHead,
-  updatePipePressures,
-  checkForLeaks,
-  repairLeak,
-  calculateWaterUsage,
-  calculateWaterCost,
-  setSprinklerActive,
-  getPipeAt,
-  getSprinklerHeadAt,
-  updateSprinklerSchedule,
-  PipeType,
-  SprinklerType,
-  WateringSchedule,
-  PIPE_CONFIGS,
-  SPRINKLER_CONFIGS,
 } from "../core/irrigation";
-import { canAfford } from "../core/economy";
 import {
   EmployeeRoster,
-  EmployeeRole,
-  EMPLOYEE_ROLE_INFO,
   createInitialRoster,
-  tickEmployees,
-  processPayroll,
-  getManagerBonus,
-  hireEmployee,
-  fireEmployee,
   ApplicationState,
   createInitialApplicationState,
-  tickApplications,
-  postJobOpening,
-  acceptApplication,
-  getPostingCost,
-  Employee,
-  awardExperience,
-  createEmployee,
 } from "../core/employees";
 import {
   EmployeeWorkSystemState,
   createInitialWorkSystemState,
-  tickEmployeeWork,
   syncWorkersWithRoster,
-  getWorkerPositions,
-  TASK_EXPERIENCE_REWARDS,
-  TASK_SUPPLY_COSTS,
 } from "../core/employee-work";
-import {
-  PlayerEntity,
-  createPlayerEntity,
-  teleportEntity,
-  PLAYER_BASE_SPEED,
-} from "../core/movable-entity";
 import {
   GolferPoolState,
   GreenFeeStructure,
   createInitialPoolState,
-  tickGolfers,
-  generateArrivals,
-  calculateArrivalRate,
-  updateCourseRating,
-  addGolfer,
   getActiveGolferCount,
   getAverageSatisfaction,
   WeatherCondition,
   DEFAULT_GREEN_FEES,
-  resetDailyStats as resetGolferDailyStats,
 } from "../core/golfers";
 import {
   ResearchState,
   createInitialResearchState,
-  tickResearch,
-  getFundingCostPerMinute,
-  startResearch,
-  cancelResearch,
-  setFundingLevel,
-  FundingLevel,
-  RESEARCH_ITEMS,
   getBestFertilizerEffectiveness,
-  getEquipmentEfficiencyBonus,
-  describeResearchUnlock,
-  completeResearchInstantly,
-  getAvailableResearch as getAvailableResearchItems,
-  getPrerequisiteChain,
-  getResearchStatus,
-  getResearchProgress,
 } from "../core/research";
 import { ScenarioManager } from "../core/scenario";
 import {
@@ -165,60 +78,27 @@ import {
   createInitialPrestigeState,
   calculateCurrentConditionsFromFaces,
   updatePrestigeScore,
-  calculateDemandMultiplier,
   takeDailySnapshot,
   updateHistoricalExcellence,
-  resetDailyStats as resetPrestigeDailyStats,
   upgradeAmenity,
 } from "../core/prestige";
-import { AmenityUpgrade, getUpgradeCost, getAvailableUpgrades, getUpgradeName } from "../core/amenities";
+import { AmenityUpgrade, getUpgradeCost } from "../core/amenities";
 import {
   TeeTimeSystemState,
-  TeeTimeSpacing,
   createInitialTeeTimeState,
-  generateDailySlots,
-  simulateDailyBookings,
-  applyBookingSimulation,
-  getAvailableSlots,
-  resetDailyMetrics as resetTeeTimeDailyMetrics,
-  checkInTeeTime,
-  cancelTeeTime,
-  bookTeeTime,
-  markNoShow,
-  updateSpacing,
-  type GameTime,
 } from "../core/tee-times";
 import {
   WalkOnState,
   createInitialWalkOnState,
-  processWalkOns,
-  resetDailyWalkOnMetrics,
-  getWalkOnSummary,
-  getQueueLength,
-  getEstimatedWaitTime,
-  updateWalkOnPolicy,
-  addWalkOnToQueue,
-  createWalkOnGolfer,
 } from "../core/walk-ons";
 import {
   RevenueState,
   createInitialRevenueState,
-  finalizeDailyRevenue,
-  getRevenueSummary,
-  calculateGreenFee,
-  calculateCartFee,
-  calculateAverageRevenue,
-  isWeekend,
-  isPrimeMorning,
-  isTwilightHour,
 } from "../core/tee-revenue";
 import {
   MarketingState,
   createInitialMarketingState,
-  processDailyCampaigns,
-  calculateCombinedDemandMultiplier,
   startCampaign,
-  stopCampaign,
   canStartCampaign,
 } from "../core/marketing";
 import {
@@ -226,36 +106,20 @@ import {
   saveGame,
   loadGame,
   hasSave,
-  deleteSave,
-  getSaveInfo,
-  listSaves,
   deserializeFaceStates,
 } from "../core/save-game";
 import {
   AutonomousEquipmentState,
   createInitialAutonomousState,
-  tickAutonomousEquipment,
-  purchaseRobot,
-  sellRobot,
-  countWorkingRobots,
-  countBrokenRobots,
-  getAvailableRobotsToPurchase,
 } from "../core/autonomous-equipment";
 import {
   WeatherState,
   createInitialWeatherState,
-  tickWeather,
-  getWeatherDescription,
-  getWeatherImpactDescription,
   getSeasonFromDay,
 } from "../core/weather";
 import {
   ReputationState,
   createInitialReputationState,
-  getReputationSummary,
-  calculateReputationScore,
-  trackGolferVisit,
-  trackTurnAway,
 } from "../core/reputation";
 
 export interface GameOptions {
@@ -281,38 +145,20 @@ export class BabylonMain {
   private isMuted: boolean = false;
   private overlayAutoSwitched: boolean = false;
 
-  private player: PlayerEntity = createPlayerEntity("player", 25, 19);
-  private playerVisual: EntityVisualState | null = null;
-  private cameraFollowPlayer: boolean = true;
-  private lastEquipmentFaceId: number | null = null;
-  private clickToMoveWaypoints: Array<{ x: number; z: number }> = [];
+  private playerController!: PlayerController;
+  private uiPanelCoordinator!: UIPanelCoordinator;
+  private terrainEditorController!: TerrainEditorController;
 
   private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
   private treeInstances: AssetInstance[] = [];
   private refillStationInstances: AssetInstance[] = [];
 
-  private terrainEditorSystem: TerrainEditorSystem | null = null;
-  private terrainEditorUI: TerrainEditorUI | null = null;
-  private editorUITexture: AdvancedDynamicTexture | null = null;
-  private terrainEditorPausedGame: boolean = false;
   private employeeVisualSystem: EmployeeVisualSystem | null = null;
   private irrigationRenderSystem: IrrigationRenderSystem | null = null;
   private irrigationSystem: IrrigationSystem = createInitialIrrigationSystem();
-  private irrigationToolbar: IrrigationToolbar | null = null;
-  private irrigationInfoPanel: IrrigationInfoPanel | null = null;
-  private irrigationSchedulePanel: IrrigationSchedulePanel | null = null;
 
-  private employeePanel: EmployeePanel | null = null;
   private applicationState: ApplicationState = createInitialApplicationState();
-  private researchPanel: ResearchPanel | null = null;
-  private daySummaryPopup: DaySummaryPopup | null = null;
-  private teeSheetPanel: TeeSheetPanel | null = null;
-  private teeSheetViewDay: number = 1;
-  private marketingDashboard: MarketingDashboard | null = null;
-  private equipmentStorePanel: EquipmentStorePanel | null = null;
-  private amenityPanel: AmenityPanel | null = null;
-  private walkOnQueuePanel: WalkOnQueuePanel | null = null;
   private dailyStats = {
     revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
     expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
@@ -424,10 +270,8 @@ export class BabylonMain {
       );
     }
 
-    // Set starting position based on course size
     const startX = Math.floor(course.width / 2);
     const startY = Math.floor(course.height * 0.75);
-    this.player = createPlayerEntity("player", startX, startY);
     this.babylonEngine = new BabylonEngine(
       canvasId,
       course.width,
@@ -435,7 +279,6 @@ export class BabylonMain {
     );
     this.inputManager = new InputManager(this.babylonEngine.getScene());
 
-    // Create terrain system based on options
     if (options.useVectorTerrain) {
       this.vectorTerrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
       this.terrainSystem = this.vectorTerrainSystem;
@@ -454,28 +297,119 @@ export class BabylonMain {
       { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
 
+    this.playerController = new PlayerController(
+      this.babylonEngine.getScene(),
+      {
+        getCell: (x, y) => this.terrainSystem.getCell(x, y),
+        getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d),
+        getCourseStats: () => this.terrainSystem.getCourseStats(),
+        getGridDimensions: () => this.terrainSystem.getGridDimensions(),
+        isPositionWalkable: (wx, wz) => this.terrainSystem.isPositionWalkable(wx, wz),
+        getTerrainSpeedAt: (wx, wz) => this.terrainSystem.getTerrainSpeedAt(wx, wz),
+        findFaceAtPosition: (wx, wz) => this.terrainSystem.findFaceAtPosition(wx, wz),
+        mowAt: (gx, gy) => this.terrainSystem.mowAt(gx, gy),
+        waterArea: (cx, cy, r, a) => this.terrainSystem.waterArea(cx, cy, r, a),
+        fertilizeArea: (cx, cy, r, a, e) => this.terrainSystem.fertilizeArea(cx, cy, r, a, e),
+        getResolution: () => this.terrainSystem.getResolution?.() ?? 1,
+      },
+      {
+        getSelected: () => this.equipmentManager.getSelected(),
+        getCurrentState: () => this.equipmentManager.getCurrentState(),
+        isActive: () => this.equipmentManager.isActive(),
+      },
+      {
+        getScene: () => this.babylonEngine.getScene(),
+        getCamera: () => this.babylonEngine.getCamera(),
+        setCameraTarget: (t) => this.babylonEngine.setCameraTarget(t),
+        updateCameraPan: (d, dirs) => this.babylonEngine.updateCameraPan(d, dirs),
+      },
+      {
+        isDirectionKeyHeld: (d) => this.inputManager.isDirectionKeyHeld(d),
+      },
+      {
+        editor: { isEnabled: () => this.terrainEditorController.isEnabled() },
+        onEquipmentEffect: (x, y) => this.applyEquipmentEffect(x, y),
+        startX,
+        startY,
+      }
+    );
+
+    this.terrainEditorController = new TerrainEditorController({
+      getScene: () => this.babylonEngine.getScene(),
+      getCamera: () => this.babylonEngine.getCamera(),
+      screenToWorldPosition: (sx, sy) => this.babylonEngine.screenToWorldPosition(sx, sy),
+      setCameraTarget: (t) => this.babylonEngine.setCameraTarget(t),
+      getTerrainSystem: () => this.terrainSystem,
+      getVectorTerrainSystem: () => this.vectorTerrainSystem,
+      getCourseWidth: () => this.currentCourse.width,
+      getCourseHeight: () => this.currentCourse.height,
+      getPlayerVisual: () => this.playerController.getPlayerVisual(),
+      getPlayerGridPosition: () => {
+        const p = this.playerController.getPlayer();
+        return { gridX: p.gridX, gridY: p.gridY };
+      },
+      setPlayerVisualEnabled: (enabled) => {
+        const pv = this.playerController.getPlayerVisual();
+        if (pv) pv.container.setEnabled(enabled);
+      },
+      setEmployeeVisualSystemVisible: (visible) => this.employeeVisualSystem?.setVisible(visible),
+      snapEmployeesToTerrain: () => this.employeeVisualSystem?.snapAllToTerrain(),
+      snapEntityToTerrain: (visual, gx, gy) => this.snapEntityToTerrain(visual, gx, gy),
+      snapAssetsToTerrain: () => this.snapAssetsToTerrain(),
+    });
+
+    const self = this;
+    this.uiPanelCoordinator = new UIPanelCoordinator(
+      this.babylonEngine.getScene(),
+      {
+        get economyState() { return self.economyState; },
+        set economyState(v) { self.economyState = v; },
+        get employeeRoster() { return self.employeeRoster; },
+        set employeeRoster(v) { self.employeeRoster = v; },
+        get employeeWorkState() { return self.employeeWorkState; },
+        set employeeWorkState(v) { self.employeeWorkState = v; },
+        get applicationState() { return self.applicationState; },
+        set applicationState(v) { self.applicationState = v; },
+        get researchState() { return self.researchState; },
+        set researchState(v) { self.researchState = v; },
+        get prestigeState() { return self.prestigeState; },
+        set prestigeState(v) { self.prestigeState = v; },
+        get teeTimeState() { return self.teeTimeState; },
+        set teeTimeState(v) { self.teeTimeState = v; },
+        get walkOnState() { return self.walkOnState; },
+        set walkOnState(v) { self.walkOnState = v; },
+        get revenueState() { return self.revenueState; },
+        set revenueState(v) { self.revenueState = v; },
+        get marketingState() { return self.marketingState; },
+        set marketingState(v) { self.marketingState = v; },
+        get autonomousState() { return self.autonomousState; },
+        set autonomousState(v) { self.autonomousState = v; },
+        get irrigationSystem() { return self.irrigationSystem; },
+        set irrigationSystem(v) { self.irrigationSystem = v; },
+        get irrigationRenderSystem() { return self.irrigationRenderSystem; },
+        get greenFees() { return self.greenFees; },
+        set greenFees(v) { self.greenFees = v; },
+        get gameTime() { return self.gameTime; },
+        get gameDay() { return self.gameDay; },
+        get dailyStats() { return self.dailyStats; },
+        set dailyStats(v) { self.dailyStats = v; },
+        uiManager: this.uiManager,
+        resetDailyStats: () => this.resetDailyStats(),
+        pauseGame: () => this.pauseGame(),
+      }
+    );
+
     this.setupInputCallbacks();
     this.buildScene();
-    this.setupTerrainEditor();
-    this.setupEmployeePanel();
-    this.setupResearchPanel();
-    this.setupDaySummaryPopup();
-    this.setupTeeSheetPanel();
-    this.setupMarketingDashboard();
-    this.setupEquipmentStorePanel();
-    this.setupAmenityPanel();
-    this.setupWalkOnQueuePanel();
-    this.setupIrrigationUI();
-    this.setupPriceCallback();
+    this.terrainEditorController.setup();
+    this.uiPanelCoordinator.setupAll();
     this.setupUpdateLoop();
 
-    // Load saved game if requested
     if (options.loadFromSave && this.loadSavedGame()) {
       this.uiManager.showNotification(`Loaded Day ${this.gameDay}`);
-      this.updatePlayerPosition();
+      this.playerController.updatePlayerPosition();
     }
 
-    // Show scenario objective if we have one
     if (this.currentScenario) {
       this.uiManager.updateObjective(this.getObjectiveText());
     }
@@ -500,653 +434,6 @@ export class BabylonMain {
       default:
         return "Complete scenario objective";
     }
-  }
-
-  private setupTerrainEditor(): void {
-    const scene = this.babylonEngine.getScene();
-
-    this.terrainEditorSystem = new TerrainEditorSystem(scene);
-
-    const baseModifier = {
-      setElevationAt: (x: number, y: number, elev: number) =>
-        this.terrainSystem.setElevationAt(x, y, elev),
-      setTerrainTypeAt: (x: number, y: number, type: TerrainType) =>
-        this.terrainSystem.setTerrainTypeAt(x, y, type),
-      rebuildTileAndNeighbors: (x: number, y: number) =>
-        this.terrainSystem.rebuildTileAndNeighbors(x, y),
-    };
-
-    if (this.vectorTerrainSystem) {
-      const vts = this.vectorTerrainSystem;
-      this.terrainEditorSystem.setTerrainModifier({
-        ...baseModifier,
-        ...createVectorTerrainModifier(vts),
-      });
-      this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
-    } else {
-      this.terrainEditorSystem.setTerrainModifier(baseModifier);
-    }
-
-    this.editorUITexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "EditorUI",
-      true,
-      scene
-    );
-    this.terrainEditorUI = new TerrainEditorUI(this.editorUITexture, {
-      onToolSelect: (tool: EditorTool) => this.handleEditorToolSelect(tool),
-      onModeChange: (mode) => this.terrainEditorSystem?.setMode(mode),
-      onClose: () => this.handleEditorToggle(),
-      onBrushSizeChange: (size: number) => this.handleEditorBrushSize(size),
-      onBrushStrengthChange: (strength: number) => this.handleEditorBrushStrength(strength),
-      onSelectAll: () => this.terrainEditorSystem?.selectAllVertices(),
-      onDeselectAll: () => this.terrainEditorSystem?.deselectAllVertices(),
-      onAxisChange: (axis) => {
-        this.terrainEditorSystem?.setAxisConstraint(axis);
-        this.terrainEditorUI?.setActiveAxis(axis);
-      },
-      onMoveBy: (dx, dy, dz) => {
-        this.terrainEditorSystem?.moveSelectedVerticesBy({ x: dx, y: dy, z: dz });
-        this.updateVertexPositionDisplay();
-      },
-      onTopologyModeChange: (mode) => {
-        this.terrainEditorSystem?.setTopologyMode(mode);
-      },
-      onDeleteVertex: () => {
-        this.terrainEditorSystem?.handleDeleteSelectedTopologyVertices();
-      },
-      onSplitEdge: () => {
-        this.terrainEditorSystem?.subdivideSelectedEdge();
-      },
-      onFlipEdge: () => {
-        this.terrainEditorSystem?.flipSelectedEdge();
-      },
-      onCollapseEdge: () => {
-        this.terrainEditorSystem?.collapseSelectedEdge();
-      },
-      onInteractionModeChange: (mode: InteractionMode) => {
-        this.terrainEditorSystem?.setInteractionMode(mode);
-      },
-      onRotateBy: (ax, ay, az) => {
-        this.terrainEditorSystem?.rotateSelectedVertices(ax, ay, az);
-      },
-      onTemplateSelect: (templateName) => {
-        const template = BUILT_IN_TEMPLATES.find(t => t.name === templateName);
-        if (template) {
-          this.terrainEditorSystem?.setActiveTemplate(template);
-        }
-      },
-      onStampSizeChange: (size) => {
-        this.terrainEditorSystem?.setStampScale(size);
-        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem?.getStampScale() ?? size);
-      },
-    });
-
-    this.terrainEditorSystem.setCallbacks({
-      onEnable: () => {
-        this.terrainEditorUI?.show();
-        this.terrainEditorUI?.setActiveTool(
-          this.terrainEditorSystem!.getTool()
-        );
-        this.terrainEditorUI?.setActiveMode(
-          this.terrainEditorSystem!.getMode()
-        );
-        this.terrainEditorUI?.setActiveAxis(
-          this.terrainEditorSystem!.getAxisConstraint()
-        );
-        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem!.getStampScale());
-        if (this.vectorTerrainSystem) {
-          if (this.terrainEditorSystem!.getMode() === 'sculpt') {
-            this.vectorTerrainSystem.setWireframeEnabled(true);
-          }
-          this.vectorTerrainSystem.setAxisIndicatorEnabled(true);
-        }
-
-        this.terrainEditorPausedGame = true;
-        if (this.playerVisual) {
-          this.playerVisual.container.setEnabled(false);
-        }
-        this.employeeVisualSystem?.setVisible(false);
-      },
-      onDisable: () => {
-        this.terrainEditorUI?.hide();
-        if (this.vectorTerrainSystem) {
-          this.vectorTerrainSystem.setWireframeEnabled(false);
-          this.vectorTerrainSystem.setAxisIndicatorEnabled(false);
-        }
-
-        this.terrainEditorPausedGame = false;
-        if (this.playerVisual) {
-          this.playerVisual.container.setEnabled(true);
-          this.snapEntityToTerrain(this.playerVisual, this.player.gridX, this.player.gridY);
-          this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
-        }
-        this.employeeVisualSystem?.setVisible(true);
-        this.employeeVisualSystem?.snapAllToTerrain();
-        this.snapAssetsToTerrain();
-      },
-      onToolChange: (tool: EditorTool) => {
-        this.terrainEditorUI?.setActiveTool(tool);
-      },
-      onModeChange: (mode) => {
-        this.terrainEditorUI?.setActiveMode(mode);
-        if (this.vectorTerrainSystem) {
-          // Always show wireframe (topology grid) in either mode
-          this.vectorTerrainSystem.setWireframeEnabled(true);
-          // Stop using the generated regular grid lines as they might not match topology
-          this.vectorTerrainSystem.setGridLinesEnabled(false);
-        }
-      },
-      onBrushSizeChange: (size: number) => {
-        this.terrainEditorUI?.setBrushSize(size);
-      },
-      onSelectionChange: (count: number) => {
-        this.terrainEditorUI?.setSelectionCount(count);
-        this.updateVertexPositionDisplay();
-      },
-      onTopologyModeChange: (mode: TopologyMode) => {
-        this.terrainEditorUI?.setActiveTopologyMode(mode);
-      },
-      onInteractionModeChange: (mode: InteractionMode) => {
-        this.terrainEditorUI?.setInteractionMode(mode);
-      },
-      onModification: () => {
-        this.snapAssetsToTerrain();
-      },
-    });
-  }
-
-  private updateVertexPositionDisplay(): void {
-    if (!this.terrainEditorSystem) return;
-
-    const centroid = this.terrainEditorSystem.getSelectionCentroid();
-    if (centroid) {
-      this.terrainEditorUI?.updateVertexPosition(centroid.x, centroid.y, centroid.z);
-    } else {
-      this.terrainEditorUI?.clearVertexPosition();
-    }
-  }
-
-  private setupEmployeePanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "EmployeePanelUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.employeePanel = new EmployeePanel(uiTexture, {
-      onHire: (employee: Employee) => {
-        const result = hireEmployee(this.employeeRoster, employee);
-        if (result) {
-          this.employeeRoster = result;
-          this.employeeWorkState = syncWorkersWithRoster(
-            this.employeeWorkState,
-            this.employeeRoster.employees
-          );
-
-          // Remove application after hiring
-          const updatedAppState = acceptApplication(
-            this.applicationState,
-            employee.id
-          );
-          if (updatedAppState) {
-            this.applicationState = updatedAppState;
-          }
-
-          this.uiManager.showNotification(
-            `Hired ${employee.name} as ${employee.role}`
-          );
-          this.employeePanel?.update(this.employeeRoster);
-          this.employeePanel?.updateApplications(
-            this.applicationState,
-            this.prestigeState.tier,
-            this.gameTime + this.gameDay * 24 * 60
-          );
-        } else {
-          this.uiManager.showNotification("Cannot hire - roster full");
-        }
-      },
-      onFire: (employeeId: string) => {
-        const employee = this.employeeRoster.employees.find(
-          (e) => e.id === employeeId
-        );
-        const result = fireEmployee(this.employeeRoster, employeeId);
-        if (result) {
-          this.employeeRoster = result;
-          this.employeeWorkState = syncWorkersWithRoster(
-            this.employeeWorkState,
-            this.employeeRoster.employees
-          );
-          if (employee) {
-            this.uiManager.showNotification(`Fired ${employee.name}`);
-          }
-          this.employeePanel?.update(this.employeeRoster);
-        }
-      },
-      onClose: () => {
-        this.employeePanel?.hide();
-      },
-      onPostJobOpening: (role: EmployeeRole) => {
-        const cost = getPostingCost(this.prestigeState.tier);
-        if (this.economyState.cash < cost) {
-          this.uiManager.showNotification(
-            `⚠️ Not enough cash! Need $${cost}`,
-            "#ff4444"
-          );
-          return;
-        }
-
-        const currentTime = this.gameTime + this.gameDay * 24 * 60;
-        const result = postJobOpening(
-          this.applicationState,
-          currentTime,
-          this.prestigeState.tier,
-          role
-        );
-
-        if (result) {
-          this.applicationState = result.state;
-          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-          const expenseResult = addExpense(
-            this.economyState,
-            cost,
-            "marketing",
-            "Job Posting",
-            timestamp,
-            false
-          );
-          if (expenseResult) {
-            this.economyState = expenseResult;
-            this.dailyStats.expenses.other += cost;
-          }
-
-          const roleInfo = EMPLOYEE_ROLE_INFO[role];
-          this.uiManager.showNotification(
-            `📢 Hiring ${roleInfo.name}! Cost: $${cost}`
-          );
-          this.employeePanel?.updateApplications(
-            this.applicationState,
-            this.prestigeState.tier,
-            currentTime
-          );
-        }
-      },
-    });
-
-    this.employeePanel.update(this.employeeRoster);
-
-    // Initialize application state based on starting prestige tier
-    this.applicationState = createInitialApplicationState(
-      this.gameTime + this.gameDay * 24 * 60,
-      this.prestigeState.tier
-    );
-  }
-
-  private setupResearchPanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "ResearchPanelUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.researchPanel = new ResearchPanel(uiTexture, {
-      onStartResearch: (itemId: string) => {
-        const currentTime = this.gameTime + this.gameDay * 24 * 60;
-        const result = startResearch(this.researchState, itemId, currentTime);
-        if (result) {
-          this.researchState = result;
-          const item = RESEARCH_ITEMS.find((i) => i.id === itemId);
-          if (item) {
-            this.uiManager.showNotification(
-              `Started researching: ${item.name}`
-            );
-          }
-          this.researchPanel?.update(this.researchState);
-        } else {
-          this.uiManager.showNotification("Cannot start research");
-        }
-      },
-      onQueueResearch: (itemId: string) => {
-        this.researchState = {
-          ...this.researchState,
-          researchQueue: [...this.researchState.researchQueue, itemId],
-        };
-        this.researchPanel?.update(this.researchState);
-      },
-      onCancelResearch: () => {
-        this.researchState = cancelResearch(this.researchState);
-        this.uiManager.showNotification("Research cancelled");
-        this.researchPanel?.update(this.researchState);
-      },
-      onSetFunding: (level: FundingLevel) => {
-        this.researchState = setFundingLevel(this.researchState, level);
-        this.uiManager.showNotification(`Funding set to ${level}`);
-        this.researchPanel?.update(this.researchState);
-      },
-      onClose: () => {
-        this.researchPanel?.hide();
-      },
-    });
-
-    this.researchPanel.update(this.researchState);
-  }
-
-  private setupDaySummaryPopup(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "DaySummaryUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.daySummaryPopup = new DaySummaryPopup(uiTexture, {
-      onContinue: () => {
-        this.resetDailyStats();
-      },
-    });
-  }
-
-  private setupTeeSheetPanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "TeeSheetUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-    this.teeSheetViewDay = this.gameDay;
-
-    this.teeSheetPanel = new TeeSheetPanel(uiTexture, {
-      onCheckIn: (teeTimeId: string) => {
-        const result = checkInTeeTime(this.teeTimeState, teeTimeId);
-        this.teeTimeState = result;
-        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-        this.uiManager.showNotification("Golfer checked in");
-      },
-      onCancel: (teeTimeId: string) => {
-        const result = cancelTeeTime(this.teeTimeState, teeTimeId);
-        this.teeTimeState = result;
-        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-        this.uiManager.showNotification("Tee time cancelled");
-      },
-      onMarkNoShow: (teeTimeId: string) => {
-        const result = markNoShow(this.teeTimeState, teeTimeId);
-        if (result) {
-          this.teeTimeState = result;
-          this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-          this.uiManager.showNotification("Marked as no-show");
-        }
-      },
-      onChangeDay: (delta: number) => {
-        this.teeSheetViewDay = Math.max(1, this.teeSheetViewDay + delta);
-        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-      },
-      onSpacingChange: (spacing: TeeTimeSpacing) => {
-        this.teeTimeState = updateSpacing(this.teeTimeState, spacing);
-        this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-        this.uiManager.showNotification(`Tee time spacing: ${spacing}`);
-      },
-      onClose: () => {
-        this.teeSheetPanel?.hide();
-      },
-    });
-  }
-
-  private setupMarketingDashboard(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "MarketingUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.marketingDashboard = new MarketingDashboard(uiTexture, {
-      onStartCampaign: (campaignId: string, duration: number) => {
-        const result = startCampaign(
-          this.marketingState,
-          campaignId,
-          this.gameDay,
-          duration
-        );
-        if (result) {
-          this.marketingState = result.state;
-          if (result.setupCost > 0) {
-            const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-            const expenseResult = addExpense(
-              this.economyState,
-              result.setupCost,
-              "marketing",
-              "Campaign setup",
-              timestamp,
-              false
-            );
-            if (expenseResult) {
-              this.economyState = expenseResult;
-              this.dailyStats.expenses.other += result.setupCost;
-            }
-          }
-          this.marketingDashboard?.update(
-            this.marketingState,
-            this.gameDay,
-            this.economyState.cash
-          );
-          this.uiManager.showNotification("Campaign started!");
-        }
-      },
-      onStopCampaign: (campaignId: string) => {
-        const result = stopCampaign(
-          this.marketingState,
-          campaignId,
-          this.gameDay
-        );
-        this.marketingState = result;
-        this.marketingDashboard?.update(
-          this.marketingState,
-          this.gameDay,
-          this.economyState.cash
-        );
-        this.uiManager.showNotification("Campaign stopped");
-      },
-      onClose: () => {
-        this.marketingDashboard?.hide();
-      },
-    });
-  }
-
-  private setupEquipmentStorePanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "EquipmentStoreUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.equipmentStorePanel = new EquipmentStorePanel(uiTexture, {
-      onPurchaseRobot: (equipmentId, stats) => {
-        const result = purchaseRobot(this.autonomousState, equipmentId, stats);
-        if (result && result.cost <= this.economyState.cash) {
-          this.autonomousState = result.state;
-          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-          const expenseResult = addExpense(
-            this.economyState,
-            result.cost,
-            "equipment_purchase",
-            `Robot purchase: ${equipmentId}`,
-            timestamp,
-            false
-          );
-          if (expenseResult) {
-            this.economyState = expenseResult;
-            this.dailyStats.expenses.other += result.cost;
-          }
-          this.equipmentStorePanel?.update(
-            this.researchState,
-            this.autonomousState,
-            this.economyState.cash
-          );
-          this.uiManager.showNotification(`Purchased ${equipmentId}!`);
-          return true;
-        }
-        return false;
-      },
-      onSellRobot: (robotId) => {
-        const result = sellRobot(this.autonomousState, robotId);
-        if (result) {
-          this.autonomousState = result.state;
-          const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-          const incomeResult = addIncome(
-            this.economyState,
-            result.refund,
-            "other_income",
-            `Robot sold: ${robotId}`,
-            timestamp
-          );
-          if (incomeResult) {
-            this.economyState = incomeResult;
-            this.dailyStats.revenue.other += result.refund;
-          }
-          this.equipmentStorePanel?.update(
-            this.researchState,
-            this.autonomousState,
-            this.economyState.cash
-          );
-          this.uiManager.showNotification(
-            `Sold robot for $${result.refund.toLocaleString()}`
-          );
-          return true;
-        }
-        return false;
-      },
-      onClose: () => {
-        this.equipmentStorePanel?.hide();
-      },
-    });
-  }
-
-  private setupAmenityPanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "AmenityPanelUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.amenityPanel = new AmenityPanel(uiTexture, {
-      onPurchaseUpgrade: (upgrade: AmenityUpgrade) => {
-        const cost = getUpgradeCost(this.prestigeState.amenities, upgrade);
-        if (this.economyState.cash < cost) {
-          return false;
-        }
-        this.prestigeState = upgradeAmenity(this.prestigeState, upgrade);
-        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-        const expenseResult = addExpense(
-          this.economyState,
-          cost,
-          "equipment_purchase",
-          `Amenity: ${upgrade.type}`,
-          timestamp,
-          false
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-          this.dailyStats.expenses.other += cost;
-        }
-        this.amenityPanel?.update(this.prestigeState, this.economyState.cash);
-        this.uiManager.showNotification(`Purchased ${upgrade.type} upgrade!`);
-        return true;
-      },
-      onClose: () => {
-        this.amenityPanel?.hide();
-      },
-    });
-  }
-
-  private setupWalkOnQueuePanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "WalkOnQueueUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.walkOnQueuePanel = new WalkOnQueuePanel(uiTexture, {
-      onAssignToSlot: (_golferId: string) => {
-        this.uiManager.showNotification(
-          `Assigned golfer to next available slot`
-        );
-        this.walkOnQueuePanel?.update(this.walkOnState);
-      },
-      onTurnAway: (golferId: string) => {
-        const golfer = this.walkOnState.queue.find(
-          (g) => g.golferId === golferId
-        );
-        if (golfer) {
-          golfer.status = "turned_away";
-          this.walkOnState.metrics.walkOnsTurnedAwayToday++;
-          this.walkOnQueuePanel?.update(this.walkOnState);
-          this.uiManager.showNotification(`Turned away ${golfer.name}`);
-        }
-      },
-      onClose: () => {
-        this.walkOnQueuePanel?.hide();
-      },
-    });
-  }
-
-  private setupIrrigationUI(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "IrrigationUI",
-      true,
-      this.babylonEngine.getScene()
-    );
-
-    this.irrigationToolbar = new IrrigationToolbar(uiTexture, {
-      onToolSelect: () => {
-        // Tool selection handling
-      },
-      onPipeTypeSelect: () => {
-        // Pipe type selection
-      },
-      onSprinklerTypeSelect: () => {
-        // Sprinkler type selection
-      },
-      onClose: () => {
-        this.irrigationToolbar?.hide();
-      },
-    });
-
-    this.irrigationInfoPanel = new IrrigationInfoPanel(uiTexture, {
-      onClose: () => {
-        this.irrigationInfoPanel?.hide();
-      },
-      onRepair: (x, y) => {
-        const result = repairLeak(this.irrigationSystem, x, y);
-        if (result) {
-          this.irrigationSystem = result;
-          this.irrigationRenderSystem?.update(this.irrigationSystem);
-        }
-      },
-    });
-
-    this.irrigationSchedulePanel = new IrrigationSchedulePanel(uiTexture, {
-      onClose: () => {
-        this.irrigationSchedulePanel?.hide();
-      },
-    });
-  }
-
-  private setupPriceCallback(): void {
-    this.uiManager.setPriceCallback((delta: number) => {
-      const newPrice = Math.max(
-        5,
-        Math.min(500, this.greenFees.weekday18Holes + delta)
-      );
-      if (newPrice !== this.greenFees.weekday18Holes) {
-        this.greenFees = {
-          ...this.greenFees,
-          weekday18Holes: newPrice,
-          weekday9Holes: Math.round(newPrice * 0.6),
-          weekend18Holes: Math.round(newPrice * 1.2),
-          weekend9Holes: Math.round(newPrice * 0.72),
-          twilight18Holes: Math.round(newPrice * 0.6),
-          twilight9Holes: Math.round(newPrice * 0.36),
-        };
-        this.uiManager.updateCurrentPrice(newPrice);
-      }
-    });
-    this.uiManager.updateCurrentPrice(this.greenFees.weekday18Holes);
   }
 
   private resetDailyStats(): void {
@@ -1195,8 +482,7 @@ export class BabylonMain {
       maintenance: { ...this.dailyStats.maintenance },
     };
 
-    this.daySummaryPopup?.show(summaryData);
-    this.pauseGame();
+    this.uiPanelCoordinator.showDaySummary(summaryData);
   }
 
   public saveCurrentGame(): void {
@@ -1209,8 +495,8 @@ export class BabylonMain {
       this.currentScenario.id,
       this.gameTime,
       this.gameDay,
-      this.player.gridX,
-      this.player.gridY,
+      this.playerController.getPlayer().gridX,
+      this.playerController.getPlayer().gridY,
       this.score,
       this.economyState,
       this.employeeRoster,
@@ -1244,13 +530,7 @@ export class BabylonMain {
 
     this.gameTime = saved.gameTime;
     this.gameDay = saved.gameDay;
-    this.player = {
-      ...teleportEntity(this.player, saved.playerX, saved.playerY),
-      worldX: saved.playerX + 0.5,
-      worldZ: saved.playerY + 0.5,
-    };
-    this.clickToMoveWaypoints = [];
-    this.lastEquipmentFaceId = null;
+    this.playerController.teleport(saved.playerX, saved.playerY);
     this.score = saved.score;
     this.economyState = saved.economyState;
     this.employeeRoster = saved.employeeRoster;
@@ -1319,13 +599,11 @@ export class BabylonMain {
   }
 
   private setupInputCallbacks(): void {
+    const editorSystem = () => this.terrainEditorController.getSystem();
+
     this.inputManager.setCallbacks({
-      // Core movement - use public API for consistency
       onMove: (direction: Direction) => {
-        if (this.terrainEditorSystem?.isEnabled()) {
-          // Camera movement is handled in updateLoop for smooth input
-          return;
-        }
+        if (this.terrainEditorController.isEnabled()) return;
         const dirMap: Record<Direction, "up" | "down" | "left" | "right"> = {
           up: "up",
           down: "down",
@@ -1335,7 +613,6 @@ export class BabylonMain {
         this.movePlayer(dirMap[direction]);
       },
 
-      // Equipment control - use public API
       onEquipmentSelect: (slot: EquipmentSlot) => {
         this.selectEquipment(slot);
       },
@@ -1344,7 +621,6 @@ export class BabylonMain {
         this.toggleEquipment();
       },
 
-      // Other handlers remain private as they're more complex
       onRefill: () => this.handleRefill(),
       onOverlayCycle: () => this.handleOverlayCycle(),
       onPause: () => this.handlePause(),
@@ -1357,100 +633,84 @@ export class BabylonMain {
       onClick: (screenX: number, screenY: number) =>
         this.handleClick(screenX, screenY),
 
-      // Terrain editor - use public API where available
       onEditorToggle: () => {
         this.setTerrainEditor(!this.isTerrainEditorEnabled());
       },
 
-      onEditorToolSelect: (tool: number) => this.handleEditorToolNumber(tool),
+      onEditorToolSelect: (tool: number) => this.terrainEditorController.handleEditorToolNumber(tool),
       onEditorBrushSelect: (brush: string) =>
-        this.handleEditorBrushSelect(brush),
+        this.terrainEditorController.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>
-        this.handleEditorBrushSizeDelta(delta),
+        this.terrainEditorController.handleEditorBrushSizeDelta(delta),
       onEditorBrushStrengthChange: (delta: number) =>
-        this.handleEditorBrushStrengthDelta(delta),
+        this.terrainEditorController.handleEditorBrushStrengthDelta(delta),
 
       onMouseMove: (screenX: number, screenY: number) =>
-        this.handleMouseMove(screenX, screenY),
+        this.terrainEditorController.handleMouseMove(screenX, screenY),
       onDragStart: (screenX: number, screenY: number, shiftKey?: boolean) =>
-        this.handleDragStart(screenX, screenY, shiftKey),
+        this.terrainEditorController.handleDragStart(screenX, screenY, shiftKey),
       onDrag: (screenX: number, screenY: number) =>
-        this.handleDrag(screenX, screenY),
-      onDragEnd: () => this.handleDragEnd(),
-      onEmployeePanel: () => this.handleEmployeePanel(),
-      onResearchPanel: () => this.handleResearchPanel(),
-      onTeeSheetPanel: () => this.handleTeeSheetPanel(),
-      onMarketingPanel: () => this.handleMarketingPanel(),
-      onEquipmentStore: () => this.handleEquipmentStore(),
-      onAmenityPanel: () => this.handleAmenityPanel(),
-      onWalkOnQueuePanel: () => this.handleWalkOnQueuePanel(),
+        this.terrainEditorController.handleDrag(screenX, screenY),
+      onDragEnd: () => this.terrainEditorController.handleDragEnd(),
+      onEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
+      onResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
+      onTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
+      onMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
+      onEquipmentStore: () => this.uiPanelCoordinator.handleEquipmentStore(),
+      onAmenityPanel: () => this.uiPanelCoordinator.handleAmenityPanel(),
+      onWalkOnQueuePanel: () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       onSelectAll: () => {
-        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
-          this.terrainEditorSystem.selectAllVertices();
+        const es = editorSystem();
+        if (es?.isEnabled() && es.getMode() === 'sculpt') {
+          es.selectAllVertices();
         }
       },
       onDeselectAll: () => {
-        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
-          this.terrainEditorSystem.deselectAllVertices();
+        const es = editorSystem();
+        if (es?.isEnabled() && es.getMode() === 'sculpt') {
+          es.deselectAllVertices();
         }
       },
       onAxisConstraint: (axis) => {
-        if (this.terrainEditorSystem?.isEnabled() && this.terrainEditorSystem.getMode() === 'sculpt') {
-          this.terrainEditorSystem.setAxisConstraint(axis);
-          this.terrainEditorUI?.setActiveAxis(axis);
+        const es = editorSystem();
+        if (es?.isEnabled() && es.getMode() === 'sculpt') {
+          es.setAxisConstraint(axis);
         }
       },
       onEdgeModeToggle: () => {
-         this.terrainEditorSystem?.setTopologyMode('edge');
+        editorSystem()?.setTopologyMode('edge');
       },
       onFaceModeToggle: () => {
-         this.terrainEditorSystem?.setTopologyMode('face');
+        editorSystem()?.setTopologyMode('face');
       },
       onDeleteVertex: () => {
-        this.terrainEditorSystem?.handleDeleteSelectedTopologyVertices();
+        editorSystem()?.handleDeleteSelectedTopologyVertices();
       },
       onSubdivideEdge: () => {
-        this.terrainEditorSystem?.subdivideSelectedEdge();
+        editorSystem()?.subdivideSelectedEdge();
       },
       onFlipEdge: () => {
-        this.terrainEditorSystem?.flipSelectedEdge();
+        editorSystem()?.flipSelectedEdge();
       },
-      isInputBlocked: () => this.isAnyPopupOpen(),
-      isEditorActive: () => this.terrainEditorSystem?.isEnabled() ?? false,
-      isEdgeModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'edge',
-      isFaceModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'face',
+      isInputBlocked: () => this.uiManager.isPauseMenuVisible(),
+      isEditorActive: () => this.terrainEditorController.isEnabled(),
+      isEdgeModeActive: () => editorSystem()?.getTopologyMode() === 'edge',
+      isFaceModeActive: () => editorSystem()?.getTopologyMode() === 'face',
       onSelectModeToggle: () => {
-        this.terrainEditorSystem?.setInteractionMode('select');
-        this.terrainEditorUI?.setInteractionMode('select');
+        editorSystem()?.setInteractionMode('select');
       },
       onBrushModeToggle: () => {
-        this.terrainEditorSystem?.setInteractionMode('brush');
-        this.terrainEditorUI?.setInteractionMode('brush');
+        editorSystem()?.setInteractionMode('brush');
       },
     });
-  }
-
-  private isAnyPopupOpen(): boolean {
-    return (
-      (this.employeePanel?.isVisible() ||
-        this.researchPanel?.isVisible() ||
-        this.teeSheetPanel?.isVisible() ||
-        this.marketingDashboard?.isVisible() ||
-        this.equipmentStorePanel?.isVisible() ||
-        this.amenityPanel?.isVisible() ||
-        this.walkOnQueuePanel?.isVisible() ||
-        this.daySummaryPopup?.isVisible() ||
-        this.uiManager.isPauseMenuVisible()) ??
-      false
-    );
   }
 
   private buildScene(): void {
     this.terrainSystem.build(this.currentCourse);
     this.buildObstacles();
     this.buildRefillStations();
-    this.createPlayer();
-    this.updatePlayerPosition();
+    this.playerController.createPlayer();
+    this.playerController.updatePlayerPosition();
   }
 
   private buildObstacles(): void {
@@ -1501,64 +761,8 @@ export class BabylonMain {
     }
   }
 
-  private createPlayer(): void {
-    const scene = this.babylonEngine.getScene();
-    this.playerVisual = createEntityMesh(
-      scene,
-      "player",
-      PLAYER_APPEARANCE,
-      this.player.gridX,
-      this.player.gridY,
-      { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
-    );
-  }
-
   public teleport(x: number, y: number): void {
-    const course = this.currentCourse;
-    if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
-      console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
-      return;
-    }
-
-    this.player = {
-      ...teleportEntity(this.player, x, y),
-      worldX: x + 0.5,
-      worldZ: y + 0.5,
-    };
-    this.clickToMoveWaypoints = [];
-    this.lastEquipmentFaceId = null;
-
-    if (this.playerVisual) {
-      this.playerVisual.lastGridX = x;
-      this.playerVisual.lastGridY = y;
-      this.playerVisual.targetGridX = x;
-      this.playerVisual.targetGridY = y;
-      this.playerVisual.visualProgress = 1;
-    }
-
-    this.updatePlayerPosition();
-  }
-
-  private updatePlayerPosition(): void {
-    if (!this.playerVisual) return;
-
-    const elev = this.terrainSystem.getElevationAt(
-      this.player.worldX,
-      this.player.worldZ,
-      0
-    ) * HEIGHT_UNIT;
-    this.playerVisual.container.position.set(this.player.worldX, elev, this.player.worldZ);
-
-    if (this.cameraFollowPlayer) {
-      this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
-    }
-  }
-
-  private isPlayerMoving(): boolean {
-    return this.playerVisual !== null && (
-      this.player.pendingDirection !== null ||
-      this.clickToMoveWaypoints.length > 0
-    );
+    this.playerController.teleport(x, y);
   }
 
   private snapAssetsToTerrain(): void {
@@ -1582,339 +786,18 @@ export class BabylonMain {
     visual.visualProgress = 1;
   }
 
-  private getHeldDirectionVector(): { dx: number; dz: number } {
-    let dx = 0;
-    let dz = 0;
-    if (this.inputManager.isDirectionKeyHeld('up')) dx -= 1;
-    if (this.inputManager.isDirectionKeyHeld('down')) dx += 1;
-    if (this.inputManager.isDirectionKeyHeld('left')) dz -= 1;
-    if (this.inputManager.isDirectionKeyHeld('right')) dz += 1;
-    return { dx, dz };
-  }
-
-  private movePlayerTo(targetX: number, targetZ: number): void {
-    this.player = {
-      ...this.player,
-      worldX: targetX,
-      worldZ: targetZ,
-      gridX: Math.floor(targetX),
-      gridY: Math.floor(targetZ),
-    };
-
-    const currentFace = this.terrainSystem.findFaceAtPosition(targetX, targetZ);
-    if (currentFace !== null && currentFace !== this.lastEquipmentFaceId) {
-      if (this.equipmentManager.isActive()) {
-        this.applyEquipmentEffect(Math.floor(targetX), Math.floor(targetZ));
-      }
-      this.lastEquipmentFaceId = currentFace;
-    }
-  }
-
-  private updateMovement(deltaMs: number): void {
-    if (this.terrainEditorSystem?.isEnabled()) {
-      this.updateEditorCamera(deltaMs);
-      return;
-    }
-
-    if (!this.playerVisual) return;
-
-    const clampedDelta = Math.min(deltaMs, 100);
-
-    const dir = this.getHeldDirectionVector();
-    const hasKeyInput = dir.dx !== 0 || dir.dz !== 0;
-
-    if (hasKeyInput) {
-      this.clickToMoveWaypoints = [];
-
-      const len = Math.sqrt(dir.dx * dir.dx + dir.dz * dir.dz);
-      const ndx = dir.dx / len;
-      const ndz = dir.dz / len;
-
-      const terrainSpeed = this.terrainSystem.getTerrainSpeedAt(this.player.worldX, this.player.worldZ);
-      const speed = PLAYER_BASE_SPEED * Math.max(terrainSpeed, 0.3);
-      const delta = speed * (clampedDelta / 1000);
-      const targetX = this.player.worldX + ndx * delta;
-      const targetZ = this.player.worldZ + ndz * delta;
-
-      if (this.terrainSystem.isPositionWalkable(targetX, targetZ)) {
-        this.movePlayerTo(targetX, targetZ);
-      } else if (this.terrainSystem.isPositionWalkable(targetX, this.player.worldZ)) {
-        this.movePlayerTo(targetX, this.player.worldZ);
-      } else if (this.terrainSystem.isPositionWalkable(this.player.worldX, targetZ)) {
-        this.movePlayerTo(this.player.worldX, targetZ);
-      }
-
-      this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
-      this.playerVisual.isAnimating = true;
-    } else if (this.clickToMoveWaypoints.length > 0) {
-      const wp = this.clickToMoveWaypoints[0];
-      const dx = wp.x - this.player.worldX;
-      const dz = wp.z - this.player.worldZ;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-
-      if (dist < 0.1) {
-        this.clickToMoveWaypoints.shift();
-      } else {
-        const ndx = dx / dist;
-        const ndz = dz / dist;
-        const terrainSpeed = this.terrainSystem.getTerrainSpeedAt(this.player.worldX, this.player.worldZ);
-        const speed = PLAYER_BASE_SPEED * Math.max(terrainSpeed, 0.3);
-        const delta = Math.min(speed * (clampedDelta / 1000), dist);
-        const targetX = this.player.worldX + ndx * delta;
-        const targetZ = this.player.worldZ + ndz * delta;
-
-        if (this.terrainSystem.isPositionWalkable(targetX, targetZ)) {
-          this.movePlayerTo(targetX, targetZ);
-        } else {
-          this.clickToMoveWaypoints = [];
-        }
-
-        this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
-        this.playerVisual.isAnimating = true;
-      }
-    } else {
-      this.playerVisual.isAnimating = false;
-      if (this.player.pendingDirection !== null) {
-        this.player = { ...this.player, pendingDirection: null };
-      }
-    }
-
-    if (this.playerVisual.meshInstance) {
-      this.playerVisual.meshInstance.root.rotation.y = this.playerVisual.facingAngle;
-    }
-
-    const elev = this.terrainSystem.getElevationAt(
-      this.player.worldX,
-      this.player.worldZ,
-      0
-    ) * HEIGHT_UNIT;
-    this.playerVisual.container.position.set(this.player.worldX, elev, this.player.worldZ);
-
-    if (this.cameraFollowPlayer) {
-      this.babylonEngine.setCameraTarget(this.playerVisual.container.position);
-    }
-  }
-
-  private updateEditorCamera(deltaMs: number): void {
-    this.babylonEngine.updateCameraPan(deltaMs, {
-      up: this.inputManager.isDirectionKeyHeld('up'),
-      down: this.inputManager.isDirectionKeyHeld('down'),
-      left: this.inputManager.isDirectionKeyHeld('left'),
-      right: this.inputManager.isDirectionKeyHeld('right'),
-    });
-  }
-
-  private handleMove(direction: Direction): void {
-    if (this.isPaused) return;
-    if (this.terrainEditorSystem?.isEnabled()) return;
-
-    this.player = { ...this.player, pendingDirection: direction, path: [] };
-    this.clickToMoveWaypoints = [];
-  }
-
   private handleClick(screenX: number, screenY: number): void {
     if (this.isPaused) return;
 
-    if (this.terrainEditorSystem?.isEnabled()) {
-      const result = this.screenToGridAndWorld(screenX, screenY);
+    if (this.terrainEditorController.isEnabled()) {
+      const result = this.terrainEditorController.screenToGridAndWorld(screenX, screenY);
       if (result) {
-        this.terrainEditorSystem.handleClick(result.gridX, result.gridY);
+        this.terrainEditorController.getSystem()?.handleClick(result.gridX, result.gridY);
       }
       return;
     }
 
-    const gridPos = this.screenToGridFromScreen(screenX, screenY);
-    if (!gridPos) return;
-
-    const course = this.currentCourse;
-    if (
-      gridPos.x < 0 ||
-      gridPos.x >= course.width ||
-      gridPos.y < 0 ||
-      gridPos.y >= course.height
-    ) {
-      return;
-    }
-
-    const targetCell = this.terrainSystem.getCell(gridPos.x, gridPos.y);
-    if (!targetCell || targetCell.type === "water") return;
-
-    if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
-      return;
-    }
-
-    const slopeChecker = (x: number, y: number) =>
-      this.terrainSystem.isPositionWalkable(x + 0.5, y + 0.5);
-
-    const path = this.findPath(
-      this.player.gridX,
-      this.player.gridY,
-      gridPos.x,
-      gridPos.y,
-      slopeChecker
-    );
-    if (path.length > 0) {
-      this.clickToMoveWaypoints = path.map(p => ({ x: p.x + 0.5, z: p.y + 0.5 }));
-      this.player = { ...this.player, pendingDirection: null, path: [] };
-    }
-  }
-
-  private screenToGridFromScreen(
-    screenX: number,
-    screenY: number
-  ): { x: number; y: number } | null {
-    const scene = this.babylonEngine.getScene();
-    const canvas = scene.getEngine().getRenderingCanvas();
-    if (!canvas) return null;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = (screenX - rect.left) * scaleX;
-    const canvasY = (screenY - rect.top) * scaleY;
-
-    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith("tile_");
-    });
-
-    if (pickResult?.hit && pickResult.pickedMesh) {
-      const match = pickResult.pickedMesh.name.match(/^tile_(\d+)_(\d+)/);
-      if (match) {
-        return { x: parseInt(match[1]), y: parseInt(match[2]) };
-      }
-    }
-
-    return this.raycastToGround(canvasX, canvasY);
-  }
-
-  private raycastToGround(
-    canvasX: number,
-    canvasY: number
-  ): { x: number; y: number } | null {
-    const scene = this.babylonEngine.getScene();
-    const camera = this.babylonEngine.getCamera();
-    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
-
-    if (ray.direction.y === 0) return null;
-
-    const t = -ray.origin.y / ray.direction.y;
-    if (t < 0) return null;
-
-    const groundX = ray.origin.x + ray.direction.x * t;
-    const groundZ = ray.origin.z + ray.direction.z * t;
-
-    const gridX = Math.floor(groundX);
-    const gridY = Math.floor(groundZ);
-
-    const course = this.currentCourse;
-    if (
-      gridX < 0 ||
-      gridX >= course.width ||
-      gridY < 0 ||
-      gridY >= course.height
-    ) {
-      return null;
-    }
-
-    return { x: gridX, y: gridY };
-  }
-
-  private findPath(
-    startX: number,
-    startY: number,
-    endX: number,
-    endY: number,
-    slopeChecker?: (x: number, y: number) => boolean
-  ): { x: number; y: number }[] {
-    interface PathNode {
-      x: number;
-      y: number;
-      g: number;
-      h: number;
-      f: number;
-      parent: PathNode | null;
-    }
-
-    const course = this.currentCourse;
-    const openSet: PathNode[] = [];
-    const closedSet = new Set<string>();
-
-    const heuristic = (x: number, y: number) =>
-      Math.abs(x - endX) + Math.abs(y - endY);
-
-    openSet.push({
-      x: startX,
-      y: startY,
-      g: 0,
-      h: heuristic(startX, startY),
-      f: heuristic(startX, startY),
-      parent: null,
-    });
-
-    while (openSet.length > 0) {
-      openSet.sort((a, b) => a.f - b.f);
-      const current = openSet.shift()!;
-
-      if (current.x === endX && current.y === endY) {
-        const path: { x: number; y: number }[] = [];
-        let node = current;
-        while (node.parent) {
-          path.unshift({ x: node.x, y: node.y });
-          node = node.parent;
-        }
-        return path;
-      }
-
-      closedSet.add(`${current.x},${current.y}`);
-
-      const neighbors = [
-        { x: current.x, y: current.y - 1 },
-        { x: current.x, y: current.y + 1 },
-        { x: current.x - 1, y: current.y },
-        { x: current.x + 1, y: current.y },
-      ];
-
-      for (const neighbor of neighbors) {
-        if (
-          neighbor.x < 0 ||
-          neighbor.x >= course.width ||
-          neighbor.y < 0 ||
-          neighbor.y >= course.height
-        )
-          continue;
-        if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
-
-        const fromCell = this.terrainSystem.getCell(current.x, current.y);
-        const toCell = this.terrainSystem.getCell(neighbor.x, neighbor.y);
-        if (!canMoveFromTo(fromCell, toCell, slopeChecker)) continue;
-
-        const g = current.g + 1;
-        const h = heuristic(neighbor.x, neighbor.y);
-        const f = g + h;
-
-        const existing = openSet.find(
-          (n) => n.x === neighbor.x && n.y === neighbor.y
-        );
-        if (existing) {
-          if (g < existing.g) {
-            existing.g = g;
-            existing.f = f;
-            existing.parent = current;
-          }
-        } else {
-          openSet.push({
-            x: neighbor.x,
-            y: neighbor.y,
-            g,
-            h,
-            f,
-            parent: current,
-          });
-        }
-      }
-    }
-
-    return [];
+    this.playerController.handleClick(screenX, screenY);
   }
 
   private applyEquipmentEffect(x: number, y: number): void {
@@ -1943,9 +826,10 @@ export class BabylonMain {
 
 
   private handleRefill(): void {
+    const player = this.playerController.getPlayer();
     const nearStation = REFILL_STATIONS.some((station) => {
-      const dx = Math.abs(station.x - this.player.gridX);
-      const dy = Math.abs(station.y - this.player.gridY);
+      const dx = Math.abs(station.x - player.gridX);
+      const dy = Math.abs(station.y - player.gridY);
       return dx <= 2 && dy <= 2;
     });
 
@@ -1996,84 +880,6 @@ export class BabylonMain {
     }
   }
 
-  private handleEmployeePanel(): void {
-    if (this.employeePanel?.isVisible()) {
-      this.employeePanel.hide();
-    } else {
-      const currentTime = this.gameTime + this.gameDay * 24 * 60;
-      this.employeePanel?.update(this.employeeRoster);
-      this.employeePanel?.updateApplications(
-        this.applicationState,
-        this.prestigeState.tier,
-        currentTime
-      );
-      this.employeePanel?.show();
-    }
-  }
-
-  private handleResearchPanel(): void {
-    if (this.researchPanel?.isVisible()) {
-      this.researchPanel.hide();
-    } else {
-      this.researchPanel?.update(this.researchState);
-      this.researchPanel?.show();
-    }
-  }
-
-  private handleTeeSheetPanel(): void {
-    if (this.teeSheetPanel?.isVisible()) {
-      this.teeSheetPanel.hide();
-    } else {
-      this.teeSheetViewDay = this.gameDay;
-      this.teeSheetPanel?.update(this.teeTimeState, this.teeSheetViewDay);
-      this.teeSheetPanel?.show();
-    }
-  }
-
-  private handleMarketingPanel(): void {
-    if (this.marketingDashboard?.isVisible()) {
-      this.marketingDashboard.hide();
-    } else {
-      this.marketingDashboard?.update(
-        this.marketingState,
-        this.gameDay,
-        this.economyState.cash
-      );
-      this.marketingDashboard?.show();
-    }
-  }
-
-  private handleEquipmentStore(): void {
-    if (this.equipmentStorePanel?.isVisible()) {
-      this.equipmentStorePanel.hide();
-    } else {
-      this.equipmentStorePanel?.update(
-        this.researchState,
-        this.autonomousState,
-        this.economyState.cash
-      );
-      this.equipmentStorePanel?.show();
-    }
-  }
-
-  private handleAmenityPanel(): void {
-    if (this.amenityPanel?.isVisible()) {
-      this.amenityPanel.hide();
-    } else {
-      this.amenityPanel?.update(this.prestigeState, this.economyState.cash);
-      this.amenityPanel?.show();
-    }
-  }
-
-  private handleWalkOnQueuePanel(): void {
-    if (this.walkOnQueuePanel?.isVisible()) {
-      this.walkOnQueuePanel.hide();
-    } else {
-      this.walkOnQueuePanel?.update(this.walkOnState);
-      this.walkOnQueuePanel?.show();
-    }
-  }
-
   private pauseGame(): void {
     this.isPaused = true;
     this.uiManager.showPauseMenu(
@@ -2081,10 +887,10 @@ export class BabylonMain {
       () => this.restartGame(),
       this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined,
       () => this.saveCurrentGame(),
-      () => this.handleEmployeePanel(),
-      () => this.handleResearchPanel(),
-      () => this.handleTeeSheetPanel(),
-      () => this.handleMarketingPanel(),
+      () => this.uiPanelCoordinator.handleEmployeePanel(),
+      () => this.uiPanelCoordinator.handleResearchPanel(),
+      () => this.uiPanelCoordinator.handleTeeSheetPanel(),
+      () => this.uiPanelCoordinator.handleMarketingPanel(),
       (delta: number) => this.handleTimeSpeed(delta),
       this.timeScale
     );
@@ -2099,7 +905,7 @@ export class BabylonMain {
     const course = this.currentCourse;
     const startX = Math.floor(course.width / 2);
     const startY = Math.floor(course.height * 0.75);
-    this.player = teleportEntity(this.player, startX, startY);
+    this.playerController.teleport(startX, startY);
     this.gameTime = 6 * 60;
     this.gameDay = 1;
     this.score = 0;
@@ -2114,7 +920,7 @@ export class BabylonMain {
       this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     }
     this.terrainSystem.build(course);
-    this.updatePlayerPosition();
+    this.playerController.updatePlayerPosition();
     this.resumeGame();
     this.uiManager.showNotification("Game Restarted");
   }
@@ -2150,234 +956,16 @@ export class BabylonMain {
     this.babylonEngine.updateSmoothZoom(deltaMs);
   }
 
-  private handleEditorToggle(): void {
-    this.terrainEditorSystem?.toggle();
-  }
-
-  private handleEditorToolSelect(tool: EditorTool): void {
-    this.terrainEditorSystem?.setTool(tool);
-    this.updateEditorCursor();
-  }
-
-  private handleEditorToolNumber(_toolNumber: number): void {
-    // Legacy elevation tools (1-4) are disabled
-  }
-
-  private handleEditorBrushSelect(brush: string): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    if (brush.startsWith("terrain_")) {
-      this.terrainEditorSystem.setTool(brush as EditorTool);
-      this.updateEditorCursor();
-    }
-  }
-
-  private updateEditorCursor(): void {
-    if (!this.terrainEditorSystem?.isEnabled()) {
-      const canvas = this.babylonEngine.getScene().getEngine().getRenderingCanvas();
-      if (canvas) canvas.style.cursor = "default";
-      return;
-    }
-
-    const mode = this.terrainEditorSystem.getMode();
-    const tool = this.terrainEditorSystem.getActiveTool();
-    const canvas = this.babylonEngine.getScene().getEngine().getRenderingCanvas();
-    if (!canvas) return;
-
-    if (mode === 'paint') {
-      canvas.style.cursor = "crosshair";
-    } else if (tool === 'raise' || tool === 'lower') {
-      canvas.style.cursor = "ns-resize";
-    } else if (tool === 'smooth') {
-        canvas.style.cursor = "wait"; // Or a custom circle if we had one
-    } else {
-      canvas.style.cursor = "move";
-    }
-  }
-
-  private handleEditorBrushSize(size: number): void {
-    if (!this.terrainEditorSystem) return;
-    this.terrainEditorSystem.setBrushSize(size);
-    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
-  }
-
-  private handleEditorBrushSizeDelta(delta: number): void {
-    if (!this.terrainEditorSystem) return;
-    this.terrainEditorSystem.changeBrushSize(delta);
-    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
-  }
-
-  private handleEditorBrushStrength(strength: number): void {
-    if (!this.terrainEditorSystem) return;
-    this.terrainEditorSystem.setBrushStrength(strength);
-    this.terrainEditorUI?.setBrushStrength(this.terrainEditorSystem.getBrushStrength());
-  }
-
-  private handleEditorBrushStrengthDelta(delta: number): void {
-    if (!this.terrainEditorSystem) return;
-    const current = this.terrainEditorSystem.getBrushStrength();
-    this.handleEditorBrushStrength(current + delta);
-  }
-
-
-  private handleMouseMove(screenX: number, screenY: number): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    const result = this.screenToGridAndWorld(screenX, screenY);
-    if (result) {
-      const worldPos = result.worldPos ? new Vector3(result.worldPos.x, 0, result.worldPos.z) : undefined;
-      this.terrainEditorSystem.handleMouseMove(result.gridX, result.gridY, worldPos);
-
-      const hoverInfo = this.terrainEditorSystem.getHoverInfo();
-      if (hoverInfo) {
-        this.terrainEditorUI?.updateCoordinates(
-          hoverInfo.x,
-          hoverInfo.y,
-          hoverInfo.elevation,
-          hoverInfo.type
-        );
-      } else {
-        this.terrainEditorUI?.clearCoordinates();
-      }
-    }
-  }
-
-  private screenToGridAndWorld(
-    screenX: number,
-    screenY: number
-): { gridX: number; gridY: number; worldPos?: { x: number; z: number }; uv?: Vector2 | null } | null {
-    const scene = this.babylonEngine.getScene();
-    const canvas = scene.getEngine().getRenderingCanvas();
-    if (!canvas) return null;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = (screenX - rect.left) * scaleX;
-    const canvasY = (screenY - rect.top) * scaleY;
-
-    const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "vectorTerrain";
-    });
-
-    if (pickResult?.hit && pickResult.pickedPoint) {
-      const worldX = pickResult.pickedPoint.x;
-      const worldZ = pickResult.pickedPoint.z;
-      const res = this.terrainSystem.getResolution?.() ?? 1;
-      const gridX = Math.floor(worldX * res);
-      const gridY = Math.floor(worldZ * res);
-
-      const course = this.currentCourse;
-      const isInBounds = gridX >= 0 && gridX < course.width * res && gridY >= 0 && gridY < course.height * res;
-
-      if (!isInBounds && !this.terrainEditorSystem?.isEnabled()) {
-        return null;
-      }
-
-      return { gridX, gridY, worldPos: { x: worldX, z: worldZ }, uv: pickResult.getTextureCoordinates() };
-    }
-
-    const camera = this.babylonEngine.getCamera();
-    const ray = scene.createPickingRay(canvasX, canvasY, null, camera);
-
-    if (ray.direction.y === 0) return null;
-
-    const t = -ray.origin.y / ray.direction.y;
-    if (t < 0) return null;
-
-    const groundX = ray.origin.x + ray.direction.x * t;
-    const groundZ = ray.origin.z + ray.direction.z * t;
-
-    const gridX = Math.floor(groundX);
-    const gridY = Math.floor(groundZ);
-
-    const course = this.currentCourse;
-    const isInBounds = gridX >= 0 && gridX < course.width && gridY >= 0 && gridY < course.height;
-
-    if (!isInBounds && !this.terrainEditorSystem?.isEnabled()) {
-      return null;
-    }
-
-    return { gridX, gridY, worldPos: { x: groundX, z: groundZ }, uv: null };
-  }
-
-  private handleDragStart(screenX: number, screenY: number, shiftKey?: boolean): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    this.handleMouseMove(screenX, screenY);
-
-    const result = this.screenToGridAndWorld(screenX, screenY);
-    if (!result) return;
-
-    if (this.terrainEditorSystem.getMode() === 'stamp') {
-      this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY);
-      return;
-    }
-
-    if (this.terrainEditorSystem.getInteractionMode() === 'select') {
-      if (this.terrainEditorSystem.isHoveredElementSelected()) {
-        if (result.worldPos) {
-          this.terrainEditorSystem.handleVertexMoveStart(result.worldPos.x, result.worldPos.z, screenY);
-        }
-      } else if (result.worldPos) {
-        this.terrainEditorSystem.handleSelectClick(result.worldPos, shiftKey ?? false);
-      }
-      return;
-    }
-
-    if (this.terrainEditorSystem.isHoveredElementSelected() && !this.terrainEditorSystem.isSculptBrushActive()) {
-      if (result.worldPos) {
-        this.terrainEditorSystem.handleVertexMoveStart(result.worldPos.x, result.worldPos.z, screenY);
-      }
-      return;
-    }
-
-    this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY);
-  }
-
-  private handleDrag(screenX: number, screenY: number): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    if (this.terrainEditorSystem.isMovingSelectedVertices()) {
-      const worldPos = this.screenToWorldPosition(screenX, screenY);
-      if (worldPos) {
-        this.terrainEditorSystem.handleVertexMoveDrag(worldPos.x, worldPos.z, screenY);
-      }
-      return;
-    }
-
-    if (this.terrainEditorSystem.getInteractionMode() === 'select') return;
-
-    const result = this.screenToGridAndWorld(screenX, screenY);
-    if (!result) return;
-
-    this.terrainEditorSystem.handleDrag(result.gridX, result.gridY);
-  }
-
-  private screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null {
-    return this.babylonEngine.screenToWorldPosition(screenX, screenY);
-  }
-
-  private handleDragEnd(): void {
-    if (!this.terrainEditorSystem?.isEnabled()) return;
-
-    if (this.terrainEditorSystem.isMovingSelectedVertices()) {
-      this.terrainEditorSystem.handleVertexMoveEnd();
-      this.updateVertexPositionDisplay();
-      return;
-    }
-
-    this.terrainEditorSystem.handleDragEnd();
-  }
 
   private handleDebugReload(): void {
     window.location.reload();
   }
 
   private handleDebugExport(): void {
+    const player = this.playerController.getPlayer();
     const state = {
-      playerX: this.player.gridX,
-      playerY: this.player.gridY,
+      playerX: player.gridX,
+      playerY: player.gridY,
       gameTime: this.gameTime,
       gameDay: this.gameDay,
       score: this.score,
@@ -2396,9 +984,10 @@ export class BabylonMain {
       stats.moisture,
       stats.nutrients
     );
+    const initPlayer = this.playerController.getPlayer();
     this.uiManager.updateMinimapPlayerPosition(
-      this.player.gridX,
-      this.player.gridY,
+      initPlayer.gridX,
+      initPlayer.gridY,
       course.width,
       course.height
     );
@@ -2414,23 +1003,22 @@ export class BabylonMain {
         return;
       }
 
-      if (this.terrainEditorPausedGame) {
-        // Still update terrain system with 0 delta to process dirty flags (live updates)
+      if (this.terrainEditorController.isPausedByEditor()) {
         this.terrainSystem.update(0, this.gameDay * 1440 + this.gameTime, this.weather);
 
-        // Allow editor camera movement even when game is paused
-        if (this.terrainEditorSystem?.isEnabled()) {
-          this.updateEditorCamera(deltaMs);
+        if (this.terrainEditorController.isEnabled()) {
+          this.playerController.updateEditorCamera(deltaMs);
         }
         return;
       }
 
-      this.updateMovement(deltaMs);
+      this.playerController.updateMovement(deltaMs);
 
-      if (this.playerVisual) {
+      const pv = this.playerController.getPlayerVisual();
+      if (pv) {
         const wasDeactivated = this.equipmentManager.update(
           deltaMs,
-          this.playerVisual.container.position
+          pv.container.position
         );
         if (wasDeactivated) {
           if (this.overlayAutoSwitched) {
@@ -2571,9 +1159,10 @@ export class BabylonMain {
         );
       }
 
+      const p = this.playerController.getPlayer();
       this.uiManager.updateMinimapPlayerPosition(
-        this.player.gridX,
-        this.player.gridY,
+        p.gridX,
+        p.gridY,
         course.width,
         course.height
       );
@@ -2606,654 +1195,71 @@ export class BabylonMain {
   }
 
   private updateEconomySystems(deltaMs: number): void {
-    const hours = Math.floor(this.gameTime / 60);
-    const gameMinutes = (deltaMs / 1000) * 2 * this.timeScale;
-    const isWeekend = this.gameDay % 7 >= 5;
-    const isTwilight = hours >= 16;
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
+    const ctx: SimulationContext = {
+      economyState: this.economyState,
+      employeeRoster: this.employeeRoster,
+      employeeWorkState: this.employeeWorkState,
+      golferPool: this.golferPool,
+      researchState: this.researchState,
+      weatherState: this.weatherState,
+      weather: this.weather,
+      teeTimeState: this.teeTimeState,
+      walkOnState: this.walkOnState,
+      revenueState: this.revenueState,
+      marketingState: this.marketingState,
+      autonomousState: this.autonomousState,
+      prestigeState: this.prestigeState,
+      irrigationSystem: this.irrigationSystem,
+      reputationState: this.reputationState,
+      applicationState: this.applicationState,
+      dailyStats: this.dailyStats,
+      greenFees: this.greenFees,
+      gameTime: this.gameTime,
+      gameDay: this.gameDay,
+      timeScale: this.timeScale,
+      lastPayrollHour: this.lastPayrollHour,
+      lastArrivalHour: this.lastArrivalHour,
+      lastAutoSaveHour: this.lastAutoSaveHour,
+      lastPrestigeUpdateHour: this.lastPrestigeUpdateHour,
+      lastTeeTimeUpdateHour: this.lastTeeTimeUpdateHour,
+      accumulatedResearchTime: this.accumulatedResearchTime,
+      terrainSystem: this.terrainSystem,
+      scenarioManager: this.scenarioManager,
+      uiManager: this.uiManager,
+      employeeVisualSystem: this.employeeVisualSystem,
+      irrigationRenderSystem: this.irrigationRenderSystem,
+      currentCourse: this.currentCourse,
+      currentScenario: this.currentScenario,
+      gameOptions: this.gameOptions,
+      saveCurrentGame: () => this.saveCurrentGame(),
+      showDaySummary: () => this.showDaySummary(),
+    };
 
-    const weatherResult = tickWeather(
-      this.weatherState,
-      this.gameTime,
-      this.gameDay
-    );
-    if (weatherResult.changed || weatherResult.state !== this.weatherState) {
-      this.weatherState = weatherResult.state;
-      this.weather = this.weatherState.current;
-      if (weatherResult.changed) {
-        const impact = getWeatherImpactDescription(this.weather);
-        this.uiManager.showNotification(
-          `Weather: ${getWeatherDescription(this.weather)}`,
-          undefined,
-          3000
-        );
-        if (impact) {
-          setTimeout(() => {
-            this.uiManager.showNotification(impact, undefined, 4000);
-          }, 500);
-        }
-      }
-    }
+    runSimulationTick(ctx, deltaMs);
 
-    // Hourly payroll processing
-    if (
-      hours !== this.lastPayrollHour &&
-      this.employeeRoster.employees.length > 0
-    ) {
-      this.lastPayrollHour = hours;
-      const payrollResult = processPayroll(this.employeeRoster, timestamp);
-      this.employeeRoster = payrollResult.roster;
-      if (payrollResult.totalPaid > 0) {
-        const expenseResult = addExpense(
-          this.economyState,
-          payrollResult.totalPaid,
-          "employee_wages",
-          "Hourly wages",
-          timestamp,
-          true
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-          this.dailyStats.expenses.wages += payrollResult.totalPaid;
-        }
-      }
-    }
-
-    // Hourly auto-save
-    if (hours !== this.lastAutoSaveHour) {
-      this.lastAutoSaveHour = hours;
-      this.saveCurrentGame();
-    }
-
-    // Hourly prestige update
-    if (hours !== this.lastPrestigeUpdateHour) {
-      this.lastPrestigeUpdateHour = hours;
-      const conditionsScore = calculateCurrentConditionsFromFaces(this.terrainSystem.getAllFaceStates());
-      this.prestigeState = updatePrestigeScore(
-        this.prestigeState,
-        conditionsScore
-      );
-      const demandMult = calculateDemandMultiplier(
-        this.greenFees.weekday18Holes,
-        this.prestigeState.tolerance
-      );
-      const rejectionRate = Math.round((1 - demandMult) * 100);
-      const recommendedMax = this.prestigeState.tolerance.rejectionThreshold;
-      this.uiManager.updatePrestige(
-        this.prestigeState,
-        rejectionRate,
-        recommendedMax
-      );
-    }
-
-    // Hourly tee time processing
-    if (hours !== this.lastTeeTimeUpdateHour) {
-      this.lastTeeTimeUpdateHour = hours;
-      const currentGameTime: GameTime = {
-        day: this.gameDay,
-        hour: hours,
-        minute: 0,
-      };
-
-      // Generate new day's slots at 5 AM
-      if (hours === 5) {
-        const newSlots = generateDailySlots(
-          this.gameDay,
-          this.teeTimeState.spacingConfig,
-          this.teeTimeState.operatingHours
-        );
-        const updatedTeeTimes = new Map(this.teeTimeState.teeTimes);
-        updatedTeeTimes.set(this.gameDay, newSlots);
-        this.teeTimeState = {
-          ...this.teeTimeState,
-          teeTimes: updatedTeeTimes,
-          currentDay: this.gameDay,
-        };
-
-        // Simulate bookings with marketing demand boost
-        const marketingMultiplier = calculateCombinedDemandMultiplier(
-          this.marketingState
-        );
-        const bookings = simulateDailyBookings(
-          this.teeTimeState,
-          this.gameDay,
-          this.gameDay,
-          {
-            prestigeScore: this.prestigeState.currentScore / 200,
-            marketingBonus: marketingMultiplier,
-          },
-          this.greenFees.weekday18Holes,
-          20
-        );
-        this.teeTimeState = applyBookingSimulation(
-          this.teeTimeState,
-          bookings,
-          this.gameDay
-        );
-      }
-
-      // Process walk-ons during golf hours
-      if (hours >= 6 && hours <= 19) {
-        const availableSlots = getAvailableSlots(
-          this.teeTimeState,
-          this.gameDay
-        );
-        const walkOnResult = processWalkOns(
-          this.walkOnState,
-          currentGameTime,
-          availableSlots,
-          this.greenFees.weekday18Holes,
-          20
-        );
-        this.walkOnState = walkOnResult.state;
-      }
-
-      // End of day processing at 10 PM
-      if (hours === 22) {
-        this.revenueState = finalizeDailyRevenue(this.revenueState);
-
-        // Process marketing campaigns
-        const marketingResult = processDailyCampaigns(
-          this.marketingState,
-          this.gameDay,
-          this.teeTimeState.bookingMetrics.totalBookingsToday,
-          this.revenueState.todaysRevenue.grossRevenue
-        );
-        this.marketingState = marketingResult.state;
-        for (const name of marketingResult.completedCampaignNames) {
-          this.uiManager.showNotification(`📢 Campaign completed: ${name}`);
-        }
-        if (marketingResult.dailyCost > 0) {
-          const expenseResult = addExpense(
-            this.economyState,
-            marketingResult.dailyCost,
-            "marketing",
-            "Marketing campaigns",
-            timestamp,
-            true
-          );
-          if (expenseResult) {
-            this.economyState = expenseResult;
-            this.dailyStats.expenses.other += marketingResult.dailyCost;
-          }
-        }
-
-        // Daily operating expenses (utilities, maintenance)
-        const dailyUtilitiesCost = 50;
-        const utilitiesResult = addExpense(
-          this.economyState,
-          dailyUtilitiesCost,
-          "utilities",
-          "Daily utilities",
-          timestamp,
-          true
-        );
-        if (utilitiesResult) {
-          this.economyState = utilitiesResult;
-          this.dailyStats.expenses.utilities += dailyUtilitiesCost;
-        }
-
-        // Take prestige daily snapshot and update historical tracking
-        const dailySnapshot = takeDailySnapshot(
-          this.prestigeState.currentConditions,
-          this.gameDay
-        );
-        const newHistoricalExcellence = updateHistoricalExcellence(
-          this.prestigeState.historicalExcellence,
-          dailySnapshot
-        );
-        this.prestigeState = {
-          ...this.prestigeState,
-          historicalExcellence: newHistoricalExcellence,
-        };
-
-        // Show day summary popup
-        this.showDaySummary();
-
-        // Auto-save at end of day
-        this.saveCurrentGame();
-
-        // Reset all daily counters
-        this.walkOnState = resetDailyWalkOnMetrics(this.walkOnState);
-        this.teeTimeState = resetTeeTimeDailyMetrics(this.teeTimeState);
-        this.prestigeState = resetPrestigeDailyStats(this.prestigeState);
-        this.golferPool = resetGolferDailyStats(this.golferPool);
-      }
-    }
-
-    // Golfer arrivals (hourly during golf hours: 6am - 7pm)
-    if (hours !== this.lastArrivalHour && hours >= 6 && hours <= 19) {
-      this.lastArrivalHour = hours;
-      const courseStats = this.terrainSystem.getCourseStats();
-      this.golferPool = updateCourseRating(this.golferPool, {
-        condition: courseStats.health,
-      });
-
-      const baseArrivalRate = calculateArrivalRate(
-        this.golferPool,
-        this.weather,
-        isWeekend,
-        hours
-      );
-
-      // Apply prestige demand multiplier and track rejected golfers
-      const demandMultiplier = calculateDemandMultiplier(
-        this.greenFees.weekday18Holes,
-        this.prestigeState.tolerance
-      );
-      const potentialArrivals = Math.floor(
-        baseArrivalRate + (Math.random() < baseArrivalRate % 1 ? 1 : 0)
-      );
-      const arrivalRate = baseArrivalRate * demandMultiplier;
-      const arrivalCount = Math.floor(
-        arrivalRate + (Math.random() < arrivalRate % 1 ? 1 : 0)
-      );
-      const rejectedCount = Math.max(0, potentialArrivals - arrivalCount);
-
-      // Track rejected golfers in prestige state
-      if (rejectedCount > 0) {
-        const lostRevenue = rejectedCount * this.greenFees.weekday18Holes;
-        this.prestigeState = {
-          ...this.prestigeState,
-          golfersRejectedToday:
-            this.prestigeState.golfersRejectedToday + rejectedCount,
-          revenueLostToday: this.prestigeState.revenueLostToday + lostRevenue,
-        };
-        // Show warning if significant rejections (first time each hour)
-        if (
-          this.prestigeState.golfersRejectedToday >= 5 &&
-          rejectedCount >= 2
-        ) {
-          this.uiManager.showNotification(
-            `⚠️ ${rejectedCount} golfers turned away! (Prices too high)`,
-            "#ffaa44"
-          );
-        }
-      }
-
-      if (arrivalCount > 0) {
-        const arrivals = generateArrivals(
-          this.golferPool,
-          arrivalCount,
-          this.gameTime,
-          this.greenFees,
-          isWeekend,
-          isTwilight
-        );
-        let totalFees = 0;
-        for (const golfer of arrivals) {
-          this.golferPool = addGolfer(this.golferPool, golfer);
-          totalFees += golfer.paidAmount;
-          this.economyState = addIncome(
-            this.economyState,
-            golfer.paidAmount,
-            "green_fees",
-            `Green fee: ${golfer.type}`,
-            timestamp
-          );
-          this.dailyStats.revenue.greenFees += golfer.paidAmount;
-          if (this.scenarioManager) {
-            this.scenarioManager.addRevenue(golfer.paidAmount);
-            this.scenarioManager.addGolfers(1);
-          }
-        }
-        this.uiManager.showNotification(
-          `${arrivalCount} golfer${
-            arrivalCount > 1 ? "s" : ""
-          } arrived (+$${totalFees.toFixed(0)})`
-        );
-      }
-    }
-
-    // Tick golfers (progress through their round)
-    const courseStats = this.terrainSystem.getCourseStats();
-    const staffQuality = getManagerBonus(this.employeeRoster) * 10 + 50;
-    const tickResult = tickGolfers(
-      this.golferPool,
-      gameMinutes,
-      courseStats.health,
-      staffQuality,
-      this.weather
-    );
-    this.golferPool = tickResult.state;
-
-    // Process departures - tips become income
-    const departureCount = tickResult.departures.length;
-    if (departureCount > 0) {
-      if (tickResult.tips > 0) {
-        this.economyState = addIncome(
-          this.economyState,
-          tickResult.tips,
-          "other_income",
-          "Golfer tips",
-          timestamp
-        );
-        if (this.scenarioManager) {
-          this.scenarioManager.addRevenue(tickResult.tips);
-        }
-        this.uiManager.showNotification(
-          `${departureCount} golfer${
-            departureCount > 1 ? "s" : ""
-          } finished (+$${tickResult.tips.toFixed(0)} tips)`
-        );
-      }
-      this.dailyStats.revenue.tips += tickResult.tips;
-      for (const departure of tickResult.departures) {
-        this.dailyStats.golfersServed++;
-        this.dailyStats.totalSatisfaction += departure.satisfaction;
-        if (this.scenarioManager) {
-          this.scenarioManager.addRound();
-        }
-      }
-    }
-
-    // Tick employees (energy, breaks) - apply training bonus from research
-    const trainingBonus = getEquipmentEfficiencyBonus(this.researchState);
-    const tickEmployeesResult = tickEmployees(
-      this.employeeRoster,
-      gameMinutes,
-      trainingBonus
-    );
-    this.employeeRoster = tickEmployeesResult.roster;
-
-    // Tick job applications based on prestige tier
-    const absoluteTime = this.gameDay * 24 * 60 + this.gameTime;
-    const appResult = tickApplications(
-      this.applicationState,
-      absoluteTime,
-      this.prestigeState.tier
-    );
-    this.applicationState = appResult.state;
-
-    if (appResult.newApplicant) {
-      this.uiManager.showNotification(
-        `📋 New applicant: ${appResult.newApplicant.name} (${appResult.newApplicant.role})`
-      );
-    }
-    for (const posting of appResult.expiredPostings) {
-      this.uiManager.showNotification(
-        `⏰ Job posting expired: ${posting.role}`,
-        "#ffaa44"
-      );
-    }
-
-    // Tick employee autonomous work
-    const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
-    const workResult = tickEmployeeWork(
-      this.employeeWorkState,
-      this.employeeRoster.employees,
-      this.terrainSystem,
-      gameMinutes,
-      absoluteGameTime
-    );
-    this.employeeWorkState = workResult.state;
-
-    for (const effect of workResult.effects) {
-      const affected = this.terrainSystem.applyWorkEffect(
-        effect.worldX,
-        effect.worldZ,
-        effect.radius,
-        effect.type,
-        effect.efficiency,
-        absoluteGameTime
-      );
-      if (effect.type === "mow") {
-        this.dailyStats.maintenance.tilesMowed += affected.length;
-      } else if (effect.type === "water") {
-        this.dailyStats.maintenance.tilesWatered += affected.length;
-      } else if (effect.type === "fertilize") {
-        this.dailyStats.maintenance.tilesFertilized += affected.length;
-      }
-    }
-
-    for (const completion of workResult.completions) {
-      const expReward = TASK_EXPERIENCE_REWARDS[completion.task];
-      if (expReward > 0) {
-        this.employeeRoster = awardExperience(
-          this.employeeRoster,
-          completion.employeeId,
-          expReward
-        );
-      }
-      this.dailyStats.maintenance.tasksCompleted++;
-
-      const supplyCost = TASK_SUPPLY_COSTS[completion.task];
-      if (supplyCost > 0) {
-        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-        const expenseResult = addExpense(
-          this.economyState,
-          supplyCost,
-          "supplies",
-          `Maintenance: ${completion.task}`,
-          timestamp,
-          true
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-          this.dailyStats.expenses.supplies += supplyCost;
-        }
-      }
-    }
-
-    // Update employee visual positions
-    const workerPositions = getWorkerPositions(this.employeeWorkState);
-    if (this.employeeVisualSystem) {
-      this.employeeVisualSystem.update(workerPositions, deltaMs);
-    }
-
-    // Update minimap worker dots
-    this.uiManager.updateMinimapWorkers(
-      workerPositions,
-      this.currentCourse.width,
-      this.currentCourse.height
-    );
-
-    // Tick research (only charge funding if there's active research)
-    if (this.researchState.currentResearch) {
-      this.accumulatedResearchTime += gameMinutes;
-      if (this.accumulatedResearchTime >= 1) {
-        const researchMinutes = Math.floor(this.accumulatedResearchTime);
-        this.accumulatedResearchTime -= researchMinutes;
-        const fundingCost =
-          getFundingCostPerMinute(this.researchState) * researchMinutes;
-        if (fundingCost > 0 && this.economyState.cash >= fundingCost) {
-          const expenseResult = addExpense(
-            this.economyState,
-            fundingCost,
-            "research",
-            "Research funding",
-            timestamp,
-            true
-          );
-          if (expenseResult) {
-            this.economyState = expenseResult;
-          }
-          const researchResult = tickResearch(
-            this.researchState,
-            researchMinutes,
-            timestamp
-          );
-          this.researchState = researchResult.state;
-          if (researchResult.completed) {
-            const unlockDesc = describeResearchUnlock(researchResult.completed);
-            this.uiManager.showNotification(`Research complete: ${unlockDesc}`);
-          }
-        }
-      }
-    }
-
-    // Tick autonomous equipment (robots)
-    if (this.autonomousState.robots.length > 0) {
-      const cells = this.terrainSystem.getAllCells();
-      const fleetAIActive =
-        this.researchState.completedResearch.includes("fleet_ai");
-      const robotResult = tickAutonomousEquipment(
-        this.autonomousState,
-        cells,
-        gameMinutes,
-        fleetAIActive
-      );
-      this.autonomousState = robotResult.state;
-
-      if (robotResult.operatingCost > 0) {
-        const expenseResult = addExpense(
-          this.economyState,
-          robotResult.operatingCost,
-          "equipment_maintenance",
-          "Robot operating costs",
-          timestamp,
-          true
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-        }
-      }
-
-      for (const effect of robotResult.effects) {
-        if (effect.type === "mower") {
-          this.terrainSystem.mowAt(effect.gridX, effect.gridY);
-        } else if (effect.type === "sprayer") {
-          this.terrainSystem.waterArea(
-            effect.gridX,
-            effect.gridY,
-            1,
-            10 * effect.efficiency
-          );
-        } else if (effect.type === "spreader") {
-          const effectiveness = getBestFertilizerEffectiveness(
-            this.researchState
-          );
-          this.terrainSystem.fertilizeArea(
-            effect.gridX,
-            effect.gridY,
-            1,
-            10 * effect.efficiency,
-            effectiveness
-          );
-        }
-      }
-    }
-
-    // Update scenario manager with current course state
-    if (this.scenarioManager) {
-      this.scenarioManager.updateProgress({
-        currentCash: this.economyState.cash,
-        currentHealth: courseStats.health,
-      });
-    }
-
-    // Tick irrigation system
-    this.updateIrrigationSystem(gameMinutes, timestamp);
-  }
-
-  private updateIrrigationSystem(
-    deltaMinutes: number,
-    timestamp: number
-  ): void {
-    const hours = Math.floor(this.gameTime / 60);
-    const minutes = this.gameTime % 60;
-
-    // Update pipe pressures
-    this.irrigationSystem = updatePipePressures(this.irrigationSystem);
-
-    // Check for leaks
-    const weatherEffect = this.weather
-      ? {
-          type:
-            this.weather.type === "rainy"
-              ? ("rainy" as const)
-              : this.weather.type === "stormy"
-              ? ("stormy" as const)
-              : this.weather.type === "cloudy"
-              ? ("cloudy" as const)
-              : ("sunny" as const),
-          temperature: this.weather.temperature ?? 70,
-        }
-      : undefined;
-    this.irrigationSystem = checkForLeaks(
-      this.irrigationSystem,
-      timestamp,
-      weatherEffect
-    );
-
-    // Process scheduled watering
-    for (const head of this.irrigationSystem.sprinklerHeads) {
-      if (!head.schedule.enabled) continue;
-
-      let shouldWater = false;
-      for (const range of head.schedule.timeRanges) {
-        const currentMinutes = hours * 60 + minutes;
-        if (currentMinutes >= range.start && currentMinutes < range.end) {
-          shouldWater = true;
-          break;
-        }
-      }
-
-      if (shouldWater && !head.isActive) {
-        this.irrigationSystem = setSprinklerActive(
-          this.irrigationSystem,
-          head.id,
-          true
-        );
-      } else if (!shouldWater && head.isActive) {
-        this.irrigationSystem = setSprinklerActive(
-          this.irrigationSystem,
-          head.id,
-          false
-        );
-      }
-
-      if (head.isActive) {
-        const pipe = getPipeAt(this.irrigationSystem, head.gridX, head.gridY);
-        const pressure = pipe ? pipe.pressureLevel : 0;
-
-        for (const tile of head.coverageTiles) {
-          const cell = this.terrainSystem.getCell(tile.x, tile.y);
-          if (cell) {
-            const waterAmount = 15 * tile.efficiency * (pressure / 100);
-            this.terrainSystem.waterArea(tile.x, tile.y, 0, waterAmount);
-            this.dailyStats.maintenance.tilesWatered++;
-          }
-        }
-      }
-    }
-
-    // Calculate water costs
-    const activeHeads = this.irrigationSystem.sprinklerHeads.filter(
-      (h) => h.isActive
-    );
-    if (
-      activeHeads.length > 0 &&
-      this.irrigationSystem.waterSources.length > 0
-    ) {
-      const source = this.irrigationSystem.waterSources[0];
-      const waterUsage = calculateWaterUsage(
-        activeHeads,
-        deltaMinutes,
-        this.irrigationSystem
-      );
-      const waterCost = calculateWaterCost(waterUsage, source);
-
-      if (waterCost > 0) {
-        const expenseResult = addExpense(
-          this.economyState,
-          waterCost,
-          "utilities",
-          "Irrigation water",
-          timestamp,
-          true
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-          this.dailyStats.expenses.utilities += waterCost;
-        }
-      }
-    }
-
-    // Update render system
-    if (this.irrigationRenderSystem) {
-      this.irrigationRenderSystem.update(this.irrigationSystem);
-    }
+    this.economyState = ctx.economyState;
+    this.employeeRoster = ctx.employeeRoster;
+    this.employeeWorkState = ctx.employeeWorkState;
+    this.golferPool = ctx.golferPool;
+    this.researchState = ctx.researchState;
+    this.weatherState = ctx.weatherState;
+    this.weather = ctx.weather;
+    this.teeTimeState = ctx.teeTimeState;
+    this.walkOnState = ctx.walkOnState;
+    this.revenueState = ctx.revenueState;
+    this.marketingState = ctx.marketingState;
+    this.autonomousState = ctx.autonomousState;
+    this.prestigeState = ctx.prestigeState;
+    this.irrigationSystem = ctx.irrigationSystem;
+    this.reputationState = ctx.reputationState;
+    this.applicationState = ctx.applicationState;
+    this.dailyStats = ctx.dailyStats;
+    this.lastPayrollHour = ctx.lastPayrollHour;
+    this.lastArrivalHour = ctx.lastArrivalHour;
+    this.lastAutoSaveHour = ctx.lastAutoSaveHour;
+    this.lastPrestigeUpdateHour = ctx.lastPrestigeUpdateHour;
+    this.lastTeeTimeUpdateHour = ctx.lastTeeTimeUpdateHour;
+    this.accumulatedResearchTime = ctx.accumulatedResearchTime;
   }
 
   private checkScenarioCompletion(): void {
@@ -3494,20 +1500,10 @@ export class BabylonMain {
     return true;
   }
 
-  // ============================================================================
-  // PUBLIC TESTING API
-  // These methods provide a stable interface for automated testing and bots.
-  // They replace flaky canvas click operations with reliable programmatic control.
-  // ============================================================================
-
-  /**
-   * Move player one tile in a direction.
-   * @param direction - 'up', 'down', 'left', 'right', 'w', 'a', 's', 'd'
-   */
   public movePlayer(
     direction: "up" | "down" | "left" | "right" | "w" | "a" | "s" | "d"
   ): void {
-    const dirMap: Record<string, Direction> = {
+    const dirMap: Record<string, "up" | "down" | "left" | "right"> = {
       up: "up",
       w: "up",
       down: "down",
@@ -3519,24 +1515,10 @@ export class BabylonMain {
     };
     const dir = dirMap[direction];
     if (dir) {
-      this.handleMove(dir);
+      this.playerController.handleMove(dir);
     }
   }
 
-  /**
-   * Get current player position.
-   */
-  public getPlayerPosition(): { x: number; y: number } {
-    return { x: this.player.gridX, y: this.player.gridY };
-  }
-
-  /**
-   * Handle equipment button press. Unified control:
-   * - Press when nothing selected: select and activate
-   * - Press different equipment: switch to it
-   * - Press same equipment: deselect
-   * @param slot - 1 (mower), 2 (sprinkler), 3 (spreader)
-   */
   public selectEquipment(slot: 1 | 2 | 3): void {
     const wasSelected = this.equipmentManager.getSelected();
     this.equipmentManager.handleSlot(slot);
@@ -3544,9 +1526,9 @@ export class BabylonMain {
 
     if (nowSelected !== null && nowSelected !== wasSelected) {
       const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
-        1: null,        // mower - no overlay, stripes show mowing status
-        2: "moisture",  // sprinkler - show moisture levels
-        3: "nutrients", // spreader - show nutrient levels
+        1: null,
+        2: "moisture",
+        3: "nutrients",
       };
       const targetOverlay = overlayMap[slot];
       if (targetOverlay && this.terrainSystem.getOverlayMode() !== targetOverlay) {
@@ -3568,10 +1550,6 @@ export class BabylonMain {
     }
   }
 
-  /**
-   * Toggle equipment on/off (alias for selectEquipment with current selection).
-   * @deprecated Use selectEquipment instead - pressing same slot toggles
-   */
   public toggleEquipment(): void {
     const selected = this.equipmentManager.getSelected();
     if (selected === null) return;
@@ -3583,978 +1561,110 @@ export class BabylonMain {
     };
     this.selectEquipment(slotMap[selected]);
   }
-
-
-  /**
-   * Get current equipment state.
-   */
-  public getEquipmentState(): {
-    selectedSlot: number | null;
-    mower: { active: boolean; resource: number; max: number } | null;
-    sprinkler: { active: boolean; resource: number; max: number } | null;
-    spreader: { active: boolean; resource: number; max: number } | null;
-  } {
-    const mowerState = this.equipmentManager.getState("mower");
-    const sprinklerState = this.equipmentManager.getState("sprinkler");
-    const spreaderState = this.equipmentManager.getState("spreader");
-
-    const selected = this.equipmentManager.getSelected();
-    const slotMap: Record<string, number> = {
-      mower: 0,
-      sprinkler: 1,
-      spreader: 2,
-    };
-
-    return {
-      selectedSlot: selected ? slotMap[selected] : null,
-      mower: mowerState
-        ? {
-            active: selected === "mower",
-            resource: mowerState.resourceCurrent,
-            max: mowerState.resourceMax,
-          }
-        : null,
-      sprinkler: sprinklerState
-        ? {
-            active: selected === "sprinkler",
-            resource: sprinklerState.resourceCurrent,
-            max: sprinklerState.resourceMax,
-          }
-        : null,
-      spreader: spreaderState
-        ? {
-            active: selected === "spreader",
-            resource: spreaderState.resourceCurrent,
-            max: spreaderState.resourceMax,
-          }
-        : null,
-    };
-  }
-
   public setTerrainEditor(enabled: boolean): void {
-    if (!this.terrainEditorSystem) return;
+    const system = this.terrainEditorController.getSystem();
+    if (!system) return;
     if (enabled) {
-      this.terrainEditorSystem.enable();
+      system.enable();
     } else {
-      this.terrainEditorSystem.disable();
+      system.disable();
     }
   }
 
   public isTerrainEditorEnabled(): boolean {
-    return this.terrainEditorSystem?.isEnabled() ?? false;
+    return this.terrainEditorController.isEnabled();
   }
 
-  /**
-   * Set terrain editor tool.
-   * @param tool - 'raise', 'lower', 'flatten', 'smooth', or terrain brush like 'terrain_fairway'
-   */
-  public setEditorTool(tool: string): void {
-    if (!this.terrainEditorSystem) return;
-
-    const toolMap: Record<string, EditorTool> = {
-      raise: "raise",
-      lower: "lower",
-      flatten: "flatten",
-      smooth: "smooth",
-      terrain_fairway: "terrain_fairway",
-      terrain_bunker: "terrain_bunker",
-      terrain_water: "terrain_water",
-      terrain_rough: "terrain_rough",
-      terrain_green: "terrain_green",
-      terrain_tee: "terrain_tee",
+  public createAPI(): GameAPI {
+    const self = this;
+    const ctx: GameContext = {
+      get player() { return self.playerController.getPlayer(); },
+      set player(v) { self.playerController.setPlayer(v); },
+      get playerVisual() { return self.playerController.getPlayerVisual(); },
+      set playerVisual(v) { self.playerController.setPlayerVisual(v); },
+      get clickToMoveWaypoints() { return self.playerController.getClickToMoveWaypoints(); },
+      set clickToMoveWaypoints(v) { self.playerController.setClickToMoveWaypoints(v); },
+      get equipmentManager() { return self.equipmentManager; },
+      get terrainSystem() { return self.terrainSystem; },
+      get terrainEditorSystem() { return self.terrainEditorController.getSystem(); },
+      get uiManager() { return self.uiManager; },
+      get babylonEngine() { return self.babylonEngine; },
+      get overlayAutoSwitched() { return self.overlayAutoSwitched; },
+      set overlayAutoSwitched(v) { self.overlayAutoSwitched = v; },
+      get isPaused() { return self.isPaused; },
+      set isPaused(v) { self.isPaused = v; },
+      get isMuted() { return self.isMuted; },
+      set isMuted(v) { self.isMuted = v; },
+      get gameTime() { return self.gameTime; },
+      set gameTime(v) { self.gameTime = v; },
+      get gameDay() { return self.gameDay; },
+      set gameDay(v) { self.gameDay = v; },
+      get timeScale() { return self.timeScale; },
+      set timeScale(v) { self.timeScale = v; },
+      get score() { return self.score; },
+      set score(v) { self.score = v; },
+      get lastEquipmentFaceId() { return self.playerController.getLastEquipmentFaceId(); },
+      set lastEquipmentFaceId(v) { self.playerController.setLastEquipmentFaceId(v); },
+      get economyState() { return self.economyState; },
+      set economyState(v) { self.economyState = v; },
+      get employeeRoster() { return self.employeeRoster; },
+      set employeeRoster(v) { self.employeeRoster = v; },
+      get employeeWorkState() { return self.employeeWorkState; },
+      set employeeWorkState(v) { self.employeeWorkState = v; },
+      get applicationState() { return self.applicationState; },
+      set applicationState(v) { self.applicationState = v; },
+      get golferPool() { return self.golferPool; },
+      set golferPool(v) { self.golferPool = v; },
+      get researchState() { return self.researchState; },
+      set researchState(v) { self.researchState = v; },
+      get scenarioManager() { return self.scenarioManager; },
+      get weatherState() { return self.weatherState; },
+      set weatherState(v) { self.weatherState = v; },
+      get weather() { return self.weather; },
+      set weather(v) { self.weather = v; },
+      get greenFees() { return self.greenFees; },
+      set greenFees(v) { self.greenFees = v; },
+      get prestigeState() { return self.prestigeState; },
+      set prestigeState(v) { self.prestigeState = v; },
+      get teeTimeState() { return self.teeTimeState; },
+      set teeTimeState(v) { self.teeTimeState = v; },
+      get teeSheetViewDay() { return self.uiPanelCoordinator.getTeeSheetViewDay(); },
+      set teeSheetViewDay(v) { self.uiPanelCoordinator.setTeeSheetViewDay(v); },
+      get walkOnState() { return self.walkOnState; },
+      set walkOnState(v) { self.walkOnState = v; },
+      get revenueState() { return self.revenueState; },
+      set revenueState(v) { self.revenueState = v; },
+      get marketingState() { return self.marketingState; },
+      set marketingState(v) { self.marketingState = v; },
+      get autonomousState() { return self.autonomousState; },
+      set autonomousState(v) { self.autonomousState = v; },
+      get reputationState() { return self.reputationState; },
+      set reputationState(v) { self.reputationState = v; },
+      get irrigationSystem() { return self.irrigationSystem; },
+      set irrigationSystem(v) { self.irrigationSystem = v; },
+      get irrigationRenderSystem() { return self.irrigationRenderSystem; },
+      get currentCourse() { return self.currentCourse; },
+      get currentScenario() { return self.currentScenario; },
+      get dailyStats() { return self.dailyStats; },
+      set dailyStats(v) { self.dailyStats = v; },
+      handleMove: (d) => this.movePlayer(d),
+      handleEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
+      handleResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
+      handleTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
+      handleMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
+      handleOverlayCycle: () => this.handleOverlayCycle(),
+      handleRefill: () => this.handleRefill(),
+      handleMute: () => this.handleMute(),
+      isPlayerMoving: () => this.playerController.isMoving(),
+      pauseGame: () => this.pauseGame(),
+      resumeGame: () => this.resumeGame(),
+      updateEconomySystems: (ms) => this.updateEconomySystems(ms),
+      updateIrrigationVisibility: () => this.updateIrrigationVisibility(),
+      updatePlayerPosition: () => this.playerController.updatePlayerPosition(),
+      saveCurrentGame: () => this.saveCurrentGame(),
+      hasSavedGame: () => this.hasSavedGame(),
     };
-
-    const editorTool = toolMap[tool];
-    if (editorTool) {
-      this.terrainEditorSystem.setTool(editorTool);
-    }
-  }
-
-  /**
-   * Set terrain editor brush size.
-   * @param size - world diameter in meters
-   */
-  public setEditorBrushSize(size: number): void {
-    if (this.terrainEditorSystem) {
-      this.terrainEditorSystem.setBrushSize(size);
-    }
-  }
-
-  /**
-   * Edit terrain at a grid position (simulates click).
-   * @param gridX - Grid X coordinate
-   * @param gridY - Grid Y coordinate
-   */
-  public editTerrainAt(gridX: number, gridY: number): void {
-    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
-      return;
-    }
-
-    // Create world position that will trigger corner detection (NW corner)
-    // TILE_SIZE is 1, CORNER_THRESHOLD is 0.25, so we use 0.1 to be safely in the corner
-    const worldPos = new Vector3(gridX + 0.1, 0, gridY + 0.1);
-    this.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
-    this.terrainEditorSystem.handleClick(gridX, gridY);
-  }
-
-  /**
-   * Start terrain drag operation.
-   * @param gridX - Grid X coordinate
-   * @param gridY - Grid Y coordinate
-   * @param screenY - Optional screen Y coordinate for vertical drag
-   */
-  public dragTerrainStart(
-    gridX: number,
-    gridY: number
-  ): void {
-    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
-      return;
-    }
-
-    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.terrainEditorSystem.handleDragStart(gridX, gridY);
-  }
-
-  /**
-   * Continue terrain drag operation.
-   * @param gridX - Grid X coordinate
-   * @param gridY - Grid Y coordinate
-   * @param screenY - Optional screen Y coordinate for vertical drag
-   */
-  public dragTerrainMove(gridX: number, gridY: number): void {
-    if (!this.terrainEditorSystem || !this.terrainEditorSystem.isEnabled()) {
-      return;
-    }
-
-    this.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.terrainEditorSystem.handleDrag(gridX, gridY);
-  }
-
-  /**
-   * End terrain drag operation.
-   */
-  public dragTerrainEnd(): void {
-    if (this.terrainEditorSystem) {
-      this.terrainEditorSystem.handleDragEnd();
-    }
-  }
-
-
-  /**
-   * Get elevation at a grid position.
-   */
-  public getElevationAt(x: number, y: number): number | undefined {
-    return this.terrainSystem.getElevationAt(x, y);
-  }
-
-  /**
-   * Set elevation at a grid position (testing only - bypasses normal editing).
-   */
-  public setElevationAt(x: number, y: number, elevation: number): void {
-    this.terrainSystem.setElevationAt(x, y, elevation);
-  }
-
-  /**
-   * Set grass cell state at a grid position.
-   */
-  public setCellState(
-    x: number,
-    y: number,
-    state: { height?: number; moisture?: number; nutrients?: number; health?: number }
-  ): void {
-    this.terrainSystem.setCellState(x, y, state);
-  }
-
-  /**
-   * Set all grass cells to the same state (useful for test setup).
-   */
-  public setAllCellsState(
-    state: { height?: number; moisture?: number; nutrients?: number; health?: number }
-  ): void {
-    this.terrainSystem.setAllCellsState(state);
-  }
-
-  public setAllFaceStates(
-    state: { moisture?: number; nutrients?: number; grassHeight?: number; health?: number }
-  ): void {
-    this.terrainSystem.setAllFaceStates(state);
-  }
-
-  /**
-   * Get terrain type at a grid position.
-   */
-  public getTerrainTypeAt(x: number, y: number): string | undefined {
-    return this.terrainSystem.getTerrainTypeAt(x, y);
-  }
-
-  /**
-   * Set terrain type at a grid position (testing only - bypasses normal editing).
-   */
-  public setTerrainTypeAt(
-    x: number,
-    y: number,
-    type: "fairway" | "rough" | "green" | "bunker" | "water" | "tee"
-  ): void {
-    this.terrainSystem.setTerrainTypeAt(x, y, type);
-  }
-
-  /**
-   * Set overlay mode directly.
-   * @param mode - 'normal', 'moisture', 'nutrients', 'height', or 'irrigation'
-   */
-  public setOverlayMode(
-    mode: "normal" | "moisture" | "nutrients" | "height" | "irrigation"
-  ): void {
-    this.terrainSystem.setOverlayMode(mode);
-
-    // Update background color based on mode
-    const scene = this.babylonEngine.getScene();
-    if (mode === "irrigation") {
-      // Very light sand color for maximum visibility
-      scene.clearColor = new Color4(0.9, 0.88, 0.85, 1);
-    } else {
-      // Default sky blue
-      scene.clearColor = new Color4(0.4, 0.6, 0.9, 1);
-    }
-
-    // Toggle irrigation render system visibility
-    if (this.irrigationRenderSystem) {
-      this.irrigationRenderSystem.setVisible(mode === "irrigation");
-    }
-
-    this.uiManager.updateOverlayLegend(mode);
-    this.overlayAutoSwitched = false;
-    this.updateIrrigationVisibility();
-  }
-
-  /**
-   * Get current overlay mode.
-   */
-  public getOverlayMode():
-    | "normal"
-    | "moisture"
-    | "nutrients"
-    | "height"
-    | "irrigation" {
-    return this.terrainSystem.getOverlayMode();
-  }
-
-  /**
-   * Wait for player movement to complete.
-   * @returns Promise that resolves when player is idle
-   */
-  public async waitForPlayerIdle(): Promise<void> {
-    return new Promise((resolve) => {
-      const checkIdle = () => {
-        if (!this.isPlayerMoving()) {
-          resolve();
-        } else {
-          setTimeout(checkIdle, 16); // Check every frame
-        }
-      };
-      checkIdle();
-    });
-  }
-
-  /**
-   * Get full game state for testing.
-   */
-  /**
-   * Toggle employee panel visibility.
-   */
-  public toggleEmployeePanel(): void {
-    this.handleEmployeePanel();
-  }
-
-  /**
-   * Toggle research panel visibility.
-   */
-  public toggleResearchPanel(): void {
-    this.handleResearchPanel();
-  }
-
-  /**
-   * Toggle tee sheet panel visibility.
-   */
-  public toggleTeeSheetPanel(): void {
-    this.handleTeeSheetPanel();
-  }
-
-  /**
-   * Toggle marketing panel visibility.
-   */
-  public toggleMarketingPanel(): void {
-    this.handleMarketingPanel();
-  }
-
-  /**
-   * Cycle to the next overlay mode.
-   */
-  public cycleOverlay(): void {
-    this.handleOverlayCycle();
-  }
-
-  /**
-   * Refill equipment at current position.
-   */
-  public refillEquipment(): void {
-    this.handleRefill();
-  }
-
-  /**
-   * Toggle audio mute.
-   */
-  public toggleMute(): void {
-    this.handleMute();
-  }
-
-  /**
-   * Get employee roster state.
-   */
-  public getEmployeeState(): {
-    employees: readonly Employee[];
-    count: number;
-    maxEmployees: number;
-    totalHourlyWages: number;
-  } {
-    return {
-      employees: this.employeeRoster.employees,
-      count: this.employeeRoster.employees.length,
-      maxEmployees: this.employeeRoster.maxEmployees,
-      totalHourlyWages: this.employeeRoster.employees.reduce(
-        (sum, e) => sum + e.hourlyWage,
-        0
-      ),
-    };
-  }
-
-  /**
-   * Get job application state.
-   */
-  public getApplicationState(): {
-    applications: readonly Employee[];
-    nextApplicationTime: number;
-    activeJobPostings: number;
-    totalReceived: number;
-  } {
-    return {
-      applications: this.applicationState.applications,
-      nextApplicationTime: this.applicationState.nextApplicationTime,
-      activeJobPostings: this.applicationState.activeJobPostings.length,
-      totalReceived: this.applicationState.totalApplicationsReceived,
-    };
-  }
-
-  public getFullGameState(): {
-    player: { x: number; y: number; isMoving: boolean };
-    equipment: ReturnType<BabylonMain["getEquipmentState"]>;
-    time: { day: number; hours: number; minutes: number };
-    economy: ReturnType<BabylonMain["getEconomyState"]>;
-    terrain: { width: number; height: number };
-    editorEnabled: boolean;
-  } {
-    const layoutGrid = this.terrainSystem.getLayoutGrid();
-    return {
-      player: {
-        x: this.player.gridX,
-        y: this.player.gridY,
-        isMoving: this.isPlayerMoving(),
-      },
-      equipment: this.getEquipmentState(),
-      time: {
-        day: this.gameDay,
-        hours: Math.floor(this.gameTime / 60),
-        minutes: this.gameTime % 60,
-      },
-      economy: this.getEconomyState(),
-      terrain: {
-        width: layoutGrid[0]?.length ?? 0,
-        height: layoutGrid.length,
-      },
-      editorEnabled: this.isTerrainEditorEnabled(),
-    };
-  }
-
-  /**
-   * Place a pipe at the specified grid position.
-   */
-  public placePipe(x: number, y: number, pipeType: PipeType): boolean {
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const config = PIPE_CONFIGS[pipeType];
-    const cost = config.cost;
-
-    if (!canAfford(this.economyState, cost)) {
-      return false;
-    }
-
-    this.irrigationSystem = addPipe(
-      this.irrigationSystem,
-      x,
-      y,
-      pipeType,
-      timestamp
-    );
-    const expenseResult = addExpense(
-      this.economyState,
-      cost,
-      "construction",
-      `Pipe installation: ${pipeType}`,
-      timestamp,
-      false
-    );
-    if (expenseResult) {
-      this.economyState = expenseResult;
-    }
-
-    if (this.irrigationRenderSystem) {
-      this.irrigationRenderSystem.update(this.irrigationSystem);
-    }
-
-    return true;
-  }
-
-  /**
-   * Remove a pipe at the specified grid position.
-   */
-  public removePipe(x: number, y: number): void {
-    this.irrigationSystem = removePipe(this.irrigationSystem, x, y);
-    if (this.irrigationRenderSystem) {
-      this.irrigationRenderSystem.update(this.irrigationSystem);
-    }
-  }
-
-  /**
-   * Place a sprinkler head at the specified grid position.
-   */
-  public placeSprinklerHead(
-    x: number,
-    y: number,
-    sprinklerType: SprinklerType
-  ): boolean {
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const config = SPRINKLER_CONFIGS[sprinklerType];
-    const cost = config.cost + 20;
-
-    if (!canAfford(this.economyState, cost)) {
-      return false;
-    }
-
-    this.irrigationSystem = addSprinklerHead(
-      this.irrigationSystem,
-      x,
-      y,
-      sprinklerType,
-      timestamp
-    );
-    const expenseResult = addExpense(
-      this.economyState,
-      cost,
-      "construction",
-      `Sprinkler installation: ${sprinklerType}`,
-      timestamp,
-      false
-    );
-    if (expenseResult) {
-      this.economyState = expenseResult;
-    }
-
-    if (this.irrigationRenderSystem) {
-      this.irrigationRenderSystem.update(this.irrigationSystem);
-    }
-
-    return true;
-  }
-
-  /**
-   * Remove a sprinkler head at the specified grid position.
-   */
-  public removeSprinklerHead(x: number, y: number): void {
-    const head = getSprinklerHeadAt(this.irrigationSystem, x, y);
-    if (head) {
-      this.irrigationSystem = removeSprinklerHead(
-        this.irrigationSystem,
-        head.id
-      );
-      if (this.irrigationRenderSystem) {
-        this.irrigationRenderSystem.update(this.irrigationSystem);
-      }
-    }
-  }
-
-  /**
-   * Repair a leak at the specified grid position.
-   */
-  public repairLeak(x: number, y: number): boolean {
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const cost = 20;
-
-    if (!canAfford(this.economyState, cost)) {
-      return false;
-    }
-
-    const result = repairLeak(this.irrigationSystem, x, y);
-    if (result) {
-      this.irrigationSystem = result;
-      const expenseResult = addExpense(
-        this.economyState,
-        cost,
-        "equipment_maintenance",
-        "Pipe leak repair",
-        timestamp,
-        false
-      );
-      if (expenseResult) {
-        this.economyState = expenseResult;
-      }
-
-      if (this.irrigationRenderSystem) {
-        this.irrigationRenderSystem.update(this.irrigationSystem);
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Get the irrigation system state.
-   */
-  public getIrrigationSystem(): IrrigationSystem {
-    return this.irrigationSystem;
-  }
-
-  /**
-   * Set irrigation schedule for a sprinkler head.
-   */
-  public setIrrigationSchedule(
-    headId: string,
-    schedule: WateringSchedule
-  ): void {
-    this.irrigationSystem = updateSprinklerSchedule(
-      this.irrigationSystem,
-      headId,
-      schedule
-    );
-  }
-
-  /**
-   * Get terrain/grass state at a specific position.
-   */
-  public getTerrainAt(x: number, y: number): {
-    type: string;
-    elevation: number;
-    height: number;
-    moisture: number;
-    nutrients: number;
-    health: number;
-    lastMowed: number;
-    lastWatered: number;
-    lastFertilized: number;
-  } | null {
-    const cell = this.terrainSystem.getCell(x, y);
-    if (!cell) return null;
-    return {
-      type: cell.type,
-      elevation: cell.elevation,
-      height: cell.height,
-      moisture: cell.moisture,
-      nutrients: cell.nutrients,
-      health: cell.health,
-      lastMowed: cell.lastMowed,
-      lastWatered: cell.lastWatered,
-      lastFertilized: cell.lastFertilized,
-    };
-  }
-
-  /**
-   * Get overall course statistics.
-   */
-  public getCourseStats(): {
-    health: number;
-    moisture: number;
-    nutrients: number;
-    height: number;
-  } {
-    return this.terrainSystem.getCourseStats();
-  }
-
-  /**
-   * Set equipment resource level (for testing).
-   */
-  public setEquipmentResource(
-    type: "mower" | "sprinkler" | "spreader",
-    amount: number
-  ): void {
-    this.equipmentManager.setResource(type, amount);
-  }
-
-  /**
-   * Advance game time by specified minutes (for testing).
-   */
-  public advanceTimeByMinutes(minutes: number): void {
-    const deltaMs = minutes * 60 * 1000 / this.timeScale;
-    // Update game time
-    this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
-    if (this.gameTime >= 24 * 60) {
-      this.gameTime -= 24 * 60;
-      this.gameDay++;
-    }
-    this.terrainSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
-    this.updateEconomySystems(deltaMs);
-  }
-
-  /**
-   * Get research state.
-   */
-  public getResearchState(): ResearchState {
-    return this.researchState;
-  }
-
-  /**
-   * Start researching an item.
-   */
-  public startResearchItem(itemId: string): boolean {
-    const currentTime = this.gameDay * 24 * 60 + this.gameTime;
-    const result = startResearch(this.researchState, itemId, currentTime);
-    if (result) {
-      this.researchState = result;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Cancel current research.
-   */
-  public cancelCurrentResearch(): void {
-    this.researchState = cancelResearch(this.researchState);
-  }
-
-  /**
-   * Set research funding level.
-   */
-  public setResearchFunding(level: FundingLevel): void {
-    this.researchState = setFundingLevel(this.researchState, level);
-  }
-
-  /**
-   * Queue a research item.
-   */
-  public queueResearch(itemId: string): void {
-    this.researchState = {
-      ...this.researchState,
-      researchQueue: [...this.researchState.researchQueue, itemId],
-    };
-  }
-
-  /**
-   * Check if a research item is completed.
-   */
-  public isResearchCompleted(itemId: string): boolean {
-    return this.researchState.completedResearch.includes(itemId);
-  }
-
-  /**
-   * Get available research items (not completed and unlocked).
-   */
-  public getAvailableResearch(): string[] {
-    return RESEARCH_ITEMS
-      .filter((item) => {
-        if (this.researchState.completedResearch.includes(item.id)) return false;
-        return item.prerequisites.every((prereq) =>
-          this.researchState.completedResearch.includes(prereq)
-        );
-      })
-      .map((item) => item.id);
-  }
-
-  /**
-   * Hire an employee from applications.
-   */
-  public hireEmployee(applicationIndex: number): boolean {
-    if (
-      applicationIndex < 0 ||
-      applicationIndex >= this.applicationState.applications.length
-    ) {
-      return false;
-    }
-    const application = this.applicationState.applications[applicationIndex];
-    const result = hireEmployee(this.employeeRoster, application);
-    if (result) {
-      this.employeeRoster = result;
-      this.applicationState = {
-        ...this.applicationState,
-        applications: this.applicationState.applications.filter((_, i) => i !== applicationIndex),
-      };
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Fire an employee.
-   */
-  public fireEmployee(employeeId: string): boolean {
-    const result = fireEmployee(this.employeeRoster, employeeId);
-    if (result) {
-      this.employeeRoster = result;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Get tee sheet for a specific day.
-   */
-  public getTeeSheet(day?: number): Array<{
-    id: string;
-    time: string;
-    status: string;
-    playerCount: number;
-  }> {
-    const targetDay = day ?? this.gameDay;
-    const teeTimes = this.teeTimeState.teeTimes.get(targetDay) ?? [];
-    return teeTimes.map((tt) => ({
-      id: tt.id,
-      time: `${tt.scheduledTime.hour}:${String(tt.scheduledTime.minute).padStart(2, "0")}`,
-      status: tt.status,
-      playerCount: tt.golfers?.length ?? 0,
-    }));
-  }
-
-  /**
-   * Book a tee time.
-   */
-  public bookTeeTime(teeTimeId: string, players: number = 4): boolean {
-    const golferBookings = Array.from({ length: players }, (_, i) => ({
-      golferId: `golfer_${Date.now()}_${i}`,
-      name: `Golfer ${i + 1}`,
-      membershipStatus: 'public' as const,
-      greenFee: this.prestigeState.greenFee || 50,
-      cartFee: 0,
-      addOns: [],
-    }));
-    const currentTime: GameTime = {
-      day: this.gameDay,
-      hour: Math.floor(this.gameTime / 60),
-      minute: this.gameTime % 60,
-    };
-    const result = bookTeeTime(this.teeTimeState, teeTimeId, golferBookings, 'reservation', currentTime);
-    if (result !== this.teeTimeState) {
-      this.teeTimeState = result;
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Check in a tee time.
-   */
-  public checkInTeeTime(teeTimeId: string): boolean {
-    const result = checkInTeeTime(this.teeTimeState, teeTimeId);
-    this.teeTimeState = result;
-    return true;
-  }
-
-  /**
-   * Cancel a tee time booking.
-   */
-  public cancelTeeTimeBooking(teeTimeId: string): boolean {
-    const result = cancelTeeTime(this.teeTimeState, teeTimeId);
-    this.teeTimeState = result;
-    return true;
-  }
-
-  /**
-   * Get active marketing campaigns.
-   */
-  public getActiveCampaigns(): Array<{
-    campaignId: string;
-    daysRemaining: number;
-  }> {
-    return this.marketingState.activeCampaigns
-      .filter(c => c.status === 'active')
-      .map((c) => ({
-        campaignId: c.campaignId,
-        daysRemaining: c.plannedDuration - c.elapsedDays,
-      }));
-  }
-
-  /**
-   * End a marketing campaign early.
-   */
-  public endMarketingCampaign(campaignId: string): boolean {
-    const result = stopCampaign(this.marketingState, campaignId, this.gameDay);
-    this.marketingState = result;
-    return true;
-  }
-
-  /**
-   * Get available amenity upgrades.
-   */
-  public getAvailableAmenities(): Array<{
-    id: string;
-    name: string;
-    cost: number;
-    purchased: boolean;
-  }> {
-    const available = getAvailableUpgrades(this.prestigeState.amenities);
-    return available.map((upgrade, index) => ({
-      id: `amenity_${index}`,
-      name: getUpgradeName(upgrade),
-      cost: getUpgradeCost(this.prestigeState.amenities, upgrade),
-      purchased: false,
-    }));
-  }
-
-  /**
-   * Get golfer pool state.
-   */
-  public getGolferState(): {
-    active: number;
-    served: number;
-    avgSatisfaction: number;
-  } {
-    return {
-      active: getActiveGolferCount(this.golferPool),
-      served: this.golferPool.totalVisitorsToday,
-      avgSatisfaction: getAverageSatisfaction(this.golferPool),
-    };
-  }
-
-  /**
-   * Get scenario progress (if in scenario mode).
-   */
-  public getScenarioProgress(): {
-    daysElapsed: number;
-    currentCash: number;
-    totalRevenue: number;
-    totalExpenses: number;
-    totalGolfers: number;
-    currentHealth: number;
-    currentRating: number;
-  } | null {
-    if (!this.scenarioManager) return null;
-
-    return this.scenarioManager.getProgress();
-  }
-
-  /**
-   * Check if equipment has active particle effects.
-   */
-  public hasActiveParticles(): boolean {
-    return this.equipmentManager.hasParticles();
-  }
-
-  /**
-   * Get count of visual updates to grass rendering (for testing visual updates).
-   */
-  public getGrassRenderUpdateCount(): number {
-    return this.terrainSystem.getUpdateCount();
-  }
-
-  /**
-   * Get UI state for testing.
-   */
-  public getUIState(): {
-    isPaused: boolean;
-    overlayMode: string;
-    notificationCount: number;
-  } {
-    return {
-      isPaused: this.isPaused,
-      overlayMode: this.terrainSystem.getOverlayMode(),
-      notificationCount: 0, // Can be expanded if UIManager tracks this
-    };
-  }
-
-  public setPaused(paused: boolean): void {
-    if (paused) {
-      this.pauseGame();
-    } else {
-      this.resumeGame();
-    }
-  }
-
-  /**
-   * Trigger a refill manually (for testing).
-   */
-  public refillAtCurrentPosition(): { success: boolean; cost: number } {
-    const playerPos = { x: this.player.gridX, y: this.player.gridY };
-    const isAtStation = REFILL_STATIONS.some(
-      (station) => station.x === playerPos.x && station.y === playerPos.y
-    );
-
-    if (!isAtStation) {
-      return { success: false, cost: 0 };
-    }
-
-    const cost = this.equipmentManager.refill();
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const expenseResult = addExpense(
-      this.economyState,
-      cost,
-      "supplies",
-      "Equipment refill",
-      timestamp,
-      false
-    );
-    if (expenseResult) {
-      this.economyState = expenseResult;
-    }
-
-    return { success: true, cost };
-  }
-
-  /**
-   * Check if player is at a refill station.
-   */
-  public isAtRefillStation(): boolean {
-    const playerPos = { x: this.player.gridX, y: this.player.gridY };
-    return REFILL_STATIONS.some(
-      (station) => station.x === playerPos.x && station.y === playerPos.y
-    );
-  }
-
-  /**
-   * Get list of all refill station positions.
-   */
-  public getRefillStations(): Array<{ x: number; y: number }> {
-    return REFILL_STATIONS.map(s => ({ x: s.x, y: s.y }));
-  }
-
-  /**
-   * Manually trigger grass growth (for testing).
-   * Simulates the specified number of game minutes of grass growth.
-   * Note: GrassSystem.update uses deltaMinutes = (deltaMs/1000) * 2, so we account for that.
-   */
-  public forceGrassGrowth(minutes: number): void {
-    const deltaMs = minutes * 500;
-    this.terrainSystem.update(deltaMs, this.gameDay * 1440 + this.gameTime);
-  }
-
-  /**
-   * Get terrain editor state.
-   */
-  public getTerrainEditorState(): {
-    enabled: boolean;
-    tool: string | null;
-    brushSize: number;
-  } {
-    if (!this.terrainEditorSystem) {
-      return {
-        enabled: false,
-        tool: null,
-        brushSize: 1,
-      };
-    }
-
-    return {
-      enabled: this.terrainEditorSystem.isEnabled(),
-      tool: this.terrainEditorSystem.getCurrentTool(),
-      brushSize: this.terrainEditorSystem.getBrushSize(),
-    };
+    return new GameAPI(ctx);
   }
 
   public dispose(): void {
@@ -4562,21 +1672,13 @@ export class BabylonMain {
     this.terrainSystem.dispose();
     this.equipmentManager.dispose();
     this.uiManager.dispose();
-    this.terrainEditorSystem?.dispose();
-    this.terrainEditorUI?.dispose();
-    this.editorUITexture?.dispose();
+    this.terrainEditorController.dispose();
+    this.playerController.dispose();
+    this.uiPanelCoordinator.dispose();
 
-    // Dispose player visual
-    if (this.playerVisual) {
-      disposeEntityMesh(this.playerVisual);
-      this.playerVisual = null;
-    }
-
-    // Dispose employee visual system
     this.employeeVisualSystem?.dispose();
     this.employeeVisualSystem = null;
 
-    // Dispose irrigation render system
     this.irrigationRenderSystem?.dispose();
 
     for (const instance of this.treeInstances) {
@@ -4593,7 +1695,6 @@ export class BabylonMain {
       mesh.dispose();
     }
 
-    // Clear asset cache to free master meshes
     clearAssetCache();
 
     this.babylonEngine.dispose();
@@ -4663,685 +1764,6 @@ export class BabylonMain {
     }
   }
 
-  /**
-   * Get autonomous robot state.
-   */
-  public getRobotState(): {
-    totalRobots: number;
-    workingRobots: number;
-    brokenRobots: number;
-  } {
-    return {
-      totalRobots: this.autonomousState.robots.length,
-      workingRobots: countWorkingRobots(this.autonomousState),
-      brokenRobots: countBrokenRobots(this.autonomousState),
-    };
-  }
-
-  /**
-   * Get available robots for purchase.
-   */
-  public getAvailableRobots(): Array<{ equipmentId: string; ownedCount: number }> {
-    return getAvailableRobotsToPurchase(this.researchState, this.autonomousState);
-  }
-
-  /**
-   * Get walk-on queue state.
-   */
-  public getWalkOnState(): {
-    queueLength: number;
-    totalServed: number;
-    totalTurnedAway: number;
-  } {
-    return {
-      queueLength: this.walkOnState.queue.length,
-      totalServed: this.walkOnState.metrics.walkOnsServedToday,
-      totalTurnedAway: this.walkOnState.metrics.walkOnsTurnedAwayToday,
-    };
-  }
-
-  /**
-   * Get revenue state.
-   */
-  public getRevenueState(): {
-    greenFees: number;
-    cartFees: number;
-    proShopSales: number;
-    foodBeverage: number;
-  } {
-    return {
-      greenFees: this.revenueState.todaysRevenue.greenFees,
-      cartFees: this.revenueState.todaysRevenue.cartFees,
-      proShopSales: this.revenueState.todaysRevenue.proShop,
-      foodBeverage: this.revenueState.todaysRevenue.foodAndBeverage,
-    };
-  }
-
-  /**
-   * Get weather state.
-   */
-  public getWeatherState(): {
-    condition: string;
-    temperature: number;
-    windSpeed: number;
-  } {
-    return {
-      condition: this.weatherState.current.type,
-      temperature: this.weatherState.current.temperature,
-      windSpeed: this.weatherState.current.windSpeed,
-    };
-  }
-
-  /**
-   * Set weather condition type (for testing).
-   */
-  public setWeatherCondition(type: "sunny" | "cloudy" | "rainy" | "stormy"): void {
-    const newCondition: WeatherCondition = {
-      type,
-      temperature: this.weatherState.current.temperature,
-      windSpeed: this.weatherState.current.windSpeed,
-    };
-    this.weatherState = {
-      ...this.weatherState,
-      current: newCondition,
-    };
-  }
-
-  /**
-   * Get employee work state.
-   */
-  public getEmployeeWorkState(): {
-    workerCount: number;
-    activeWorkers: number;
-    idleWorkers: number;
-  } {
-    const workers = this.employeeWorkState.workers;
-    const activeCount = workers.filter(w => w.currentTask !== 'idle').length;
-    return {
-      workerCount: workers.length,
-      activeWorkers: activeCount,
-      idleWorkers: workers.length - activeCount,
-    };
-  }
-
-  /**
-   * Get terrain grid dimensions.
-   */
-  public getTerrainDimensions(): { width: number; height: number } {
-    return this.terrainSystem.getGridDimensions();
-  }
-
-  /**
-   * Get terrain cell data at position.
-   */
-  public getTerrainCellData(x: number, y: number): {
-    type: string;
-    elevation: number;
-    moisture: number;
-    nutrients: number;
-    height: number;
-    health: number;
-  } | null {
-    const cell = this.terrainSystem.getCell(x, y);
-    if (!cell) return null;
-
-    return {
-      type: cell.type,
-      elevation: cell.elevation,
-      moisture: cell.moisture,
-      nutrients: cell.nutrients,
-      height: cell.height,
-      health: cell.health,
-    };
-  }
-
-  /**
-   * Get all terrain types present.
-   */
-  public getTerrainTypes(): string[] {
-    const types = new Set<string>();
-    const cells = this.terrainSystem.getAllCells();
-    for (const row of cells) {
-      for (const cell of row) {
-        types.add(cell.type);
-      }
-    }
-    return Array.from(types);
-  }
-
-  // ============================================================================
-  // Save Game APIs
-  // ============================================================================
-
-  public deleteSaveGame(scenarioId: string): boolean {
-    return deleteSave(scenarioId);
-  }
-
-  public getSaveGameInfo(scenarioId?: string): { savedAt: number; gameDay: number } | null {
-    const id = scenarioId || this.currentScenario?.id || 'sandbox';
-    return getSaveInfo(id);
-  }
-
-  public listSaveGames(): Array<{ scenarioId: string; savedAt: number; gameDay: number }> {
-    return listSaves();
-  }
-
-  // ============================================================================
-  // Reputation APIs
-  // ============================================================================
-
-  public getReputationSummaryData(): {
-    score: number;
-    starRating: number;
-    trend: string;
-    totalTurnAways: number;
-    returnRate: number;
-  } {
-    const summary = getReputationSummary(this.reputationState);
-    return {
-      score: calculateReputationScore(this.reputationState),
-      starRating: summary.starRating,
-      trend: summary.trend,
-      totalTurnAways: this.reputationState.totalTurnAways,
-      returnRate: summary.returnRate,
-    };
-  }
-
-  public trackGolferVisitForReputation(golferId: string, isReturning: boolean): void {
-    this.reputationState = trackGolferVisit(
-      this.reputationState,
-      golferId,
-      isReturning
-    );
-  }
-
-  public trackTurnAwayForReputation(): void {
-    this.reputationState = trackTurnAway(this.reputationState);
-  }
-
-  // ============================================================================
-  // Walk-On APIs
-  // ============================================================================
-
-  public getWalkOnSummary(): {
-    queueLength: number;
-    served: number;
-    turnedAway: number;
-    gaveUp: number;
-    avgWait: number;
-    estimatedWait: number;
-  } {
-    const summary = getWalkOnSummary(this.walkOnState);
-    return {
-      queueLength: getQueueLength(this.walkOnState),
-      served: summary.served,
-      turnedAway: summary.turnedAway,
-      gaveUp: summary.gaveUp,
-      avgWait: summary.averageWait,
-      estimatedWait: getEstimatedWaitTime(this.walkOnState),
-    };
-  }
-
-  public updateWalkOnPolicy(maxWaitMinutes?: number, maxQueueSize?: number): void {
-    const updates: Partial<{ maxWaitMinutes: number; maxQueueSize: number }> = {};
-    if (maxWaitMinutes !== undefined) updates.maxWaitMinutes = maxWaitMinutes;
-    if (maxQueueSize !== undefined) updates.maxQueueSize = maxQueueSize;
-    this.walkOnState = updateWalkOnPolicy(this.walkOnState, updates);
-  }
-
-  public addWalkOnGolfer(): boolean {
-    const currentTime: GameTime = {
-      day: this.gameDay,
-      hour: Math.floor(this.gameTime / 60),
-      minute: this.gameTime % 60,
-    };
-    const golfer = createWalkOnGolfer(
-      `walkon_${Date.now()}`,
-      `Walk-On ${Date.now() % 1000}`,
-      currentTime
-    );
-    const result = addWalkOnToQueue(this.walkOnState, golfer);
-    this.walkOnState = result.state;
-    return result.accepted;
-  }
-
-  // ============================================================================
-  // Revenue APIs
-  // ============================================================================
-
-  public getRevenueSummaryData(): {
-    todaysGross: number;
-    todaysNet: number;
-    weeklyAvg: number;
-    monthlyAvg: number;
-    topRevenueSource: string;
-  } {
-    const summary = getRevenueSummary(this.revenueState);
-    const sources: Array<{ name: string; value: number }> = [
-      { name: 'greenFees', value: summary.today.greenFees },
-      { name: 'cartFees', value: summary.today.cartFees },
-      { name: 'proShop', value: summary.today.proShop },
-      { name: 'foodAndBeverage', value: summary.today.foodAndBeverage },
-    ];
-    const topSource = sources.reduce((a, b) => a.value > b.value ? a : b);
-    return {
-      todaysGross: summary.today.grossRevenue,
-      todaysNet: summary.today.netRevenue,
-      weeklyAvg: summary.weeklyAverage.grossRevenue,
-      monthlyAvg: summary.monthlyAverage.grossRevenue,
-      topRevenueSource: topSource.name,
-    };
-  }
-
-  public calculateGreenFeeForGolfer(
-    membershipType: 'public' | 'member' | 'guest_of_member' = 'public'
-  ): number {
-    const hour = Math.floor(this.gameTime / 60);
-    const dayOfWeek = this.gameDay % 7;
-    return calculateGreenFee(
-      this.revenueState.greenFeeStructure,
-      dayOfWeek,
-      hour,
-      membershipType
-    );
-  }
-
-  public calculateCartFeeForGolfer(): number {
-    const hour = Math.floor(this.gameTime / 60);
-    return calculateCartFee(this.revenueState.cartFeeStructure, isTwilightHour(hour));
-  }
-
-  public getAverageRevenue(days: number = 7): number {
-    const avgRevenue = calculateAverageRevenue(this.revenueState, days);
-    return avgRevenue.grossRevenue;
-  }
-
-  // ============================================================================
-  // Autonomous Robot APIs
-  // ============================================================================
-
-  public purchaseRobotUnit(equipmentId: string): boolean {
-    const availableRobots = getAvailableRobotsToPurchase(this.researchState, this.autonomousState);
-    const robot = availableRobots.find(r => r.equipmentId === equipmentId);
-    if (!robot) return false;
-
-    const result = purchaseRobot(this.autonomousState, equipmentId, robot.stats);
-    if (!result) return false;
-
-    if (result.cost > this.economyState.cash) return false;
-
-    this.autonomousState = result.state;
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const expenseResult = addExpense(
-      this.economyState,
-      result.cost,
-      'equipment_purchase',
-      `Robot purchase: ${equipmentId}`,
-      timestamp
-    );
-    if (expenseResult) {
-      this.economyState = expenseResult;
-    }
-    return true;
-  }
-
-  public sellRobotUnit(robotId: string): boolean {
-    const result = sellRobot(this.autonomousState, robotId);
-    if (!result) return false;
-
-    this.autonomousState = result.state;
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const incomeResult = addIncome(
-      this.economyState,
-      result.refund,
-      'equipment_purchase',
-      `Robot sale: ${robotId}`,
-      timestamp
-    );
-    this.economyState = incomeResult;
-    return true;
-  }
-
-  public getRobotList(): Array<{ id: string; type: string; state: string; battery: number }> {
-    return this.autonomousState.robots.map(r => ({
-      id: r.id,
-      type: r.type,
-      state: r.state,
-      battery: r.resourceCurrent,
-    }));
-  }
-
-  // ============================================================================
-  // Time Utility APIs (for tee-revenue coverage)
-  // ============================================================================
-
-  public isCurrentTimeWeekend(): boolean {
-    return isWeekend(this.gameDay % 7);
-  }
-
-  public isCurrentTimePrimeMorning(): boolean {
-    return isPrimeMorning(Math.floor(this.gameTime / 60));
-  }
-
-  public isCurrentTimeTwilight(): boolean {
-    return isTwilightHour(Math.floor(this.gameTime / 60));
-  }
-
-  // ============================================================================
-  // Weather Helper APIs
-  // ============================================================================
-
-  public getWeatherDescription(): string {
-    return getWeatherDescription(this.weatherState.current);
-  }
-
-  public getWeatherImpact(): string {
-    return getWeatherImpactDescription(this.weatherState.current);
-  }
-
-  public getCurrentSeason(): string {
-    return getSeasonFromDay(this.gameDay).season;
-  }
-
-  // ============================================================================
-  // Test/Debug APIs for E2E Coverage
-  // ============================================================================
-
-  public completeResearch(itemId: string): boolean {
-    const newState = completeResearchInstantly(this.researchState, itemId);
-    if (!newState) return false;
-    this.researchState = newState;
-    return true;
-  }
-
-  public completeResearchWithPrerequisites(itemId: string): boolean {
-    const chain = getPrerequisiteChain(itemId);
-    for (const prereqId of chain) {
-      if (!this.researchState.completedResearch.includes(prereqId)) {
-        const result = completeResearchInstantly(this.researchState, prereqId);
-        if (result) {
-          this.researchState = result;
-        }
-      }
-    }
-    return this.completeResearch(itemId);
-  }
-
-  public getResearchDetails(itemId: string): {
-    status: string;
-    progress: number;
-    prerequisites: string[];
-  } {
-    return {
-      status: getResearchStatus(this.researchState, itemId),
-      progress: getResearchProgress(this.researchState),
-      prerequisites: getPrerequisiteChain(itemId) as string[],
-    };
-  }
-
-  public takeLoan(size: "small" | "medium" | "large"): boolean {
-    const terms = DEFAULT_LOAN_TERMS[size];
-    const result = takeLoan(this.economyState, terms, this.gameTime);
-    if (!result) return false;
-    this.economyState = result;
-    return true;
-  }
-
-  public makeLoanPayment(loanId: string): boolean {
-    const result = makeLoanPayment(this.economyState, loanId, this.gameTime);
-    if (!result) return false;
-    this.economyState = result;
-    return true;
-  }
-
-  public payOffLoan(loanId: string): boolean {
-    const result = payOffLoan(this.economyState, loanId, this.gameTime);
-    if (!result) return false;
-    this.economyState = result;
-    return true;
-  }
-
-  public getLoanState(): {
-    loans: Array<{
-      id: string;
-      principal: number;
-      remainingBalance: number;
-      interestRate: number;
-      monthlyPayment: number;
-    }>;
-    totalDebt: number;
-    netWorth: number;
-    canTakeLoan: boolean;
-  } {
-    return {
-      loans: this.economyState.loans.map((l) => ({
-        id: l.id,
-        principal: l.principal,
-        remainingBalance: l.remainingBalance,
-        interestRate: l.interestRate,
-        monthlyPayment: l.monthlyPayment,
-      })),
-      totalDebt: getTotalDebt(this.economyState),
-      netWorth: getNetWorth(this.economyState),
-      canTakeLoan: this.economyState.loans.length < 3,
-    };
-  }
-
-  public getTransactionHistory(
-    startTime?: number,
-    endTime?: number
-  ): Array<{
-    id: string;
-    amount: number;
-    category: string;
-    description: string;
-    timestamp: number;
-  }> {
-    const start = startTime ?? 0;
-    const end = endTime ?? this.gameTime;
-    return getTransactionsInRange(this.economyState, start, end).map((t) => ({
-      id: t.id,
-      amount: t.amount,
-      category: t.category,
-      description: t.description,
-      timestamp: t.timestamp,
-    }));
-  }
-
-  public getFinancialSummary(): {
-    totalIncome: number;
-    totalExpenses: number;
-    netProfit: number;
-  } {
-    const summary = calculateFinancialSummary(this.economyState.transactions);
-    return {
-      totalIncome: summary.totalIncome,
-      totalExpenses: summary.totalExpenses,
-      netProfit: summary.netProfit,
-    };
-  }
-
-  public forceHireGroundskeeper(): string | null {
-    const employee = createEmployee("groundskeeper", "novice", this.gameTime);
-    this.employeeRoster = {
-      ...this.employeeRoster,
-      employees: [...this.employeeRoster.employees, employee],
-    };
-    this.employeeWorkState = syncWorkersWithRoster(
-      this.employeeWorkState,
-      this.employeeRoster.employees
-    );
-    return employee.id;
-  }
-
-  public getWorkerDetails(): Array<{
-    employeeId: string;
-    gridX: number;
-    gridY: number;
-    task: string;
-    worldX: number;
-    worldZ: number;
-  }> {
-    return getWorkerPositions(this.employeeWorkState).map((w) => ({
-      employeeId: w.employeeId,
-      gridX: w.gridX,
-      gridY: w.gridY,
-      task: w.task,
-      worldX: w.worldX,
-      worldZ: w.worldZ,
-    }));
-  }
-
-  public getRobotDetails(): Array<{
-    id: string;
-    type: string;
-    state: string;
-    battery: number;
-    gridX: number;
-    gridY: number;
-    targetX: number | null;
-    targetY: number | null;
-    breakdownTimeRemaining: number;
-  }> {
-    return this.autonomousState.robots.map((r) => ({
-      id: r.id,
-      type: r.type,
-      state: r.state,
-      battery: Math.round((r.resourceCurrent / r.resourceMax) * 100),
-      gridX: Math.round(r.gridX),
-      gridY: Math.round(r.gridY),
-      targetX: r.targetX,
-      targetY: r.targetY,
-      breakdownTimeRemaining: r.breakdownTimeRemaining,
-    }));
-  }
-
-  public getScenarioObjective(): {
-    type: string;
-    description: string;
-    timeLimitDays?: number;
-  } | null {
-    if (!this.scenarioManager) return null;
-    const objective = this.scenarioManager.getObjective();
-    const conditions = this.scenarioManager.getConditions();
-    return {
-      type: objective.type,
-      description: this.scenarioManager.getObjectiveDescription(),
-      timeLimitDays: conditions.timeLimitDays,
-    };
-  }
-
-  public forceScenarioProgress(updates: {
-    daysElapsed?: number;
-    totalRevenue?: number;
-    totalExpenses?: number;
-    totalGolfers?: number;
-    totalRounds?: number;
-    currentHealth?: number;
-    currentRating?: number;
-    daysAtTargetRating?: number;
-  }): void {
-    if (!this.scenarioManager) return;
-    this.scenarioManager.updateProgress(updates);
-  }
-
-  public checkScenarioObjective(): {
-    completed: boolean;
-    failed: boolean;
-    progress: number;
-    message?: string;
-  } {
-    if (!this.scenarioManager) {
-      return { completed: false, failed: false, progress: 0 };
-    }
-    return this.scenarioManager.checkObjective();
-  }
-
-  public addRevenue(amount: number, category: string = "green_fees"): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.addRevenue(amount);
-    }
-    this.economyState = addIncome(
-      this.economyState,
-      amount,
-      category as any,
-      "Test revenue",
-      this.gameTime
-    );
-  }
-
-  public addExpenseAmount(amount: number, category: string = "supplies"): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.addExpense(amount);
-    }
-    const result = addExpense(
-      this.economyState,
-      amount,
-      category as any,
-      "Test expense",
-      this.gameTime,
-      true
-    );
-    if (result) {
-      this.economyState = result;
-    }
-  }
-
-  public incrementScenarioDay(): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.incrementDay();
-    }
-  }
-
-  public updateCourseHealthForScenario(): void {
-    if (this.scenarioManager && this.terrainSystem) {
-      this.scenarioManager.updateCourseHealthFromFaces(this.terrainSystem.getAllFaceStates());
-    }
-  }
-
-  public checkSatisfactionStreak(targetRating: number): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.checkSatisfactionStreak(targetRating);
-    }
-  }
-
-  public addGolferCount(count: number): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.addGolfers(count);
-    }
-  }
-
-  public addRoundCount(): void {
-    if (this.scenarioManager) {
-      this.scenarioManager.addRound();
-    }
-  }
-
-  public getDetailedResearchState(): {
-    completedResearch: string[];
-    currentResearch: { itemId: string; progress: number } | null;
-    researchQueue: string[];
-    fundingLevel: string;
-    availableResearch: string[];
-  } {
-    const available = getAvailableResearchItems(this.researchState);
-    return {
-      completedResearch: [...this.researchState.completedResearch],
-      currentResearch: this.researchState.currentResearch
-        ? {
-            itemId: this.researchState.currentResearch.itemId,
-            progress: Math.round(
-              (this.researchState.currentResearch.pointsEarned /
-                this.researchState.currentResearch.pointsRequired) *
-                100
-            ),
-          }
-        : null,
-      researchQueue: [...this.researchState.researchQueue],
-      fundingLevel: this.researchState.fundingLevel,
-      availableResearch: available.map((r) => r.id),
-    };
-  }
 }
 
 export function startBabylonGame(

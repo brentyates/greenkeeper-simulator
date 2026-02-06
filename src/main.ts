@@ -1,4 +1,5 @@
 import { BabylonMain, startBabylonGame } from './babylon/BabylonMain';
+import { GameAPI } from './babylon/GameAPI';
 import { ScenarioDefinition, getScenarioById, SCENARIOS } from './data/scenarioData';
 import { hasSave, deleteSave } from './core/save-game';
 import { getProgressManager } from './systems/ProgressManager';
@@ -16,7 +17,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 declare global {
   interface Window {
-    game: BabylonMain | null;
+    game: GameAPI | null;
     captureScreenshot: () => Promise<string>;
     exportGameState: () => void;
     listScenarios: () => string[];
@@ -138,7 +139,7 @@ class GameApp {
       onReturnToMenu: () => this.returnToMenu(),
       onScenarioComplete: (score: number) => this.handleScenarioComplete(scenario.id, score)
     });
-    window.game = this.game;
+    window.game = this.game.createAPI();
   }
 
   public startScenarioById(id: string, loadFromSave: boolean = false): boolean {
