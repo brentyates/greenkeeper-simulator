@@ -5,9 +5,7 @@ import { GolferPoolState } from './golfers';
 import { ResearchState } from './research';
 import { PrestigeState } from './prestige';
 import { TeeTimeSystemState } from './tee-times';
-import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
-import { MarketingState } from './marketing';
 import { CellState } from './terrain';
 import { FaceState } from './face-state';
 import { ApplicationState } from './employees';
@@ -15,6 +13,14 @@ import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
 import { WeatherState } from './weather';
 import { IrrigationSystem } from './irrigation';
+import {
+  HappinessConsequenceState,
+  serializeHappinessState,
+} from './employee-happiness';
+import {
+  EmployeeEventSystemState,
+  serializeEventState,
+} from './employee-events';
 
 export interface SaveGameState {
   version: number;
@@ -34,14 +40,14 @@ export interface SaveGameState {
   researchState: ResearchState;
   prestigeState: PrestigeState;
   teeTimeState: TeeTimeSystemState;
-  walkOnState: WalkOnState;
   revenueState: RevenueState;
-  marketingState: MarketingState;
   applicationState: ApplicationState;
   scenarioProgress: ScenarioProgress;
   autonomousState: AutonomousEquipmentState;
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
+  happinessState?: object;
+  eventState?: object;
 
   cells: CellState[][];
   faceStates?: FaceState[];
@@ -64,16 +70,16 @@ export function createSaveState(
   researchState: ResearchState,
   prestigeState: PrestigeState,
   teeTimeState: TeeTimeSystemState,
-  walkOnState: WalkOnState,
   revenueState: RevenueState,
-  marketingState: MarketingState,
   applicationState: ApplicationState,
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
   cells: CellState[][],
   irrigationSystem?: IrrigationSystem,
-  faceStates?: Map<number, FaceState>
+  faceStates?: Map<number, FaceState>,
+  happinessState?: HappinessConsequenceState,
+  eventState?: EmployeeEventSystemState
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -91,14 +97,14 @@ export function createSaveState(
     researchState,
     prestigeState,
     teeTimeState,
-    walkOnState,
     revenueState,
-    marketingState,
     applicationState,
     scenarioProgress,
     autonomousState,
     weatherState,
     irrigationSystem,
+    happinessState: happinessState ? serializeHappinessState(happinessState) : undefined,
+    eventState: eventState ? serializeEventState(eventState) : undefined,
     cells,
     faceStates: faceStates ? Array.from(faceStates.values()) : undefined,
   };

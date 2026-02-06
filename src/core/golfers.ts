@@ -2,7 +2,7 @@
  * Golfer System - Guest management for the golf course
  *
  * Similar to RollerCoaster Tycoon's guest system:
- * - Golfer generation based on course rating and marketing
+ * - Golfer generation based on course rating and prestige
  * - Green fees and pricing
  * - Golfer satisfaction and ratings
  * - Different golfer types with varying preferences

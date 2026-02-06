@@ -78,7 +78,6 @@ export class UIManager {
   private onEmployees?: () => void;
   private onResearch?: () => void;
   private onTeeSheet?: () => void;
-  private onMarketing?: () => void;
   private onSpeedChange?: (delta: number) => void;
   private onPriceChange?: (delta: number) => void;
 
@@ -855,9 +854,8 @@ export class UIManager {
       '[ / ]: Zoom | P: Pause',
       '─ Management ─',
       'H: Employees | Y: Research',
-      'G: TeeSheet | K: Marketing',
+      'G: TeeSheet',
       'B: Equipment | U: Amenities',
-      'O: Walk-On Queue',
     ];
 
     for (const line of lines) {
@@ -998,19 +996,6 @@ export class UIManager {
     teeSheetBtn.control.paddingTop = '10px';
     stack.addControl(teeSheetBtn.control);
     this.pauseMenuButtons.push(teeSheetBtn);
-
-    const marketingBtn = createAccessibleButton({
-      label: '📢 Marketing',
-      fontSize: 16,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onMarketing?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    marketingBtn.control.paddingTop = '10px';
-    stack.addControl(marketingBtn.control);
-    this.pauseMenuButtons.push(marketingBtn);
 
     const speedDivider = new Rectangle('speedDivider');
     speedDivider.width = '200px';
@@ -1190,7 +1175,6 @@ export class UIManager {
     onEmployees?: () => void,
     onResearch?: () => void,
     onTeeSheet?: () => void,
-    onMarketing?: () => void,
     onSpeedChange?: (delta: number) => void,
     currentSpeed?: number
   ): void {
@@ -1201,7 +1185,6 @@ export class UIManager {
     this.onEmployees = onEmployees;
     this.onResearch = onResearch;
     this.onTeeSheet = onTeeSheet;
-    this.onMarketing = onMarketing;
     this.onSpeedChange = onSpeedChange;
     if (this.speedText && currentSpeed !== undefined) {
       this.speedText.text = `${currentSpeed}x`;

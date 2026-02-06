@@ -27,8 +27,6 @@ declare global {
     getPrestigeState: () => { score: number; stars: number; tier: string; amenityScore: number } | null;
     purchaseAmenity: (upgradeType: string) => boolean;
     getTeeTimeStats: () => { totalBookings: number; cancellations: number; noShows: number; slotsAvailable: number } | null;
-    getMarketingStats: () => { activeCampaigns: number; totalSpent: number; totalROI: number } | null;
-    startMarketingCampaign: (campaignId: string, days?: number) => boolean;
     setCash: (amount: number) => void;
     advanceDay: () => void;
     getGameDay: () => number | null;
@@ -388,20 +386,6 @@ window.getTeeTimeStats = () => {
     return window.game.getTeeTimeStats();
   }
   return null;
-};
-
-window.getMarketingStats = () => {
-  if (window.game) {
-    return window.game.getMarketingStats();
-  }
-  return null;
-};
-
-window.startMarketingCampaign = (campaignId: string, days?: number) => {
-  if (window.game) {
-    return window.game.startMarketingCampaign(campaignId, days);
-  }
-  return false;
 };
 
 window.setCash = (amount: number) => {

@@ -16,9 +16,7 @@ import { createInitialPoolState } from './golfers';
 import { createInitialResearchState } from './research';
 import { createInitialPrestigeState } from './prestige';
 import { createInitialTeeTimeState } from './tee-times';
-import { createInitialWalkOnState } from './walk-ons';
 import { createInitialRevenueState } from './tee-revenue';
-import { createInitialMarketingState } from './marketing';
 import { ScenarioProgress } from './scenario';
 import { createInitialAutonomousState } from './autonomous-equipment';
 import { createInitialWeatherState } from './weather';
@@ -67,9 +65,7 @@ function createMockSaveState(scenarioId = 'test_scenario'): SaveGameState {
     createInitialResearchState(),
     createInitialPrestigeState(),
     createInitialTeeTimeState(),
-    createInitialWalkOnState(),
     createInitialRevenueState(),
-    createInitialMarketingState(),
     createInitialApplicationState(),
     createMockScenarioProgress(),
     createInitialAutonomousState(),
@@ -102,9 +98,7 @@ describe('save-game', () => {
       expect(state.researchState).toBeDefined();
       expect(state.prestigeState).toBeDefined();
       expect(state.teeTimeState).toBeDefined();
-      expect(state.walkOnState).toBeDefined();
       expect(state.revenueState).toBeDefined();
-      expect(state.marketingState).toBeDefined();
       expect(state.scenarioProgress).toBeDefined();
       expect(state.autonomousState).toBeDefined();
       expect(state.weatherState).toBeDefined();
@@ -127,9 +121,7 @@ describe('save-game', () => {
         createInitialResearchState(),
         createInitialPrestigeState(),
         createInitialTeeTimeState(),
-        createInitialWalkOnState(),
         createInitialRevenueState(),
-        createInitialMarketingState(),
         createInitialApplicationState(),
         createMockScenarioProgress(),
         createInitialAutonomousState(),

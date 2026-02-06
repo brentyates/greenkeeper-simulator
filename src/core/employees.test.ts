@@ -524,13 +524,14 @@ describe("Employee System", () => {
   });
 
   describe("calculateEffectiveEfficiency", () => {
-    it("returns base efficiency at full happiness and zero fatigue", () => {
+    it("returns boosted efficiency at full happiness and zero fatigue", () => {
       const emp = makeEmployee({
         skills: { efficiency: 1.0, quality: 1, stamina: 1, reliability: 1 },
         happiness: 100,
         fatigue: 0
       });
-      expect(calculateEffectiveEfficiency(emp)).toBe(1.0);
+      // Happiness 90-100 = "Motivated" tier = 1.10x modifier
+      expect(calculateEffectiveEfficiency(emp)).toBe(1.1);
     });
 
     it("reduces efficiency with low happiness", () => {
@@ -548,7 +549,8 @@ describe("Employee System", () => {
         happiness: 100,
         fatigue: 100
       });
-      expect(calculateEffectiveEfficiency(emp)).toBe(0.7);
+      // Happiness 100 = 1.1x, Fatigue 100 = 0.7x, combined = 0.77
+      expect(calculateEffectiveEfficiency(emp)).toBe(1.1 * 0.7);
     });
 
     it("combines happiness and fatigue effects", () => {
