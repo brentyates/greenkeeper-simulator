@@ -47,17 +47,9 @@ import {
   createInitialTeeTimeState,
 } from "../core/tee-times";
 import {
-  WalkOnState,
-  createInitialWalkOnState,
-} from "../core/walk-ons";
-import {
   RevenueState,
   createInitialRevenueState,
 } from "../core/tee-revenue";
-import {
-  MarketingState,
-  createInitialMarketingState,
-} from "../core/marketing";
 import {
   AutonomousEquipmentState,
   createInitialAutonomousState,
@@ -129,11 +121,7 @@ export class GameState {
 
   teeTimeState!: TeeTimeSystemState;
 
-  walkOnState!: WalkOnState;
-
   revenueState!: RevenueState;
-
-  marketingState!: MarketingState;
 
   autonomousState!: AutonomousEquipmentState;
 
@@ -191,9 +179,7 @@ export class GameState {
     state.researchState = createInitialResearchState();
     state.prestigeState = createInitialPrestigeState(100);
     state.teeTimeState = createInitialTeeTimeState();
-    state.walkOnState = createInitialWalkOnState();
     state.revenueState = createInitialRevenueState();
-    state.marketingState = createInitialMarketingState();
     state.autonomousState = createInitialAutonomousState(
       REFILL_STATIONS[0]?.x ?? 25,
       REFILL_STATIONS[0]?.y ?? 19

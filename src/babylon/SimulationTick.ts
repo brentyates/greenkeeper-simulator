@@ -56,24 +56,18 @@ import {
   generateDailySlots,
   simulateDailyBookings,
   applyBookingSimulation,
-  getAvailableSlots,
   resetDailyMetrics as resetTeeTimeDailyMetrics,
-  type GameTime,
 } from "../core/tee-times";
-import {
-  processWalkOns,
-  resetDailyWalkOnMetrics,
-} from "../core/walk-ons";
 import {
   finalizeDailyRevenue,
 } from "../core/tee-revenue";
 import {
-  processDailyCampaigns,
-  calculateCombinedDemandMultiplier,
-} from "../core/marketing";
-import {
   tickAutonomousEquipment as coreTickAutonomousEquipment,
+  countBrokenRobots,
 } from "../core/autonomous-equipment";
+import {
+  calculateAllRoleWork,
+} from "../core/employee-roles";
 import {
   tickWeather as coreTickWeather,
   getWeatherDescription,
@@ -171,11 +165,6 @@ function tickPrestige(state: GameState, systems: SimulationSystems, hours: numbe
 function tickTeeTimes(state: GameState, systems: SimulationSystems, hours: number, timestamp: number): void {
   if (hours !== state.lastTeeTimeUpdateHour) {
     state.lastTeeTimeUpdateHour = hours;
-    const currentGameTime: GameTime = {
-      day: state.gameDay,
-      hour: hours,
-      minute: 0,
-    };
 
     if (hours === 5) {
       const newSlots = generateDailySlots(
@@ -191,16 +180,12 @@ function tickTeeTimes(state: GameState, systems: SimulationSystems, hours: numbe
         currentDay: state.gameDay,
       };
 
-      const marketingMultiplier = calculateCombinedDemandMultiplier(
-        state.marketingState
-      );
       const bookings = simulateDailyBookings(
         state.teeTimeState,
         state.gameDay,
         state.gameDay,
         {
           prestigeScore: state.prestigeState.currentScore / 200,
-          marketingBonus: marketingMultiplier,
         },
         state.greenFees.weekday18Holes,
         20
@@ -212,21 +197,6 @@ function tickTeeTimes(state: GameState, systems: SimulationSystems, hours: numbe
       );
     }
 
-    if (hours >= 6 && hours <= 19) {
-      const availableSlots = getAvailableSlots(
-        state.teeTimeState,
-        state.gameDay
-      );
-      const walkOnResult = processWalkOns(
-        state.walkOnState,
-        currentGameTime,
-        availableSlots,
-        state.greenFees.weekday18Holes,
-        20
-      );
-      state.walkOnState = walkOnResult.state;
-    }
-
     if (hours === 22) {
       processEndOfDay(state, systems, timestamp);
     }
@@ -235,31 +205,6 @@ function tickTeeTimes(state: GameState, systems: SimulationSystems, hours: numbe
 
 function processEndOfDay(state: GameState, systems: SimulationSystems, timestamp: number): void {
   state.revenueState = finalizeDailyRevenue(state.revenueState);
-
-  const marketingResult = processDailyCampaigns(
-    state.marketingState,
-    state.gameDay,
-    state.teeTimeState.bookingMetrics.totalBookingsToday,
-    state.revenueState.todaysRevenue.grossRevenue
-  );
-  state.marketingState = marketingResult.state;
-  for (const name of marketingResult.completedCampaignNames) {
-    systems.uiManager.showNotification(`📢 Campaign completed: ${name}`);
-  }
-  if (marketingResult.dailyCost > 0) {
-    const expenseResult = addExpense(
-      state.economyState,
-      marketingResult.dailyCost,
-      "marketing",
-      "Marketing campaigns",
-      timestamp,
-      true
-    );
-    if (expenseResult) {
-      state.economyState = expenseResult;
-      state.dailyStats.expenses.other += marketingResult.dailyCost;
-    }
-  }
 
   const dailyUtilitiesCost = 50;
   const utilitiesResult = addExpense(
@@ -273,6 +218,33 @@ function processEndOfDay(state: GameState, systems: SimulationSystems, timestamp
   if (utilitiesResult) {
     state.economyState = utilitiesResult;
     state.dailyStats.expenses.utilities += dailyUtilitiesCost;
+  }
+
+  // Calculate role-specific work effects (daily)
+  if (state.dailyStats.golfersServed > 0) {
+    const roleWork = calculateAllRoleWork(state.employeeRoster, {
+      brokenEquipmentCount: 0,
+      leakingPipeCount: state.irrigationSystem.pipes.filter(p => p.isLeaking).length,
+      brokenRobotCount: countBrokenRobots(state.autonomousState),
+      dailyGolferCount: state.dailyStats.golfersServed,
+      dailyGolferGroups: Math.ceil(state.dailyStats.golfersServed / 4),
+      avgGreenFee: state.greenFees.weekday18Holes,
+    });
+
+    const roleRevenue =
+      roleWork.proShop.merchRevenue +
+      roleWork.caddy.tipRevenue +
+      roleWork.mechanic.maintenanceSavings;
+    if (roleRevenue > 0) {
+      state.economyState = addIncome(
+        state.economyState,
+        roleRevenue,
+        "other_income",
+        "Employee role work",
+        timestamp
+      );
+      state.dailyStats.revenue.other += roleRevenue;
+    }
   }
 
   const dailySnapshot = takeDailySnapshot(
@@ -291,7 +263,6 @@ function processEndOfDay(state: GameState, systems: SimulationSystems, timestamp
   systems.showDaySummaryCallback();
   systems.saveCallback();
 
-  state.walkOnState = resetDailyWalkOnMetrics(state.walkOnState);
   state.teeTimeState = resetTeeTimeDailyMetrics(state.teeTimeState);
   state.prestigeState = resetPrestigeDailyStats(state.prestigeState);
   state.golferPool = resetGolferDailyStats(state.golferPool);

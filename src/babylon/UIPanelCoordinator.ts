@@ -5,10 +5,8 @@ import { EmployeePanel } from "./ui/EmployeePanel";
 import { ResearchPanel } from "./ui/ResearchPanel";
 import { DaySummaryPopup, DaySummaryData } from "./ui/DaySummaryPopup";
 import { TeeSheetPanel } from "./ui/TeeSheetPanel";
-import { MarketingDashboard } from "./ui/MarketingDashboard";
 import { EquipmentStorePanel } from "./ui/EquipmentStorePanel";
 import { AmenityPanel } from "./ui/AmenityPanel";
-import { WalkOnQueuePanel } from "./ui/WalkOnQueuePanel";
 import { IrrigationToolbar } from "./ui/IrrigationToolbar";
 import { IrrigationInfoPanel } from "./ui/IrrigationInfoPanel";
 import { IrrigationSchedulePanel } from "./ui/IrrigationSchedulePanel";
@@ -56,10 +54,6 @@ import {
   updateSpacing,
 } from "../core/tee-times";
 import {
-  startCampaign,
-  stopCampaign,
-} from "../core/marketing";
-import {
   purchaseRobot,
   sellRobot,
 } from "../core/autonomous-equipment";
@@ -82,10 +76,8 @@ export class UIPanelCoordinator {
   private daySummaryPopup: DaySummaryPopup | null = null;
   private teeSheetPanel: TeeSheetPanel | null = null;
   private teeSheetViewDay: number = 1;
-  private marketingDashboard: MarketingDashboard | null = null;
   private equipmentStorePanel: EquipmentStorePanel | null = null;
   private amenityPanel: AmenityPanel | null = null;
-  private walkOnQueuePanel: WalkOnQueuePanel | null = null;
   private irrigationToolbar: IrrigationToolbar | null = null;
   private irrigationInfoPanel: IrrigationInfoPanel | null = null;
   private irrigationSchedulePanel: IrrigationSchedulePanel | null = null;
@@ -101,10 +93,8 @@ export class UIPanelCoordinator {
     this.setupResearchPanel();
     this.setupDaySummaryPopup();
     this.setupTeeSheetPanel();
-    this.setupMarketingDashboard();
     this.setupEquipmentStorePanel();
     this.setupAmenityPanel();
-    this.setupWalkOnQueuePanel();
     this.setupIrrigationUI();
     this.setupPriceCallback();
   }
@@ -329,66 +319,6 @@ export class UIPanelCoordinator {
     });
   }
 
-  private setupMarketingDashboard(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "MarketingUI",
-      true,
-      this.scene
-    );
-
-    this.marketingDashboard = new MarketingDashboard(uiTexture, {
-      onStartCampaign: (campaignId: string, duration: number) => {
-        const result = startCampaign(
-          this.state.marketingState,
-          campaignId,
-          this.state.gameDay,
-          duration
-        );
-        if (result) {
-          this.state.marketingState = result.state;
-          if (result.setupCost > 0) {
-            const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
-            const expenseResult = addExpense(
-              this.state.economyState,
-              result.setupCost,
-              "marketing",
-              "Campaign setup",
-              timestamp,
-              false
-            );
-            if (expenseResult) {
-              this.state.economyState = expenseResult;
-              this.state.dailyStats.expenses.other += result.setupCost;
-            }
-          }
-          this.marketingDashboard?.update(
-            this.state.marketingState,
-            this.state.gameDay,
-            this.state.economyState.cash
-          );
-          this.systems.uiManager.showNotification("Campaign started!");
-        }
-      },
-      onStopCampaign: (campaignId: string) => {
-        const result = stopCampaign(
-          this.state.marketingState,
-          campaignId,
-          this.state.gameDay
-        );
-        this.state.marketingState = result;
-        this.marketingDashboard?.update(
-          this.state.marketingState,
-          this.state.gameDay,
-          this.state.economyState.cash
-        );
-        this.systems.uiManager.showNotification("Campaign stopped");
-      },
-      onClose: () => {
-        this.marketingDashboard?.hide();
-      },
-    });
-  }
-
   private setupEquipmentStorePanel(): void {
     const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
       "EquipmentStoreUI",
@@ -495,37 +425,6 @@ export class UIPanelCoordinator {
     });
   }
 
-  private setupWalkOnQueuePanel(): void {
-    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "WalkOnQueueUI",
-      true,
-      this.scene
-    );
-
-    this.walkOnQueuePanel = new WalkOnQueuePanel(uiTexture, {
-      onAssignToSlot: (_golferId: string) => {
-        this.systems.uiManager.showNotification(
-          `Assigned golfer to next available slot`
-        );
-        this.walkOnQueuePanel?.update(this.state.walkOnState);
-      },
-      onTurnAway: (golferId: string) => {
-        const golfer = this.state.walkOnState.queue.find(
-          (g) => g.golferId === golferId
-        );
-        if (golfer) {
-          golfer.status = "turned_away";
-          this.state.walkOnState.metrics.walkOnsTurnedAwayToday++;
-          this.walkOnQueuePanel?.update(this.state.walkOnState);
-          this.systems.uiManager.showNotification(`Turned away ${golfer.name}`);
-        }
-      },
-      onClose: () => {
-        this.walkOnQueuePanel?.hide();
-      },
-    });
-  }
-
   private setupIrrigationUI(): void {
     const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
       "IrrigationUI",
@@ -618,19 +517,6 @@ export class UIPanelCoordinator {
     }
   }
 
-  handleMarketingPanel(): void {
-    if (this.marketingDashboard?.isVisible()) {
-      this.marketingDashboard.hide();
-    } else {
-      this.marketingDashboard?.update(
-        this.state.marketingState,
-        this.state.gameDay,
-        this.state.economyState.cash
-      );
-      this.marketingDashboard?.show();
-    }
-  }
-
   handleEquipmentStore(): void {
     if (this.equipmentStorePanel?.isVisible()) {
       this.equipmentStorePanel.hide();
@@ -650,15 +536,6 @@ export class UIPanelCoordinator {
     } else {
       this.amenityPanel?.update(this.state.prestigeState, this.state.economyState.cash);
       this.amenityPanel?.show();
-    }
-  }
-
-  handleWalkOnQueuePanel(): void {
-    if (this.walkOnQueuePanel?.isVisible()) {
-      this.walkOnQueuePanel.hide();
-    } else {
-      this.walkOnQueuePanel?.update(this.state.walkOnState);
-      this.walkOnQueuePanel?.show();
     }
   }
 
@@ -692,10 +569,8 @@ export class UIPanelCoordinator {
     this.researchPanel?.dispose();
     this.daySummaryPopup?.dispose();
     this.teeSheetPanel?.dispose();
-    this.marketingDashboard?.dispose();
     this.equipmentStorePanel?.dispose();
     this.amenityPanel?.dispose();
-    this.walkOnQueuePanel?.dispose();
     this.irrigationToolbar?.dispose();
     this.irrigationInfoPanel?.dispose();
     this.irrigationSchedulePanel?.dispose();

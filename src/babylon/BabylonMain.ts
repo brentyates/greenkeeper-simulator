@@ -304,9 +304,7 @@ export class BabylonMain {
       this.state.researchState,
       this.state.prestigeState,
       this.state.teeTimeState,
-      this.state.walkOnState,
       this.state.revenueState,
-      this.state.marketingState,
       this.state.applicationState,
       scenarioProgress,
       this.state.autonomousState,
@@ -352,9 +350,7 @@ export class BabylonMain {
       ...saved.teeTimeState,
       teeTimes: reconstructedTeeTimes,
     };
-    this.state.walkOnState = saved.walkOnState;
     this.state.revenueState = saved.revenueState;
-    this.state.marketingState = saved.marketingState;
     this.state.applicationState =
       saved.applicationState ||
       createInitialApplicationState(
@@ -453,10 +449,8 @@ export class BabylonMain {
       onEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       onResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       onTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      onMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
       onEquipmentStore: () => this.uiPanelCoordinator.handleEquipmentStore(),
       onAmenityPanel: () => this.uiPanelCoordinator.handleAmenityPanel(),
-      onWalkOnQueuePanel: () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       onSelectAll: () => {
         const es = editorSystem();
         if (es?.isEnabled() && es.getMode() === 'sculpt') {
@@ -687,7 +681,6 @@ export class BabylonMain {
       () => this.uiPanelCoordinator.handleEmployeePanel(),
       () => this.uiPanelCoordinator.handleResearchPanel(),
       () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      () => this.uiPanelCoordinator.handleMarketingPanel(),
       (delta: number) => this.handleTimeSpeed(delta),
       this.state.timeScale
     );
@@ -1117,7 +1110,6 @@ export class BabylonMain {
       handleEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       handleResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       handleTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
-      handleMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
       handleOverlayCycle: () => this.handleOverlayCycle(),
       handleRefill: () => this.handleRefill(),
       handleMute: () => this.handleMute(),
@@ -1217,7 +1209,7 @@ export class BabylonMain {
     if (this.state.gameDay === 2 && hours >= 7) {
       this.showTutorialHint(
         "panels",
-        "🎓 Press H=Employees, Y=Research, G=TeeSheet, K=Marketing"
+        "🎓 Press H=Employees, Y=Research, G=TeeSheet"
       );
     }
 
