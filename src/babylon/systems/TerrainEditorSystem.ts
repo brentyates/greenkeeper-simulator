@@ -1,4 +1,4 @@
-import { Scene, Vector3, Ray } from "@babylonjs/core";
+import { Scene, Vector3 } from "@babylonjs/core";
 
 import {
   EditorTool,
@@ -10,7 +10,7 @@ import {
   VertexModification,
   TerrainTypeModification,
   Vec3,
-  SelectionMode,
+  InteractionMode,
   vertexKey,
   parseVertexKey,
   createInitialEditorState,
@@ -34,7 +34,6 @@ import {
 } from "../../core/terrain";
 import {
   TileHighlightSystem,
-  ElevationProvider,
   VertexPositionProvider,
   SelectionProvider,
 } from "./TileHighlightSystem";
@@ -62,9 +61,6 @@ export interface TerrainModifier {
   getWorldDimensions?(): { width: number; height: number };
   rebuildMesh?(): void;
   paintTerrainType?(cells: Array<{ x: number; y: number }>, type: TerrainType): void;
-  isTopologyMode?(): boolean;
-  enableTopologyMode?(): void;
-  disableTopologyMode?(): void;
   getTopology?(): TerrainMeshTopology | null;
   findNearestEdgeAt?(worldX: number, worldZ: number, maxDist?: number): { edgeId: number; t: number; dist: number } | null;
   setHoveredEdge?(edgeId: number | null): void;
@@ -97,8 +93,11 @@ export interface TerrainModifier {
   setBrushHoveredFaces?(faceIds: number[]): void;
   getEdgesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredEdges?(edgeIds: number[]): void;
-  pick?(ray: Ray): { gridX: number; gridY: number; worldPos: { x: number; z: number }; faceId: number | null } | null;
-  
+  getVerticesInWorldRadius?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
+  getVerticesFromEdgesInBrush?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
+  getVerticesFromFacesInBrush?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
+  updateFaceTerrainVisuals?(): void;
+
   // Backward compatibility / legacy
   subdivideEdgeAt?(edgeId: number, t?: number): { newVertexId: number; beforeState: TopologyModification['beforeState'] } | null;
   canDeleteTopologyVertex?(vertexId: number): boolean;
@@ -123,7 +122,7 @@ export interface TerrainEditorCallbacks {
   onUndoRedoChange?: (canUndo: boolean, canRedo: boolean) => void;
   onSelectionChange?: (count: number) => void;
   onTopologyModeChange?: (mode: TopologyMode) => void;
-  getPickRay?: () => Ray | null;
+  onInteractionModeChange?: (mode: InteractionMode) => void;
 }
 
 export class TerrainEditorSystem {
@@ -137,6 +136,7 @@ export class TerrainEditorSystem {
 
   private dragModifications: VertexModification[] = [];
   private dragPaintModifications: TerrainTypeModification[] = [];
+  private didFacePaintDuringDrag: boolean = false;
   private boxSelectStart: { vx: number; vy: number } | null = null;
   private axisConstraint: 'x' | 'y' | 'z' | 'xz' | 'all' = 'xz';
   private isMovingVertices: boolean = false;
@@ -151,10 +151,11 @@ export class TerrainEditorSystem {
   private hoveredFaceId: number | null = null;
   private selectedFaces: Set<number> = new Set();
   private meshResolution: number = 2.0;
+  private lastWorldPos: { x: number; z: number } | null = null;
 
-  constructor(scene: Scene, elevationProvider: ElevationProvider) {
+  constructor(scene: Scene) {
     this.state = createInitialEditorState();
-    this.highlightSystem = new TileHighlightSystem(scene, elevationProvider);
+    this.highlightSystem = new TileHighlightSystem(scene);
   }
 
   private getVertexDims(): { width: number; height: number } {
@@ -173,6 +174,9 @@ export class TerrainEditorSystem {
         getVertexElevation: (vx, vy) => modifier.getVertexElevation!(vx, vy),
         vertexToWorld: (vx, vy) => modifier.vertexToWorld!(vx, vy),
         getVertexDimensions: () => modifier.getVertexDimensions!(),
+        getVerticesInWorldRadius: modifier.getVerticesInWorldRadius
+          ? (worldX, worldZ, radius) => modifier.getVerticesInWorldRadius!(worldX, worldZ, radius)
+          : undefined,
       };
       this.highlightSystem.setVertexProvider(vertexProvider);
 
@@ -204,7 +208,9 @@ export class TerrainEditorSystem {
     this.redoStack = [];
     this.notifyUndoRedoChange();
 
-    this.highlightSystem.setHighlightMode(this.state.mode === 'sculpt' ? 'vertex' : 'cell');
+    this.highlightSystem.setBrushSize(this.getBrushRadius());
+    this.setMode(this.state.mode);
+    this.syncHighlightMode();
 
     this.callbacks.onEnable?.();
   }
@@ -213,6 +219,7 @@ export class TerrainEditorSystem {
     if (!this.state.enabled) return;
 
     this.state.enabled = false;
+    this.setTopologyMode('none');
     this.highlightSystem.clearHighlight();
     this.callbacks.onDisable?.();
   }
@@ -238,7 +245,6 @@ export class TerrainEditorSystem {
   }
 
   public setMode(mode: EditorMode): void {
-    if (this.state.mode === mode) return;
     this.state.mode = mode;
 
     if (mode === 'sculpt') {
@@ -246,27 +252,15 @@ export class TerrainEditorSystem {
         this.state.activeTool = 'raise';
         this.callbacks.onToolChange?.('raise');
       }
-      this.setTopologyMode('vertex');
+      if (this.topologyMode === 'none') {
+        this.setTopologyMode('vertex');
+      }
     } else if (mode === 'paint') {
       if (!isTerrainBrush(this.state.activeTool)) {
         this.state.activeTool = 'terrain_fairway';
         this.callbacks.onToolChange?.('terrain_fairway');
       }
-      this.setTopologyMode('none');
-    }
-
-    if (this.topologyMode === 'face' || this.topologyMode === 'edge') {
-        if (this.state.mode === 'paint') {
-            this.highlightSystem.setHighlightMode('cell');
-        } else {
-            this.highlightSystem.setHighlightMode('none');
-        }
-    } else if (this.topologyMode === 'vertex') {
-        this.highlightSystem.setHighlightMode('vertex');
-    } else if (this.topologyMode === 'none') {
-        this.highlightSystem.setHighlightMode(mode === 'sculpt' ? 'vertex' : 'cell');
-    } else {
-        this.highlightSystem.setHighlightMode(mode === 'sculpt' ? 'vertex' : 'cell');
+      this.setTopologyMode('face');
     }
 
     this.callbacks.onModeChange?.(mode);
@@ -281,14 +275,9 @@ export class TerrainEditorSystem {
     this.state.activeTool = tool;
 
     if (isSculptTool(tool) && this.state.mode !== 'sculpt') {
-      this.state.mode = 'sculpt';
-      this.highlightSystem.setHighlightMode('vertex');
-      this.callbacks.onModeChange?.('sculpt');
+      this.setMode('sculpt');
     } else if (isTerrainBrush(tool) && this.state.mode !== 'paint') {
-      this.state.mode = 'paint';
-      this.highlightSystem.setHighlightMode('cell');
-      this.callbacks.onModeChange?.('paint');
-      this.setTopologyMode('face');
+      this.setMode('paint');
     }
 
     this.callbacks.onToolChange?.(tool);
@@ -308,6 +297,71 @@ export class TerrainEditorSystem {
 
   public isMovingSelectedVertices(): boolean {
     return this.isMovingVertices;
+  }
+
+  public getInteractionMode(): InteractionMode {
+    return this.state.interactionMode;
+  }
+
+  public setInteractionMode(mode: InteractionMode): void {
+    if (this.state.interactionMode === mode) return;
+    this.state.interactionMode = mode;
+
+    if (mode === 'select') {
+      this.highlightSystem.setBrushSize(0);
+      this.terrainModifier?.setBrushHoveredFaces?.([]);
+      this.terrainModifier?.setBrushHoveredEdges?.([]);
+    } else {
+      this.highlightSystem.setBrushSize(this.getBrushRadius());
+    }
+
+    this.highlightSystem.refresh();
+    this.callbacks.onInteractionModeChange?.(mode);
+  }
+
+  public handleSelectClick(worldPos: { x: number; z: number }, shiftKey: boolean): void {
+    if (!this.terrainModifier) return;
+
+    if (this.topologyMode === 'vertex') {
+      const nearest = this.terrainModifier.findNearestVertex?.(worldPos.x, worldPos.z);
+      if (nearest) {
+        if (shiftKey) {
+          const key = vertexKey(nearest.vx, nearest.vy);
+          if (this.state.selectedVertices.has(key)) {
+            this.state.selectedVertices.delete(key);
+          } else {
+            this.state.selectedVertices.add(key);
+          }
+        } else {
+          this.state.selectedVertices.clear();
+          this.state.selectedVertices.add(vertexKey(nearest.vx, nearest.vy));
+        }
+        this.notifySelectionChange();
+        this.highlightSystem.refresh();
+      }
+    } else if (this.topologyMode === 'edge') {
+      const edgePick = this.terrainModifier.findNearestEdgeAt?.(worldPos.x, worldPos.z);
+      if (edgePick) {
+        if (shiftKey) {
+          this.terrainModifier.toggleEdgeSelection?.(edgePick.edgeId);
+        } else {
+          this.terrainModifier.selectEdge?.(edgePick.edgeId);
+        }
+        this.hoveredEdgeId = edgePick.edgeId;
+        this.notifySelectionChange();
+        this.highlightSystem.refresh();
+      }
+    } else if (this.topologyMode === 'face') {
+      const faceId = this.terrainModifier.findFaceAtPosition?.(worldPos.x, worldPos.z) ?? null;
+      if (faceId !== null) {
+        if (shiftKey) {
+          this.toggleFaceSelection(faceId);
+        } else {
+          this.selectFace(faceId);
+        }
+        this.highlightSystem.refresh();
+      }
+    }
   }
 
   public getBrushSize(): number {
@@ -332,16 +386,12 @@ export class TerrainEditorSystem {
     return this.state.brushStrength;
   }
 
-  public selectVertices(vertices: Array<{ vx: number; vy: number }>, mode: SelectionMode = 'single'): void {
-    if (mode === 'single') {
+  public selectVertices(vertices: Array<{ vx: number; vy: number }>, additive: boolean = false): void {
+    if (!additive) {
       this.state.selectedVertices.clear();
-      for (const v of vertices) {
-        this.state.selectedVertices.add(vertexKey(v.vx, v.vy));
-      }
-    } else { 
-        for (const v of vertices) {
-            this.state.selectedVertices.add(vertexKey(v.vx, v.vy));
-        }
+    }
+    for (const v of vertices) {
+      this.state.selectedVertices.add(vertexKey(v.vx, v.vy));
     }
     this.notifySelectionChange();
     this.highlightSystem.refresh();
@@ -384,7 +434,7 @@ export class TerrainEditorSystem {
         vertices.push({ vx, vy });
       }
     }
-    this.selectVertices(vertices, 'single');
+    this.selectVertices(vertices, false);
   }
 
   public deselectAllVertices(): void {
@@ -606,17 +656,21 @@ export class TerrainEditorSystem {
 
   public handleMouseDown(gridX: number, gridY: number): void {
     if (!this.state.enabled) return;
+    if (this.state.interactionMode === 'select') return;
 
     this.state.isDragging = true;
     this.dragModifications = [];
     this.dragPaintModifications = [];
-    // this.lastDragTile = { x: gridX, y: gridY };
-    // this.lastDragVertex = this.state.hoverVertex ? { ...this.state.hoverVertex } : null;
+    this.didFacePaintDuringDrag = false;
 
     if (this.state.mode === 'sculpt') {
       this.handleSculptClick();
     } else if (this.state.mode === 'paint') {
-      this.handleClick(gridX, gridY);
+      if (this.topologyMode === 'face' && this.lastWorldPos) {
+        this.handleFacePaint(this.lastWorldPos.x, this.lastWorldPos.z);
+      } else if (isTerrainBrush(this.state.activeTool)) {
+        this.handlePaintClick(gridX, gridY);
+      }
     }
   }
 
@@ -637,69 +691,101 @@ export class TerrainEditorSystem {
       this.notifyUndoRedoChange();
     }
 
+    if (this.didFacePaintDuringDrag) {
+      this.didFacePaintDuringDrag = false;
+      this.terrainModifier?.rebuildMesh?.();
+    }
+
     this.dragModifications = [];
     this.dragPaintModifications = [];
-    // this.lastDragTile = null;
-    // this.lastDragVertex = null;
     this.isMovingVertices = false;
   }
 
   public handleClick(gridX: number, gridY: number): void {
     if (!this.state.enabled) return;
 
-    if (this.state.mode === 'sculpt' && this.state.hoverVertex) {
-      this.handleSculptClick();
-    } else if (this.state.mode === 'paint' && this.topologyMode === 'face') {
-        const ray = this.getPickRay();
-        if (ray) {
-            const pick = this.terrainModifier?.pick?.(ray);
-            if (pick) {
-                this.handlePaintDrag(pick.gridX, pick.gridY);
-            }
-        }
-    } else if (this.state.mode === 'paint' && this.state.hoverTile) {
+    if (this.state.mode === 'paint' && this.state.hoverTile) {
       this.handlePaintClick(gridX, gridY);
     }
+  }
+
+  private getSculptContext(): { anchorVx: number; anchorVy: number; worldX: number; worldZ: number; vertices: Array<{ vx: number; vy: number }> } | null {
+    if (!this.terrainModifier) return null;
+
+    let worldX: number;
+    let worldZ: number;
+
+    if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
+      const wp = this.terrainModifier.vertexToWorld?.(this.state.hoverVertex.vx, this.state.hoverVertex.vy);
+      worldX = wp?.x ?? this.state.hoverVertex.vx / this.meshResolution;
+      worldZ = wp?.z ?? this.state.hoverVertex.vy / this.meshResolution;
+    } else if (this.lastWorldPos) {
+      worldX = this.lastWorldPos.x;
+      worldZ = this.lastWorldPos.z;
+    } else {
+      return null;
+    }
+
+    const nearest = this.terrainModifier.findNearestVertex?.(worldX, worldZ);
+    if (!nearest) return null;
+    const anchorVx = nearest.vx;
+    const anchorVy = nearest.vy;
+
+    const radius = this.getBrushRadius();
+    let vertices: Array<{ vx: number; vy: number }>;
+    switch (this.topologyMode) {
+      case 'vertex':
+        vertices = this.terrainModifier.getVerticesInWorldRadius?.(worldX, worldZ, radius) ?? [];
+        break;
+      case 'edge':
+        vertices = this.terrainModifier.getVerticesFromEdgesInBrush?.(worldX, worldZ, radius) ?? [];
+        break;
+      case 'face':
+        vertices = this.terrainModifier.getVerticesFromFacesInBrush?.(worldX, worldZ, radius) ?? [];
+        break;
+      default:
+        vertices = this.terrainModifier.getVerticesInWorldRadius?.(worldX, worldZ, radius) ?? [];
+        break;
+    }
+
+    if (vertices.length === 0) return null;
+
+    return { anchorVx, anchorVy, worldX, worldZ, vertices };
   }
 
   private handleSculptClick(): void {
     if (!this.terrainModifier) return;
 
-    let anchorX: number | undefined;
-    let anchorY: number | undefined;
-
-    if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
-        anchorX = this.state.hoverVertex.vx;
-        anchorY = this.state.hoverVertex.vy;
-    } else if (this.state.hoverTile) {
-        anchorX = this.state.hoverTile.x * (1.0 / this.meshResolution); 
-        anchorY = this.state.hoverTile.y * (1.0 / this.meshResolution);
-    }
-
-    if (anchorX === undefined || anchorY === undefined) return;
+    const sculpt = this.getSculptContext();
+    if (!sculpt) return;
 
     const tool = this.state.activeTool as SculptTool;
     const { width: vertexWidth, height: vertexHeight } = this.getVertexDims();
     const elevGrid = this.terrainModifier.getVertexElevationsGrid?.() ?? [];
     const modifications = applySculptTool(
       tool,
-      anchorX,
-      anchorY,
+      sculpt.anchorVx,
+      sculpt.anchorVy,
       elevGrid,
-      this.getBrushRadius(),
+      this.getBrushRadius() * this.meshResolution,
       this.state.brushStrength,
       vertexWidth,
       vertexHeight,
-      this.state.selectedVertices
+      this.state.selectedVertices,
+      sculpt.vertices
     );
 
     if (modifications.length > 0) {
       commitVertexModifications(modifications, elevGrid);
 
-      const action = createElevationAction(modifications);
-      this.undoStack.push(action);
-      this.redoStack = [];
-      this.notifyUndoRedoChange();
+      for (const mod of modifications) {
+        const existing = this.dragModifications.find(m => m.vx === mod.vx && m.vy === mod.vy);
+        if (existing) {
+          existing.newZ = mod.newZ;
+        } else {
+          this.dragModifications.push({ ...mod });
+        }
+      }
 
       this.applyVertexModifications(modifications);
       this.highlightSystem.refresh();
@@ -744,7 +830,7 @@ export class TerrainEditorSystem {
     if (!this.state.enabled || !this.state.isDragging) return;
 
     if (this.state.mode === 'sculpt') {
-      this.handleSculptDrag(gridX, gridY);
+      this.handleSculptDrag();
       return;
     }
 
@@ -754,40 +840,31 @@ export class TerrainEditorSystem {
     }
   }
 
-  private handleSculptDrag(gridX: number, gridY: number): void {
+  private handleSculptDrag(): void {
     if (!this.terrainModifier) return;
 
-    let anchorX: number | undefined;
-    let anchorY: number | undefined;
-
-    if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
-        anchorX = this.state.hoverVertex.vx;
-        anchorY = this.state.hoverVertex.vy;
-    } else {
-        anchorX = gridX;
-        anchorY = gridY;
-    }
-
-    if (anchorX === undefined || anchorY === undefined) return;
+    const sculpt = this.getSculptContext();
+    if (!sculpt) return;
 
     const tool = this.state.activeTool as SculptTool;
     const { width: vertexWidth, height: vertexHeight } = this.getVertexDims();
     const elevGrid = this.terrainModifier.getVertexElevationsGrid?.() ?? [];
     const modifications = applySculptTool(
       tool,
-      anchorX,
-      anchorY,
+      sculpt.anchorVx,
+      sculpt.anchorVy,
       elevGrid,
       this.getBrushRadius() * this.meshResolution,
       this.state.brushStrength,
       vertexWidth,
       vertexHeight,
-      this.state.selectedVertices
+      this.state.selectedVertices,
+      sculpt.vertices
     );
 
     if (modifications.length > 0) {
       commitVertexModifications(modifications, elevGrid);
-      
+
       for (const mod of modifications) {
         const existing = this.dragModifications.find(m => m.vx === mod.vx && m.vy === mod.vy);
         if (existing) {
@@ -805,24 +882,9 @@ export class TerrainEditorSystem {
   private handlePaintDrag(gridX: number, gridY: number): void {
     if (!this.terrainModifier || !isTerrainBrush(this.state.activeTool)) return;
 
-    if (this.topologyMode === 'face') {
-        const ray = this.getPickRay();
-        if (ray) {
-            const pick = this.terrainModifier.pick?.(ray);
-            if (!pick || pick.faceId === null) return;
-
-            const facesInBrush = this.terrainModifier.getFacesInBrush?.(pick.worldPos.x, pick.worldPos.z, this.getBrushRadius());
-            
-            if (facesInBrush && facesInBrush.length > 0) {
-                const terrainType = getTerrainTypeFromBrush(this.state.activeTool);
-                for (const faceId of facesInBrush) {
-                    this.terrainModifier.setFaceTerrain?.(faceId, terrainType);
-                }
-                this.terrainModifier.rebuildMesh?.();
-                this.highlightSystem.refresh();
-                return; // Only return if faces were hit
-            }
-        }
+    if (this.topologyMode === 'face' && this.lastWorldPos) {
+      this.handleFacePaint(this.lastWorldPos.x, this.lastWorldPos.z);
+      return;
     }
 
     const terrainType = getTerrainTypeFromBrush(this.state.activeTool);
@@ -864,50 +926,50 @@ export class TerrainEditorSystem {
     if (!this.terrainModifier) return;
     this.terrainModifier.setVertexElevations?.(modifications.map(m => ({ vx: m.vx, vy: m.vy, z: m.newZ })));
     this.terrainModifier.rebuildMesh?.();
+    this.callbacks.onModification?.(modifications.map(m => ({ x: m.vx, y: m.vy })));
   }
 
   public handleMouseMove(gridX: number, gridY: number, worldPos?: Vector3): void {
     if (!this.state.enabled) return;
-    
-    // Brush handle
-    if (this.state.mode === 'paint' && isTerrainBrush(this.state.activeTool) && worldPos) {
-        const ray = this.callbacks.getPickRay?.();
-        if (ray) {
-            const pick = this.terrainModifier?.pick?.(ray);
-            if (pick) {
-                this.hoveredFaceId = pick.faceId;
-            }
-        }
+
+    if (worldPos) {
+      this.lastWorldPos = { x: worldPos.x, z: worldPos.z };
     }
 
     const { width: mapWidth, height: mapHeight } = this.getWorldDims();
     const res = this.meshResolution;
     if (gridX < 0 || gridX >= mapWidth * res || gridY < 0 || gridY >= mapHeight * res) {
       this.state.hoverTile = null;
-      this.highlightSystem.setHighlightPosition(-1, -1);
+      this.highlightSystem.clearHighlight();
       return;
     }
 
     this.state.hoverTile = { x: gridX, y: gridY };
 
     if (this.topologyMode === 'vertex') {
-        const nearest = this.terrainModifier?.findNearestVertex?.(gridX / res, gridY / res);
-        if (nearest && nearest.dist < 0.5) {
+        const worldX = gridX / res;
+        const worldZ = gridY / res;
+        const nearest = this.terrainModifier?.findNearestVertex?.(worldX, worldZ);
+        if (nearest) {
             this.state.hoverVertex = { vx: nearest.vx, vy: nearest.vy };
-            this.highlightSystem.setVertexHighlightPosition(nearest.vx, nearest.vy);
+            this.highlightSystem.setVertexHighlightPosition(nearest.vx, nearest.vy, worldX, worldZ);
         } else {
             this.state.hoverVertex = null;
             this.highlightSystem.setVertexHighlightPosition(-1, -1);
         }
-        this.highlightSystem.setHighlightPosition(this.state.hoverTile.x, this.state.hoverTile.y);
     } else if (this.topologyMode === 'face' || this.topologyMode === 'edge') {
+        this.state.hoverVertex = null;
         if (this.topologyMode === 'face' && worldPos) {
             const faceId = this.terrainModifier?.findFaceAtPosition?.(worldPos.x, worldPos.z) ?? null;
             this.hoveredFaceId = faceId;
             this.terrainModifier?.setHoveredFace?.(faceId);
 
-            const facesInBrush = this.terrainModifier?.getFacesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
-            this.terrainModifier?.setBrushHoveredFaces?.(facesInBrush);
+            if (this.state.interactionMode === 'brush') {
+                const facesInBrush = this.terrainModifier?.getFacesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
+                this.terrainModifier?.setBrushHoveredFaces?.(facesInBrush);
+            } else {
+                this.terrainModifier?.setBrushHoveredFaces?.([]);
+            }
         }
 
         if (this.topologyMode === 'edge' && worldPos) {
@@ -915,13 +977,17 @@ export class TerrainEditorSystem {
             this.hoveredEdgeId = edgePick ? edgePick.edgeId : null;
             this.terrainModifier?.setHoveredEdge?.(this.hoveredEdgeId);
 
-            const edgesInBrush = this.terrainModifier?.getEdgesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
-            this.terrainModifier?.setBrushHoveredEdges?.(edgesInBrush);
+            if (this.state.interactionMode === 'brush') {
+                const edgesInBrush = this.terrainModifier?.getEdgesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
+                this.terrainModifier?.setBrushHoveredEdges?.(edgesInBrush);
+            } else {
+                this.terrainModifier?.setBrushHoveredEdges?.([]);
+            }
         }
 
-        this.highlightSystem.setHighlightPosition(this.state.hoverTile.x, this.state.hoverTile.y);
-    } else {
-        this.highlightSystem.setHighlightPosition(this.state.hoverTile.x, this.state.hoverTile.y);
+        if (worldPos) {
+            this.highlightSystem.setWorldPosition(worldPos.x, worldPos.z);
+        }
     }
   }
 
@@ -985,20 +1051,25 @@ export class TerrainEditorSystem {
     
     if (mode === 'vertex') {
         this.highlightSystem.setHighlightMode('vertex');
-    } else if (mode === 'face' || mode === 'edge') {
-        if (this.state.mode === 'paint') {
-            this.highlightSystem.setHighlightMode('cell');
-        } else {
-            this.highlightSystem.setHighlightMode('none');
-        }
-    } else if (mode === 'none') {
-        this.highlightSystem.setHighlightMode(this.state.mode === 'sculpt' ? 'vertex' : 'cell');
+    } else if (mode === 'face') {
+        this.highlightSystem.setHighlightMode('face');
+    } else if (mode === 'edge') {
+        this.highlightSystem.setHighlightMode('edge');
     } else {
-        this.highlightSystem.setHighlightMode(this.state.mode === 'sculpt' ? 'vertex' : 'cell');
+        this.highlightSystem.setHighlightMode('none');
     }
     
     this.callbacks.onTopologyModeChange?.(mode);
     this.highlightSystem.refresh();
+  }
+
+  private syncHighlightMode(): void {
+    const mode = this.topologyMode === 'none' ? 'none'
+      : this.topologyMode === 'vertex' ? 'vertex'
+      : this.topologyMode === 'face' ? 'face'
+      : this.topologyMode === 'edge' ? 'edge'
+      : 'none' as const;
+    this.highlightSystem.setHighlightMode(mode);
   }
 
   public getTopologyMode(): TopologyMode {
@@ -1052,12 +1123,20 @@ export class TerrainEditorSystem {
     this.highlightSystem.refresh();
   }
 
-  public dispose(): void {
-    this.highlightSystem.clearHighlight(); 
+  private handleFacePaint(worldX: number, worldZ: number): void {
+    if (!this.terrainModifier || !isTerrainBrush(this.state.activeTool)) return;
+    const facesInBrush = this.terrainModifier.getFacesInBrush?.(worldX, worldZ, this.getBrushRadius());
+    if (!facesInBrush || facesInBrush.length === 0) return;
+    const terrainType = getTerrainTypeFromBrush(this.state.activeTool);
+    for (const faceId of facesInBrush) {
+      this.terrainModifier.setFaceTerrain?.(faceId, terrainType);
+    }
+    this.didFacePaintDuringDrag = true;
+    this.terrainModifier.updateFaceTerrainVisuals?.();
+    this.highlightSystem.refresh();
   }
 
-  private getPickRay(): Ray | null {
-    if (!this.terrainModifier || !this.callbacks.getPickRay) return null;
-    return this.callbacks.getPickRay();
+  public dispose(): void {
+    this.highlightSystem.clearHighlight();
   }
 }

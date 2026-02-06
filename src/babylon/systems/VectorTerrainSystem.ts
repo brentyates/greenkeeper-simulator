@@ -1,22 +1,3 @@
-/**
- * VectorTerrainSystem - Direct vertex mesh terrain with SDF-based terrain type rendering
- *
- * Arnold Palmer Course Designer style - direct control over every terrain vertex in full 3D.
- * Users can select vertices and move them in X, Y, and Z directions. Terrain types
- * (fairway, green, etc.) are painted onto the surface as a separate layer using SDFs.
- *
- * Architecture:
- * - Vertex Position Layer: Full 3D positions at mesh resolution (vertexPositions[][])
- * - Terrain Type Layer: Per-cell terrain type at cell resolution (cells[][].type)
- * - SDF textures generated from grid layout for smooth terrain boundaries
- */
-
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
 import { Scene } from "@babylonjs/core/scene";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -47,7 +28,7 @@ import { HEIGHT_UNIT } from "../engine/BabylonEngine";
 import { CourseData } from "../../data/courseData";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CellState, TerrainType, getTerrainType, getTerrainCode, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode, getTerrainSpeedModifier, isFaceWalkableBySlope } from "../../core/terrain";
-import { TopologyMode, getFacesInBrush, getEdgesInBrush } from "../../core/terrain-editor-logic";
+import { TopologyMode, getEdgesInBrush } from "../../core/terrain-editor-logic";
 import { WeatherEffect } from "../../core/grass-simulation";
 import {
   FaceState,
@@ -60,6 +41,7 @@ import {
   getAverageFaceStats,
 } from "../../core/face-state";
 import {
+  Vec3,
   TerrainMeshTopology,
   TerrainTriangle,
   gridToTopology,
@@ -76,6 +58,8 @@ import {
   flipEdge,
   TopologyModification,
   sanitizeTopology,
+  deserializeTopology,
+  barycentricInterpolateY,
 } from "../../core/mesh-topology";
 
 export interface VectorTerrainOptions {
@@ -113,13 +97,11 @@ export class VectorTerrainSystem {
   private shaderMaterial: ShaderMaterial | null = null;
   private sdfTextures: SDFTextureSet | null = null;
   private faceDataTexture: RawTexture | null = null;
-  private faceDataTextureSize: number = 0;
   private overlayTexture: RawTexture | null = null;
   private defaultOverlayTexture: RawTexture | null = null;
   private cliffMeshes: Mesh[] = [];
   private gridLinesMesh: Mesh | null = null;
 
-  private cells: CellState[][] = [];
   private faceStates: Map<number, FaceState> = new Map();
   private faceToGridCache: Map<number, { gx: number; gy: number }> = new Map();
 
@@ -134,6 +116,7 @@ export class VectorTerrainSystem {
   private overlayMode: OverlayMode = "normal";
 
   private faceDataUpdateCounter: number = 0;
+  private faceDataDirty: boolean = false;
   private static readonly FACE_DATA_UPDATE_INTERVAL: number = 10;
 
   private topology: TerrainMeshTopology | null = null;
@@ -170,7 +153,6 @@ export class VectorTerrainSystem {
     this.vertexHeight = Math.ceil(this.worldHeight * this.options.meshResolution) + 1;
 
     this.initVertexPositions(courseData);
-    this.initCells(courseData);
     this.registerShader();
   }
 
@@ -181,12 +163,12 @@ export class VectorTerrainSystem {
       this.vertexPositions = courseData.vertexPositions.map(row =>
         row.map(pos => ({ ...pos }))
       );
-    } else if (courseData.vertexElevations) {
+    } else {
       this.vertexPositions = [];
       for (let vy = 0; vy < this.vertexHeight; vy++) {
         this.vertexPositions[vy] = [];
         for (let vx = 0; vx < this.vertexWidth; vx++) {
-          const z = courseData.vertexElevations[vy]?.[vx] ?? 0;
+          const z = courseData.vertexElevations?.[vy]?.[vx] ?? 0;
           this.vertexPositions[vy][vx] = {
             x: vx / meshRes,
             y: z,
@@ -194,105 +176,9 @@ export class VectorTerrainSystem {
           };
         }
       }
-    } else if (courseData.elevation) {
-      this.vertexPositions = [];
-      for (let vy = 0; vy < this.vertexHeight; vy++) {
-        this.vertexPositions[vy] = [];
-        for (let vx = 0; vx < this.vertexWidth; vx++) {
-          const worldX = vx / meshRes;
-          const worldZ = vy / meshRes;
-          const y = this.interpolateFromCellElevation(
-            courseData.elevation,
-            worldX,
-            worldZ
-          );
-          this.vertexPositions[vy][vx] = { x: worldX, y, z: worldZ };
-        }
-      }
-    } else {
-      this.vertexPositions = [];
-      for (let vy = 0; vy < this.vertexHeight; vy++) {
-        this.vertexPositions[vy] = [];
-        for (let vx = 0; vx < this.vertexWidth; vx++) {
-          this.vertexPositions[vy][vx] = {
-            x: vx / meshRes,
-            y: 0,
-            z: vy / meshRes,
-          };
-        }
-      }
     }
   }
 
-  private interpolateFromCellElevation(
-    elevation: number[][],
-    worldX: number,
-    worldZ: number
-  ): number {
-    if (!elevation || elevation.length === 0) return 0;
-
-    const height = elevation.length;
-    const width = elevation[0]?.length || 0;
-
-    const fx = Math.max(0, Math.min(width - 1.001, worldX));
-    const fz = Math.max(0, Math.min(height - 1.001, worldZ));
-
-    const x0 = Math.floor(fx);
-    const z0 = Math.floor(fz);
-    const x1 = Math.min(x0 + 1, width - 1);
-    const z1 = Math.min(z0 + 1, height - 1);
-
-    const tx = fx - x0;
-    const tz = fz - z0;
-
-    const e00 = elevation[z0]?.[x0] ?? 0;
-    const e10 = elevation[z0]?.[x1] ?? 0;
-    const e01 = elevation[z1]?.[x0] ?? 0;
-    const e11 = elevation[z1]?.[x1] ?? 0;
-
-    const e0 = e00 * (1 - tx) + e10 * tx;
-    const e1 = e01 * (1 - tx) + e11 * tx;
-
-    return e0 * (1 - tz) + e1 * tz;
-  }
-
-
-  private initCells(courseData: CourseData): void {
-    const { width, height, layout } = courseData;
-
-    this.cells = [];
-    for (let y = 0; y < height; y++) {
-      this.cells[y] = [];
-      for (let x = 0; x < width; x++) {
-        const terrainCode = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
-        const terrainType = getTerrainType(terrainCode);
-        const elev = this.getCellElevation(x, y);
-        const initialValues = getInitialValues(terrainType);
-
-        const cell: CellState = {
-          x,
-          y,
-          type: terrainType,
-          height: initialValues.height,
-          moisture: initialValues.moisture,
-          nutrients: initialValues.nutrients,
-          health: 100,
-          elevation: elev,
-          obstacle: "none",
-          lastMowed: 0,
-          lastWatered: 0,
-          lastFertilized: 0,
-        };
-        cell.health = calculateHealth(cell);
-        this.cells[y][x] = cell;
-      }
-    }
-  }
-
-  private getCellElevation(worldX: number, worldY: number): number {
-    const { vx, vy } = this.worldToVertex(worldX + 0.5, worldY + 0.5);
-    return this.vertexPositions[vy]?.[vx]?.y ?? 0;
-  }
 
   private registerShader(): void {
     Effect.ShadersStore["terrainVertexShader"] = terrainVertexShader;
@@ -309,25 +195,36 @@ export class VectorTerrainSystem {
   }
 
   private initTopology(courseData: CourseData): void {
-    this.topology = gridToTopology(
-      this.vertexPositions,
-      this.worldWidth,
-      this.worldHeight,
-      this.options.meshResolution
-    );
+    if (courseData.topology) {
+      this.topology = deserializeTopology(courseData.topology);
+    } else {
+      this.topology = gridToTopology(
+        this.vertexPositions,
+        this.worldWidth,
+        this.worldHeight,
+        this.options.meshResolution
+      );
+    }
 
     this.gridToVertexId.clear();
     this.vertexIdToGrid.clear();
     this.nextSyntheticVx = 100000;
+
     const meshRes = this.options.meshResolution;
     for (const [id, vertex] of this.topology.vertices) {
-      const vx = Math.round(vertex.gridUV.u * this.worldWidth * meshRes);
-      const vy = Math.round(vertex.gridUV.v * this.worldHeight * meshRes);
-      this.gridToVertexId.set(`${vx},${vy}`, id);
-      this.vertexIdToGrid.set(id, { vx, vy });
+      const vx = Math.round(vertex.position.x * meshRes);
+      const vy = Math.round(vertex.position.z * meshRes);
+      const key = `${vx},${vy}`;
+      if (!this.gridToVertexId.has(key)) {
+        this.gridToVertexId.set(key, id);
+        this.vertexIdToGrid.set(id, { vx, vy });
+      }
     }
 
-    this.initializeTriangleTerrainsFromGrid(courseData);
+    if (!courseData.topology) {
+      this.initializeTriangleTerrainsFromGrid(courseData);
+    }
+
     this.rebuildFaceSpatialIndex();
   }
 
@@ -514,39 +411,16 @@ export class VectorTerrainSystem {
   public setVertexElevations(changes: Array<{ vx: number; vy: number; z: number }>): void {
     if (!this.topology) return;
 
-    let foundCount = 0;
-    let failCount = 0;
-    
-    // Diagnostic log for large modifications
-    if (changes.length > 5) {
-      console.log(`[VectorTerrainSystem] setVertexElevations: changes=${changes.length}, gridToVertexId size=${this.gridToVertexId.size}`);
-    }
-
     for (const change of changes) {
-      // Robust rounding to avoid precision issues in string key
       const vx = Math.round(change.vx);
       const vy = Math.round(change.vy);
       const vertexId = this.getTopologyVertexIdForGrid(vx, vy);
-      
-      if (vertexId === null) {
-        if (failCount < 5) {
-          console.log(`[VectorTerrainSystem] lookup failed for vx=${vx} (${change.vx}), vy=${vy} (${change.vy})`);
-        }
-        failCount++;
-        continue;
-      }
+      if (vertexId === null) continue;
 
       const vertex = this.topology.vertices.get(vertexId);
       if (vertex) {
         vertex.position.y = change.z;
-        foundCount++;
-      } else {
-        failCount++;
       }
-    }
-    
-    if (changes.length > 1) {
-      console.log(`[VectorTerrainSystem] setVertexElevations: total_changes=${changes.length}, found=${foundCount}, failed=${failCount}`);
     }
     this.meshDirty = true;
   }
@@ -610,15 +484,13 @@ export class VectorTerrainSystem {
   }
 
   public getVertexPositionsGrid(): Vec3[][] {
-    if (!this.topology) return this.vertexPositions;
-
     const result: Vec3[][] = [];
     for (let vy = 0; vy < this.vertexHeight; vy++) {
       result[vy] = [];
       for (let vx = 0; vx < this.vertexWidth; vx++) {
         const vertexId = this.getTopologyVertexIdForGrid(vx, vy);
         if (vertexId !== null) {
-          const vertex = this.topology.vertices.get(vertexId);
+          const vertex = this.topology!.vertices.get(vertexId);
           result[vy][vx] = vertex ? { ...vertex.position } : { x: 0, y: 0, z: 0 };
         } else {
           result[vy][vx] = { x: 0, y: 0, z: 0 };
@@ -629,8 +501,103 @@ export class VectorTerrainSystem {
   }
 
   public getFacesInBrush(worldX: number, worldZ: number, radius: number): number[] {
+    if (!this.topology || !this.faceSpatialIndex || this.faceSpatialIndex.length === 0) return [];
+
+    const radiusSq = radius * radius;
+    const gridWidth = Math.ceil(this.worldWidth);
+    const gridHeight = Math.ceil(this.worldHeight);
+
+    const minGX = Math.max(0, Math.floor(worldX - radius));
+    const maxGX = Math.min(gridWidth - 1, Math.ceil(worldX + radius));
+    const minGZ = Math.max(0, Math.floor(worldZ - radius));
+    const maxGZ = Math.min(gridHeight - 1, Math.ceil(worldZ + radius));
+
+    const faceIds: number[] = [];
+    const visited = new Set<number>();
+
+    for (let gz = minGZ; gz <= maxGZ; gz++) {
+      for (let gx = minGX; gx <= maxGX; gx++) {
+        const cellSet = this.faceSpatialIndex[gz * gridWidth + gx];
+        if (!cellSet) continue;
+
+        for (const triId of cellSet) {
+          if (visited.has(triId)) continue;
+          visited.add(triId);
+
+          const tri = this.topology.triangles.get(triId);
+          if (!tri) continue;
+
+          const v0 = this.topology.vertices.get(tri.vertices[0]);
+          const v1 = this.topology.vertices.get(tri.vertices[1]);
+          const v2 = this.topology.vertices.get(tri.vertices[2]);
+          if (!v0 || !v1 || !v2) continue;
+
+          const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
+          const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
+
+          const dx = cx - worldX;
+          const dz = cz - worldZ;
+          if (dx * dx + dz * dz <= radiusSq) {
+            faceIds.push(triId);
+          }
+        }
+      }
+    }
+
+    return faceIds;
+  }
+
+  public getVerticesInWorldRadius(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }> {
     if (!this.topology) return [];
-    return getFacesInBrush(worldX, worldZ, radius, this.topology);
+    const radiusSq = radius * radius;
+    const result: Array<{ vx: number; vy: number }> = [];
+    for (const [vertexId, vertex] of this.topology.vertices) {
+      const dx = vertex.position.x - worldX;
+      const dz = vertex.position.z - worldZ;
+      if (dx * dx + dz * dz <= radiusSq) {
+        const gridCoords = this.vertexIdToGrid.get(vertexId);
+        if (gridCoords) {
+          result.push(gridCoords);
+        }
+      }
+    }
+    return result;
+  }
+
+  public getVerticesFromEdgesInBrush(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }> {
+    if (!this.topology) return [];
+    const edgeIds = getEdgesInBrush(worldX, worldZ, radius, this.topology);
+    const seen = new Set<number>();
+    const result: Array<{ vx: number; vy: number }> = [];
+    for (const edgeId of edgeIds) {
+      const edge = this.topology.edges.get(edgeId);
+      if (!edge) continue;
+      for (const vid of [edge.v1, edge.v2]) {
+        if (seen.has(vid)) continue;
+        seen.add(vid);
+        const gridCoords = this.vertexIdToGrid.get(vid);
+        if (gridCoords) result.push(gridCoords);
+      }
+    }
+    return result;
+  }
+
+  public getVerticesFromFacesInBrush(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }> {
+    if (!this.topology) return [];
+    const faceIds = this.getFacesInBrush(worldX, worldZ, radius);
+    const seen = new Set<number>();
+    const result: Array<{ vx: number; vy: number }> = [];
+    for (const faceId of faceIds) {
+      const tri = this.topology.triangles.get(faceId);
+      if (!tri) continue;
+      for (const vid of tri.vertices) {
+        if (seen.has(vid)) continue;
+        seen.add(vid);
+        const gridCoords = this.vertexIdToGrid.get(vid);
+        if (gridCoords) result.push(gridCoords);
+      }
+    }
+    return result;
   }
 
   public getEdgesInBrush(worldX: number, worldZ: number, radius: number): number[] {
@@ -655,44 +622,36 @@ export class VectorTerrainSystem {
   }
 
   public getVertexElevationsGrid(): number[][] {
-    if (!this.topology) {
-      return this.vertexPositions.map(row => row.map(pos => pos.y));
-    }
-
+    const meshRes = this.options.meshResolution;
     const result: number[][] = [];
     for (let vy = 0; vy < this.vertexHeight; vy++) {
       result[vy] = [];
       for (let vx = 0; vx < this.vertexWidth; vx++) {
         const vertexId = this.getTopologyVertexIdForGrid(vx, vy);
         if (vertexId !== null) {
-          const vertex = this.topology.vertices.get(vertexId);
+          const vertex = this.topology!.vertices.get(vertexId);
           result[vy][vx] = vertex?.position.y ?? 0;
         } else {
+          const worldX = vx / meshRes;
+          const worldZ = vy / meshRes;
+          const faceId = this.findFaceAtPosition(worldX, worldZ);
+          if (faceId !== null) {
+            const tri = this.topology!.triangles.get(faceId);
+            if (tri) {
+              const v0 = this.topology!.vertices.get(tri.vertices[0]);
+              const v1 = this.topology!.vertices.get(tri.vertices[1]);
+              const v2 = this.topology!.vertices.get(tri.vertices[2]);
+              if (v0 && v1 && v2) {
+                result[vy][vx] = barycentricInterpolateY(worldX, worldZ, v0.position, v1.position, v2.position);
+                continue;
+              }
+            }
+          }
           result[vy][vx] = 0;
         }
       }
     }
     return result;
-  }
-
-  // ============================================
-  // Topology Mode (Always On - Arnold Palmer Style)
-  // ============================================
-
-  public isTopologyMode(): boolean {
-    return true;
-  }
-
-  public enableTopologyMode(): void {
-    // Topology is always enabled - this is a no-op for backwards compatibility
-  }
-
-  public disableTopologyMode(): void {
-    // Topology cannot be disabled - this is a no-op for backwards compatibility
-  }
-
-  public toggleTopologyMode(): boolean {
-    return true;
   }
 
   public getTopology(): TerrainMeshTopology | null {
@@ -1028,10 +987,14 @@ export class VectorTerrainSystem {
         this.clearFaceHighlight();
     }
 
-    // Handle Wireframe
-    if (this.wireframeMesh) {
-       // Only show wireframe in vertex mode if enabled
-       this.wireframeMesh.setEnabled(mode === 'vertex' && this.wireframeEnabled);
+    if (mode === 'vertex' || mode === 'face') {
+      const color = mode === 'vertex'
+        ? new Color4(0.8, 0.8, 0.2, 0.7)
+        : new Color4(0.4, 0.7, 0.4, 0.5);
+      this.createWireframeMesh(color);
+      if (this.wireframeMesh) this.wireframeMesh.setEnabled(true);
+    } else if (this.wireframeMesh) {
+      this.wireframeMesh.setEnabled(false);
     }
   }
 
@@ -1389,14 +1352,10 @@ export class VectorTerrainSystem {
   }
 
   public rebuildMesh(): void {
-    if (this.topology) {
-      sanitizeTopology(this.topology);
-      this.rebuildFaceSpatialIndex();
-      this.syncFaceStatesWithTopology();
-      this.createTerrainMeshFromTopology();
-    } else {
-      this.createTerrainMesh();
-    }
+    sanitizeTopology(this.topology!);
+    this.rebuildFaceSpatialIndex();
+    this.syncFaceStatesWithTopology();
+    this.createTerrainMeshFromTopology();
     this.createCliffFaces();
     if (this.options.enableGridLines) {
       this.createGridLines();
@@ -1414,10 +1373,15 @@ export class VectorTerrainSystem {
       this.createFaceDataTexture();
       if (this.shaderMaterial) {
         this.shaderMaterial.setTexture("faceData", this.faceDataTexture);
-        this.shaderMaterial.setFloat("faceDataSize", this.faceDataTextureSize);
+        this.shaderMaterial.setVector2("faceDataDims", new Vector2(this.faceDataTexWidth, this.faceDataTexHeight));
       }
     }
     this.meshDirty = false;
+  }
+
+  public updateFaceTerrainVisuals(): void {
+    this.syncFaceStatesWithTopology();
+    this.updateFaceDataTexture();
   }
 
   private syncFaceStatesWithTopology(): void {
@@ -1454,6 +1418,11 @@ export class VectorTerrainSystem {
         }
       }
 
+      const state = this.faceStates.get(id);
+      if (state && state.terrainCode !== tri.terrainCode) {
+        state.terrainCode = tri.terrainCode;
+      }
+
       const v0 = this.topology.vertices.get(tri.vertices[0]);
       const v1 = this.topology.vertices.get(tri.vertices[1]);
       const v2 = this.topology.vertices.get(tri.vertices[2]);
@@ -1469,70 +1438,6 @@ export class VectorTerrainSystem {
   // ============================================
   // Mesh Creation
   // ============================================
-
-  private createTerrainMesh(): void {
-    const { worldWidth, worldHeight } = this;
-
-    const gridW = this.vertexWidth - 1;
-    const gridH = this.vertexHeight - 1;
-
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const normals: number[] = [];
-    const uvs: number[] = [];
-
-    const meshRes = this.options.meshResolution;
-    for (let vy = 0; vy < this.vertexHeight; vy++) {
-      for (let vx = 0; vx < this.vertexWidth; vx++) {
-        const pos = this.vertexPositions[vy][vx];
-        const worldY = pos.y * HEIGHT_UNIT;
-
-        positions.push(pos.x, worldY, pos.z);
-
-        // Use original grid position for UVs so terrain types "stick" to the mesh
-        // rather than sliding when vertices are moved
-        const originalX = vx / meshRes;
-        const originalZ = vy / meshRes;
-        uvs.push(originalX / worldWidth, originalZ / worldHeight);
-      }
-    }
-
-    for (let gy = 0; gy < gridH; gy++) {
-      for (let gx = 0; gx < gridW; gx++) {
-        const topLeft = gy * this.vertexWidth + gx;
-        const topRight = topLeft + 1;
-        const bottomLeft = topLeft + this.vertexWidth;
-        const bottomRight = bottomLeft + 1;
-
-        indices.push(topLeft, bottomLeft, topRight);
-        indices.push(topRight, bottomLeft, bottomRight);
-      }
-    }
-
-    VertexData.ComputeNormals(positions, indices, normals);
-
-    const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.indices = indices;
-    vertexData.normals = normals;
-    vertexData.uvs = uvs;
-
-    if (this.terrainMesh) {
-      this.terrainMesh.dispose();
-    }
-
-    this.terrainMesh = new Mesh("vectorTerrain", this.scene);
-    vertexData.applyToMesh(this.terrainMesh, true);
-    
-    const vertexCount = positions.length / 3;
-    const terrainTypes = new Float32Array(vertexCount).fill(0);
-    this.terrainMesh.setVerticesData("terrainType", terrainTypes, false, 1);
-    this.terrainMesh.setVerticesData("faceId", new Float32Array(vertexCount).fill(0), false, 1);
-
-    this.terrainMesh.isPickable = true;
-    this.terrainMesh.freezeWorldMatrix();
-    this.applyMaterial();
-  }
 
   private createCliffFaces(): void {
     for (const mesh of this.cliffMeshes) {
@@ -1556,116 +1461,6 @@ export class VectorTerrainSystem {
     const bottomCliff = this.createEdgeCliff("bottom", cliffDepth);
     bottomCliff.material = this.cliffMaterial;
     this.cliffMeshes.push(bottomCliff);
-
-    const internalCliff = this.createInternalCliffs(1.5);
-    if (internalCliff) {
-      internalCliff.material = this.cliffMaterial;
-      this.cliffMeshes.push(internalCliff);
-    }
-  }
-
-  private createInternalCliffs(threshold: number): Mesh | null {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const normals: number[] = [];
-    const colors: number[] = [];
-
-    const topColor = new Color4(0.65, 0.53, 0.38, 1);
-    const bottomColor = new Color4(0.48, 0.40, 0.30, 1);
-
-    const meshRes = this.options.meshResolution;
-
-    for (let vy = 0; vy < this.vertexHeight; vy++) {
-      for (let vx = 0; vx < this.vertexWidth - 1; vx++) {
-        const elev1 = this.vertexPositions[vy]?.[vx]?.y ?? 0;
-        const elev2 = this.vertexPositions[vy]?.[vx + 1]?.y ?? 0;
-        const diff = elev2 - elev1;
-
-        if (Math.abs(diff) >= threshold) {
-          const cliffX = (vx + 1) / meshRes;
-          const highElev = Math.max(elev1, elev2) * HEIGHT_UNIT;
-          const lowElev = Math.min(elev1, elev2) * HEIGHT_UNIT;
-
-          const baseIdx = positions.length / 3;
-          const z1 = vy / meshRes;
-          const z2 = Math.min((vy + 1) / meshRes, this.worldHeight);
-
-          if (diff > 0) {
-            positions.push(cliffX, highElev, z1);
-            positions.push(cliffX, highElev, z2);
-            positions.push(cliffX, lowElev, z2);
-            positions.push(cliffX, lowElev, z1);
-          } else {
-            positions.push(cliffX, highElev, z2);
-            positions.push(cliffX, highElev, z1);
-            positions.push(cliffX, lowElev, z1);
-            positions.push(cliffX, lowElev, z2);
-          }
-
-          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-
-          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-          indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-        }
-      }
-    }
-
-    for (let vy = 0; vy < this.vertexHeight - 1; vy++) {
-      for (let vx = 0; vx < this.vertexWidth; vx++) {
-        const elev1 = this.vertexPositions[vy]?.[vx]?.y ?? 0;
-        const elev2 = this.vertexPositions[vy + 1]?.[vx]?.y ?? 0;
-        const diff = elev2 - elev1;
-
-        if (Math.abs(diff) >= threshold) {
-          const cliffZ = (vy + 1) / meshRes;
-          const highElev = Math.max(elev1, elev2) * HEIGHT_UNIT;
-          const lowElev = Math.min(elev1, elev2) * HEIGHT_UNIT;
-
-          const baseIdx = positions.length / 3;
-          const x1 = vx / meshRes;
-          const x2 = Math.min((vx + 1) / meshRes, this.worldWidth);
-
-          if (diff > 0) {
-            positions.push(x1, highElev, cliffZ);
-            positions.push(x2, highElev, cliffZ);
-            positions.push(x2, lowElev, cliffZ);
-            positions.push(x1, lowElev, cliffZ);
-          } else {
-            positions.push(x2, highElev, cliffZ);
-            positions.push(x1, highElev, cliffZ);
-            positions.push(x1, lowElev, cliffZ);
-            positions.push(x2, lowElev, cliffZ);
-          }
-
-          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-          colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-
-          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-          indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-        }
-      }
-    }
-
-    if (positions.length === 0) return null;
-
-    VertexData.ComputeNormals(positions, indices, normals);
-
-    const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.indices = indices;
-    vertexData.normals = normals;
-    vertexData.colors = colors;
-
-    const mesh = new Mesh("internalCliffs", this.scene);
-    vertexData.applyToMesh(mesh);
-    mesh.useVertexColors = true;
-
-    return mesh;
   }
 
   private createEdgeCliff(side: "right" | "bottom", cliffDepth: number): Mesh {
@@ -1809,36 +1604,30 @@ export class VectorTerrainSystem {
 
   public gridToWorld(gridX: number, gridY: number): Vector3 {
     const res = this.options.meshResolution;
-    return new Vector3(gridX / res, 0, gridY / res);
+    const worldX = gridX / res;
+    const worldZ = gridY / res;
+    const elevation = this.getInterpolatedElevation(worldX, worldZ);
+    return new Vector3(worldX, elevation * HEIGHT_UNIT, worldZ);
   }
 
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
-    const meshRes = this.options.meshResolution;
-
-    const fvx = worldX * meshRes;
-    const fvy = worldZ * meshRes;
-
-    const vx0 = Math.floor(fvx);
-    const vy0 = Math.floor(fvy);
-    const vx1 = Math.min(vx0 + 1, this.vertexWidth - 1);
-    const vy1 = Math.min(vy0 + 1, this.vertexHeight - 1);
-
-    const tx = fvx - vx0;
-    const ty = fvy - vy0;
-
-    const e00 = this.vertexPositions[vy0]?.[vx0]?.y ?? 0;
-    const e10 = this.vertexPositions[vy0]?.[vx1]?.y ?? 0;
-    const e01 = this.vertexPositions[vy1]?.[vx0]?.y ?? 0;
-    const e11 = this.vertexPositions[vy1]?.[vx1]?.y ?? 0;
-
-    const e0 = e00 * (1 - tx) + e10 * tx;
-    const e1 = e01 * (1 - tx) + e11 * tx;
-
-    return e0 * (1 - ty) + e1 * ty;
+    const faceId = this.findFaceAtPosition(worldX, worldZ);
+    if (faceId !== null) {
+      const tri = this.topology!.triangles.get(faceId);
+      if (tri) {
+        const v0 = this.topology!.vertices.get(tri.vertices[0]);
+        const v1 = this.topology!.vertices.get(tri.vertices[1]);
+        const v2 = this.topology!.vertices.get(tri.vertices[2]);
+        if (v0 && v1 && v2) {
+          return barycentricInterpolateY(worldX, worldZ, v0.position, v1.position, v2.position);
+        }
+      }
+    }
+    return 0;
   }
 
   // ============================================
-  // SDF Textures (Grid-based only)
+  // SDF Textures
   // ============================================
 
   private generateSDFTextures(): void {
@@ -1858,14 +1647,22 @@ export class VectorTerrainSystem {
     this.createFaceDataTexture();
   }
 
-  private buildFaceDataTextureData(size: number): Uint8Array {
-    const data = new Uint8Array(size * 4);
+  private static readonly FACE_DATA_TEX_WIDTH = 256;
+
+  private faceDataTexWidth = 0;
+  private faceDataTexHeight = 0;
+
+  private buildFaceDataTextureData(): Uint8Array {
+    const w = this.faceDataTexWidth;
+    const h = this.faceDataTexHeight;
+    const data = new Uint8Array(w * h * 4);
+    const totalPixels = w * h;
     for (const [faceId, state] of this.faceStates) {
-      if (faceId >= size) continue;
+      if (faceId >= totalPixels) continue;
       const idx = faceId * 4;
       data[idx + 0] = Math.min(255, Math.max(0, Math.round((state.moisture / 100) * 255)));
       data[idx + 1] = Math.min(255, Math.max(0, Math.round((state.nutrients / 100) * 255)));
-      data[idx + 2] = Math.min(255, Math.max(0, Math.round((state.grassHeight / 5) * 255)));
+      data[idx + 2] = Math.min(255, Math.max(0, Math.round((state.grassHeight / 100) * 255)));
       data[idx + 3] = Math.min(255, Math.max(0, Math.round((state.health / 100) * 255)));
     }
     return data;
@@ -1876,19 +1673,25 @@ export class VectorTerrainSystem {
     for (const faceId of this.faceStates.keys()) {
       if (faceId > maxFaceId) maxFaceId = faceId;
     }
-    const newSize = Math.max(1, maxFaceId + 1);
-    const data = this.buildFaceDataTextureData(newSize);
+    const totalPixels = Math.max(1, maxFaceId + 1);
+    const w = VectorTerrainSystem.FACE_DATA_TEX_WIDTH;
+    const h = Math.max(1, Math.ceil(totalPixels / w));
 
-    if (this.faceDataTexture && this.faceDataTextureSize === newSize) {
+    const sameSize = this.faceDataTexWidth === w && this.faceDataTexHeight === h;
+    this.faceDataTexWidth = w;
+    this.faceDataTexHeight = h;
+
+    const data = this.buildFaceDataTextureData();
+
+    if (this.faceDataTexture && sameSize) {
       this.faceDataTexture.update(data);
     } else {
       if (this.faceDataTexture) {
         this.faceDataTexture.dispose();
       }
-      this.faceDataTextureSize = newSize;
       this.faceDataTexture = RawTexture.CreateRGBATexture(
         data,
-        newSize, 1,
+        w, h,
         this.scene,
         false, false,
         Engine.TEXTURE_NEAREST_SAMPLINGMODE
@@ -1901,7 +1704,7 @@ export class VectorTerrainSystem {
 
   private updateFaceDataTexture(): void {
     if (!this.faceDataTexture) return;
-    this.faceDataTexture.update(this.buildFaceDataTextureData(this.faceDataTextureSize));
+    this.faceDataTexture.update(this.buildFaceDataTextureData());
   }
 
   private createShaderMaterial(): void {
@@ -1923,7 +1726,7 @@ export class VectorTerrainSystem {
           "time",
           "edgeBlend",
           "overlayMode",
-          "faceDataSize",
+          "faceDataDims",
           "roughColor",
           "fairwayColor",
           "greenColor",
@@ -1956,7 +1759,7 @@ export class VectorTerrainSystem {
     this.shaderMaterial.setFloat("time", 0);
     this.shaderMaterial.setFloat("edgeBlend", this.options.edgeBlend);
     this.shaderMaterial.setFloat("overlayMode", this.getOverlayModeValue());
-    this.shaderMaterial.setFloat("faceDataSize", this.faceDataTextureSize);
+    this.shaderMaterial.setVector2("faceDataDims", new Vector2(this.faceDataTexWidth, this.faceDataTexHeight));
 
     this.shaderMaterial.setColor3("roughColor", new Color3(...uniforms.roughColor));
     this.shaderMaterial.setColor3("fairwayColor", new Color3(...uniforms.fairwayColor));
@@ -2021,12 +1824,11 @@ export class VectorTerrainSystem {
       state.health = result.health;
     }
 
-    if (this.overlayMode !== "normal") {
-      this.faceDataUpdateCounter++;
-      if (this.faceDataUpdateCounter >= VectorTerrainSystem.FACE_DATA_UPDATE_INTERVAL) {
-        this.updateFaceDataTexture();
-        this.faceDataUpdateCounter = 0;
-      }
+    this.faceDataUpdateCounter++;
+    if (this.faceDataDirty || this.faceDataUpdateCounter >= VectorTerrainSystem.FACE_DATA_UPDATE_INTERVAL) {
+      this.updateFaceDataTexture();
+      this.faceDataUpdateCounter = 0;
+      this.faceDataDirty = false;
     }
 
     if (this.shapesDirty) {
@@ -2126,10 +1928,10 @@ export class VectorTerrainSystem {
     const gy = Math.floor(worldY);
     const faceIds = this.getFacesAtGrid(gx, gy);
     if (!faceIds || faceIds.length === 0) {
-      return this.cells[gy]?.[gx] ?? null;
+      return null;
     }
     const face = this.faceStates.get(faceIds[0]);
-    if (!face) return this.cells[gy]?.[gx] ?? null;
+    if (!face) return null;
     return this.faceToCellState(face, gx, gy);
   }
 
@@ -2182,10 +1984,10 @@ export class VectorTerrainSystem {
               lastFertilized,
             };
           } else {
-            result[y][x] = this.cells[y]?.[x] ?? this.makeDefaultCell(x, y);
+            result[y][x] = this.makeDefaultCell(x, y);
           }
         } else {
-          result[y][x] = this.cells[y]?.[x] ?? this.makeDefaultCell(x, y);
+          result[y][x] = this.makeDefaultCell(x, y);
         }
       }
     }
@@ -2222,23 +2024,18 @@ export class VectorTerrainSystem {
   }
 
   public setElevationAt(meshX: number, meshY: number, elev: number): void {
+    if (!this.topology) return;
+
     const res = this.options.meshResolution;
     const worldX = meshX / res;
     const worldY = meshY / res;
 
     if (worldX < 0 || worldX >= this.worldWidth || worldY < 0 || worldY >= this.worldHeight) return;
 
-    const vxStart = Math.floor(worldX * res);
-    const vyStart = Math.floor(worldY * res);
-    const vxEnd = Math.min(Math.ceil((worldX + 1) * res), this.vertexWidth - 1);
-    const vyEnd = Math.min(Math.ceil((worldY + 1) * res), this.vertexHeight - 1);
-
-    for (let vy = vyStart; vy <= vyEnd; vy++) {
-      for (let vx = vxStart; vx <= vxEnd; vx++) {
-        if (this.vertexPositions[vy]?.[vx]) {
-          this.vertexPositions[vy][vx].y = elev;
-        }
-      }
+    const nearest = findNearestTopologyVertex(this.topology, worldX, worldY);
+    if (nearest) {
+      const v = this.topology.vertices.get(nearest.vertexId);
+      if (v) v.position.y = elev;
     }
 
     this.meshDirty = true;
@@ -2267,18 +2064,6 @@ export class VectorTerrainSystem {
           type, moisture: fs.moisture, nutrients: fs.nutrients, height: fs.grassHeight,
         });
       }
-    }
-
-    const cx = Math.floor(worldX);
-    const cy = Math.floor(worldY);
-    const cell = this.cells[cy]?.[cx];
-    if (cell) {
-      const initialValues = getInitialValues(type);
-      cell.type = type;
-      cell.height = initialValues.height;
-      cell.moisture = initialValues.moisture;
-      cell.nutrients = initialValues.nutrients;
-      cell.health = calculateHealth(cell);
     }
 
     this.shapesDirty = true;
@@ -2356,17 +2141,6 @@ export class VectorTerrainSystem {
         }
       }
 
-      const cx = Math.floor(worldX);
-      const cy = Math.floor(worldY);
-      const cell = this.cells[cy]?.[cx];
-      if (cell) {
-        const initialValues = getInitialValues(type);
-        cell.type = type;
-        cell.height = initialValues.height;
-        cell.moisture = initialValues.moisture;
-        cell.nutrients = initialValues.nutrients;
-        cell.health = calculateHealth(cell);
-      }
     }
     this.shapesDirty = true;
     this.meshDirty = true;
@@ -2394,11 +2168,33 @@ export class VectorTerrainSystem {
   }
 
   public restoreCells(savedCells: CellState[][]): void {
-    for (let y = 0; y < savedCells.length && y < this.cells.length; y++) {
-      for (let x = 0; x < savedCells[y].length && x < this.cells[y].length; x++) {
-        this.cells[y][x] = { ...savedCells[y][x] };
+    for (let y = 0; y < savedCells.length; y++) {
+      for (let x = 0; x < savedCells[y].length; x++) {
+        const cell = savedCells[y][x];
+        const faceIds = this.getFacesAtGrid(x, y);
+        if (!faceIds) continue;
+        const terrainCode = getTerrainCode(cell.type);
+        for (const fid of faceIds) {
+          const fs = this.faceStates.get(fid);
+          if (fs) {
+            fs.terrainCode = terrainCode;
+            fs.grassHeight = cell.height;
+            fs.moisture = cell.moisture;
+            fs.nutrients = cell.nutrients;
+            fs.health = cell.health;
+            fs.lastMowed = cell.lastMowed;
+            fs.lastWatered = cell.lastWatered;
+            fs.lastFertilized = cell.lastFertilized;
+          }
+          if (this.topology) {
+            const tri = this.topology.triangles.get(fid);
+            if (tri) tri.terrainCode = terrainCode;
+          }
+        }
       }
     }
+    this.shapesDirty = true;
+    this.faceDataDirty = true;
   }
 
   public getFaceState(faceId: number): FaceState | undefined {
@@ -2437,6 +2233,166 @@ export class VectorTerrainSystem {
     return { width: Math.ceil(this.worldWidth), height: Math.ceil(this.worldHeight) };
   }
 
+  public sampleFaceStatesInRadius(
+    worldX: number,
+    worldZ: number,
+    sampleRadius: number
+  ): { avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number } {
+    const faces = this.getFacesInBrush(worldX, worldZ, sampleRadius);
+
+    if (faces.length === 0) {
+      return { avgMoisture: 0, avgNutrients: 0, avgGrassHeight: 0, avgHealth: 0, dominantTerrainCode: TERRAIN_CODES.WATER, faceCount: 0 };
+    }
+
+    let totalMoisture = 0;
+    let totalNutrients = 0;
+    let totalGrassHeight = 0;
+    let totalHealth = 0;
+    const terrainCounts = new Map<number, number>();
+
+    for (const faceId of faces) {
+      const state = this.faceStates.get(faceId);
+      if (!state) continue;
+
+      totalMoisture += state.moisture;
+      totalNutrients += state.nutrients;
+      totalGrassHeight += state.grassHeight;
+      totalHealth += state.health;
+
+      terrainCounts.set(state.terrainCode, (terrainCounts.get(state.terrainCode) || 0) + 1);
+    }
+
+    const count = faces.length;
+    let dominantTerrainCode: number = TERRAIN_CODES.FAIRWAY;
+    let maxCount = 0;
+    for (const [code, cnt] of terrainCounts) {
+      if (cnt > maxCount) {
+        maxCount = cnt;
+        dominantTerrainCode = code;
+      }
+    }
+
+    return {
+      avgMoisture: totalMoisture / count,
+      avgNutrients: totalNutrients / count,
+      avgGrassHeight: totalGrassHeight / count,
+      avgHealth: totalHealth / count,
+      dominantTerrainCode,
+      faceCount: count,
+    };
+  }
+
+  public findWorkCandidates(
+    centerX: number,
+    centerZ: number,
+    maxRadius: number,
+    cellSize: number = 3
+  ): { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] {
+    const groups = new Map<string, {
+      totalMoisture: number; totalNutrients: number; totalGrassHeight: number; totalHealth: number;
+      terrainCounts: Map<number, number>; count: number; sumX: number; sumZ: number;
+    }>();
+
+    for (const [faceId, gridPos] of this.faceToGridCache) {
+      if (Math.abs(gridPos.gx - centerX) > maxRadius || Math.abs(gridPos.gy - centerZ) > maxRadius) continue;
+
+      const state = this.faceStates.get(faceId);
+      if (!state) continue;
+
+      const cellKey = `${Math.floor(gridPos.gx / cellSize)},${Math.floor(gridPos.gy / cellSize)}`;
+      let group = groups.get(cellKey);
+      if (!group) {
+        group = { totalMoisture: 0, totalNutrients: 0, totalGrassHeight: 0, totalHealth: 0, terrainCounts: new Map(), count: 0, sumX: 0, sumZ: 0 };
+        groups.set(cellKey, group);
+      }
+
+      group.totalMoisture += state.moisture;
+      group.totalNutrients += state.nutrients;
+      group.totalGrassHeight += state.grassHeight;
+      group.totalHealth += state.health;
+      group.terrainCounts.set(state.terrainCode, (group.terrainCounts.get(state.terrainCode) || 0) + 1);
+      group.count++;
+      group.sumX += gridPos.gx;
+      group.sumZ += gridPos.gy;
+    }
+
+    const candidates: { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] = [];
+    for (const group of groups.values()) {
+      const n = group.count;
+      let dominantTerrainCode: number = TERRAIN_CODES.FAIRWAY;
+      let maxCount = 0;
+      for (const [code, cnt] of group.terrainCounts) {
+        if (cnt > maxCount) { maxCount = cnt; dominantTerrainCode = code; }
+      }
+
+      candidates.push({
+        worldX: group.sumX / n + 0.5,
+        worldZ: group.sumZ / n + 0.5,
+        avgMoisture: group.totalMoisture / n,
+        avgNutrients: group.totalNutrients / n,
+        avgGrassHeight: group.totalGrassHeight / n,
+        avgHealth: group.totalHealth / n,
+        dominantTerrainCode,
+        faceCount: n,
+      });
+    }
+
+    return candidates;
+  }
+
+  public applyWorkEffect(
+    worldX: number,
+    worldZ: number,
+    equipmentRadius: number,
+    jobType: 'mow' | 'water' | 'fertilize' | 'rake',
+    efficiency: number,
+    gameTime: number
+  ): number[] {
+    const facesInBrush = this.getFacesInBrush(worldX, worldZ, equipmentRadius);
+    const modifiedFaces: number[] = [];
+
+    for (const faceId of facesInBrush) {
+      const faceState = this.faceStates.get(faceId);
+      if (!faceState) continue;
+
+      let success = false;
+      switch (jobType) {
+        case 'mow':
+          success = applyFaceMowing(faceState);
+          if (success) faceState.lastMowed = gameTime;
+          break;
+        case 'water': {
+          const waterAmount = 20 * efficiency;
+          success = applyFaceWatering(faceState, waterAmount);
+          if (success) faceState.lastWatered = gameTime;
+          break;
+        }
+        case 'fertilize': {
+          const fertAmount = 15 * efficiency;
+          success = applyFaceFertilizing(faceState, fertAmount, efficiency);
+          if (success) faceState.lastFertilized = gameTime;
+          break;
+        }
+        case 'rake':
+          if (faceState.terrainCode === TERRAIN_CODES.BUNKER) {
+            faceState.health = 100;
+            faceState.lastRaked = gameTime;
+            success = true;
+          }
+          break;
+      }
+
+      if (success) {
+        modifiedFaces.push(faceId);
+      }
+    }
+
+    if (modifiedFaces.length > 0) {
+      this.faceDataDirty = true;
+    }
+
+    return modifiedFaces;
+  }
 
   // ============================================
   // Maintenance actions
@@ -2456,7 +2412,7 @@ export class VectorTerrainSystem {
         mowed = true;
       }
     }
-    if (mowed) this.shapesDirty = true;
+    if (mowed) this.faceDataDirty = true;
     return mowed;
   }
 
@@ -2475,7 +2431,7 @@ export class VectorTerrainSystem {
         raked = true;
       }
     }
-    if (raked) this.shapesDirty = true;
+    if (raked) this.faceDataDirty = true;
     return raked;
   }
 
@@ -2510,6 +2466,7 @@ export class VectorTerrainSystem {
         }
       }
     }
+    if (affectedCount > 0) this.faceDataDirty = true;
     return affectedCount;
   }
 
@@ -2544,6 +2501,7 @@ export class VectorTerrainSystem {
         }
       }
     }
+    if (affectedCount > 0) this.faceDataDirty = true;
     return affectedCount;
   }
 
@@ -2734,9 +2692,10 @@ export class VectorTerrainSystem {
     this.wireframeEnabled = enabled;
     if (enabled && !this.wireframeMesh) {
       this.createWireframeMesh();
-    } else if (!enabled && this.wireframeMesh) {
-      this.wireframeMesh.dispose();
-      this.wireframeMesh = null;
+    }
+    if (this.wireframeMesh) {
+      const showForMode = this.activeTopologyMode === 'vertex' || this.activeTopologyMode === 'face';
+      this.wireframeMesh.setEnabled(enabled || showForMode);
     }
   }
 
@@ -2812,7 +2771,7 @@ export class VectorTerrainSystem {
     );
   }
 
-  private createWireframeMesh(): void {
+  private createWireframeMesh(color?: Color4): void {
     if (this.wireframeMesh) {
       this.wireframeMesh.dispose();
       this.wireframeMesh = null;
@@ -2820,6 +2779,7 @@ export class VectorTerrainSystem {
 
     if (!this.topology) return;
 
+    const lineColor = color ?? new Color4(0.8, 0.8, 0.2, 0.7);
     const lines: Vector3[][] = [];
     const colors: Color4[][] = [];
     const lineOffset = 0.02;
@@ -2834,10 +2794,7 @@ export class VectorTerrainSystem {
         new Vector3(v2.position.x, v2.position.y * HEIGHT_UNIT + lineOffset, v2.position.z),
       ]);
 
-      colors.push([
-        new Color4(0.8, 0.8, 0.2, 0.7),
-        new Color4(0.8, 0.8, 0.2, 0.7),
-      ]);
+      colors.push([lineColor, lineColor]);
     }
 
     if (lines.length > 0) {

@@ -56,7 +56,7 @@ describe('movable-entity', () => {
       expect(employee.efficiency).toBe(1.0);
       expect(employee.currentTask).toBe('idle');
       expect(employee.targetX).toBeNull();
-      expect(employee.targetY).toBeNull();
+      expect(employee.targetZ).toBeNull();
       expect(employee.workProgress).toBe(0);
       expect(employee.assignedAreaId).toBeNull();
     });

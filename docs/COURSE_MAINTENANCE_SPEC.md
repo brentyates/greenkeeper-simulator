@@ -61,40 +61,29 @@ When grass exceeds the "growing" threshold, it becomes visually overgrown and ne
 
 ---
 
-## Cell State
+## Face State
 
-Each tile on the course maintains its own state:
+Each triangle face in the terrain topology maintains its own state:
 
 ```typescript
-interface CellState {
-  // Position
-  x: number;
-  y: number;
-
-  // Terrain
-  type: TerrainType;
-  elevation: number;
-  obstacle: ObstacleType;  // none, tree, pine_tree, shrub, bush
+interface FaceState {
+  faceId: number;              // Triangle ID from topology
+  terrainCode: TerrainCode;    // Surface type (from TerrainTriangle)
 
   // Grass properties (0-100 scale)
-  height: number;      // Current grass height
-  moisture: number;    // Water saturation level
-  nutrients: number;   // Fertilizer/nutrient level
-  health: number;      // Calculated overall health
-
-  // Grass variety (see RESEARCH_TREE_SPEC.md - Turf Science section)
-  grassVariety: string;  // e.g., "kentucky_bluegrass", "tourgrade_bentgrass"
-  waterNeedMultiplier: number;      // From variety, default 1.0
-  fertilizerNeedMultiplier: number; // From variety, default 1.0
-  mowingFrequencyMultiplier: number; // From variety, default 1.0
-  prestigeModifier: number;          // From variety, per 100 tiles
+  grassHeight: number;   // Current grass height
+  moisture: number;      // Water saturation level
+  nutrients: number;     // Fertilizer/nutrient level
+  health: number;        // Calculated overall health
 
   // Tracking
   lastMowed: number;      // Game time of last mow
   lastWatered: number;    // Game time of last water
   lastFertilized: number; // Game time of last fertilize
+  lastRaked: number;      // Game time of last rake (bunkers)
 }
 ```
+
 
 ---
 
@@ -228,7 +217,7 @@ function applyMowing(cell: CellState): CellState | null {
 
 **Mowing characteristics:**
 - Effect: Sets height to 0
-- Radius: 1 tile (single tile per action)
+- Radius: 1 face (single face per action)
 - Resource: Fuel
 - Frequency: Every 6-8 game hours for optimal health
 
@@ -264,7 +253,7 @@ function applyWatering(cell: CellState, amount: number): CellState | null {
 
 **Watering characteristics:**
 - Effect: +30 moisture per application (default)
-- Radius: 2 tiles
+- Radius: 2 faces
 - Resource: Water
 - Frequency: Every 3-4 game hours for optimal moisture
 
@@ -294,7 +283,7 @@ function applyFertilizing(cell: CellState, amount: number): CellState | null {
 
 **Fertilizing characteristics:**
 - Effect: +25 nutrients per application (default)
-- Radius: 2 tiles
+- Radius: 2 faces
 - Resource: Fertilizer
 - Frequency: Every 5-10 game days for optimal nutrients (occasional, not constant)
 
@@ -305,19 +294,19 @@ function applyFertilizing(cell: CellState, amount: number): CellState | null {
 ### Average Stats Calculation
 
 ```typescript
-function getAverageStats(cells: CellState[][]): CourseStats {
+function getAverageFaceStats(faceStates: Map<number, FaceState>): CourseStats {
   let totalHealth = 0;
   let totalMoisture = 0;
   let totalNutrients = 0;
   let totalHeight = 0;
   let count = 0;
 
-  for (const cell of allCells) {
-    if (isGrassTerrain(cell.type)) {
-      totalHealth += cell.health;
-      totalMoisture += cell.moisture;
-      totalNutrients += cell.nutrients;
-      totalHeight += cell.height;
+  for (const [, state] of faceStates) {
+    if (isGrassFace(state.terrainCode)) {
+      totalHealth += state.health;
+      totalMoisture += state.moisture;
+      totalNutrients += state.nutrients;
+      totalHeight += state.grassHeight;
       count++;
     }
   }
@@ -342,19 +331,31 @@ function getOverallCondition(averageHealth: number): ConditionRating {
 }
 ```
 
-### Cells Needing Attention
+### Faces Needing Attention
 
 ```typescript
-function countCellsNeedingMowing(cells: CellState[][]): number {
-  return cells.filter(c => isGrassTerrain(c.type) && c.height > 60).length;
+function countFacesNeedingMowing(faceStates: Map<number, FaceState>): number {
+  let count = 0;
+  for (const [, s] of faceStates) {
+    if (isGrassFace(s.terrainCode) && s.grassHeight > 60) count++;
+  }
+  return count;
 }
 
-function countCellsNeedingWater(cells: CellState[][]): number {
-  return cells.filter(c => isGrassTerrain(c.type) && c.moisture < 30).length;
+function countFacesNeedingWater(faceStates: Map<number, FaceState>): number {
+  let count = 0;
+  for (const [, s] of faceStates) {
+    if (isGrassFace(s.terrainCode) && s.moisture < 30) count++;
+  }
+  return count;
 }
 
-function countCellsNeedingFertilizer(cells: CellState[][]): number {
-  return cells.filter(c => isGrassTerrain(c.type) && c.nutrients < 30).length;
+function countFacesNeedingFertilizer(faceStates: Map<number, FaceState>): number {
+  let count = 0;
+  for (const [, s] of faceStates) {
+    if (isGrassFace(s.terrainCode) && s.nutrients < 30) count++;
+  }
+  return count;
 }
 ```
 
@@ -400,20 +401,12 @@ Players can cycle through visualization modes:
 
 ## Coordinate System
 
-### Grid System
+### World Coordinates (Primary)
 
-The course uses a 3D isometric grid coordinate system rendered with Babylon.js:
+World coordinates via topology are the primary coordinate system. Character positions, terrain queries, and all spatial operations use world-space `Vector3`.
 
 ```typescript
-// 1 grid unit = 1 game tile (approximately 1 meter)
-// The isometric view is achieved via an orthographic camera at 60° from vertical
-
-// Grid to 3D world conversion (from BabylonEngine.ts)
-function gridTo3D(gridX: number, gridY: number, elevation: number): Vector3 {
-  return new Vector3(gridX, elevation, gridY);
-}
-
-// 3D world to grid conversion
+// World to grid (for spatial indexing)
 function worldToGrid(worldPos: Vector3): { x: number; y: number } {
   return { x: Math.floor(worldPos.x), y: Math.floor(worldPos.z) };
 }
@@ -567,9 +560,9 @@ Research can improve maintenance:
 │  COURSE CONDITION: Excellent (87%)      │
 │  ████████████████████░░░░  87/100       │
 ├─────────────────────────────────────────┤
-│  Needs Mowing:     12 tiles  ⚠         │
-│  Needs Watering:   34 tiles  ⚠⚠        │
-│  Needs Fertilizer:  8 tiles            │
+│  Needs Mowing:     12 faces  ⚠         │
+│  Needs Watering:   34 faces  ⚠⚠        │
+│  Needs Fertilizer:  8 faces            │
 └─────────────────────────────────────────┘
 ```
 
@@ -594,10 +587,13 @@ Research can improve maintenance:
 
 ```typescript
 interface CourseState {
-  // Grid
+  // Dimensions
   width: number;
   height: number;
-  cells: CellState[][];
+
+  // Topology + face states (source of truth)
+  topology: SerializedTopology;
+  faceStates: Map<number, FaceState>;
 
   // Aggregate stats
   averageHealth: number;

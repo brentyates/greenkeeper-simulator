@@ -39,7 +39,7 @@ export interface InputCallbacks {
   onEquipmentStore?: () => void;
   onAmenityPanel?: () => void;
   onWalkOnQueuePanel?: () => void;
-  onDragStart?: (screenX: number, screenY: number) => void;
+  onDragStart?: (screenX: number, screenY: number, shiftKey?: boolean) => void;
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
   onPinchZoom?: (delta: number) => void;
@@ -56,6 +56,8 @@ export interface InputCallbacks {
   isEditorActive?: () => boolean;
   isEdgeModeActive?: () => boolean;
   isFaceModeActive?: () => boolean;
+  onSelectModeToggle?: () => void;
+  onBrushModeToggle?: () => void;
 }
 
 export class InputManager {
@@ -119,7 +121,11 @@ export class InputManager {
     if (key === "arrowup" || key === "w") {
       this.callbacks.onMove?.("up");
     } else if (key === "arrowdown" || key === "s") {
-      this.callbacks.onMove?.("down");
+      if (key === "s" && this.callbacks.isEditorActive?.()) {
+        this.callbacks.onSelectModeToggle?.();
+      } else {
+        this.callbacks.onMove?.("down");
+      }
     } else if (key === "arrowleft" || key === "a") {
       this.callbacks.onMove?.("left");
     } else if (key === "arrowright" || key === "d") {
@@ -218,7 +224,11 @@ export class InputManager {
     } else if (key === "k") {
       this.callbacks.onMarketingPanel?.();
     } else if (key === "b") {
-      this.callbacks.onEquipmentStore?.();
+      if (this.callbacks.isEditorActive?.()) {
+        this.callbacks.onBrushModeToggle?.();
+      } else {
+        this.callbacks.onEquipmentStore?.();
+      }
     } else if (key === "u") {
       this.callbacks.onAmenityPanel?.();
     } else if (key === "o") {
@@ -263,7 +273,7 @@ export class InputManager {
         this.isDragging = true;
         const shiftKey = (pointerInfo.event as PointerEvent).shiftKey;
         this.callbacks.onClick?.(x, y, shiftKey);
-        this.callbacks.onDragStart?.(x, y);
+        this.callbacks.onDragStart?.(x, y, shiftKey);
       } else if (pointerInfo.type === PointerEventTypes.POINTERUP) {
         if (this.isDragging) {
           this.isDragging = false;
@@ -301,7 +311,7 @@ export class InputManager {
         const touch = event.touches[0];
         this.touchStartPos = { x: touch.clientX, y: touch.clientY };
         this.touchStartTime = Date.now();
-        this.callbacks.onDragStart?.(touch.clientX, touch.clientY);
+        this.callbacks.onDragStart?.(touch.clientX, touch.clientY, false);
       } else if (event.touches.length === 2) {
         // Two-finger pinch
         const touch1 = event.touches[0];

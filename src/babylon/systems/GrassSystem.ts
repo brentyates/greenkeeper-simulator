@@ -72,7 +72,7 @@ export class GrassSystem {
   }
 
   private initCells(): void {
-    const { width, height, layout, elevation, obstacles } = this.courseData;
+    const { width, height, layout, obstacles } = this.courseData;
 
     this.cells = [];
     for (let y = 0; y < height; y++) {
@@ -80,7 +80,7 @@ export class GrassSystem {
       for (let x = 0; x < width; x++) {
         const terrainCode = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
         const terrainType = getTerrainType(terrainCode);
-        const elev = elevation?.[y]?.[x] ?? 0;
+        const elev = 0;
         const initialValues = getInitialValues(terrainType);
 
         const cell: CellState = {
@@ -1502,6 +1502,22 @@ export class GrassSystem {
 
   public getGridDimensions(): { width: number; height: number } {
     return { width: this.courseData.width, height: this.courseData.height };
+  }
+
+  public getFacesInBrush(_worldX: number, _worldZ: number, _radius: number): number[] {
+    return [];
+  }
+
+  public sampleFaceStatesInRadius(_worldX: number, _worldZ: number, _sampleRadius: number): { avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number } {
+    return { avgMoisture: 0, avgNutrients: 0, avgGrassHeight: 0, avgHealth: 0, dominantTerrainCode: 0, faceCount: 0 };
+  }
+
+  public findWorkCandidates(_centerX: number, _centerZ: number, _maxRadius: number, _cellSize?: number): { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] {
+    return [];
+  }
+
+  public applyWorkEffect(_worldX: number, _worldZ: number, _equipmentRadius: number, _jobType: 'mow' | 'water' | 'fertilize' | 'rake', _efficiency: number, _gameTime: number): number[] {
+    return [];
   }
 
   public dispose(): void {

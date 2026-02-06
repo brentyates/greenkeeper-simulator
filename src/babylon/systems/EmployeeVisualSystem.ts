@@ -14,7 +14,6 @@ import {
   ElevationProvider,
   EMPLOYEE_APPEARANCE,
   createEntityMesh,
-  updateEntityVisualPosition,
   disposeEntityMesh,
 } from "./EntityVisualSystem";
 import {
@@ -27,12 +26,10 @@ import {
 
 export interface EmployeePosition {
   readonly employeeId: string;
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
   readonly task: EmployeeTask;
-  readonly nextX: number | null;
-  readonly nextY: number | null;
-  readonly moveProgress: number;
+  readonly isMoving: boolean;
 }
 
 export type { ElevationProvider } from "./EntityVisualSystem";
@@ -72,7 +69,7 @@ export class EmployeeVisualSystem {
     this.elevationProvider = elevationProvider;
   }
 
-  public update(positions: readonly EmployeePosition[], deltaMs: number): void {
+  public update(positions: readonly EmployeePosition[], _deltaMs: number): void {
     const currentIds = new Set(positions.map((p) => p.employeeId));
 
     for (const [id, group] of this.workerMeshes) {
@@ -86,22 +83,30 @@ export class EmployeeVisualSystem {
       let group = this.workerMeshes.get(pos.employeeId);
 
       if (!group) {
-        group = this.createWorkerMesh(pos.employeeId, pos.gridX, pos.gridY);
+        group = this.createWorkerMesh(pos.employeeId, Math.floor(pos.worldX), Math.floor(pos.worldZ));
         this.workerMeshes.set(pos.employeeId, group);
       }
 
-      updateEntityVisualPosition(
-        group,
-        pos.gridX,
-        pos.gridY,
-        pos.nextX,
-        pos.nextY,
-        deltaMs,
-        this.elevationProvider
-      );
-      this.updateWorkerTask(group, pos.task);
+      const elevation = this.elevationProvider.getElevationAt(pos.worldX, pos.worldZ, 0);
+      const worldPos = gridTo3D(pos.worldX, pos.worldZ, elevation);
+      group.container.position.copyFrom(worldPos);
 
-      // Re-parent equipment if mesh loaded after equipment was created
+      if (pos.isMoving && group.rotatesWithMovement) {
+        const dx = pos.worldX - group.targetGridX;
+        const dz = pos.worldZ - group.targetGridY;
+        if (dx !== 0 || dz !== 0) {
+          group.facingAngle = Math.atan2(dz, dx) + Math.PI / 2;
+          if (group.meshInstance) {
+            group.meshInstance.root.rotation.y = group.facingAngle;
+          }
+        }
+      }
+
+      group.targetGridX = pos.worldX;
+      group.targetGridY = pos.worldZ;
+      group.isAnimating = pos.isMoving;
+
+      this.updateWorkerTask(group, pos.task);
       this.ensureEquipmentParent(group);
     }
   }

@@ -20,9 +20,6 @@ export function createVectorTerrainModifier(vts: VectorTerrainSystem): Partial<T
     getLayoutGrid: () => vts.getLayoutGrid(),
     rebuildMesh: () => vts.rebuildMesh(),
     paintTerrainType: (cells, type) => vts.paintTerrainType(cells, type),
-    isTopologyMode: () => vts.isTopologyMode(),
-    enableTopologyMode: () => vts.enableTopologyMode(),
-    disableTopologyMode: () => vts.disableTopologyMode(),
     setTopologyMode: (mode) => vts.setTopologyMode(mode),
     getTopologyMode: () => vts.getTopologyMode(),
     setHoveredFace: (faceId) => vts.setHoveredFace(faceId),
@@ -52,5 +49,9 @@ export function createVectorTerrainModifier(vts: VectorTerrainSystem): Partial<T
     setBrushHoveredEdges: (edgeIds) => vts.setBrushHoveredEdges(edgeIds),
     getFacesInBrush: (x, z, r) => vts.getFacesInBrush(x, z, r),
     setBrushHoveredFaces: (faceIds) => vts.setBrushHoveredFaces(faceIds),
+    getVerticesInWorldRadius: (x, z, r) => vts.getVerticesInWorldRadius(x, z, r),
+    getVerticesFromEdgesInBrush: (x, z, r) => vts.getVerticesFromEdgesInBrush(x, z, r),
+    getVerticesFromFacesInBrush: (x, z, r) => vts.getVerticesFromFacesInBrush(x, z, r),
+    updateFaceTerrainVisuals: () => vts.updateFaceTerrainVisuals(),
   };
 }

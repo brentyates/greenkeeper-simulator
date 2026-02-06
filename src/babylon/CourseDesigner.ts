@@ -1,4 +1,4 @@
-import { BabylonEngine, gridTo3D } from './engine/BabylonEngine';
+import { BabylonEngine } from './engine/BabylonEngine';
 import { InputManager } from './engine/InputManager';
 import { VectorTerrainSystem } from './systems/VectorTerrainSystem';
 import { TerrainEditorSystem } from './systems/TerrainEditorSystem';
@@ -155,12 +155,7 @@ export class CourseDesigner {
   private setupTerrainEditor(): TerrainEditorSystem {
     const scene = this.babylonEngine.getScene();
 
-    const elevationProvider = {
-      getElevationAt: (_gridX: number, _gridY: number) => 0,
-      gridTo3D: (gridX: number, gridY: number, elev: number) => gridTo3D(gridX, gridY, elev),
-    };
-
-    const editor = new TerrainEditorSystem(scene, elevationProvider);
+    const editor = new TerrainEditorSystem(scene);
 
     const vts = this.vectorTerrainSystem;
     editor.setTerrainModifier({

@@ -1238,6 +1238,140 @@ function segmentsIntersect(
            ccw(ax, az, bx, bz, cx, cz) !== ccw(ax, az, bx, bz, dx, dz);
 }
 
+export interface SerializedVertex {
+  id: number;
+  position: Vec3;
+  gridUV: GridUV;
+}
+
+export interface SerializedTriangle {
+  id: number;
+  vertices: [number, number, number];
+  terrainCode: number;
+}
+
+export interface SerializedTopology {
+  vertices: SerializedVertex[];
+  triangles: SerializedTriangle[];
+  worldWidth: number;
+  worldHeight: number;
+}
+
+export function serializeTopology(topology: TerrainMeshTopology): SerializedTopology {
+  const vertices: SerializedVertex[] = [];
+  for (const [, v] of topology.vertices) {
+    vertices.push({
+      id: v.id,
+      position: { ...v.position },
+      gridUV: { ...v.gridUV },
+    });
+  }
+
+  const triangles: SerializedTriangle[] = [];
+  for (const [, tri] of topology.triangles) {
+    triangles.push({
+      id: tri.id,
+      vertices: [...tri.vertices] as [number, number, number],
+      terrainCode: tri.terrainCode,
+    });
+  }
+
+  return {
+    vertices,
+    triangles,
+    worldWidth: topology.worldWidth,
+    worldHeight: topology.worldHeight,
+  };
+}
+
+export function deserializeTopology(data: SerializedTopology): TerrainMeshTopology {
+  const topology = createEmptyTopology(data.worldWidth, data.worldHeight);
+
+  let maxVertexId = -1;
+  for (const sv of data.vertices) {
+    topology.vertices.set(sv.id, {
+      id: sv.id,
+      position: { ...sv.position },
+      gridUV: { ...sv.gridUV },
+      neighbors: new Set(),
+    });
+    if (sv.id > maxVertexId) maxVertexId = sv.id;
+  }
+  topology.nextVertexId = maxVertexId + 1;
+
+  let maxTriId = -1;
+  for (const st of data.triangles) {
+    const triId = createTriangleFromSerialized(topology, st.vertices[0], st.vertices[1], st.vertices[2]);
+    if (triId !== null) {
+      const tri = topology.triangles.get(triId);
+      if (tri) tri.terrainCode = st.terrainCode;
+    }
+    if (st.id > maxTriId) maxTriId = st.id;
+  }
+  if (maxTriId >= topology.nextTriangleId) {
+    topology.nextTriangleId = maxTriId + 1;
+  }
+
+  return topology;
+}
+
+function createTriangleFromSerialized(
+  topology: TerrainMeshTopology,
+  v0: number,
+  v1: number,
+  v2: number
+): number | null {
+  const vert0 = topology.vertices.get(v0);
+  const vert1 = topology.vertices.get(v1);
+  const vert2 = topology.vertices.get(v2);
+  if (!vert0 || !vert1 || !vert2) return null;
+
+  const triId = topology.nextTriangleId++;
+  const edges: [number, number, number] = [
+    getOrCreateEdgeForTriangle(topology, v0, v1, triId),
+    getOrCreateEdgeForTriangle(topology, v1, v2, triId),
+    getOrCreateEdgeForTriangle(topology, v2, v0, triId),
+  ];
+
+  const tri: TerrainTriangle = {
+    id: triId,
+    vertices: [v0, v1, v2],
+    edges,
+    terrainCode: 0,
+  };
+
+  topology.triangles.set(triId, tri);
+
+  vert0.neighbors.add(v1); vert0.neighbors.add(v2);
+  vert1.neighbors.add(v0); vert1.neighbors.add(v2);
+  vert2.neighbors.add(v0); vert2.neighbors.add(v1);
+
+  return triId;
+}
+
+export function barycentricInterpolateY(
+  worldX: number,
+  worldZ: number,
+  v0: Vec3,
+  v1: Vec3,
+  v2: Vec3
+): number {
+  const d00 = (v1.x - v0.x) * (v1.x - v0.x) + (v1.z - v0.z) * (v1.z - v0.z);
+  const d01 = (v1.x - v0.x) * (v2.x - v0.x) + (v1.z - v0.z) * (v2.z - v0.z);
+  const d11 = (v2.x - v0.x) * (v2.x - v0.x) + (v2.z - v0.z) * (v2.z - v0.z);
+  const d20 = (worldX - v0.x) * (v1.x - v0.x) + (worldZ - v0.z) * (v1.z - v0.z);
+  const d21 = (worldX - v0.x) * (v2.x - v0.x) + (worldZ - v0.z) * (v2.z - v0.z);
+
+  const denom = d00 * d11 - d01 * d01;
+  if (Math.abs(denom) < 1e-10) return v0.y;
+
+  const bv = (d11 * d20 - d01 * d21) / denom;
+  const bw = (d00 * d21 - d01 * d20) / denom;
+  const bu = 1 - bv - bw;
+
+  return bu * v0.y + bv * v1.y + bw * v2.y;
+}
+
 export const MAX_WALKABLE_SLOPE_DEGREES = 45;
 
 export function computeFaceSlopeAngle(

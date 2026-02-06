@@ -1,19 +1,20 @@
-import { CellState, isWalkable, canMoveFromTo } from './terrain';
 import { Employee, EmployeeRole, calculateEffectiveEfficiency } from './employees';
 import {
   EmployeeEntity,
   EmployeeTask,
   GridPosition,
   MOVE_SPEED,
-  moveEntityAlongPath,
   createEmployeeEntity,
+  moveEmployeeToward,
 } from './movable-entity';
+import { isGrassTerrain, getTerrainType } from './terrain';
+import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainSystemInterface';
 
-export type { EmployeeTask, GridPosition } from './movable-entity';
+export type { EmployeeTask } from './movable-entity';
 
 export interface WorkTarget {
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
   readonly task: EmployeeTask;
   readonly priority: number;
 }
@@ -39,8 +40,9 @@ export interface EmployeeWorkSystemState {
 }
 
 export interface WorkEffect {
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
+  readonly radius: number;
   readonly type: 'mow' | 'water' | 'fertilize' | 'rake';
   readonly efficiency: number;
 }
@@ -48,8 +50,8 @@ export interface WorkEffect {
 export interface TaskCompletion {
   readonly employeeId: string;
   readonly task: EmployeeTask;
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
 }
 
 export interface EmployeeWorkTickResult {
@@ -188,10 +190,57 @@ function getTaskPriorityForRole(_role: EmployeeRole): EmployeeTask[] {
   return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
 }
 
+function getTaskNeedFromSample(
+  task: EmployeeTask,
+  sample: FaceStateSample,
+  _gameTime: number
+): number {
+  const terrainType = getTerrainType(sample.dominantTerrainCode);
+
+  switch (task) {
+    case 'mow_grass':
+      if (!isGrassTerrain(terrainType)) return 0;
+      if (sample.avgGrassHeight > WORK_THRESHOLDS.heightCritical) {
+        return sample.avgGrassHeight - WORK_THRESHOLDS.heightCritical + 50;
+      }
+      if (sample.avgGrassHeight > WORK_THRESHOLDS.heightStandard) {
+        return sample.avgGrassHeight - WORK_THRESHOLDS.heightStandard;
+      }
+      return 0;
+
+    case 'water_area':
+      if (!isGrassTerrain(terrainType)) return 0;
+      if (sample.avgMoisture < WORK_THRESHOLDS.waterCritical) {
+        return WORK_THRESHOLDS.waterCritical - sample.avgMoisture + 50;
+      }
+      if (sample.avgMoisture < WORK_THRESHOLDS.waterStandard) {
+        return WORK_THRESHOLDS.waterStandard - sample.avgMoisture;
+      }
+      return 0;
+
+    case 'fertilize_area':
+      if (!isGrassTerrain(terrainType)) return 0;
+      if (sample.avgNutrients < WORK_THRESHOLDS.fertilizeCritical) {
+        return WORK_THRESHOLDS.fertilizeCritical - sample.avgNutrients + 50;
+      }
+      if (sample.avgNutrients < WORK_THRESHOLDS.fertilizeStandard) {
+        return WORK_THRESHOLDS.fertilizeStandard - sample.avgNutrients;
+      }
+      return 0;
+
+    case 'rake_bunker':
+      if (terrainType !== 'bunker') return 0;
+      return sample.avgHealth < 80 ? 100 - sample.avgHealth : 0;
+
+    default:
+      return 0;
+  }
+}
+
 export function findBestWorkTarget(
-  cells: CellState[][],
-  currentX: number,
-  currentY: number,
+  terrainSystem: TerrainSystem,
+  currentWorldX: number,
+  currentWorldZ: number,
   role: EmployeeRole,
   assignedArea: CourseArea | null,
   claimedTargets: ReadonlySet<string>,
@@ -199,33 +248,33 @@ export function findBestWorkTarget(
   maxDistance: number = 100
 ): WorkTarget | null {
   const priorities = getTaskPriorityForRole(role);
+  const candidates = terrainSystem.findWorkCandidates(currentWorldX, currentWorldZ, maxDistance);
+
   let bestTarget: WorkTarget | null = null;
   let bestScore = -1;
 
-  for (let y = 0; y < cells.length; y++) {
-    for (let x = 0; x < cells[y].length; x++) {
-      if (!isInArea(x, y, assignedArea)) continue;
-      if (claimedTargets.has(`${x},${y}`)) continue;
+  for (const candidate of candidates) {
+    if (candidate.faceCount === 0) continue;
+    if (!isInArea(candidate.worldX, candidate.worldZ, assignedArea)) continue;
 
-      const cell = cells[y][x];
-      if (!isWalkable(cell)) continue;
+    const key = `${Math.floor(candidate.worldX)},${Math.floor(candidate.worldZ)}`;
+    if (claimedTargets.has(key)) continue;
 
-      const distance = Math.abs(x - currentX) + Math.abs(y - currentY);
-      if (distance > maxDistance) continue;
+    for (let priorityIndex = 0; priorityIndex < priorities.length; priorityIndex++) {
+      const task = priorities[priorityIndex];
+      const need = getTaskNeedFromSample(task, candidate, gameTime);
 
-      for (let priorityIndex = 0; priorityIndex < priorities.length; priorityIndex++) {
-        const task = priorities[priorityIndex];
-        const need = getTaskNeed(cell, task, gameTime);
+      if (need > 0) {
+        const dx = candidate.worldX - currentWorldX;
+        const dz = candidate.worldZ - currentWorldZ;
+        const distance = Math.abs(dx) + Math.abs(dz);
+        const isCritical = need > 50;
+        const priorityBonus = isCritical ? 5000 : (priorities.length - priorityIndex) * 100;
+        const score = priorityBonus + need * 10 - distance;
 
-        if (need > 0) {
-          const isCritical = need > 50;
-          const priorityBonus = isCritical ? 5000 : (priorities.length - priorityIndex) * 100;
-          const score = priorityBonus + need * 10 - distance;
-
-          if (score > bestScore) {
-            bestScore = score;
-            bestTarget = { gridX: x, gridY: y, task, priority: need };
-          }
+        if (score > bestScore) {
+          bestScore = score;
+          bestTarget = { worldX: candidate.worldX, worldZ: candidate.worldZ, task, priority: need };
         }
       }
     }
@@ -234,135 +283,39 @@ export function findBestWorkTarget(
   return bestTarget;
 }
 
-function getTaskNeed(cell: CellState, task: EmployeeTask, gameTime: number = 0): number {
-  switch (task) {
-    case 'mow_grass':
-      if (cell.type === 'fairway' || cell.type === 'green' || cell.type === 'rough') {
-        if (cell.height > WORK_THRESHOLDS.heightCritical) {
-          return cell.height - WORK_THRESHOLDS.heightCritical + 50;
-        }
-        if (cell.height > WORK_THRESHOLDS.heightStandard) {
-          return cell.height - WORK_THRESHOLDS.heightStandard;
-        }
-      }
-      return 0;
-
-    case 'water_area':
-      if (cell.type === 'fairway' || cell.type === 'green' || cell.type === 'rough') {
-        if (cell.moisture < WORK_THRESHOLDS.waterCritical) {
-          return WORK_THRESHOLDS.waterCritical - cell.moisture + 50;
-        }
-        if (cell.moisture < WORK_THRESHOLDS.waterStandard) {
-          return WORK_THRESHOLDS.waterStandard - cell.moisture;
-        }
-      }
-      return 0;
-
-    case 'fertilize_area':
-      if (cell.type === 'fairway' || cell.type === 'green' || cell.type === 'rough') {
-        if (cell.nutrients < WORK_THRESHOLDS.fertilizeCritical) {
-          return WORK_THRESHOLDS.fertilizeCritical - cell.nutrients + 50;
-        }
-        if (cell.nutrients < WORK_THRESHOLDS.fertilizeStandard) {
-          return WORK_THRESHOLDS.fertilizeStandard - cell.nutrients;
-        }
-      }
-      return 0;
-
-    case 'rake_bunker':
-      if (cell.type === 'bunker') {
-        const timeSinceRake = gameTime - cell.lastMowed;
-        if (cell.lastMowed === 0 || timeSinceRake >= BUNKER_RAKE_COOLDOWN) {
-          return 10;
-        }
-      }
-      return 0;
-
-    default:
-      return 0;
-  }
-}
-
-export function findPath(
-  cells: CellState[][],
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-  slopeChecker?: (x: number, y: number) => boolean
+export function generateWaypointsToTarget(
+  startWorldX: number,
+  startWorldZ: number,
+  targetWorldX: number,
+  targetWorldZ: number,
+  terrainSystem: TerrainSystem
 ): GridPosition[] {
-  interface PathNode {
-    x: number;
-    y: number;
-    g: number;
-    h: number;
-    f: number;
-    parent: PathNode | null;
+  const dx = targetWorldX - startWorldX;
+  const dz = targetWorldZ - startWorldZ;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+
+  if (dist < 0.5) {
+    return [];
   }
 
-  const height = cells.length;
-  const width = cells[0]?.length ?? 0;
+  const waypoints: GridPosition[] = [];
+  const steps = Math.ceil(dist / 5.0);
 
-  if (startX === endX && startY === endY) return [];
-  if (endX < 0 || endX >= width || endY < 0 || endY >= height) return [];
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const wpX = startWorldX + dx * t;
+    const wpZ = startWorldZ + dz * t;
 
-  const openSet: PathNode[] = [];
-  const closedSet = new Set<string>();
-
-  const heuristic = (x: number, y: number) =>
-    Math.abs(x - endX) + Math.abs(y - endY);
-
-  openSet.push({
-    x: startX,
-    y: startY,
-    g: 0,
-    h: heuristic(startX, startY),
-    f: heuristic(startX, startY),
-    parent: null,
-  });
-
-  while (openSet.length > 0) {
-    openSet.sort((a, b) => a.f - b.f);
-    const current = openSet.shift()!;
-
-    if (current.x === endX && current.y === endY) {
-      const path: GridPosition[] = [];
-      let node: PathNode | null = current;
-      while (node?.parent) {
-        path.unshift({ x: node.x, y: node.y });
-        node = node.parent;
-      }
-      return path;
-    }
-
-    closedSet.add(`${current.x},${current.y}`);
-
-    const neighbors = [
-      { x: current.x, y: current.y - 1 },
-      { x: current.x, y: current.y + 1 },
-      { x: current.x - 1, y: current.y },
-      { x: current.x + 1, y: current.y },
-    ];
-
-    for (const neighbor of neighbors) {
-      if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
-      if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
-
-      const fromCell = cells[current.y]?.[current.x];
-      const toCell = cells[neighbor.y]?.[neighbor.x];
-      if (!fromCell || !toCell || !canMoveFromTo(fromCell, toCell, slopeChecker)) continue;
-
-      const alreadyInOpenSet = openSet.some(n => n.x === neighbor.x && n.y === neighbor.y);
-      if (alreadyInOpenSet) continue;
-
-      const g = current.g + 1;
-      const h = heuristic(neighbor.x, neighbor.y);
-      const f = g + h;
-      openSet.push({ x: neighbor.x, y: neighbor.y, g, h, f, parent: current });
+    if (terrainSystem.isPositionWalkable(wpX, wpZ)) {
+      waypoints.push({ x: wpX, y: wpZ });
     }
   }
 
-  return [];
+  if (waypoints.length === 0 || waypoints[waypoints.length - 1].x !== targetWorldX || waypoints[waypoints.length - 1].y !== targetWorldZ) {
+    waypoints.push({ x: targetWorldX, y: targetWorldZ });
+  }
+
+  return waypoints;
 }
 
 function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | 'rake' | null {
@@ -380,15 +333,28 @@ function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | 'rak
   }
 }
 
-const BUNKER_RAKE_COOLDOWN = 60;
+function getTaskEquipmentRadius(task: EmployeeTask): number {
+  switch (task) {
+    case 'mow_grass': return 1.0;
+    case 'water_area': return 2.0;
+    case 'fertilize_area': return 2.0;
+    case 'rake_bunker': return 1.5;
+    default: return 1.0;
+  }
+}
+
+function isAtTarget(entity: EmployeeWorkState, targetX: number, targetZ: number): boolean {
+  const dx = targetX - entity.worldX;
+  const dz = targetZ - entity.worldZ;
+  return Math.sqrt(dx * dx + dz * dz) < 0.3;
+}
 
 export function tickEmployeeWork(
   state: EmployeeWorkSystemState,
   employees: readonly Employee[],
-  cells: CellState[][],
+  terrainSystem: TerrainSystem,
   deltaMinutes: number,
-  gameTime: number = 0,
-  slopeChecker?: (x: number, y: number) => boolean
+  gameTime: number = 0
 ): EmployeeWorkTickResult {
   const effects: WorkEffect[] = [];
   const completions: TaskCompletion[] = [];
@@ -396,8 +362,8 @@ export function tickEmployeeWork(
 
   const claimedTargets = new Set<string>();
   for (const worker of state.workers) {
-    if (worker.targetX !== null && worker.targetY !== null) {
-      claimedTargets.add(`${worker.targetX},${worker.targetY}`);
+    if (worker.targetX !== null && worker.targetZ !== null) {
+      claimedTargets.add(`${Math.floor(worker.targetX)},${Math.floor(worker.targetZ)}`);
     }
   }
 
@@ -418,18 +384,12 @@ export function tickEmployeeWork(
       : null;
 
     const efficiency = calculateEffectiveEfficiency(employee);
-    const currentX = worker.gridX;
-    const currentY = worker.gridY;
-    const currentCell = cells[currentY]?.[currentX];
 
-    if (worker.moveProgress > 0 && worker.moveProgress < 1 && worker.path.length > 0) {
-      return moveEntityAlongPath(worker, deltaMinutes);
-    }
-
+    // Continue work in progress
     if (worker.workProgress > 0 && worker.workProgress < 100) {
       const taskDuration = TASK_DURATIONS[worker.currentTask];
       if (taskDuration === 0) {
-        return { ...worker, currentTask: 'idle' as EmployeeTask, workProgress: 0, path: [], targetX: null, targetY: null };
+        return { ...worker, currentTask: 'idle' as EmployeeTask, workProgress: 0, path: [], targetX: null, targetZ: null };
       }
 
       const progressPerMinute = 100 / taskDuration;
@@ -439,8 +399,9 @@ export function tickEmployeeWork(
         const effectType = getWorkEffect(worker.currentTask);
         if (effectType) {
           effects.push({
-            gridX: currentX,
-            gridY: currentY,
+            worldX: worker.worldX,
+            worldZ: worker.worldZ,
+            radius: getTaskEquipmentRadius(worker.currentTask),
             type: effectType,
             efficiency,
           });
@@ -448,50 +409,113 @@ export function tickEmployeeWork(
         completions.push({
           employeeId: worker.employeeId,
           task: worker.currentTask,
-          gridX: currentX,
-          gridY: currentY,
+          worldX: worker.worldX,
+          worldZ: worker.worldZ,
         });
         tasksCompleted++;
 
-        claimedTargets.delete(`${worker.targetX},${worker.targetY}`);
+        claimedTargets.delete(`${Math.floor(worker.targetX ?? 0)},${Math.floor(worker.targetZ ?? 0)}`);
 
         return {
           ...worker,
           workProgress: 0,
           targetX: null,
-          targetY: null,
+          targetZ: null,
         };
       }
 
       return { ...worker, workProgress: newProgress };
     }
 
-    const workerOwnsClaim = worker.targetX === currentX && worker.targetY === currentY;
-    if (currentCell && (workerOwnsClaim || !claimedTargets.has(`${currentX},${currentY}`))) {
+    // Movement along waypoints
+    if (worker.path.length > 0 && worker.moveProgress > 0) {
+      const nextWaypoint = worker.path[0];
+      const wpX = nextWaypoint.x;
+      const wpZ = nextWaypoint.y;
+
+      const moveSpeed = MOVE_SPEED;
+      const distanceThisFrame = moveSpeed * deltaMinutes;
+      const moved = moveEmployeeToward(worker, wpX, wpZ, distanceThisFrame);
+
+      if (isAtTarget(moved as EmployeeWorkState, wpX, wpZ)) {
+        const newPath = worker.path.slice(1);
+        const atFinalTarget = worker.targetX !== null && worker.targetZ !== null &&
+          newPath.length === 0 && isAtTarget(moved as EmployeeWorkState, worker.targetX, worker.targetZ);
+
+        if (atFinalTarget) {
+          // Arrived at work target, check for work at this location
+          const sample = terrainSystem.sampleFaceStatesInRadius(moved.worldX, moved.worldZ, 2.0);
+          if (sample.faceCount > 0) {
+            const priorities = getTaskPriorityForRole(employee.role);
+            for (const task of priorities) {
+              const need = getTaskNeedFromSample(task, sample, gameTime);
+              if (need > 0) {
+                return {
+                  ...moved,
+                  employeeId: worker.employeeId,
+                  path: [],
+                  moveProgress: 0,
+                  currentTask: task,
+                  workProgress: 0.01,
+                } as EmployeeWorkState;
+              }
+            }
+          }
+          return {
+            ...moved,
+            employeeId: worker.employeeId,
+            path: [],
+            moveProgress: 0,
+            currentTask: 'idle' as EmployeeTask,
+            targetX: null,
+            targetZ: null,
+          } as EmployeeWorkState;
+        }
+
+        return {
+          ...moved,
+          employeeId: worker.employeeId,
+          path: newPath,
+          moveProgress: newPath.length > 0 ? 0.01 : 0,
+        } as EmployeeWorkState;
+      }
+
+      return { ...moved, employeeId: worker.employeeId } as EmployeeWorkState;
+    }
+
+    // Check for work at current position
+    const currentSample = terrainSystem.sampleFaceStatesInRadius(worker.worldX, worker.worldZ, 2.0);
+    const workerOwnsClaim = worker.targetX !== null && worker.targetZ !== null &&
+      isAtTarget(worker, worker.targetX, worker.targetZ);
+    const currentKey = `${Math.floor(worker.worldX)},${Math.floor(worker.worldZ)}`;
+
+    if (currentSample.faceCount > 0 && (workerOwnsClaim || !claimedTargets.has(currentKey))) {
       const priorities = getTaskPriorityForRole(employee.role);
       for (const task of priorities) {
-        const need = getTaskNeed(currentCell, task, gameTime);
+        const need = getTaskNeedFromSample(task, currentSample, gameTime);
         if (need > 0) {
-          claimedTargets.add(`${currentX},${currentY}`);
+          claimedTargets.add(currentKey);
           return {
             ...worker,
             currentTask: task,
-            targetX: currentX,
-            targetY: currentY,
+            targetX: worker.worldX,
+            targetZ: worker.worldZ,
             workProgress: 0.01,
           };
         }
       }
     }
 
+    // Start movement if we have a path but haven't started
     if (worker.path.length > 0) {
       return { ...worker, moveProgress: 0.01, currentTask: 'patrol' as EmployeeTask };
     }
 
+    // Find new work target
     const target = findBestWorkTarget(
-      cells,
-      currentX,
-      currentY,
+      terrainSystem,
+      worker.worldX,
+      worker.worldZ,
       employee.role,
       assignedArea,
       claimedTargets,
@@ -499,21 +523,27 @@ export function tickEmployeeWork(
     );
 
     if (target) {
-      const path = findPath(cells, currentX, currentY, target.gridX, target.gridY, slopeChecker);
-      if (path.length > 0) {
-        claimedTargets.add(`${target.gridX},${target.gridY}`);
+      const waypoints = generateWaypointsToTarget(
+        worker.worldX,
+        worker.worldZ,
+        target.worldX,
+        target.worldZ,
+        terrainSystem
+      );
+      if (waypoints.length > 0) {
+        claimedTargets.add(`${Math.floor(target.worldX)},${Math.floor(target.worldZ)}`);
         return {
           ...worker,
           currentTask: 'patrol' as EmployeeTask,
-          targetX: target.gridX,
-          targetY: target.gridY,
-          path,
+          targetX: target.worldX,
+          targetZ: target.worldZ,
+          path: waypoints,
           moveProgress: 0.01,
         };
       }
     }
 
-    return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], targetX: null, targetY: null };
+    return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], targetX: null, targetZ: null };
   });
 
   return {
@@ -555,14 +585,22 @@ export function getActiveWorkerCount(state: EmployeeWorkSystemState): number {
 
 export function getWorkerPositions(
   state: EmployeeWorkSystemState
-): readonly { employeeId: string; gridX: number; gridY: number; task: EmployeeTask; nextX: number | null; nextY: number | null; moveProgress: number }[] {
+): readonly {
+  employeeId: string;
+  worldX: number;
+  worldZ: number;
+  gridX: number;
+  gridY: number;
+  task: EmployeeTask;
+  isMoving: boolean;
+}[] {
   return state.workers.map(w => ({
     employeeId: w.employeeId,
+    worldX: w.worldX,
+    worldZ: w.worldZ,
     gridX: w.gridX,
     gridY: w.gridY,
     task: w.currentTask,
-    nextX: w.path.length > 0 ? w.path[0].x : null,
-    nextY: w.path.length > 0 ? w.path[0].y : null,
-    moveProgress: w.moveProgress,
+    isMoving: w.path.length > 0,
   }));
 }

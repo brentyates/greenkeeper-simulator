@@ -4,6 +4,20 @@ import { CellState, TerrainType, OverlayMode } from "../../core/terrain";
 import { FaceState } from "../../core/face-state";
 import { WeatherEffect } from "../../core/grass-simulation";
 
+export interface FaceStateSample {
+  avgMoisture: number;
+  avgNutrients: number;
+  avgGrassHeight: number;
+  avgHealth: number;
+  dominantTerrainCode: number;
+  faceCount: number;
+}
+
+export interface WorkCandidate extends FaceStateSample {
+  worldX: number;
+  worldZ: number;
+}
+
 export interface TerrainSystem {
   build(courseData: CourseData): void;
   dispose(): void;
@@ -64,6 +78,19 @@ export interface TerrainSystem {
   findFaceAtPosition(worldX: number, worldZ: number): number | null;
   isPositionWalkable(worldX: number, worldZ: number): boolean;
   getTerrainSpeedAt(worldX: number, worldZ: number): number;
+
+  // Topology-based radius queries
+  getFacesInBrush(worldX: number, worldZ: number, radius: number): number[];
+  sampleFaceStatesInRadius(worldX: number, worldZ: number, sampleRadius: number): FaceStateSample;
+  findWorkCandidates(centerX: number, centerZ: number, maxRadius: number, cellSize?: number): WorkCandidate[];
+  applyWorkEffect(
+    worldX: number,
+    worldZ: number,
+    equipmentRadius: number,
+    jobType: 'mow' | 'water' | 'fertilize' | 'rake',
+    efficiency: number,
+    gameTime: number
+  ): number[];
 
   // Testing/debugging
   getUpdateCount(): number;

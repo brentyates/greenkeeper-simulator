@@ -34,10 +34,12 @@ export type EmployeeTask =
 
 export interface EmployeeEntity extends MovableEntity {
   readonly entityType: 'employee';
+  readonly worldX: number;
+  readonly worldZ: number;
   readonly efficiency: number;
   readonly currentTask: EmployeeTask;
   readonly targetX: number | null;
-  readonly targetY: number | null;
+  readonly targetZ: number | null;
   readonly workProgress: number;
   readonly assignedAreaId: string | null;
 }
@@ -87,23 +89,59 @@ export function createPlayerEntity(
 
 export function createEmployeeEntity(
   id: string,
-  gridX: number,
-  gridY: number,
+  worldX: number,
+  worldZ: number,
   efficiency: number = 1.0
 ): EmployeeEntity {
   return {
     id,
     entityType: 'employee',
-    gridX,
-    gridY,
+    worldX,
+    worldZ,
+    gridX: Math.floor(worldX),
+    gridY: Math.floor(worldZ),
     path: [],
     moveProgress: 0,
     efficiency,
     currentTask: 'idle',
     targetX: null,
-    targetY: null,
+    targetZ: null,
     workProgress: 0,
     assignedAreaId: null,
+  };
+}
+
+export function moveEmployeeToward(
+  employee: EmployeeEntity,
+  targetWorldX: number,
+  targetWorldZ: number,
+  distanceThisFrame: number
+): EmployeeEntity {
+  const dx = targetWorldX - employee.worldX;
+  const dz = targetWorldZ - employee.worldZ;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+
+  if (dist <= distanceThisFrame) {
+    return {
+      ...employee,
+      worldX: targetWorldX,
+      worldZ: targetWorldZ,
+      gridX: Math.floor(targetWorldX),
+      gridY: Math.floor(targetWorldZ),
+      moveProgress: 0,
+    };
+  }
+
+  const ratio = distanceThisFrame / dist;
+  const newWorldX = employee.worldX + dx * ratio;
+  const newWorldZ = employee.worldZ + dz * ratio;
+
+  return {
+    ...employee,
+    worldX: newWorldX,
+    worldZ: newWorldZ,
+    gridX: Math.floor(newWorldX),
+    gridY: Math.floor(newWorldZ),
   };
 }
 

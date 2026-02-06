@@ -1,6 +1,7 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
 import { HoleData } from '../core/golf-logic';
-import { VectorShape, createEllipseShape, createCircleShape } from '../core/vector-shapes';
+import { Vec3, SerializedTopology } from '../core/mesh-topology';
+import { buildOrganicTopology, TerrainRegion } from '../core/organic-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 
 export type { TerrainType, ObstacleType };
@@ -9,12 +10,6 @@ export interface ObstacleData {
   x: number;
   y: number;
   type: number;
-}
-
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
 }
 
 export interface CourseData {
@@ -29,7 +24,7 @@ export interface CourseData {
   obstacles?: ObstacleData[];
   holeData?: HoleData;
   yardsPerGrid?: number;
-  vectorShapes?: VectorShape[];
+  topology?: SerializedTopology;
 }
 
 const F = 0; // Fairway
@@ -51,409 +46,339 @@ function generateRow(width: number, pattern: Array<[number, number, number?]>): 
 }
 
 // ============================================================================
-// 3-HOLE STARTER COURSE
-// ============================================================================
-// Scale: 20 yards per tile
-// Map: 50 wide × 55 tall (1000 × 1100 yards of property)
-//
-// LAYOUT:
-//   ┌─────────────────────────────────────────────────┐
-//   │                  EXPANSION SPACE                │
-//   │                                                 │
-//   │      [H1 GREEN]                                 │
-//   │          ↑                                      │
-//   │       fairway            [H2 GREEN]             │
-//   │          ↑                   ↑                  │
-//   │       [TEE 1]             fairway               │
-//   │                              ↑                  │
-//   │                           [TEE 2]               │
-//   │                              ↑                  │
-//   │    [H3 GREEN] ← fairway ← [TEE 3]               │
-//   │                                                 │
-//   │   [CLUBHOUSE]           EXPANSION               │
-//   │      AREA                 SPACE                 │
-//   └─────────────────────────────────────────────────┘
-//
-// Hole 1 (Par 3, ~150 yds = 7 tiles): Plays NORTH from near clubhouse
-// Hole 2 (Par 4, ~380 yds = 19 tiles): Plays NORTH on right side
-// Hole 3 (Par 3, ~140 yds = 7 tiles): Plays WEST back toward clubhouse
-//
+// POLYGON HELPERS
 // ============================================================================
 
-function generate3HoleCourse(): { layout: number[][], elevation: number[][], vertexElevations: number[][] } {
-  const WIDTH = 50;
-  const HEIGHT = 55;
-  const MESH_RES = 2;
-  const VERTEX_WIDTH = WIDTH * MESH_RES + 1;
-  const VERTEX_HEIGHT = HEIGHT * MESH_RES + 1;
-
-  const layout: number[][] = [];
-  const elevation: number[][] = [];
-  const vertexElevations: number[][] = [];
-
-  for (let y = 0; y < HEIGHT; y++) {
-    layout.push(new Array(WIDTH).fill(R));
-    elevation.push(new Array(WIDTH).fill(0));
-  }
-
-  for (let vy = 0; vy < VERTEX_HEIGHT; vy++) {
-    vertexElevations.push(new Array(VERTEX_WIDTH).fill(0));
-  }
-
-  const setTerrain = (x: number, y: number, terrain: number) => {
-    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-      layout[y][x] = terrain;
-    }
-  };
-
-  const setElevation = (x: number, y: number, elev: number) => {
-    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-      elevation[y][x] = elev;
-    }
-  };
-
-  const fillRect = (x1: number, y1: number, x2: number, y2: number, terrain: number) => {
-    for (let y = y1; y <= y2; y++) {
-      for (let x = x1; x <= x2; x++) {
-        setTerrain(x, y, terrain);
-      }
-    }
-  };
-
-  const _fillElevRect = (x1: number, y1: number, x2: number, y2: number, elev: number) => {
-    for (let y = y1; y <= y2; y++) {
-      for (let x = x1; x <= x2; x++) {
-        setElevation(x, y, elev);
-      }
-    }
-  };
-  void _fillElevRect;
-
-  const fillCircle = (cx: number, cy: number, radius: number, terrain: number) => {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          setTerrain(cx + dx, cy + dy, terrain);
-        }
-      }
-    }
-  };
-
-  const _fillElevCircle = (cx: number, cy: number, radius: number, elev: number) => {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (dx * dx + dy * dy <= radius * radius) {
-          setElevation(cx + dx, cy + dy, elev);
-        }
-      }
-    }
-  };
-  void _fillElevCircle;
-
-  const fillEllipse = (cx: number, cy: number, rx: number, ry: number, terrain: number) => {
-    for (let dy = -ry; dy <= ry; dy++) {
-      for (let dx = -rx; dx <= rx; dx++) {
-        if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
-          setTerrain(cx + dx, cy + dy, terrain);
-        }
-      }
-    }
-  };
-
-  const _fillElevEllipse = (cx: number, cy: number, rx: number, ry: number, elev: number) => {
-    for (let dy = -ry; dy <= ry; dy++) {
-      for (let dx = -rx; dx <= rx; dx++) {
-        if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
-          setElevation(cx + dx, cy + dy, elev);
-        }
-      }
-    }
-  };
-  void _fillElevEllipse;
-
-  const fillSmoothMound = (cx: number, cy: number, innerR: number, outerR: number, peakElev: number) => {
-    for (let vy = 0; vy < VERTEX_HEIGHT; vy++) {
-      for (let vx = 0; vx < VERTEX_WIDTH; vx++) {
-        const worldX = vx / MESH_RES;
-        const worldZ = vy / MESH_RES;
-        const dx = worldX - cx;
-        const dy = worldZ - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist <= outerR) {
-          let elev = 0;
-          if (dist <= innerR) {
-            elev = peakElev;
-          } else {
-            const t = (dist - innerR) / (outerR - innerR);
-            elev = peakElev * (1 - t * t);
-          }
-          vertexElevations[vy][vx] = Math.max(vertexElevations[vy][vx], elev);
-        }
-      }
-    }
-
-    for (let dy = -Math.ceil(outerR); dy <= Math.ceil(outerR); dy++) {
-      for (let dx = -Math.ceil(outerR); dx <= Math.ceil(outerR); dx++) {
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist <= outerR) {
-          let elev = 0;
-          if (dist <= innerR) {
-            elev = peakElev;
-          } else {
-            const t = (dist - innerR) / (outerR - innerR);
-            elev = peakElev * (1 - t);
-          }
-          const x = cx + dx;
-          const y = cy + dy;
-          if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-            elevation[y][x] = Math.max(elevation[y][x], elev);
-          }
-        }
-      }
-    }
-  };
-
-  const _fillVertexFlat = (x1: number, y1: number, x2: number, y2: number, z: number) => {
-    const vx1 = Math.floor(x1 * MESH_RES);
-    const vy1 = Math.floor(y1 * MESH_RES);
-    const vx2 = Math.ceil(x2 * MESH_RES);
-    const vy2 = Math.ceil(y2 * MESH_RES);
-
-    for (let vy = vy1; vy <= vy2 && vy < VERTEX_HEIGHT; vy++) {
-      for (let vx = vx1; vx <= vx2 && vx < VERTEX_WIDTH; vx++) {
-        vertexElevations[vy][vx] = z;
-      }
-    }
-  };
-  void _fillVertexFlat;
-
-  // ========== HOLE 1: Par 3, 160 yards, plays NORTH ==========
-  // Elevated green with undulating approach
-
-  // Tee box (3x2)
-  fillRect(10, 28, 13, 29, T);
-
-  // Approach fairway - wider for visual appeal
-  for (let y = 23; y <= 27; y++) {
-    for (let x = 10; x <= 14; x++) {
-      setTerrain(x, y, F);
-    }
-  }
-
-  // Green - larger ellipse shape, raised with smooth slope
-  fillEllipse(12, 19, 4, 3, G);
-  fillSmoothMound(12, 19, 3, 7, 2.5);
-
-  // Fringe around green
-  for (let dy = -4; dy <= 4; dy++) {
-    for (let dx = -5; dx <= 5; dx++) {
-      const inFringe = (dx * dx) / 25 + (dy * dy) / 16 <= 1;
-      const inGreen = (dx * dx) / 16 + (dy * dy) / 9 <= 1;
-      if (inFringe && !inGreen) {
-        setTerrain(12 + dx, 19 + dy, F);
-      }
-    }
-  }
-
-  // Bunkers - kidney-shaped left, pot bunker right
-  fillEllipse(7, 19, 2, 3, B);
-  fillCircle(17, 18, 1, B);
-  setTerrain(18, 19, B);
-
-  // ========== HOLE 2: Par 4, 380 yards, plays NORTH ==========
-  // Dogleg with water hazard, large undulating green
-
-  // Tee box (3x2)
-  fillRect(33, 40, 36, 41, T);
-
-  // Fairway - wide landing zone
-  for (let y = 32; y <= 39; y++) {
-    const width = y >= 36 ? 4 : 3;
-    for (let x = 33; x < 33 + width; x++) {
-      setTerrain(x, y, F);
-    }
-  }
-  // Approach narrows
-  for (let y = 25; y <= 31; y++) {
-    setTerrain(34, y, F);
-    setTerrain(35, y, F);
-    if (y <= 28) setTerrain(36, y, F);
-  }
-
-  // Water hazard - sunken pond with gradual banks
-  fillEllipse(31, 30, 2, 3, W);
-  setTerrain(29, 31, W);
-  setTerrain(30, 32, W);
-  // Gradual slope down to water
-  for (let dy = -6; dy <= 6; dy++) {
-    for (let dx = -5; dx <= 5; dx++) {
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const x = 31 + dx;
-      const y = 30 + dy;
-      if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-        if (dist <= 3) {
-          elevation[y][x] = -2.0;
-        } else if (dist <= 6) {
-          const t = (dist - 3) / 3;
-          elevation[y][x] = Math.min(elevation[y][x], -2.0 * (1 - t));
-        }
-      }
-    }
-  }
-
-  // Fairway bunker cluster on right
-  fillEllipse(38, 33, 2, 1, B);
-
-  // Green - large kidney shape
-  fillEllipse(35, 21, 4, 3, G);
-  setTerrain(32, 20, G); setTerrain(32, 21, G);
-  setTerrain(38, 21, G); setTerrain(38, 22, G);
-  // Raised green with smooth slope
-  fillSmoothMound(35, 21, 4, 8, 2.5);
-
-  // Greenside bunkers
-  fillEllipse(31, 22, 1, 2, B);
-  fillCircle(39, 20, 1, B);
-
-  // ========== HOLE 3: Par 3, 140 yards, plays WEST ==========
-  // Over water to peninsula green
-
-  // Tee box (2x3)
-  fillRect(32, 43, 33, 46, T);
-
-  // Fairway approach
-  for (let x = 17; x <= 30; x++) {
-    setTerrain(x, 44, F);
-    setTerrain(x, 45, F);
-  }
-
-  // Green - elongated, raised with smooth slope
-  fillEllipse(12, 45, 3, 4, G);
-  fillSmoothMound(12, 45, 4, 8, 2.5);
-
-  // Dramatic bunkers
-  fillEllipse(12, 40, 3, 1, B);
-  fillEllipse(8, 45, 1, 3, B);
-  fillCircle(16, 47, 1, B);
-
-  // ========== TERRAIN FEATURES ==========
-
-  // Rolling hills in corners with smooth falloff
-  fillSmoothMound(3, 3, 3, 8, 4.0);
-  fillSmoothMound(46, 3, 3, 8, 4.0);
-  fillSmoothMound(46, 52, 3, 8, 3.5);
-
-  // Mounding between holes
-  fillSmoothMound(24, 33, 4, 10, 3.0);
-
-  return { layout, elevation, vertexElevations };
+function makeEllipse(
+  cx: number, cz: number, rx: number, rz: number, n = 24
+): Array<{ x: number; z: number }> {
+  return Array.from({ length: n }, (_, i) => ({
+    x: cx + Math.cos(2 * Math.PI * i / n) * rx,
+    z: cz + Math.sin(2 * Math.PI * i / n) * rz,
+  }));
 }
 
-const { layout: course3Layout, elevation: course3Elevation, vertexElevations: course3VertexElevations } = generate3HoleCourse();
+function makeRect(
+  x1: number, z1: number, x2: number, z2: number
+): Array<{ x: number; z: number }> {
+  return [
+    { x: x1, z: z1 }, { x: x2, z: z1 },
+    { x: x2, z: z2 }, { x: x1, z: z2 },
+  ];
+}
+
+function makeFairwayPoly(
+  startZ: number, endZ: number,
+  baseX: number, amplitude: number, frequency: number, halfWidth: number,
+  samples = 24
+): Array<{ x: number; z: number }> {
+  const left: Array<{ x: number; z: number }> = [];
+  const right: Array<{ x: number; z: number }> = [];
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const z = startZ + (endZ - startZ) * t;
+    const cx = baseX + Math.sin(t * Math.PI * 2 * frequency) * amplitude;
+    const hw = halfWidth * (0.7 + 0.3 * Math.cos(t * Math.PI));
+    left.push({ x: cx - hw, z });
+    right.push({ x: cx + hw, z });
+  }
+
+  return [...left, ...right.reverse()];
+}
+
+function makeHorizFairwayPoly(
+  startX: number, endX: number,
+  centerZ: number, halfWidth: number,
+  wobbleFreq: number, wobbleAmp: number,
+  samples = 24
+): Array<{ x: number; z: number }> {
+  const top: Array<{ x: number; z: number }> = [];
+  const bottom: Array<{ x: number; z: number }> = [];
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const x = startX + (endX - startX) * t;
+    const wobble = Math.sin((x - startX) * wobbleFreq) * wobbleAmp;
+    top.push({ x, z: centerZ - halfWidth + wobble });
+    bottom.push({ x, z: centerZ + halfWidth + wobble });
+  }
+
+  return [...top, ...bottom.reverse()];
+}
+
+// ============================================================================
+// ELEVATION
+// ============================================================================
+
+function calcMound(
+  x: number, z: number,
+  cx: number, cz: number,
+  innerR: number, outerR: number, peak: number
+): number {
+  const dx = x - cx;
+  const dz = z - cz;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist > outerR) return 0;
+  if (dist <= innerR) return peak;
+  const t = (dist - innerR) / (outerR - innerR);
+  return peak * (1 - t * t);
+}
+
+function calcRidge(
+  x: number, z: number,
+  ax: number, az: number,
+  bx: number, bz: number,
+  width: number, height: number
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq === 0) return 0;
+
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / lenSq));
+  const px = ax + dx * t;
+  const pz = az + dz * t;
+  const dist = Math.hypot(x - px, z - pz);
+  if (dist > width) return 0;
+  return height * (1 - (dist / width) ** 2);
+}
+
+function course3Elevation(x: number, z: number): number {
+  const WW = 100, HH = 110;
+
+  // Water depression
+  let depression = 0;
+  const waterDx = x - 62;
+  const waterDz = z - 60;
+  const waterDist = Math.sqrt(waterDx * waterDx + waterDz * waterDz);
+  if (waterDist <= 15.2) {
+    const t = waterDist <= 7.2 ? 0 : (waterDist - 7.2) / (15.2 - 7.2);
+    depression = -2.4 * (1 - t);
+  }
+
+  // Mound layer (overlapping mounds take max)
+  let moundElev = 0;
+  moundElev = Math.max(moundElev, calcMound(x, z, 6, 6, 6, 16, 4.0));
+  moundElev = Math.max(moundElev, calcMound(x, z, 92, 6, 6, 16, 4.0));
+  moundElev = Math.max(moundElev, calcMound(x, z, 92, 104, 6, 16, 3.5));
+  moundElev = Math.max(moundElev, calcMound(x, z, 48, 66, 8, 20, 3.0));
+  // Green mounds
+  moundElev = Math.max(moundElev, calcMound(x, z, 24, 38, 6.8, 15.2, 2.6));
+  moundElev = Math.max(moundElev, calcMound(x, z, 70, 42, 8.4, 17.2, 2.6));
+  moundElev = Math.max(moundElev, calcMound(x, z, 24, 90, 8.4, 17.6, 2.6));
+
+  // Ridges (additive)
+  moundElev += calcRidge(x, z, 36, 60, 56, 76, 8, 1.6);
+  moundElev += calcRidge(x, z, 52, 36, 76, 52, 6, 1.2);
+
+  // Rolling terrain
+  const edgeFalloffX = Math.min(1, Math.min(x, WW - x) / 12);
+  const edgeFalloffZ = Math.min(1, Math.min(z, HH - z) / 12);
+  const edgeFalloff = Math.min(edgeFalloffX, edgeFalloffZ);
+  const rolling = depression < 0 ? 0 : (Math.sin(x * 0.18) * Math.cos(z * 0.14)) * 0.32 * edgeFalloff;
+
+  return depression + moundElev + rolling;
+}
+
+// ============================================================================
+// 3-HOLE ORGANIC COURSE
+// ============================================================================
+// World: 100 wide × 110 tall (at 10 yards/unit = 1000 × 1100 yards)
+//
+// Hole 1 (Par 3, ~160 yds): Plays NORTH, tee near (24,58), green near (24,38)
+// Hole 2 (Par 4, ~380 yds): Plays NORTH, tee near (70,82), green near (70,42)
+// Hole 3 (Par 3, ~140 yds): Plays WEST, tee near (66,90), green near (24,90)
+// ============================================================================
+
+function generate3HoleTopology(): SerializedTopology {
+  const elev = course3Elevation;
+  const regions: TerrainRegion[] = [];
+
+  // ========== HOLE 1: Par 3, plays NORTH ==========
+
+  // H1 Fairway approach (sinuous path from tee to green area)
+  regions.push({
+    terrainCode: F,
+    boundary: makeFairwayPoly(59, 42, 24, 3.6, 0.55, 7.6),
+    elevationFn: elev,
+  });
+
+  // H1 Fringe ring around green
+  regions.push({
+    terrainCode: F,
+    boundary: makeEllipse(24, 38, 11, 9),
+    elevationFn: elev,
+  });
+
+  // H1 Green (main body + two lobes)
+  regions.push({ terrainCode: G, boundary: makeEllipse(24, 38, 9.6, 7.2), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(29.2, 36.8, 4.4, 4.4), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(19.6, 41, 4.2, 4.2), elevationFn: elev });
+
+  // H1 Tee box
+  regions.push({ terrainCode: T, boundary: makeRect(20, 56, 27, 59), elevationFn: elev });
+
+  // H1 Bunkers - kidney left, pot right
+  regions.push({ terrainCode: B, boundary: makeEllipse(14, 38, 4.8, 7.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(34.8, 36.4, 2.4, 2.4), elevationFn: elev });
+
+  // ========== HOLE 2: Par 4, plays NORTH ==========
+
+  // H2 Upper fairway (tee to mid)
+  regions.push({
+    terrainCode: F,
+    boundary: makeFairwayPoly(83, 66, 70, 5.6, 0.6, 8.4),
+    elevationFn: elev,
+  });
+
+  // H2 Lower fairway (mid to green approach)
+  regions.push({
+    terrainCode: F,
+    boundary: makeFairwayPoly(66, 48, 68, 4.2, 0.5, 6.4),
+    elevationFn: elev,
+  });
+
+  // H2 Green (kidney shape with lobes)
+  regions.push({ terrainCode: G, boundary: makeEllipse(70, 42, 9.6, 7.2), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(66, 38, 4.8, 4.8), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(74, 46, 4.8, 4.8), elevationFn: elev });
+
+  // H2 Tee box
+  regions.push({ terrainCode: T, boundary: makeRect(66, 80, 73, 83), elevationFn: elev });
+
+  // H2 Water hazard
+  regions.push({ terrainCode: W, boundary: makeEllipse(62, 60, 5.6, 7.6), elevationFn: elev });
+
+  // H2 Fairway bunker cluster
+  regions.push({ terrainCode: B, boundary: makeEllipse(76, 66, 5.2, 2.8), elevationFn: elev });
+
+  // H2 Greenside bunkers
+  regions.push({ terrainCode: B, boundary: makeEllipse(62, 44, 3.2, 4.8), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(78, 40, 2.6, 2.6), elevationFn: elev });
+
+  // ========== HOLE 3: Par 3, plays WEST ==========
+
+  // H3 Fairway (horizontal approach)
+  regions.push({
+    terrainCode: F,
+    boundary: makeHorizFairwayPoly(36, 64, 89, 3, 0.4, 2.8),
+    elevationFn: elev,
+  });
+
+  // H3 Wider approach strip
+  regions.push({
+    terrainCode: F,
+    boundary: makeRect(44, 85, 58, 88),
+    elevationFn: elev,
+  });
+
+  // H3 Green (elongated with lobes)
+  regions.push({ terrainCode: G, boundary: makeEllipse(24, 90, 7.2, 9.6), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(20, 92, 4.8, 4.8), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(28, 88, 4.4, 4.4), elevationFn: elev });
+
+  // H3 Tee box
+  regions.push({ terrainCode: T, boundary: makeRect(64, 86, 67, 93), elevationFn: elev });
+
+  // H3 Bunkers
+  regions.push({ terrainCode: B, boundary: makeEllipse(24, 80, 7.2, 3.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(16, 90, 3.2, 6.8), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(32, 94, 2.6, 2.6), elevationFn: elev });
+
+  return buildOrganicTopology({
+    worldWidth: 100,
+    worldHeight: 110,
+    regions,
+    backgroundTerrainCode: R,
+    backgroundElevationFn: elev,
+    boundaryPointSpacing: 1.0,
+    fillPointSpacing: 2.5,
+  });
+}
+
+const course3Topology = generate3HoleTopology();
+
+const sc3 = (v: number) => Math.round(v * 2);
 
 export const COURSE_3_HOLE: CourseData = {
   name: 'Sunrise Valley - 3 Hole',
-  width: 50,
-  height: 55,
+  width: 100,
+  height: 110,
   par: 10,
-  layout: course3Layout,
-  elevation: course3Elevation,
-  vertexElevations: course3VertexElevations,
+  layout: Array.from({ length: 110 }, () => new Array(100).fill(R)),
+  topology: course3Topology,
   obstacles: [
-    // Trees framing Hole 1 green
-    { x: 5, y: 17, type: 2 },
-    { x: 4, y: 21, type: 1 },
-    { x: 19, y: 17, type: 2 },
-    { x: 20, y: 21, type: 1 },
-    // Along Hole 1 fairway
-    { x: 7, y: 25, type: 1 },
-    { x: 17, y: 26, type: 2 },
+    { x: sc3(5), y: sc3(17), type: 2 },
+    { x: sc3(4), y: sc3(21), type: 1 },
+    { x: sc3(19), y: sc3(17), type: 2 },
+    { x: sc3(20), y: sc3(21), type: 1 },
+    { x: sc3(7), y: sc3(25), type: 1 },
+    { x: sc3(17), y: sc3(26), type: 2 },
 
-    // Trees around Hole 2
-    { x: 28, y: 20, type: 2 },
-    { x: 41, y: 19, type: 1 },
-    { x: 42, y: 23, type: 2 },
-    // Near water feature
-    { x: 27, y: 28, type: 1 },
-    { x: 28, y: 33, type: 2 },
-    // Right side of fairway
-    { x: 41, y: 35, type: 1 },
-    { x: 40, y: 38, type: 2 },
+    { x: sc3(28), y: sc3(20), type: 2 },
+    { x: sc3(41), y: sc3(19), type: 1 },
+    { x: sc3(42), y: sc3(23), type: 2 },
+    { x: sc3(27), y: sc3(28), type: 1 },
+    { x: sc3(28), y: sc3(33), type: 2 },
+    { x: sc3(41), y: sc3(35), type: 1 },
+    { x: sc3(40), y: sc3(38), type: 2 },
 
-    // Trees around Hole 3
-    { x: 6, y: 43, type: 2 },
-    { x: 5, y: 47, type: 1 },
-    { x: 17, y: 41, type: 1 },
-    { x: 18, y: 49, type: 2 },
-    { x: 36, y: 42, type: 2 },
-    { x: 35, y: 48, type: 1 },
+    { x: sc3(6), y: sc3(43), type: 2 },
+    { x: sc3(5), y: sc3(47), type: 1 },
+    { x: sc3(17), y: sc3(41), type: 1 },
+    { x: sc3(18), y: sc3(49), type: 2 },
+    { x: sc3(36), y: sc3(42), type: 2 },
+    { x: sc3(35), y: sc3(48), type: 1 },
 
-    // Background trees for depth
-    { x: 3, y: 5, type: 1 },
-    { x: 8, y: 3, type: 2 },
-    { x: 22, y: 4, type: 1 },
-    { x: 28, y: 6, type: 2 },
-    { x: 44, y: 4, type: 1 },
-    { x: 47, y: 8, type: 2 },
-    // Edge trees
-    { x: 2, y: 33, type: 2 },
-    { x: 46, y: 50, type: 1 },
-    { x: 47, y: 52, type: 2 },
+    { x: sc3(3), y: sc3(5), type: 1 },
+    { x: sc3(8), y: sc3(3), type: 2 },
+    { x: sc3(22), y: sc3(4), type: 1 },
+    { x: sc3(28), y: sc3(6), type: 2 },
+    { x: sc3(44), y: sc3(4), type: 1 },
+    { x: sc3(47), y: sc3(8), type: 2 },
+    { x: sc3(2), y: sc3(33), type: 2 },
+    { x: sc3(46), y: sc3(50), type: 1 },
+    { x: sc3(47), y: sc3(52), type: 2 },
   ],
-  yardsPerGrid: 20,
+  yardsPerGrid: 10,
   holeData: {
     holeNumber: 1,
     par: 3,
     teeBoxes: [
-      { name: 'Championship', x: 12, y: 29, elevation: 0, yardage: 160, par: 3 },
-      { name: 'Forward', x: 12, y: 28, elevation: 0, yardage: 140, par: 3 },
+      { name: 'Championship', x: sc3(12), y: sc3(29), elevation: course3Elevation(sc3(12), sc3(29)), yardage: 160, par: 3 },
+      { name: 'Forward', x: sc3(12), y: sc3(28), elevation: course3Elevation(sc3(12), sc3(28)), yardage: 140, par: 3 },
     ],
-    pinPosition: { x: 12, y: 19, elevation: 1.5 },
+    pinPosition: { x: sc3(12), y: sc3(19), elevation: course3Elevation(sc3(12), sc3(19)) },
     green: {
-      frontEdge: { x: 12, y: 22 },
-      center: { x: 12, y: 19 },
-      backEdge: { x: 12, y: 16 },
+      frontEdge: { x: sc3(12), y: sc3(22) },
+      center: { x: sc3(12), y: sc3(19) },
+      backEdge: { x: sc3(12), y: sc3(16) },
     },
     idealPath: [
-      { x: 12, y: 29, description: 'Tee shot' },
-      { x: 12, y: 19, description: 'Green' },
+      { x: sc3(12), y: sc3(29), description: 'Tee shot' },
+      { x: sc3(12), y: sc3(19), description: 'Green' },
     ],
     hazards: [
       {
         type: 'bunker',
         name: 'Left greenside',
-        positions: [{ x: 7, y: 17 }, { x: 7, y: 19 }, { x: 7, y: 21 }],
+        positions: [
+          { x: sc3(7), y: sc3(17) },
+          { x: sc3(7), y: sc3(19) },
+          { x: sc3(7), y: sc3(21) },
+        ],
       },
       {
         type: 'bunker',
         name: 'Pot bunker right',
-        positions: [{ x: 17, y: 18 }, { x: 18, y: 19 }],
+        positions: [
+          { x: sc3(17), y: sc3(18) },
+          { x: sc3(18), y: sc3(19) },
+        ],
       },
     ],
   },
-  vectorShapes: [
-    // Hole 1 green - smooth ellipse (16 points for extra smoothness)
-    createEllipseShape('green', 12, 19, 4.5, 3.5, 0, 16, 1.0),
-    // Hole 1 bunkers
-    createEllipseShape('bunker', 7, 19, 2.5, 3, 0.2, 12, 1.0),
-    createCircleShape('bunker', 17.5, 18.5, 1.8, 10, 1.0),
-
-    // Hole 2 green - larger kidney shape
-    createEllipseShape('green', 35, 21, 5, 3.5, -0.1, 16, 1.0),
-    // Hole 2 bunkers
-    createEllipseShape('bunker', 31, 22, 1.5, 2.5, 0.3, 12, 1.0),
-    createCircleShape('bunker', 39.5, 20, 1.5, 10, 1.0),
-    // Hole 2 water
-    createEllipseShape('water', 31, 30, 3, 4, 0.2, 16, 1.0),
-
-    // Hole 3 green - elongated
-    createEllipseShape('green', 12, 45, 4, 5, 0, 16, 1.0),
-    // Hole 3 bunkers
-    createEllipseShape('bunker', 12, 40, 3.5, 1.5, 0, 12, 1.0),
-    createEllipseShape('bunker', 7.5, 45, 1.5, 3.5, 0, 12, 1.0),
-    createCircleShape('bunker', 16.5, 47, 1.5, 10, 1.0),
-  ],
 };
 
 // Simple test hole
@@ -474,7 +399,6 @@ export const COURSE_HOLE_1: CourseData = {
     }
     return layout;
   })(),
-  elevation: Array(25).fill(null).map(() => Array(12).fill(0)),
   obstacles: [],
   yardsPerGrid: 20,
 };
@@ -486,7 +410,6 @@ export const COURSE_TEST: CourseData = {
   height: 15,
   par: 3,
   layout: Array(15).fill(null).map(() => Array(15).fill(F)),
-  elevation: Array(15).fill(null).map(() => Array(15).fill(0)),
   yardsPerGrid: 20,
 };
 
@@ -498,7 +421,7 @@ export interface RefillStation {
 }
 
 export const REFILL_STATIONS: RefillStation[] = [
-  { x: 8, y: 50, name: 'Maintenance Shed' },
+  { x: sc3(8), y: sc3(50), name: 'Maintenance Shed' },
 ];
 
 // Course registry

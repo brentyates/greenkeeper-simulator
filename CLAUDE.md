@@ -28,3 +28,12 @@ The game uses Babylon.js with an orthographic camera for an isometric 3D look. A
 **Workflow:** Define asset in manifest → Create GLB in Blender → Place in `/public/assets/models/`
 
 Missing GLB files automatically use placeholder meshes (magenta wireframe boxes sized from manifest specs). See `docs/ASSET_PIPELINE.md` for full details.
+
+## Terrain Architecture
+
+Topology (vertices/edges/faces) is the source of truth for terrain geometry and types.
+
+- **Grid-generated courses**: `gridToTopology()` builds topology from `CourseData.layout`
+- **Organic courses**: `CourseData.topology` has pre-built Delaunay topology from polygon regions
+- **Face states** drive gameplay simulation (moisture, nutrients, grass height per triangle)
+- Grid APIs in VectorTerrainSystem are backed by topology lookups

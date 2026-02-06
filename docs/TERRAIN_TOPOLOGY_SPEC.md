@@ -1,4 +1,4 @@
-# Terrain Grid Specification
+# Terrain Topology Specification
 
 A vertex/edge/face topology system for terrain modeling, inspired by Links 2001 Course Designer and Blender's mesh editing paradigm.
 
@@ -155,6 +155,40 @@ Each grid cell is subdivided into 2 triangles using a consistent diagonal:
 
 **Winding Order:** Counter-clockwise when viewed from above (Y-up), ensuring correct normal direction.
 
+---
+
+## Organic Topology
+
+Courses can also use pre-built Delaunay topology from polygon regions, bypassing the grid entirely.
+
+### Topology Sources
+
+| Source | Method | Use Case |
+|--------|--------|----------|
+| Grid layout | `gridToTopology()` from `CourseData.layout` | Traditional rectangular courses |
+| Serialized topology | `CourseData.topology` with `deserializeTopology()` | Organic/free-form courses |
+
+### Organic Topology Pipeline
+
+1. Define `TerrainRegion` polygons (fairway outline, green boundary, etc.)
+2. `buildOrganicTopology()` generates Delaunay triangulation from region vertices
+3. Each triangle inherits its `terrainCode` from the enclosing region
+4. Topology is serialized into `CourseData.topology` for persistence
+
+### Unified Vertex Mapping
+
+After topology creation (either path), all vertices are mapped to grid coordinates for compatibility with grid-based APIs:
+
+```typescript
+for (const [id, vertex] of topology.vertices) {
+  const vx = Math.round(vertex.position.x * meshResolution);
+  const vy = Math.round(vertex.position.z * meshResolution);
+  gridToVertexId.set(`${vx},${vy}`, id);
+}
+```
+
+For organic topology, some grid cells may not have a directly mapped vertex. These cells use barycentric interpolation on the containing triangle face for elevation queries.
+
 ### Vertex Position Calculation
 
 ```typescript
@@ -307,8 +341,10 @@ Y ↑
 
 Range: (0..width) × (0..height)
 Units: Cell indices (integers)
-Usage: Terrain type painting, cell state, pathfinding
+Usage: Spatial indexing for face lookup
 ```
+
+> **Note:** Grid space is used internally for spatial indexing only. World coordinates via topology are the primary coordinate system.
 
 ### Vertex Space
 
@@ -500,14 +536,14 @@ The topology provides to the shader:
 - Terrain codes per face (as vertex attribute)
 - Grid UVs (for texture mapping)
 
-### With Cell State System
+### With Face State System
 
-While topology handles mesh geometry, cell state tracks gameplay values:
-- Grass height, moisture, nutrients (per cell)
-- Obstacle placement
-- Maintenance history
+Face states (`FaceState`) are the source of truth for gameplay simulation values:
+- Grass height, moisture, nutrients (per triangle face)
+- Maintenance timestamps (lastMowed, lastWatered, etc.)
+- Health calculations
 
-**Resolution mapping:** Multiple mesh faces may fall within one gameplay cell.
+Face states are queried directly by face ID or via spatial lookup from world coordinates.
 
 ### With Course Designer
 
@@ -546,10 +582,10 @@ The designer UI coordinates between:
 
 ### RollerCoaster Tycoon (Historical)
 
-> **Note:** The RCT corner-based slope system was used in an earlier version but is now **deprecated**. The current system uses per-vertex elevation instead.
+> **Note:** The RCT corner-based slope system and cell-based grid have been fully replaced by topology-first architecture.
 
 - ~~Corner-based slope system~~ → Per-vertex elevation
-- Cell-based terrain type grid (still used for gameplay data)
+- ~~Cell-based terrain type grid~~ → Per-face terrain codes with face states
 - Clear visual feedback for terrain types
 
 ---

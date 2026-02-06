@@ -52,8 +52,9 @@ varying float vTerrainType;
 varying float vFaceId;
 
 // Face data texture (1 texel per face: R=moisture, G=nutrients, B=height, A=health)
+// Laid out as 2D texture with width=256 to stay within GPU texture size limits
 uniform sampler2D faceData;
-uniform float faceDataSize;
+uniform vec2 faceDataDims;
 
 // Parameters
 uniform vec2 worldSize;
@@ -156,8 +157,23 @@ vec3 waterEffect(vec2 worldPos, vec3 waterColor, vec3 deepColor, float distFromS
 }
 
 void main() {
+  // Read per-face state data from 2D texture
+  float fdGrassHeight = 0.0;
+  float fdMoisture = 0.5;
+  float fdHealth = 1.0;
+  if (faceDataDims.x > 0.5) {
+    float fid = floor(vFaceId + 0.5);
+    float col = mod(fid, faceDataDims.x);
+    float row = floor(fid / faceDataDims.x);
+    float u = (col + 0.5) / faceDataDims.x;
+    float v = (row + 0.5) / faceDataDims.y;
+    vec4 faceSample = texture2D(faceData, vec2(u, v));
+    fdMoisture = faceSample.r;
+    fdGrassHeight = faceSample.b;
+    fdHealth = faceSample.a;
+  }
+
   // Determine masks based on vTerrainType attribute
-  // We use a small epsilon for float comparison logic
   float type = floor(vTerrainType + 0.5);
 
   float fairwayMask = (abs(type - CODE_FAIRWAY) < 0.1) ? 1.0 : 0.0;
@@ -165,42 +181,57 @@ void main() {
   float bunkerMask = (abs(type - CODE_BUNKER) < 0.1) ? 1.0 : 0.0;
   float waterMask = (abs(type - CODE_WATER) < 0.1) ? 1.0 : 0.0;
   float teeMask = (abs(type - CODE_TEE) < 0.1) ? 1.0 : 0.0;
-  // Rough is default/background, or code 1
   float roughMask = (abs(type - CODE_ROUGH) < 0.1) ? 1.0 : 0.0;
 
-  // Start with rough as base?
-  // If we have explicit rough mask, we can just mix.
-  // Actually, let's just pick the color directly.
+  // Mowed grass shows stripes; overgrown grass hides them
+  float stripeVis = 1.0 - smoothstep(0.0, 0.4, fdGrassHeight);
+  // Overgrown grass darkens slightly
+  float heightDarken = fdGrassHeight * 0.06;
+  // Moisture controls grass vibrancy
+  // moisture=0 fully dry, moisture=15 (one sprinkler pass) ~20% green, moisture=50 fully green
+  float wetness = smoothstep(0.0, 0.5, fdMoisture);
 
-  vec3 color = roughColor; // Default
-  
+  vec3 color = roughColor;
+
   if (roughMask > 0.5) {
       color = roughColor;
       if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz, color, 0.03);
+      vec3 dryColor = color * 0.45 + vec3(0.14, 0.09, 0.0);
+      color = mix(dryColor, color, wetness);
+      color -= vec3(heightDarken);
   }
   else if (fairwayMask > 0.5) {
       color = fairwayColor;
       if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz, color, 0.04);
       if (enableStripes > 0.5) {
-         float stripe = mowingStripes(vWorldPosition.xz, 1.0, 0.08);
-         color = mix(color - vec3(0.04), color + vec3(0.04), stripe);
+         float stripe = mowingStripes(vWorldPosition.xz, 1.0, 0.08 * stripeVis);
+         color = mix(color - vec3(0.04 * stripeVis), color + vec3(0.04 * stripeVis), stripe);
       }
+      vec3 dryColor = color * 0.45 + vec3(0.14, 0.09, 0.0);
+      color = mix(dryColor, color, wetness);
+      color -= vec3(heightDarken);
   }
   else if (greenMask > 0.5) {
       color = greenColor;
       if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz * 2.0, color, 0.02);
       if (enableStripes > 0.5) {
-         float stripe = mowingStripes(vWorldPosition.xz, 0.3, 0.04);
-         color = mix(color - vec3(0.02), color + vec3(0.02), stripe);
+         float stripe = mowingStripes(vWorldPosition.xz, 0.3, 0.04 * stripeVis);
+         color = mix(color - vec3(0.02 * stripeVis), color + vec3(0.02 * stripeVis), stripe);
       }
+      vec3 dryColor = color * 0.45 + vec3(0.14, 0.09, 0.0);
+      color = mix(dryColor, color, wetness);
+      color -= vec3(heightDarken);
   }
   else if (teeMask > 0.5) {
       color = teeColor;
       if (enableNoise > 0.5) color = grassNoise(vWorldPosition.xz * 1.5, color, 0.03);
       if (enableStripes > 0.5) {
-         float stripe = mowingStripes(vWorldPosition.xz, 0.5, 0.06);
-         color = mix(color - vec3(0.03), color + vec3(0.03), stripe);
+         float stripe = mowingStripes(vWorldPosition.xz, 0.5, 0.06 * stripeVis);
+         color = mix(color - vec3(0.03 * stripeVis), color + vec3(0.03 * stripeVis), stripe);
       }
+      vec3 dryColor = color * 0.45 + vec3(0.14, 0.09, 0.0);
+      color = mix(dryColor, color, wetness);
+      color -= vec3(heightDarken);
   }
   else if (bunkerMask > 0.5) {
       color = bunkerColor;
@@ -209,8 +240,7 @@ void main() {
   else if (waterMask > 0.5) {
       color = waterColor;
       if (enableWaterAnim > 0.5) {
-         // rough approximate dist logic or just uniform
-         float dist = 1.0; 
+         float dist = 1.0;
          color = waterEffect(vWorldPosition.xz, waterColor, waterDeepColor, dist, time);
       }
   }
@@ -246,10 +276,13 @@ void main() {
   }
 
   // Overlays (per-face data lookup)
-  if (overlayMode > 0.5 && faceDataSize > 0.5) {
+  if (overlayMode > 0.5 && faceDataDims.x > 0.5) {
      float fid = floor(vFaceId + 0.5);
-     float u = (fid + 0.5) / faceDataSize;
-     vec4 faceSample = texture2D(faceData, vec2(u, 0.5));
+     float col = mod(fid, faceDataDims.x);
+     float row = floor(fid / faceDataDims.x);
+     float u = (col + 0.5) / faceDataDims.x;
+     float v = (row + 0.5) / faceDataDims.y;
+     vec4 faceSample = texture2D(faceData, vec2(u, v));
      float moisture = faceSample.r;
      float nutrients = faceSample.g;
      float grassHeight = faceSample.b;

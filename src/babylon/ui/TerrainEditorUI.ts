@@ -6,7 +6,7 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { UIParent } from './UIParent';
-import { EditorTool, EditorMode, TopologyMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
+import { EditorTool, EditorMode, TopologyMode, InteractionMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
 import { TerrainType, getTerrainDisplayName } from '../../core/terrain';
 
 export type AxisConstraint = 'x' | 'y' | 'z' | 'xz' | 'all';
@@ -29,6 +29,7 @@ export interface TerrainEditorUICallbacks {
   onSplitEdge?: () => void;
   onFlipEdge?: () => void;
   onCollapseEdge?: () => void;
+  onInteractionModeChange?: (mode: InteractionMode) => void;
 }
 
 export class TerrainEditorUI {
@@ -55,6 +56,10 @@ export class TerrainEditorUI {
   private topologyStatusText: TextBlock | null = null;
   private sculptToolsPanel: StackPanel | null = null;
   private paintToolsPanel: StackPanel | null = null;
+  private activeInteractionMode: InteractionMode = 'brush';
+  private interactionButtons: Map<InteractionMode, Rectangle> = new Map();
+  private brushSizeContainer: StackPanel | null = null;
+  private brushStrengthContainer: StackPanel | null = null;
 
   constructor(parent: UIParent, callbacks: TerrainEditorUICallbacks) {
     this.parent = parent;
@@ -90,6 +95,7 @@ export class TerrainEditorUI {
 
     this.createHeader(stack);
     this.createModeToggle(stack);
+    this.createInteractionModeToggle(stack);
     this.createSculptTools(stack);
     this.createTerrainBrushes(stack);
     this.createBrushSizeControl(stack);
@@ -157,6 +163,82 @@ export class TerrainEditorUI {
     grid.addControl(paintBtn, 0, 1);
 
     this.updateModeButtonStyles();
+  }
+
+  private createInteractionModeToggle(parent: StackPanel): void {
+    const grid = new Grid('interactionGrid');
+    grid.height = '36px';
+    grid.width = '316px';
+    grid.paddingTop = '4px';
+    grid.addColumnDefinition(0.5);
+    grid.addColumnDefinition(0.5);
+    parent.addControl(grid);
+
+    const brushBtn = this.createInteractionButton('brush', 'BRUSH (B)');
+    grid.addControl(brushBtn, 0, 0);
+
+    const selectBtn = this.createInteractionButton('select', 'SELECT (S)');
+    grid.addControl(selectBtn, 0, 1);
+
+    this.updateInteractionButtonStyles();
+  }
+
+  private createInteractionButton(mode: InteractionMode, label: string): Rectangle {
+    const container = new Rectangle(`interaction_${mode}`);
+    container.width = '95%';
+    container.height = '28px';
+    container.cornerRadius = 4;
+    container.background = '#1a3a2a';
+    container.color = '#3a5a4a';
+    container.thickness = 2;
+
+    const text = new TextBlock();
+    text.text = label;
+    text.color = '#aaccaa';
+    text.fontSize = 11;
+    text.fontWeight = 'bold';
+    container.addControl(text);
+
+    container.onPointerEnterObservable.add(() => {
+      if (this.activeInteractionMode !== mode) {
+        container.background = '#2a4a3a';
+      }
+    });
+
+    container.onPointerOutObservable.add(() => {
+      if (this.activeInteractionMode !== mode) {
+        container.background = '#1a3a2a';
+      }
+    });
+
+    container.onPointerUpObservable.add(() => {
+      this.setInteractionMode(mode);
+      this.callbacks.onInteractionModeChange?.(mode);
+    });
+
+    this.interactionButtons.set(mode, container);
+    return container;
+  }
+
+  private updateInteractionButtonStyles(): void {
+    for (const [mode, btn] of this.interactionButtons) {
+      const text = btn.children[0] as TextBlock;
+      if (mode === this.activeInteractionMode) {
+        btn.background = '#2a6a4a';
+        btn.color = '#7FFF7F';
+        if (text) text.color = '#7FFF7F';
+      } else {
+        btn.background = '#1a3a2a';
+        btn.color = '#3a5a4a';
+        if (text) text.color = '#aaccaa';
+      }
+    }
+  }
+
+  private updateBrushControlsAlpha(): void {
+    const alpha = this.activeInteractionMode === 'select' ? 0.3 : 1.0;
+    if (this.brushSizeContainer) this.brushSizeContainer.alpha = alpha;
+    if (this.brushStrengthContainer) this.brushStrengthContainer.alpha = alpha;
   }
 
   private createModeButton(mode: EditorMode, label: string): Rectangle {
@@ -355,6 +437,10 @@ export class TerrainEditorUI {
   }
 
   private createBrushSizeControl(parent: StackPanel): void {
+    this.brushSizeContainer = new StackPanel('brushSizeContainer');
+    this.brushSizeContainer.width = '316px';
+    parent.addControl(this.brushSizeContainer);
+
     const sectionLabel = new TextBlock('brushLabel');
     sectionLabel.text = 'BRUSH SIZE';
     sectionLabel.color = '#8aba9a';
@@ -362,7 +448,7 @@ export class TerrainEditorUI {
     sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '8px';
-    parent.addControl(sectionLabel);
+    this.brushSizeContainer.addControl(sectionLabel);
 
     const grid = new Grid('brushGrid');
     grid.height = '36px';
@@ -370,7 +456,7 @@ export class TerrainEditorUI {
     grid.addColumnDefinition(0.3);
     grid.addColumnDefinition(0.4);
     grid.addColumnDefinition(0.3);
-    parent.addControl(grid);
+    this.brushSizeContainer.addControl(grid);
 
     const minusBtn = Button.CreateSimpleButton('brushMinus', '-');
     minusBtn.width = '40px';
@@ -409,6 +495,10 @@ export class TerrainEditorUI {
   }
 
   private createBrushStrengthControl(parent: StackPanel): void {
+    this.brushStrengthContainer = new StackPanel('brushStrengthContainer');
+    this.brushStrengthContainer.width = '316px';
+    parent.addControl(this.brushStrengthContainer);
+
     const sectionLabel = new TextBlock('strengthLabel');
     sectionLabel.text = 'BRUSH STRENGTH';
     sectionLabel.color = '#8aba9a';
@@ -416,7 +506,7 @@ export class TerrainEditorUI {
     sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '8px';
-    parent.addControl(sectionLabel);
+    this.brushStrengthContainer.addControl(sectionLabel);
 
     const grid = new Grid('strengthGrid');
     grid.height = '36px';
@@ -424,7 +514,7 @@ export class TerrainEditorUI {
     grid.addColumnDefinition(0.3);
     grid.addColumnDefinition(0.4);
     grid.addColumnDefinition(0.3);
-    parent.addControl(grid);
+    this.brushStrengthContainer.addControl(grid);
 
     const minusBtn = Button.CreateSimpleButton('strengthMinus', '-');
     minusBtn.width = '40px';
@@ -938,6 +1028,12 @@ export class TerrainEditorUI {
     this.updateModeButtonStyles();
   }
 
+  public setInteractionMode(mode: InteractionMode): void {
+    this.activeInteractionMode = mode;
+    this.updateInteractionButtonStyles();
+    this.updateBrushControlsAlpha();
+  }
+
   public setUndoEnabled(enabled: boolean): void {
     if (this.undoButton) {
       this.undoButton.alpha = enabled ? 1.0 : 0.4;
@@ -1027,5 +1123,6 @@ export class TerrainEditorUI {
     this.toolButtons.clear();
     this.modeButtons.clear();
     this.axisButtons.clear();
+    this.interactionButtons.clear();
   }
 }

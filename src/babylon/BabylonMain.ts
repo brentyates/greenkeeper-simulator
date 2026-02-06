@@ -49,7 +49,7 @@ import {
   getCourseById,
 } from "../data/courseData";
 import { canMoveFromTo, TerrainType } from "../core/terrain";
-import { EditorTool, TopologyMode } from "../core/terrain-editor-logic";
+import { EditorTool, TopologyMode, InteractionMode } from "../core/terrain-editor-logic";
 import { ScenarioDefinition } from "../data/scenarioData";
 
 import {
@@ -504,19 +504,7 @@ export class BabylonMain {
   private setupTerrainEditor(): void {
     const scene = this.babylonEngine.getScene();
 
-    const elevationProvider = {
-      getElevationAt: (gridX: number, gridY: number, defaultValue?: number) =>
-        this.terrainSystem.getMeshElevationAt(gridX, gridY, defaultValue),
-      gridTo3D: (gridX: number, gridY: number, elev: number) => {
-        if (this.terrainSystem.gridToWorld) {
-          const pos = this.terrainSystem.gridToWorld(gridX, gridY);
-          return new Vector3(pos.x, elev * HEIGHT_UNIT, pos.z);
-        }
-        return gridTo3D(gridX, gridY, elev);
-      }
-    };
-
-    this.terrainEditorSystem = new TerrainEditorSystem(scene, elevationProvider);
+    this.terrainEditorSystem = new TerrainEditorSystem(scene);
 
     const baseModifier = {
       setElevationAt: (x: number, y: number, elev: number) =>
@@ -577,6 +565,9 @@ export class BabylonMain {
       onCollapseEdge: () => {
         this.terrainEditorSystem?.collapseSelectedEdge();
       },
+      onInteractionModeChange: (mode: InteractionMode) => {
+        this.terrainEditorSystem?.setInteractionMode(mode);
+      },
     });
 
     this.terrainEditorSystem.setCallbacks({
@@ -619,6 +610,7 @@ export class BabylonMain {
         }
         this.employeeVisualSystem?.setVisible(true);
         this.employeeVisualSystem?.snapAllToTerrain();
+        this.snapAssetsToTerrain();
       },
       onToolChange: (tool: EditorTool) => {
         this.terrainEditorUI?.setActiveTool(tool);
@@ -645,6 +637,12 @@ export class BabylonMain {
       },
       onTopologyModeChange: (mode: TopologyMode) => {
         this.terrainEditorUI?.setActiveTopologyMode(mode);
+      },
+      onInteractionModeChange: (mode: InteractionMode) => {
+        this.terrainEditorUI?.setInteractionMode(mode);
+      },
+      onModification: () => {
+        this.snapAssetsToTerrain();
       },
     });
   }
@@ -1374,8 +1372,8 @@ export class BabylonMain {
 
       onMouseMove: (screenX: number, screenY: number) =>
         this.handleMouseMove(screenX, screenY),
-      onDragStart: (screenX: number, screenY: number) =>
-        this.handleDragStart(screenX, screenY),
+      onDragStart: (screenX: number, screenY: number, shiftKey?: boolean) =>
+        this.handleDragStart(screenX, screenY, shiftKey),
       onDrag: (screenX: number, screenY: number) =>
         this.handleDrag(screenX, screenY),
       onDragEnd: () => this.handleDragEnd(),
@@ -1421,6 +1419,14 @@ export class BabylonMain {
       isEditorActive: () => this.terrainEditorSystem?.isEnabled() ?? false,
       isEdgeModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'edge',
       isFaceModeActive: () => this.terrainEditorSystem?.getTopologyMode() === 'face',
+      onSelectModeToggle: () => {
+        this.terrainEditorSystem?.setInteractionMode('select');
+        this.terrainEditorUI?.setInteractionMode('select');
+      },
+      onBrushModeToggle: () => {
+        this.terrainEditorSystem?.setInteractionMode('brush');
+        this.terrainEditorUI?.setInteractionMode('brush');
+      },
     });
   }
 
@@ -1553,6 +1559,16 @@ export class BabylonMain {
       this.player.pendingDirection !== null ||
       this.clickToMoveWaypoints.length > 0
     );
+  }
+
+  private snapAssetsToTerrain(): void {
+    const allInstances = [...this.treeInstances, ...this.refillStationInstances];
+    for (const instance of allInstances) {
+      const worldX = instance.root.position.x;
+      const worldZ = instance.root.position.z;
+      const elevation = this.terrainSystem.getElevationAt(worldX, worldZ, 0);
+      instance.root.position.y = elevation * HEIGHT_UNIT;
+    }
   }
 
   private snapEntityToTerrain(visual: EntityVisualState, gridX: number, gridY: number): void {
@@ -1700,12 +1716,6 @@ export class BabylonMain {
     if (this.isPaused) return;
 
     if (this.terrainEditorSystem?.isEnabled()) {
-      this.handleMouseMove(screenX, screenY);
-
-      const result = this.screenToGridAndWorld(screenX, screenY);
-      if (result) {
-        this.terrainEditorSystem.handleClick(result.gridX, result.gridY);
-      }
       return;
     }
 
@@ -1916,15 +1926,12 @@ export class BabylonMain {
         this.terrainSystem.waterArea(x, y, state.effectRadius, 15);
         break;
       case "spreader":
-        const fertilizerEffectiveness = getBestFertilizerEffectiveness(
-          this.researchState
-        );
         this.terrainSystem.fertilizeArea(
           x,
           y,
           state.effectRadius,
           10,
-          fertilizerEffectiveness
+          getBestFertilizerEffectiveness(this.researchState)
         );
         break;
     }
@@ -2309,13 +2316,24 @@ export class BabylonMain {
     return { gridX, gridY, worldPos: { x: groundX, z: groundZ }, uv: null };
   }
 
-  private handleDragStart(screenX: number, screenY: number): void {
+  private handleDragStart(screenX: number, screenY: number, shiftKey?: boolean): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
 
     this.handleMouseMove(screenX, screenY);
 
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (!result) return;
+
+    if (this.terrainEditorSystem.getInteractionMode() === 'select') {
+      if (this.terrainEditorSystem.isHoveredElementSelected()) {
+        if (result.worldPos) {
+          this.terrainEditorSystem.handleVertexMoveStart(result.worldPos.x, result.worldPos.z, screenY);
+        }
+      } else if (result.worldPos) {
+        this.terrainEditorSystem.handleSelectClick(result.worldPos, shiftKey ?? false);
+      }
+      return;
+    }
 
     if (this.terrainEditorSystem.isHoveredElementSelected() && !this.terrainEditorSystem.isSculptBrushActive()) {
       if (result.worldPos) {
@@ -2337,6 +2355,8 @@ export class BabylonMain {
       }
       return;
     }
+
+    if (this.terrainEditorSystem.getInteractionMode() === 'select') return;
 
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (!result) return;
@@ -2968,43 +2988,31 @@ export class BabylonMain {
     }
 
     // Tick employee autonomous work
-    const cells = this.terrainSystem.getAllCells();
     const absoluteGameTime = this.gameDay * 1440 + this.gameTime;
-    const empSlopeChecker = (x: number, y: number) =>
-      this.terrainSystem.isPositionWalkable(x + 0.5, y + 0.5);
     const workResult = tickEmployeeWork(
       this.employeeWorkState,
       this.employeeRoster.employees,
-      cells,
+      this.terrainSystem,
       gameMinutes,
-      absoluteGameTime,
-      empSlopeChecker
+      absoluteGameTime
     );
     this.employeeWorkState = workResult.state;
 
     for (const effect of workResult.effects) {
+      const affected = this.terrainSystem.applyWorkEffect(
+        effect.worldX,
+        effect.worldZ,
+        effect.radius,
+        effect.type,
+        effect.efficiency,
+        absoluteGameTime
+      );
       if (effect.type === "mow") {
-        this.terrainSystem.mowAt(effect.gridX, effect.gridY);
-        this.dailyStats.maintenance.tilesMowed++;
+        this.dailyStats.maintenance.tilesMowed += affected.length;
       } else if (effect.type === "water") {
-        this.terrainSystem.waterArea(
-          effect.gridX,
-          effect.gridY,
-          1,
-          20 * effect.efficiency
-        );
-        this.dailyStats.maintenance.tilesWatered++;
+        this.dailyStats.maintenance.tilesWatered += affected.length;
       } else if (effect.type === "fertilize") {
-        this.terrainSystem.fertilizeArea(
-          effect.gridX,
-          effect.gridY,
-          1,
-          20,
-          effect.efficiency
-        );
-        this.dailyStats.maintenance.tilesFertilized++;
-      } else if (effect.type === "rake") {
-        this.terrainSystem.rakeAt(effect.gridX, effect.gridY);
+        this.dailyStats.maintenance.tilesFertilized += affected.length;
       }
     }
 
@@ -3285,6 +3293,7 @@ export class BabylonMain {
       this.babylonEngine.stop();
     }
   }
+
 
   public getScenarioState(): {
     progress: number;
@@ -5203,16 +5212,16 @@ export class BabylonMain {
     gridX: number;
     gridY: number;
     task: string;
-    targetX: number | null;
-    targetY: number | null;
+    worldX: number;
+    worldZ: number;
   }> {
     return getWorkerPositions(this.employeeWorkState).map((w) => ({
       employeeId: w.employeeId,
       gridX: w.gridX,
       gridY: w.gridY,
       task: w.task,
-      targetX: w.nextX,
-      targetY: w.nextY,
+      worldX: w.worldX,
+      worldZ: w.worldZ,
     }));
   }
 

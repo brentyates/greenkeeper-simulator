@@ -5,6 +5,7 @@ import {
 
 export type EditorMode = 'sculpt' | 'paint';
 export type TopologyMode = 'vertex' | 'edge' | 'face' | 'none';
+export type InteractionMode = 'brush' | 'select';
 export type SculptTool = 'raise' | 'lower' | 'smooth' | 'flatten' | 'level';
 export type TerrainBrush =
   | 'terrain_fairway'
@@ -18,6 +19,7 @@ export type EditorTool = SculptTool | TerrainBrush;
 export interface EditorState {
   enabled: boolean;
   mode: EditorMode;
+  interactionMode: InteractionMode;
   activeTool: EditorTool;
   brushSize: number;
   brushStrength: number;
@@ -43,12 +45,6 @@ export interface TerrainTypeModification {
   newType: number;
 }
 
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
 export interface PositionModification {
   vx: number;
   vy: number;
@@ -56,7 +52,8 @@ export interface PositionModification {
   newPos: Vec3;
 }
 
-import { TopologyModification } from './mesh-topology';
+import { Vec3, TopologyModification } from './mesh-topology';
+export type { Vec3 };
 
 export type EditorAction =
   | { type: 'elevation'; modifications: VertexModification[] }
@@ -65,12 +62,11 @@ export type EditorAction =
   | { type: 'topology'; modification: TopologyModification };
 
 
-export type SelectionMode = 'single' | 'box' | 'brush';
-
 export function createInitialEditorState(): EditorState {
   return {
     enabled: false,
     mode: 'sculpt',
+    interactionMode: 'brush',
     activeTool: 'raise',
     brushSize: 1,
     brushStrength: 1.0,
@@ -343,11 +339,7 @@ export function applyRaiseVertex(
   amount: number = 1
 ): VertexModification | null {
   const oldZ = vertexElevations[vy]?.[vx];
-  if (oldZ === undefined) {
-    // Only log if it's near the center maybe? No, let's just log it for now.
-    // console.log(`[applyRaiseVertex] missing elevation at ${vx},${vy}`);
-    return null;
-  }
+  if (oldZ === undefined) return null;
 
   return {
     vx,
@@ -385,10 +377,11 @@ export function applySmoothVertices(
   radius: number,
   vertexWidth: number,
   vertexHeight: number,
-  brushStrength: number = 1.0
+  brushStrength: number = 1.0,
+  precomputedVertices?: Array<{ vx: number; vy: number }>
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
-  const vertices = getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
+  const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
 
   if (vertices.length === 0) return [];
 
@@ -420,12 +413,13 @@ export function applyFlattenVertices(
   radius: number,
   vertexWidth: number,
   vertexHeight: number,
-  targetZ?: number
+  targetZ?: number,
+  precomputedVertices?: Array<{ vx: number; vy: number }>
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
 
   const centerZ = targetZ ?? (vertexElevations[centerVy]?.[centerVx] ?? 0);
-  const vertices = getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
+  const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
 
   for (const v of vertices) {
     const oldZ = vertexElevations[v.vy]?.[v.vx];
@@ -487,23 +481,22 @@ export function applySculptTool(
   brushStrength: number,
   vertexWidth: number,
   vertexHeight: number,
-  selectedVertices?: Set<string>
+  selectedVertices?: Set<string>,
+  precomputedVertices?: Array<{ vx: number; vy: number }>
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
 
   switch (tool) {
     case 'raise': {
-      const vertices = getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
-      console.log(`[applySculptTool] raise: vertices to check: ${vertices.length}, center: ${centerVx},${centerVy}`);
+      const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
       for (const v of vertices) {
         const mod = applyRaiseVertex(v.vx, v.vy, vertexElevations, brushStrength);
         if (mod) modifications.push(mod);
       }
-      console.log(`[applySculptTool] raise: modifications count: ${modifications.length}`);
       break;
     }
     case 'lower': {
-      const vertices = getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
+      const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
       for (const v of vertices) {
         const mod = applyLowerVertex(v.vx, v.vy, vertexElevations, brushStrength);
         if (mod) modifications.push(mod);
@@ -511,12 +504,11 @@ export function applySculptTool(
       break;
     }
     case 'smooth': {
-      // For smoothing, we want a slightly larger neighborhood even for small brushes
       const effectiveRadius = Math.max(brushSize, 1.5);
-      return applySmoothVertices(centerVx, centerVy, vertexElevations, effectiveRadius, vertexWidth, vertexHeight, brushStrength);
+      return applySmoothVertices(centerVx, centerVy, vertexElevations, effectiveRadius, vertexWidth, vertexHeight, brushStrength, precomputedVertices);
     }
     case 'flatten': {
-      return applyFlattenVertices(centerVx, centerVy, vertexElevations, brushSize, vertexWidth, vertexHeight);
+      return applyFlattenVertices(centerVx, centerVy, vertexElevations, brushSize, vertexWidth, vertexHeight, undefined, precomputedVertices);
     }
     case 'level': {
       if (selectedVertices && selectedVertices.size > 0) {

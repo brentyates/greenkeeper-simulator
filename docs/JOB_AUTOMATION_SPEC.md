@@ -14,30 +14,7 @@ Instead of micromanaging character movement cell-by-cell, players assign jobs to
 
 ## Architecture Overview
 
-### Current Architecture (Grid-Coupled)
-
-```
-┌──────────────────────────────────────────────────────┐
-│                   PLAYER INPUT                        │
-│              (click cell, WASD movement)              │
-└─────────────────────────┬────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                    CELL GRID                          │
-│         Character position = grid cell                │
-│         Health/moisture/nutrients per cell            │
-│         Movement locked to cell boundaries            │
-└─────────────────────────┬────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│               TERRAIN TOPOLOGY                        │
-│         (rendering only, via gridUV bridge)           │
-└──────────────────────────────────────────────────────┘
-```
-
-### Target Architecture (Topology-Driven)
+### Current Architecture (Topology-Driven)
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -60,11 +37,6 @@ Instead of micromanaging character movement cell-by-cell, players assign jobs to
 │         Health/moisture/nutrients per FACE            │
 │         Movement = pathfinding within region          │
 └──────────────────────────────────────────────────────┘
-
-                    ┌─────────────┐
-                    │  CELL GRID  │  (optional, for spatial indexing
-                    │  (internal) │   and legacy compatibility only)
-                    └─────────────┘
 ```
 
 ---
@@ -145,26 +117,11 @@ type PatternType =
 
 ## Face-Based State
 
-### Moving State from Cells to Faces
+### Per-Face State
 
-Instead of storing health/moisture/nutrients per grid cell, store per triangle face.
+Health/moisture/nutrients are stored per triangle face.
 
 ```typescript
-// Current: Cell-based state
-interface CellState {
-  x: number;
-  y: number;
-  type: TerrainType;
-  moisture: number;
-  nutrients: number;
-  height: number;      // grass height
-  health: number;
-  lastMowed: number;
-  lastWatered: number;
-  lastFertilized: number;
-}
-
-// Target: Face-based state
 interface FaceState {
   faceId: number;                  // Triangle ID from topology
   terrainCode: TerrainCode;        // Already exists on TerrainTriangle
@@ -617,34 +574,9 @@ function findPath(
 
 ---
 
-## Migration Path
+## Architecture Notes
 
-### Phase 1: Job System (Keep Cell State)
-
-1. Implement job creation and assignment
-2. Add pattern generators
-3. Character follows patterns but effects still update cells
-4. Free walk still works via cells
-
-### Phase 2: Face State (Parallel)
-
-1. Add `FaceState` alongside `CellState`
-2. Sync face state from cell state initially
-3. Jobs update face state, cell state synced back
-4. Overlays can read from either
-
-### Phase 3: Cut Over
-
-1. Jobs update face state only
-2. Simulation runs on faces
-3. Cell state becomes derived/cached
-4. Remove gridUV dependency
-
-### Phase 4: Remove Cell State
-
-1. Delete cell-based simulation code
-2. Remove gridUV from vertices
-3. Grid becomes internal spatial index only
+Face states are the source of truth. The simulation runs on faces, jobs update face state directly, and overlays read from face attributes.
 
 ---
 

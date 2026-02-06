@@ -523,9 +523,9 @@ void main() {
 
 ## Integration Points
 
-### With Terrain Grid System
+### With Terrain Topology
 
-The shading system receives from the grid:
+The shading system receives from topology:
 - Vertex positions and normals
 - Per-face terrain codes
 - UV coordinates for texture mapping
