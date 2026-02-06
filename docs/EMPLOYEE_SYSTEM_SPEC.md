@@ -6,12 +6,14 @@ The Employee System allows players to hire, manage, and develop staff to scale t
 
 ### Core Philosophy
 
-**"Good help is hard to find, but essential to grow."**
+**"Employees are a scaling tool for course maintenance, not a people management minigame."**
+
+Employees exist to serve **course condition**. They let the player maintain a pristine, satisfying-looking course as it grows beyond what one person can handle. The player should never feel like they're babysitting staff -- employees are hired, paid, assigned to areas, and they work. Like RollerCoaster Tycoon's handymen.
 
 - Employees enable scaling beyond what the player can do alone
 - Staff are always less efficient than the player character
-- Investment in training and wages pays off over time
-- The goal is a self-sustaining operation that frees you for bigger challenges
+- The interesting decisions are economic and strategic: how many, which roles, can I afford them
+- The goal is a self-sustaining operation that frees you for course design
 
 ---
 
@@ -22,7 +24,6 @@ The Employee System allows players to hire, manage, and develop staff to scale t
 | Role | Primary Function | Base Wage | Availability |
 |------|------------------|-----------|--------------|
 | Groundskeeper | Mowing, general maintenance | $12/hr | Start |
-| Irrigator | Watering, moisture management | $15/hr | 500 tiles |
 | Mechanic | Equipment repair, maintenance | $18/hr | 3 equipment |
 | Pro Shop Staff | Customer service, sales | $10/hr | Pro shop built |
 | Caddy | Golfer assistance | $8/hr | 4-star prestige |
@@ -48,24 +49,6 @@ interface GroundskeeperCapabilities {
 2. Water dry areas (moisture < 30)
 3. Fertilize depleted areas (nutrients < 30)
 4. General patrol of assigned area
-
-#### Irrigator
-Specialist in water management.
-
-```typescript
-interface IrrigatorCapabilities {
-  canWater: true;
-  canOperateSprinklerSystem: true;
-  canMonitorMoisture: true;
-  canAdjustSchedules: true;
-}
-```
-
-**Advantages over groundskeeper:**
-- 50% faster watering
-- Can operate automated systems
-- Better at preventing over/under watering
-- Monitors entire course moisture levels
 
 #### Mechanic
 Keeps equipment operational.
@@ -138,10 +121,10 @@ interface ManagerCapabilities {
 ```
 
 **Manager bonus:**
-- First manager: +10% efficiency to all supervised staff
-- Additional managers: Diminishing returns (+5%, +3%, etc.)
+- First manager: +15% efficiency to all supervised staff
+- Additional managers: Diminishing returns (+8%, +4%, +2%)
 - Training speed bonus: +25% experience gain for staff
-- Reduces employee unhappiness
+- Fatigue reduction: -15% accrual (diminishing with additional managers)
 
 ---
 
@@ -165,14 +148,12 @@ interface EmployeeSkills {
   efficiency: number;    // 0.5-2.0, work speed multiplier
   quality: number;       // 0.5-2.0, work quality multiplier
   stamina: number;       // 0.5-2.0, fatigue resistance
-  reliability: number;   // 0.5-1.0, attendance probability
 }
 ```
 
 **Efficiency**: How fast they complete tasks
 **Quality**: How well they complete tasks (affects results)
 **Stamina**: How long before needing a break
-**Reliability**: Chance of showing up for their shift
 
 ### Experience and Promotion
 
@@ -184,7 +165,6 @@ interface ExperienceConfig {
 
 const EXPERIENCE_REQUIREMENTS = {
   groundskeeper: 1000,  // Points to level up
-  irrigator: 1200,
   mechanic: 1500,
   pro_shop_staff: 800,
   manager: 2000,
@@ -229,8 +209,7 @@ interface Employee {
 type EmployeeStatus =
   | "working"
   | "idle"
-  | "on_break"
-  | "training";
+  | "on_break";
 ```
 
 ---
@@ -416,63 +395,51 @@ When fatigue reaches threshold:
 
 ### Fatigue Effects
 
-| Fatigue Level | Effect |
-|---------------|--------|
-| 0-30 | Full efficiency |
-| 31-50 | -10% efficiency |
-| 51-70 | -25% efficiency |
-| 71-80 | -40% efficiency, seeks break |
-| 81-100 | On break (no work) |
+Fatigue applies a simple linear penalty to efficiency:
+
+```
+fatigueModifier = 1 - (fatigue / 100) * 0.3
+```
+
+| Fatigue Level | Efficiency Modifier |
+|---------------|-------------------|
+| 0 | 1.0x (full efficiency) |
+| 50 | 0.85x |
+| 100 | 0.7x (minimum, seeks break) |
 
 ---
 
 ## Happiness System
 
-### Happiness Factors
+Happiness is intentionally simple. It exists as a linear efficiency modifier, not as a people-management mechanic. The player's attention should be on the course, not on employee feelings.
+
+### Happiness as Efficiency Modifier
 
 ```typescript
-interface HappinessFactors {
-  baseHappiness: 75;        // Starting point
-  wageVsMarket: number;     // +/- based on wage comparison
-  workload: number;         // High fatigue = unhappy
-  facilityQuality: number;  // Break room, equipment quality
-  managerPresence: number;  // Managers boost happiness
-  recentPromotion: number;  // Temporary boost
-  weatherConditions: number; // Bad weather = unhappy
+// Simple linear: happiness 100 = 1.0x, happiness 50 = 0.5x, happiness 0 = 0.0x
+happinessModifier = employee.happiness / 100;
+```
+
+### Effective Efficiency
+
+```typescript
+function calculateEffectiveEfficiency(employee: Employee): number {
+  const happinessModifier = employee.happiness / 100;
+  const fatigueModifier = 1 - (employee.fatigue / 100) * 0.3;  // 0.7 to 1.0
+  return employee.skills.efficiency * happinessModifier * fatigueModifier;
 }
 ```
 
-### Happiness Effects
+### What Affects Happiness
 
-| Happiness | Effect |
-|-----------|--------|
-| 90-100 | +10% efficiency, -20% fatigue rate |
-| 70-89 | Normal operation |
-| 50-69 | -10% efficiency |
-| 30-49 | -25% efficiency, may call in sick |
-| 0-29 | High quit risk, frequent absences |
+- **Wages vs. market rate**: Pay fairly and happiness stays high
+- **Promotions**: Temporary happiness boost on level-up
 
-### Improving Happiness
-
-- Pay above market rate (+5 happiness per 10% above)
-- Build staff facilities (break room: +10)
-- Hire managers (+5 per manager, diminishing)
-- Give raises (+5 temporary, fades)
-- Promote when eligible (+10 temporary)
+There are no sick days, no unhappy day tracking, no complex consequence systems.
 
 ### Quitting
 
-Unhappy employees may quit:
-
-```typescript
-function checkQuitRisk(employee: Employee): boolean {
-  if (employee.happiness > 40) return false;
-
-  // Daily quit check for unhappy employees
-  const quitChance = (40 - employee.happiness) / 100;
-  return Math.random() < quitChance;
-}
-```
+If happiness drops to 0, the employee quits. This is the only consequence of neglecting employee happiness, and it's entirely avoidable by paying reasonable wages.
 
 ---
 
@@ -502,7 +469,6 @@ function calculateHourlyWage(
 | Role | Novice | Trained | Experienced | Expert |
 |------|--------|---------|-------------|--------|
 | Groundskeeper | $12/hr | $15/hr | $18/hr | $24/hr |
-| Irrigator | $15/hr | $19/hr | $23/hr | $29/hr |
 | Mechanic | $18/hr | $23/hr | $29/hr | $40/hr |
 | Pro Shop | $10/hr | $12/hr | $14/hr | $17/hr |
 | Caddy | $8/hr | $9/hr | $11/hr | $13/hr |
@@ -567,14 +533,6 @@ function gainExperience(
 }
 ```
 
-### Training Facility
-
-With a Training Center built:
-- Dedicated "training" status for employees
-- Faster experience gain (2x)
-- No work output during training
-- Useful for rapid skill-up of new hires
-
 ### Promotion
 
 ```typescript
@@ -605,36 +563,15 @@ function checkPromotion(employee: Employee): Employee | null {
 
 ### Manager Bonuses
 
-Managers provide passive bonuses to other employees:
+Managers provide passive bonuses to all other employees (see `employee-roles.ts: calculateManagerBonuses()`):
 
-```typescript
-function calculateManagerBonus(roster: EmployeeRoster): number {
-  const workingManagers = getEmployeesByRole(roster, "manager")
-    .filter(m => m.status === "working");
+| Bonus | First Manager | Additional Managers |
+|-------|--------------|-------------------|
+| Employee efficiency | +15% | +8%, +4%, +2% (diminishing) |
+| Experience gain rate | +25% | +12%, +6% (diminishing) |
+| Fatigue reduction | -15% accrual | -8%, -4% (diminishing) |
 
-  if (workingManagers.length === 0) return 1.0;
-
-  let totalBonus = 0;
-  for (let i = 0; i < workingManagers.length; i++) {
-    const manager = workingManagers[i];
-    const managerEfficiency = calculateEffectiveEfficiency(manager);
-
-    // Diminishing returns: 10%, 5%, 3%, 2%, 1%...
-    const diminishingFactor = 1 / (i + 1);
-    totalBonus += 0.10 * managerEfficiency * diminishingFactor;
-  }
-
-  return 1 + totalBonus;
-}
-```
-
-### Manager Supervision
-
-Managers can be assigned to supervise specific roles:
-- Reduces fatigue accrual by 20%
-- Increases happiness by 5
-- Prevents slacking (idle time reduced)
-- Catches quality issues earlier
+Managers are not field workers -- their value is entirely passive through team-wide multipliers.
 
 ---
 
@@ -867,7 +804,6 @@ interface EmployeeMovement {
 
 const EMPLOYEE_MOVE_SPEEDS: Record<EmployeeRole, number> = {
   groundskeeper: 3.0,  // 3 tiles per minute
-  irrigator: 2.5,
   mechanic: 2.0,
   pro_shop_staff: 2.0,
   manager: 2.5,
@@ -974,9 +910,8 @@ interface CourseArea {
 
 ### Phase 5: Advanced Features
 1. Manager bonuses
-2. Specialization
-3. Employee events (quitting, sick days)
-4. Performance reviews
+2. Role-specific work effects (pro shop revenue, caddy tips, mechanic savings)
+3. Robot-employee dependency (mechanics repair robots)
 
 ---
 
@@ -987,11 +922,12 @@ The Employee System enables the core gameplay progression:
 1. **Solo Start**: Player does everything, learns every job
 2. **First Hires**: Multiply capability, accept lower efficiency
 3. **Team Building**: Specialize roles, optimize coverage
-4. **Management**: Train, promote, maintain happiness
-5. **Delegation**: Systems run themselves, player directs
+4. **Automation**: Robots supplement employees, mechanics become critical
+5. **Delegation**: Systems run themselves, player focuses on course design
 
 Key design principles:
+- Employees are a scaling tool for course maintenance, not a people management minigame
 - Player is always more efficient (per task)
 - Employees enable parallel operations
-- Investment in staff pays off over time
-- The goal is smooth, autonomous operation
+- The interesting decisions are economic (how many, which roles, can I afford them)
+- No events, no traits, no sick days -- hire, pay, assign, they work

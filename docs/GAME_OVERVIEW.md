@@ -115,12 +115,12 @@ You hire your first groundskeepers. Now the dynamic shifts:
 Your course is growing. You have a small team:
 - Multiple groundskeepers handling different areas
 - A mechanic keeping equipment running
-- Maybe an irrigator managing water systems
+- Pro shop staff generating merchandise revenue
 
 **Your role evolves:**
-- Train and supervise employees
+- Assign employees to areas and let them work
 - Handle the critical jobs yourself (greens, problem areas)
-- Step in when someone calls in sick or equipment breaks
+- Step in when equipment breaks or areas need attention
 - Start thinking about efficiency and coverage
 
 **The tension:**
