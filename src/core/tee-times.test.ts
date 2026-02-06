@@ -753,7 +753,6 @@ describe('tee-times', () => {
         baseDemand: 5.0,
         prestigeScore: 1000,
         weatherCondition: 'perfect',
-        marketingBonus: 0.5,
       });
       expect(demand.bookingProbability).toBe(1.0);
     });

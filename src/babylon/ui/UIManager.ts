@@ -86,13 +86,11 @@ export class UIManager {
   private onEmployees?: () => void;
   private onResearch?: () => void;
   private onTeeSheet?: () => void;
-  private onMarketing?: () => void;
   private onIrrigation?: () => void;
   private onHoleBuilder?: () => void;
   private onEquipmentStore?: () => void;
   private onAmenityPanel?: () => void;
   private onCourseLayout?: () => void;
-  private onWalkOnQueue?: () => void;
   private onSpeedChange?: (delta: number) => void;
   private onPriceChange?: (delta: number) => void;
 
@@ -939,11 +937,9 @@ export class UIManager {
       '[ / ]: Zoom | P: Pause',
       '─ Management ─',
       'H: Employees | Y: Research',
-      'G: TeeSheet | K: Marketing',
-      'I: Irrigation | J: Hole Builder',
+      'G: TeeSheet | I: Irrigation',
+      'J: Hole Builder | L: Layout',
       'B: Equipment | U: Amenities',
-      'L: Course Layout',
-      'O: Walk-On Queue',
     ];
 
     for (const line of lines) {
@@ -1088,20 +1084,6 @@ export class UIManager {
     stack.addControl(teeSheetBtn.control);
     this.pauseMenuButtons.push(teeSheetBtn);
 
-    const marketingBtn = createAccessibleButton({
-      label: '📢 Marketing',
-      fontSize: 16,
-      height: '36px',
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onMarketing?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    marketingBtn.control.paddingTop = '10px';
-    stack.addControl(marketingBtn.control);
-    this.pauseMenuButtons.push(marketingBtn);
-
     const irrigationBtn = createAccessibleButton({
       label: '💧 Irrigation',
       fontSize: 16,
@@ -1171,20 +1153,6 @@ export class UIManager {
     courseLayoutBtn.control.paddingTop = '10px';
     stack.addControl(courseLayoutBtn.control);
     this.pauseMenuButtons.push(courseLayoutBtn);
-
-    const walkOnQueueBtn = createAccessibleButton({
-      label: '🚶 Walk-On Queue',
-      fontSize: 16,
-      height: '36px',
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onWalkOnQueue?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    walkOnQueueBtn.control.paddingTop = '10px';
-    stack.addControl(walkOnQueueBtn.control);
-    this.pauseMenuButtons.push(walkOnQueueBtn);
 
     const speedDivider = new Rectangle('speedDivider');
     speedDivider.width = '200px';
@@ -1371,13 +1339,11 @@ export class UIManager {
     onEmployees?: () => void,
     onResearch?: () => void,
     onTeeSheet?: () => void,
-    onMarketing?: () => void,
     onIrrigation?: () => void,
     onHoleBuilder?: () => void,
     onEquipmentStore?: () => void,
     onAmenityPanel?: () => void,
     onCourseLayout?: () => void,
-    onWalkOnQueue?: () => void,
     onSpeedChange?: (delta: number) => void,
     currentSpeed?: number
   ): void {
@@ -1388,13 +1354,11 @@ export class UIManager {
     this.onEmployees = onEmployees;
     this.onResearch = onResearch;
     this.onTeeSheet = onTeeSheet;
-    this.onMarketing = onMarketing;
     this.onIrrigation = onIrrigation;
     this.onHoleBuilder = onHoleBuilder;
     this.onEquipmentStore = onEquipmentStore;
     this.onAmenityPanel = onAmenityPanel;
     this.onCourseLayout = onCourseLayout;
-    this.onWalkOnQueue = onWalkOnQueue;
     this.onSpeedChange = onSpeedChange;
     if (this.speedText && currentSpeed !== undefined) {
       this.speedText.text = `${currentSpeed}x`;

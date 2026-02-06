@@ -32,13 +32,11 @@ export interface InputCallbacks {
   onEmployeePanel?: () => void;
   onResearchPanel?: () => void;
   onTeeSheetPanel?: () => void;
-  onMarketingPanel?: () => void;
   onIrrigationPanel?: () => void;
   onHoleBuilderPanel?: () => void;
   onEquipmentStore?: () => void;
   onAmenityPanel?: () => void;
   onCourseLayoutPanel?: () => void;
-  onWalkOnQueuePanel?: () => void;
   onDragStart?: (screenX: number, screenY: number, shiftKey?: boolean) => void;
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
@@ -220,8 +218,6 @@ export class InputManager {
       this.callbacks.onResearchPanel?.();
     } else if (key === "g") {
       this.callbacks.onTeeSheetPanel?.();
-    } else if (key === "k") {
-      this.callbacks.onMarketingPanel?.();
     } else if (key === "i") {
       if (!this.callbacks.isEditorActive?.()) {
         this.callbacks.onIrrigationPanel?.();
@@ -240,8 +236,6 @@ export class InputManager {
       this.callbacks.onAmenityPanel?.();
     } else if (key === "l") {
       this.callbacks.onCourseLayoutPanel?.();
-    } else if (key === "o") {
-      this.callbacks.onWalkOnQueuePanel?.();
     } else if (key === "x" && this.callbacks.isEditorActive?.()) {
       this.callbacks.onAxisConstraint?.('x');
     } else if (key === "c" && this.callbacks.isEditorActive?.()) {

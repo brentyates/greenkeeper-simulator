@@ -7,7 +7,13 @@
  * - Wages and payroll
  * - Employee skills and experience
  * - Work assignments and productivity
+ * - Personality traits that affect behavior
+ * - Happiness consequences (sick days, quitting, efficiency)
  */
+
+import { generateTraits, getTraitEfficiencyModifier, getTraitFatigueModifier, getTraitExperienceModifier } from './employee-traits';
+import type { PersonalityTrait } from './employee-traits';
+import { getHappinessEfficiencyModifier } from './employee-happiness';
 
 // ============================================================================
 // Types
@@ -139,6 +145,7 @@ export interface Employee {
   readonly fatigue: number;        // 0-100, needs break when high
   readonly status: EmployeeStatus;
   readonly assignedArea: string | null;  // Zone/area assignment
+  readonly traits?: readonly import('./employee-traits').PersonalityTrait[];
 }
 
 export interface EmployeeConfig {
@@ -377,7 +384,8 @@ export function createEmployee(
   skillLevel: SkillLevel,
   hireDate: number,
   name?: string,
-  skills?: EmployeeSkills
+  skills?: EmployeeSkills,
+  traits?: PersonalityTrait[]
 ): Employee {
   const config = EMPLOYEE_CONFIGS[role];
   const actualSkills = skills ?? generateRandomSkills(skillLevel);
@@ -395,7 +403,8 @@ export function createEmployee(
     happiness: 75,
     fatigue: 0,
     status: "idle",
-    assignedArea: null
+    assignedArea: null,
+    traits: traits ?? generateTraits(),
   };
 }
 
@@ -480,12 +489,17 @@ export function getEmployeesNeedingBreak(roster: EmployeeRoster): readonly Emplo
   });
 }
 
-export function calculateEffectiveEfficiency(employee: Employee): number {
-  // Base efficiency modified by happiness and fatigue
-  const happinessModifier = 0.5 + (employee.happiness / 100) * 0.5; // 0.5-1.0
+export function calculateEffectiveEfficiency(employee: Employee, gameHour: number = 12): number {
+  // Tiered happiness modifier (from design doc)
+  const happinessModifier = getHappinessEfficiencyModifier(employee.happiness);
+
+  // Fatigue modifier
   const fatigueModifier = 1 - (employee.fatigue / 100) * 0.3; // 0.7-1.0
 
-  return employee.skills.efficiency * happinessModifier * fatigueModifier;
+  // Trait modifiers (efficiency and time-of-day effects)
+  const traitModifier = getTraitEfficiencyModifier(employee.traits ?? [], gameHour);
+
+  return employee.skills.efficiency * happinessModifier * fatigueModifier * traitModifier;
 }
 
 export function getNextSkillLevel(current: SkillLevel): SkillLevel | null {
@@ -677,10 +691,14 @@ export function tickEmployees(
       const fatigueMultiplier = 1 / trainingBonus;
       const experienceMultiplier = trainingBonus;
 
+      // Apply trait modifiers to fatigue and experience
+      const traitFatigueModifier = getTraitFatigueModifier(employee.traits ?? []);
+      const traitExperienceModifier = getTraitExperienceModifier(employee.traits ?? []);
+
       updated = {
         ...updated,
-        fatigue: Math.min(100, updated.fatigue + config.fatigueAccrualRate * deltaMinutes * fatigueMultiplier),
-        experience: updated.experience + deltaMinutes * updated.skills.efficiency * experienceMultiplier
+        fatigue: Math.min(100, updated.fatigue + config.fatigueAccrualRate * deltaMinutes * fatigueMultiplier * traitFatigueModifier),
+        experience: updated.experience + deltaMinutes * updated.skills.efficiency * experienceMultiplier * traitExperienceModifier
       };
 
       // Check if needs break
