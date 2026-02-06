@@ -6,476 +6,296 @@ The game has reached a point where terrain and graphics are solid, and the major
 
 The thesis: **players will grind the economy and oversee employees while they focus on building their dream course.** The employee system is the economic engine that enables that. Like Sid Meier's SimGolf, the course design is the creative outlet, and the management layer gives it stakes and feedback loops.
 
-This document covers three things:
-1. Systems being removed to reduce clutter
-2. The employee system enhancements that make the mid-game compelling
-3. How the full progression arc from solo → employees → robots works
+This document covers:
+1. Systems removed to reduce clutter
+2. Employee system enhancements (implemented)
+3. How the full progression arc from solo -> employees -> robots works
+4. Features deferred for future implementation
 
 ---
 
-## Part 1: Systems Removal
+## Part 1: Systems Removed
 
-### Remove: Walk-On Queue System
+### Walk-On Queue System (REMOVED)
 
-**Why:** The walk-on system is a low-depth revenue filler that overlaps with tee-times. It has its own panel, its own queue logic, and its own policy knobs — but the player's only real decision is "on or off." The golfer attributes (priceFlexibility, desiredGroupSize) aren't even used in the assignment logic. The whole thing adds cognitive overhead without creating meaningful strategy.
+**Why:** Low-depth revenue filler that overlapped with tee-times. Own panel, own queue logic, own policy knobs -- but the player's only real decision was "on or off." Added cognitive overhead without creating meaningful strategy.
 
-**What to do:** Fold walk-on policy into the tee-time system as a simple configuration:
+**What was done:** Removed entirely. Walk-on demand can be revisited later as a simple tee-time config toggle if needed.
 
-```typescript
-interface TeeTimeConfig {
-  // ... existing spacing, pricing, etc.
-
-  // Walk-on policy (replaces entire walk-on system)
-  allowWalkOns: boolean;
-  walkOnPremium: number;    // 1.0 = same price, 1.15 = 15% surcharge
-  walkOnSlotsPerDay: number; // Max slots reserved for walk-ons
-}
-```
-
-Walk-ons become a tee-time setting, not a separate system. No dedicated panel. No queue management. Just: "Do you leave room for walk-ins, and what do you charge them?"
-
-**Files to remove:**
-- `src/core/walk-ons.ts`
-- `src/babylon/ui/WalkOnQueuePanel.ts`
-- Walk-on related state from save game
-- Walk-on references in BabylonMain.ts
-- The `U` keybinding (or reassign it)
-
-**Files to modify:**
-- `src/core/tee-times.ts` — add walk-on fields to TeeTimeConfig
-- `src/babylon/BabylonMain.ts` — remove walk-on tick, remove walk-on panel
-- `src/babylon/ui/TeeSheetPanel.ts` — add walk-on toggle to tee-time settings
+**Files removed:** `walk-ons.ts`, `WalkOnQueuePanel.ts`, all BabylonMain/InputManager/save-game references.
 
 ---
 
-### Remove: Marketing Campaign System
+### Marketing Campaign System (REMOVED)
 
-**Why:** Marketing is nine campaign types that boil down to "spend money, get more golfers." There's no risk, no long-term consequence, no way to overshoot. It short-circuits the organic demand loop where prestige and course quality should be what drives golfers to show up. If your course is great, word spreads. If it's mediocre, newspaper ads shouldn't save you.
+**Why:** Nine campaign types that boiled down to "spend money, get more golfers." No risk, no long-term consequence, no way to overshoot. Short-circuited the organic demand loop where prestige and course quality should drive golfer arrivals.
 
-**What to do:** Remove the campaign system entirely. Demand is driven by:
-- **Prestige score** (the composite of conditions, history, amenities, reputation)
-- **Green fee pricing** (price elasticity already exists)
-- **Weather and seasonality** (already exists in tee-time demand calculation)
-- **Word-of-mouth** (reputation component of prestige, driven by golfer satisfaction)
+**What was done:** Removed entirely. Demand is now driven purely by prestige score, green fee pricing, weather/seasonality, and word-of-mouth (reputation). The `marketingBonus` parameter was removed from tee-time demand calculations.
 
-The prestige system already models everything marketing was trying to do, but through earned gameplay rather than a spending lever. If demand generation needs more dynamic range without marketing multipliers, that tuning can happen within the prestige → demand curve.
-
-The `marketingBonus` parameter in `calculateDailyDemand()` (tee-times.ts) simply gets removed or defaulted to 0. All other demand multipliers (day of week, time of day, season, weather, prestige, pricing) remain.
-
-**Files to remove:**
-- `src/core/marketing.ts`
-- `src/core/marketing.test.ts`
-- `src/babylon/ui/MarketingDashboard.ts`
-- Marketing state from save game
-
-**Files to modify:**
-- `src/core/tee-times.ts` — remove marketingMultiplier from demand calculation
-- `src/babylon/BabylonMain.ts` — remove marketing tick, remove marketing panel, remove `K` keybinding
-- `src/core/economy.ts` — remove "marketing" expense category (or leave as unused)
-- `docs/ECONOMY_SYSTEM_SPEC.md` — remove marketing references from utilization notes
+**Files removed:** `marketing.ts`, `marketing.test.ts`, `MarketingDashboard.ts`, all BabylonMain/UIManager/save-game references.
 
 ---
 
-## Part 2: Employee System Enhancements
-
-The employee system's core hiring/firing/payroll/groundskeeper-work loop is solid. What's missing is the depth that makes managing employees feel like a *game* rather than a checkbox. These enhancements turn employees from "hire and forget" into an engaging mid-game that demands periodic attention without overwhelming the player.
+## Part 2: Employee System Enhancements (Implemented)
 
 ### 2.1 Happiness Consequences
 
-**Current state:** Happiness is tracked (0-100) with factors like wages, workload, facilities, weather. But nothing actually happens when happiness drops. Employees never quit, never call in sick, never slow down meaningfully.
+**File:** `src/core/employee-happiness.ts`
 
-**The fix:** Happiness needs teeth.
+Happiness now has teeth -- it directly affects work output, triggers sick days, and eventually causes quitting.
 
-#### Efficiency Impact
+#### Efficiency Impact (IMPLEMENTED)
 
-Happiness directly affects work output. This is the gentle, continuous consequence — you always want your team reasonably happy.
+Happiness tiers replace the old linear modifier. Applied via `getHappinessEfficiencyModifier()` which feeds into `calculateEffectiveEfficiency()`.
 
 | Happiness | Efficiency Modifier | Behavior |
 |-----------|-------------------|----------|
-| 90-100 | 1.10x | Motivated — works faster, rarely takes breaks |
-| 70-89 | 1.00x | Content — normal operation |
-| 50-69 | 0.85x | Disgruntled — slower, more break time |
-| 30-49 | 0.70x | Unhappy — frequent breaks, sloppy work |
-| 0-29 | 0.50x | Miserable — barely functional, actively looking to quit |
+| 90-100 | 1.10x | Motivated -- works faster |
+| 70-89 | 1.00x | Content -- normal operation |
+| 50-69 | 0.85x | Disgruntled -- slower output |
+| 30-49 | 0.70x | Unhappy -- significantly impaired |
+| 0-29 | 0.50x | Miserable -- barely functional |
 
-#### Sick Days
+#### Sick Days (IMPLEMENTED)
 
-Unhappy employees call in sick. Happy ones rarely do.
-
-```
-Daily sick chance:
-  happiness >= 70: 1% (bad luck)
-  happiness 50-69: 5%
-  happiness 30-49: 12%
-  happiness < 30:  20%
-```
-
-When an employee calls in sick:
-- They don't work that day (still paid at 50% rate per existing payroll logic)
-- Their area goes unattended unless another employee covers
-- A notification appears: "James called in sick today"
-- The player feels the gap — that section of the course suffers
-
-This is the kind of small fire that creates management engagement without being overwhelming. You see the notification, you think "I should give James a raise" or "I need a second groundskeeper covering that area."
-
-#### Quitting
-
-The big consequence. An employee who stays unhappy long enough will quit.
+Daily sick chance checked per employee, modified by personality traits (Reliable trait = zero chance):
 
 ```
-Quit evaluation: checked once per game day at end of shift
-
-Quit conditions:
-  1. Happiness below 30 for 7+ consecutive days: 25% daily quit chance
-  2. Happiness below 20 for 3+ consecutive days: 40% daily quit chance
-  3. Single event: happiness drops below 10 at any point: 60% immediate quit chance
-
-When quitting:
-  - Employee gives 1-day notice (still works that day)
-  - Notification: "Mary has resigned. Her last day is tomorrow."
-  - All experience and skill investment is lost
-  - Hiring pool may not have a replacement at the same skill level
-  - The area they covered starts degrading
+happiness >= 70: 1% (bad luck)
+happiness 50-69: 5%
+happiness 30-49: 12%
+happiness < 30:  20%
 ```
 
-The key design intent: **losing an expert employee should sting.** You spent game-months training them from novice to expert. Their wage went up, but so did their output. If you let their happiness slide and they quit, you're back to hiring a novice and starting over. This creates a genuine incentive to manage your people.
+When sick: employee doesn't work for 1 day. Notification shown to player.
 
-#### Raise Requests
+#### Quitting (IMPLEMENTED)
 
-Employees periodically request raises. This is the soft version of quitting — a warning sign you can act on.
+Checked daily at end of shift. Three conditions:
 
 ```
-Raise request triggers:
-  - Every 30 game days, each employee evaluates their satisfaction
-  - If happiness < 60 AND wage is at or below market rate: request raise
-  - If happiness < 40: request raise regardless of current wage
-  - After promotion: no raise request for 30 days (promotion satisfaction)
-
-Raise request options:
-  1. Grant raise (+10-15% wage, +15 happiness, request cooldown 60 days)
-  2. Deny raise (-10 happiness, may trigger quit evaluation sooner)
-  3. Promise raise later (no immediate cost, -5 happiness, 15-day timer before re-request)
+1. Happiness below 30 for 7+ consecutive days: 25% daily quit chance
+2. Happiness below 20 for 3+ consecutive days: 40% daily quit chance
+3. Happiness drops below 10 at any point: 60% immediate quit chance
 ```
 
-These create micro-decisions. You see "Robert is requesting a raise" and you weigh: he's my only expert groundskeeper, I can't afford to lose him, but I'm tight on cash this month. Grant it? Promise it? Take the risk?
+When quitting: employee is immediately removed from roster and work system. Notification shown.
+
+#### State Tracking (IMPLEMENTED)
+
+`HappinessConsequenceState` tracks per-employee:
+- Consecutive unhappy days (for quit evaluation)
+- Sick leave remaining days
+- Days off granted (from event resolution)
+- Last raise request day
+- Daily task counts (reset daily)
+
+Serialized/deserialized for save games via Maps -> Array entries.
 
 ---
 
-### 2.2 Role-Specific Autonomous Work
+### 2.2 Role-Specific Work
 
-**Current state:** Only groundskeepers have autonomous work behavior (mow, water, fertilize, rake via A* pathfinding). Mechanics, pro shop staff, caddies, and managers exist in the roster and collect wages but produce no tangible value.
+**File:** `src/core/employee-roles.ts`
 
-**The fix:** Every role needs to *do something* that the player can see and feel.
+Every role now produces tangible value. Non-groundskeeper roles use passive/calculation-based effects (no pathfinding). Mechanics are also field workers with pathfinding.
 
-#### Mechanic Work System
+#### Mechanic Work (IMPLEMENTED -- abstract calculation model)
 
-Mechanics handle equipment maintenance and irrigation repairs. They're the role that keeps your infrastructure running.
+`calculateMechanicWork()` computes daily repair capacity based on mechanic count and efficiency:
 
-**Autonomous tasks:**
+- Each mechanic has ~2 repair actions per day (scaled by efficiency)
+- Priority: robots > equipment > irrigation leaks
+- Preventive maintenance savings: ~$15/day per effective mechanic
+- `getMechanicBreakdownReduction()`: each mechanic reduces breakdown rate (diminishing returns, floor at 80% reduction)
+- `getNoMechanicBreakdownPenalty()`: 1.5x breakdown rate without mechanics
 
-| Task | Trigger | Duration | Effect |
-|------|---------|----------|--------|
-| Repair equipment | Equipment durability < 30% | 15-30 min | Restores durability to 100% |
-| Preventive maintenance | Equipment durability < 70% and idle | 10 min | +20% durability, extends lifespan |
-| Repair irrigation leak | Pipe has active leak | 5-15 min | Stops leak, restores pressure |
-| Repair robot | Robot in "broken" state | 20-45 min | Returns robot to service |
+**Field work:** Mechanics are included in `FIELD_WORK_ROLES` alongside groundskeepers. They use A* pathfinding and can rake bunkers and patrol when idle. Their main value comes from passive effects.
 
-**Without mechanics:**
-- Equipment breaks more frequently (1.5x breakdown rate)
-- Irrigation leaks persist until player manually repairs
-- Broken robots stay broken until player intervenes
-- Equipment replacement cost increases (no preventive maintenance)
+#### Pro Shop Staff (IMPLEMENTED)
 
-**With mechanics:**
-- Equipment lasts longer (preventive maintenance extends lifespan by 30%)
-- Irrigation leaks detected and fixed automatically
-- Robots repaired automatically (this is the critical employee-robot dependency)
-- 20% reduction in equipment-related expenses
+`calculateProShopWork()` computes daily revenue and satisfaction effects:
 
-**Key design point:** Mechanics create the bridge between the employee system and the robot system. Robots break down. Without a mechanic, *you* have to fix them or they sit idle. With a skilled mechanic, robots stay running. This means even in the late-game automation phase, you still need human employees.
+- Merchandise revenue: $8-13 per golfer (base $8, +$5 with expert staff)
+- Staff count scaling: 1x, 1.5x, 1.8x, 2.0x (diminishing returns)
+- Check-in speed multiplier: 1.0 + (staff count * 0.25)
+- Complaint mitigation: up to 60% reduction in satisfaction penalties
+- Booking rate bonus: 5% per staff member (capped at 20%)
 
-#### Pro Shop Staff Work System
+Revenue generated at end of day as `other_income` transaction.
 
-Pro shop staff are revenue generators and satisfaction boosters. They're the customer-facing role.
+#### Caddy Work (IMPLEMENTED -- abstract calculation model)
 
-**Passive effects (no pathfinding needed — they work at the clubhouse):**
+`calculateCaddyWork()` computes daily satisfaction and revenue effects:
 
-| Effect | Condition | Impact |
-|--------|-----------|--------|
-| Merchandise revenue | Per pro shop staff on duty | +$5-15 per golfer in merch sales |
-| Check-in speed | Staff present | Golfers spend less time in "checking_in" status |
-| Complaint handling | Staff present + golfer satisfaction < 50 | Prevents -5 satisfaction penalty, replaces with -2 |
-| Tee time management | Staff present | +5% booking rate (better phone/online presence) |
+- Each caddy serves ~3 groups per day
+- Satisfaction bonus: +12 base, +20 for expert/experienced caddies (per group)
+- Tip revenue: $8 base, $25 for expert caddies (per group)
+- Pace improvement: up to 10% of groups served (capped at 25% total)
+- Prestige bonus: +0.5 per active caddy (capped at 5)
 
-**Scaling:**
-- 0 pro shop staff: No merch revenue, slow check-in, no complaint handling
-- 1 staff: Base effects
-- 2 staff: 1.5x merch revenue (one handles sales, one handles service)
-- 3+ staff: Diminishing returns (1.8x, 2.0x, etc.)
+Tips generated at end of day as `other_income` transaction.
 
-**Skill impact:**
-- Novice: 60% of base effects
-- Expert: 120% of base effects + premium merchandise unlocked (+$5/golfer)
+#### Manager Work (IMPLEMENTED)
 
-**Design intent:** Pro shop staff are the simplest hire — they sit at the clubhouse and generate value passively. Good for players who want revenue without micromanagement. The decision is purely economic: does the revenue they generate exceed their wage?
-
-#### Caddy Work System
-
-Caddies walk with golfers and directly boost their experience. They're the premium service role.
-
-**How it works:**
-- Each caddy is assigned to one golfer group at a time
-- Caddy walks with the group for the duration of their round
-- When unassigned, caddy waits at the clubhouse
-
-**Effects per assignment:**
-
-| Effect | Value | Notes |
-|--------|-------|-------|
-| Golfer satisfaction boost | +10-20 | Based on caddy skill level |
-| Pace of play improvement | -10% round time | Caddy knows the course, speeds play |
-| Tip revenue | $5-25 per round | Based on golfer type + caddy skill |
-| Prestige boost | +0.5 per active caddy | Visible luxury service |
-
-**Caddy assignment logic:**
-1. When a golfer group checks in, check for available caddies
-2. Priority: professional golfers > enthusiasts > tourists > regulars > casuals
-3. Golfer must be willing to pay caddy fee (tied to green fee tier)
-4. Caddy walks with group, returns to clubhouse when round ends
-
-**Scaling:**
-- More caddies = more groups get caddy service
-- At high prestige (4-5 stars), golfers *expect* caddy availability
-- Missing caddy service at premium tiers causes a satisfaction penalty (-5)
-
-**Design intent:** Caddies are a late-game luxury hire. They're expensive (wage + they only serve one group at a time) but they boost the metrics that matter for premium courses — satisfaction and prestige. The decision: is the satisfaction/prestige gain worth the wage for a role that's idle between groups?
-
-#### Manager Work System
-
-Managers are force multipliers. They don't perform tasks directly — they make everyone else better.
-
-**How it works:**
-- Managers are assigned to oversee a group of employees (or the whole roster)
-- They provide passive bonuses to employees they supervise
-- Bonuses scale with manager skill level
-
-**Manager bonuses:**
+`calculateManagerBonuses()` computes team-wide multipliers with diminishing returns:
 
 | Bonus | First Manager | Additional Managers |
 |-------|--------------|-------------------|
 | Employee efficiency | +15% | +8%, +4%, +2% (diminishing) |
 | Experience gain rate | +25% | +12%, +6% (diminishing) |
 | Fatigue reduction | -15% accrual rate | -8%, -4% (diminishing) |
-| Happiness boost | +8 to all supervised | +4, +2 (diminishing) |
+| Happiness boost | +8 to all | +4, +2 (diminishing) |
 | Sick day prevention | -30% chance | -15%, -8% (diminishing) |
 
-**Manager-specific behaviors:**
-- **Quality checks:** Manager occasionally inspects employee work. If quality is below threshold, employee is redirected to redo the task. This prevents sloppy work from low-happiness employees.
-- **Conflict resolution:** When an employee's happiness drops below 50, manager automatically provides a small happiness boost (+3) every 8 hours. This represents informal check-ins and morale management.
-- **Training acceleration:** Employees supervised by a manager gain experience 25% faster. This makes managers valuable in the mid-game when you're training up novice hires.
-
-**Design intent:** Managers are the "invest to save" role. They cost the most but their bonus compounds across your whole team. The decision: is $25-63/hr worth it when your team is small (probably not) vs. when you have 8+ employees (almost certainly yes)? This creates a natural hiring progression — you don't need a manager until you have a team worth managing.
+Managers sorted by effectiveness (best manager gets full first-manager bonus).
 
 ---
 
 ### 2.3 Employee Events
 
-Events are the micro-stories that make employees feel like people rather than resource units. They create moments of decision-making that punctuate the management layer without demanding constant attention.
+**File:** `src/core/employee-events.ts`
 
-#### Event Types
+Events are micro-stories that create moments of decision-making. They auto-resolve after expiry (1 day) with the last available option if the player ignores them.
 
-**Raise Request** (covered in 2.1 above)
-- Frequency: Every 30 days per employee if conditions met
-- Player choice: Grant / Deny / Promise later
+#### Implemented Event Types
+
+**Raise Request**
+- Trigger: Every 30 days, employees with happiness < 60 may request a raise
+- Options: Grant (15% raise, +15 happiness) / Deny (-10 happiness) / Promise later (-5 happiness)
 
 **Personality Clash**
-```
-Trigger: Two employees with low happiness assigned to same area
-Frequency: Rare (5% daily chance when conditions met)
-Effect: Both employees -10 happiness, -15% efficiency for 3 days
-Resolution options:
-  1. Reassign one to different area (solves immediately)
-  2. Talk to both (+5 happiness each, 50% chance of recurrence)
-  3. Ignore (clash continues, may escalate to one quitting)
-```
+- Trigger: 5% daily chance when two employees in same role both have low happiness
+- Requires: complainer trait on one employee, or both unhappy
+- Options: Reassign (+5 each) / Talk to both (+3 each) / Ignore (-5 each)
 
 **Exceptional Performance**
-```
-Trigger: Employee completes 50+ tasks in a day with quality > 90%
-Frequency: Organic (depends on workload and skill)
-Effect: Notification highlighting the employee
-Resolution options:
-  1. Give bonus ($50-200, +10 happiness, +loyalty)
-  2. Acknowledge (free, +3 happiness)
-  3. Ignore (no effect, but missed opportunity)
-```
-
-**Training Milestone**
-```
-Trigger: Employee reaches new skill level
-Effect: Automatic notification, wage increase, +10 happiness
-Optional: Throw a small celebration ($100, +5 happiness to all staff)
-```
+- Trigger: Employee completes 50+ tasks in a day
+- Options: Give bonus ($100, +10 happiness) / Acknowledge (+5 happiness) / Ignore (no effect)
 
 **Poaching Attempt**
-```
-Trigger: Expert-level employee, randomly (2% daily chance for experts)
-Frequency: Rare but impactful
-Effect: Employee informs you another course offered them a job
-Resolution options:
-  1. Match offer (10-20% raise, employee stays, +15 happiness)
-  2. Counter with promotion/title (if role allows, +10 happiness)
-  3. Let them go (employee quits in 3 days)
-Note: Only happens to skilled employees — novices don't get poached.
-This makes investing in training feel risky in a good way.
-```
+- Trigger: 2% daily chance for expert or experienced employees
+- Options: Match offer (15% raise, +15 happiness) / Counter offer (+10 happiness) / Let them go (employee quits)
 
 **Personal Emergency**
-```
-Trigger: Random (3% monthly chance per employee)
-Effect: Employee needs 2-3 days off
-Resolution options:
-  1. Paid leave (full wages, +20 happiness, +loyalty)
-  2. Unpaid leave (no wages, neutral happiness)
-  3. Deny leave (-25 happiness, works at 50% efficiency)
-Note: How you handle these defines your "management style"
-  and affects all employees' perception of you (±3 happiness to all)
-```
+- Trigger: 3% monthly chance per employee
+- Options: Paid leave ($200, 3 days off, +20 happiness) / Unpaid leave (2 days off, +5 happiness) / Deny (-20 happiness)
 
 **Weather Complaint**
-```
-Trigger: Employee working in rain/extreme heat for 2+ hours
-Frequency: Automatic when weather conditions met
-Effect: -5 happiness per hour in bad conditions
-Resolution: Provide weather gear (research unlock, $500 one-time)
-  or rotate employees to indoor tasks during bad weather
-```
+- Trigger: 15% chance when weather is bad and employees are working
+- Options: Provide gear ($300, +10 happiness) / Acknowledge (+3 happiness) / Ignore (-5 happiness)
 
-#### Event Presentation
+#### Event Resolution Flow
 
-Events appear as notification cards that slide in from the side. They don't pause the game (the course keeps running while you decide). If you ignore them, they auto-resolve after 1 game day with the "ignore" outcome.
-
-This is important: **events should feel like things happening in your organization, not interrupts demanding your attention.** The player should feel like a manager getting updates, not like they're playing whack-a-mole.
-
-Suggested UI pattern:
-```
-┌──────────────────────────────────────┐
-│  📋 EMPLOYEE EVENT                    │
-│                                       │
-│  Robert Williams is requesting        │
-│  a raise. He's been at $24/hr        │
-│  for 45 days and is your only        │
-│  expert groundskeeper.               │
-│                                       │
-│  Current happiness: 52 (disgruntled)  │
-│                                       │
-│  [Grant Raise: $28/hr]  [Deny]       │
-│  [Promise Later]                      │
-│                                       │
-│  Auto-resolves in: 23:45              │
-└──────────────────────────────────────┘
-```
+Events are checked daily in `checkForEvents()`. Active events are stored in `EmployeeEventSystemState.activeEvents`. Each event has an `expiresDay` -- in BabylonMain, expired events are auto-resolved with the last option (typically "ignore" or "deny"). Resolution outcomes can include happiness changes, wage changes, costs, days off, and notifications.
 
 ---
 
-### 2.4 Employee Personality
+### 2.4 Personality Traits
 
-Each employee gets a set of personality traits generated at hire time. These create variety in the roster and make hiring decisions more interesting than just comparing stats.
+**File:** `src/core/employee-traits.ts`
 
-#### Trait System
+Each employee gets 1-2 traits at hire time. Traits affect efficiency, fatigue, experience gain, sick chance, and event triggers.
 
-Each employee has 1-2 traits from the following pool:
+#### Trait Table (IMPLEMENTED)
 
-| Trait | Effect | Positive/Negative |
-|-------|--------|-------------------|
-| Hard Worker | +15% efficiency, fatigue accrues 20% faster | Positive |
-| Reliable | Never calls in sick, +0.1 reliability | Positive |
-| Quick Learner | +30% experience gain | Positive |
-| Perfectionist | +20% quality, -10% speed | Mixed |
-| Social | +5 happiness to nearby employees, -10% efficiency when alone | Mixed |
-| Ambitious | +20% experience gain, requests raises 50% more often | Mixed |
-| Weather Tough | No happiness penalty from bad weather | Positive |
-| Night Owl | +15% efficiency after 2 PM, -15% before 10 AM | Mixed |
-| Early Bird | +15% efficiency before 10 AM, -15% after 2 PM | Mixed |
-| Loner | +10% efficiency, -5 happiness if >3 employees in same area | Mixed |
-| Clumsy | -10% quality, 5% chance of equipment damage per day | Negative |
-| Lazy | -15% efficiency, +20% break time | Negative |
-| Complainer | -3 happiness to nearby employees | Negative |
+| Trait | Efficiency | Fatigue | Experience | Quality | Other |
+|-------|-----------|---------|------------|---------|-------|
+| Hard Worker | +15% | +20% faster | -- | -- | Positive |
+| Reliable | -- | -- | -- | -- | Sick chance = 0 |
+| Quick Learner | -- | -- | +30% | -- | Positive |
+| Perfectionist | -10% speed | -- | -- | +20% | Mixed |
+| Social | -- | -- | -- | -- | Mixed (contextual effects deferred) |
+| Ambitious | -- | -- | +20% | -- | Raises 50% more often |
+| Weather Tough | -- | -- | -- | -- | No weather happiness penalty |
+| Night Owl | +15% after 2pm, -15% before 10am | -- | -- | -- | Mixed |
+| Early Bird | +15% before 10am, -15% after 2pm | -- | -- | -- | Mixed |
+| Loner | +10% | -- | -- | -- | Mixed (area-based effects deferred) |
+| Clumsy | -- | -- | -- | -10% | Negative |
+| Lazy | -15% | -20% (less fatigue) | -- | -- | Negative |
+| Complainer | -- | -- | -- | -- | Triggers clashes more often |
 
-#### Trait Visibility
+#### Trait Generation
 
-Traits are **not visible at hire time** for novice candidates. You see their stats (efficiency, quality, stamina, reliability) but not their personality. Traits reveal themselves over the first 3-5 game days of employment.
+- 1-2 traits per employee (70% chance of 1, 30% chance of 2)
+- Weighted by category: 30% positive, 45% mixed, 25% negative
+- Incompatible pairs enforced: night_owl/early_bird, social/loner, hard_worker/lazy
 
-For trained/experienced candidates, 1 trait is visible at hire time.
-For expert candidates (rare), all traits are visible.
+#### Trait Visibility (IMPLEMENTED)
 
-This creates a "gamble" dynamic with new hires — that novice with decent stats might turn out to be a Hard Worker, or they might be Lazy. You don't know until they've been on the job.
+`getVisibleTraits()` controls what the player sees based on skill level and days employed:
 
-#### Trait Impact on Events
+- **Novice:** All traits hidden at hire. Reveal after 5 days on the job.
+- **Trained/Experienced:** 1 trait visible at hire. Rest reveal after 3 days.
+- **Expert:** All traits visible at hire.
 
-Traits influence event frequency and outcomes:
-- **Ambitious** employees request raises more often but also gain experience faster
-- **Reliable** employees never trigger sick day events
-- **Social** employees trigger positive team morale events
-- **Complainers** trigger personality clash events more frequently
-- **Hard Workers** trigger exceptional performance events more often
+This creates the hiring "gamble" -- a novice with decent stats might turn out to be a Hard Worker, or they might be Lazy.
+
+---
+
+### 2.5 Modified Core Systems
+
+#### employees.ts Changes
+
+- `Employee` interface: added optional `traits?: readonly PersonalityTrait[]` for backward compatibility
+- `createEmployee()`: accepts optional traits parameter, generates random traits if not provided
+- `calculateEffectiveEfficiency()`: now computes `skills.efficiency * happinessModifier * fatigueModifier * traitModifier` (tiered happiness, trait time-of-day effects)
+- `tickEmployees()`: applies trait modifiers to fatigue accrual and experience gain
+
+#### employee-work.ts Changes
+
+- `FIELD_WORK_ROLES`: now includes both `groundskeeper` and `mechanic`
+- `getTaskPriorityForRole()`: mechanics prioritize `rake_bunker` and `patrol`; groundskeepers do full task list
+- `syncWorkersWithRoster()`: filters by `FIELD_WORK_ROLES` instead of groundskeeper-only
+
+#### save-game.ts Changes
+
+- `SaveGameState` interface: added optional `happinessState` and `eventState` fields
+- `createSaveState()`: accepts and serializes happiness and event state
+- Backward compatible: existing saves load without these fields (defaults used)
 
 ---
 
 ## Part 3: Progression Arc
 
-### The Full Journey
-
 ```
 PHASE 1: Solo Greenkeeper (Day 1-30)
-├── You do everything yourself
-├── Learn every job intimately
-├── Cash is tight, no room for hires
-└── The "I need help" moment: course degrades faster than you can maintain
++-- You do everything yourself
++-- Learn every job intimately
++-- Cash is tight, no room for hires
++-- The "I need help" moment: course degrades faster than you can maintain
 
 PHASE 2: First Employees (Day 30-90)
-├── Hire 1-2 groundskeepers
-├── They're slow (novice) and need areas assigned
-├── You still handle critical areas (greens, problem spots)
-├── First taste of delegation — imperfect but necessary
-├── Personality traits start revealing themselves
-└── The economic squeeze: wages eat profits, but coverage improves
++-- Hire 1-2 groundskeepers
++-- They're slow (novice) and need areas assigned
++-- Personality traits start revealing themselves
++-- The economic squeeze: wages eat profits, but coverage improves
 
 PHASE 3: Team Building (Day 90-180)
-├── 3-5 employees, maybe a mechanic
-├── Employees gaining experience, some reaching "trained"
-├── Happiness management becomes relevant (first raise request)
-├── Employee events start happening
-├── Area assignment strategy matters
-├── You shift from worker to working manager
-└── First promotion: watching a novice become trained feels rewarding
++-- 3-5 employees, maybe a mechanic
++-- Employees gaining experience, some reaching "trained"
++-- Happiness management becomes relevant (first raise request)
++-- Employee events start happening
++-- First promotion: watching a novice become trained feels rewarding
 
 PHASE 4: Mid-Game Management (Day 180-365)
-├── 5-8 employees, mixed roles
-├── Hire a manager (force multiplier kicks in)
-├── Pro shop staff generating passive revenue
-├── Expert groundskeepers emerging from your trained team
-├── Poaching attempts on your best people
-├── Economic decisions get real: training vs. hiring experienced
-├── Research pushing toward automation
-└── You mostly manage, occasionally do hands-on work
++-- 5-8 employees, mixed roles
++-- Hire a manager (force multiplier kicks in)
++-- Pro shop staff generating passive revenue
++-- Poaching attempts on your best people
++-- Research pushing toward automation
 
 PHASE 5: Automation Transition (Day 365+)
-├── Research unlocks first robots
-├── Robots supplement employees (not replace — robots break down)
-├── Mechanics become critical (robot repair)
-├── Caddies for premium golfer experience
-├── Employee team is experienced/expert, mostly self-sufficient
-├── Events are the main interaction with the employee system
-├── You focus on course design and prestige
-└── The dream: course runs itself while you build your masterpiece
++-- Research unlocks first robots
++-- Robots supplement employees (not replace -- robots break down)
++-- Mechanics become critical (robot repair)
++-- Caddies for premium golfer experience
++-- Events are the main interaction with the employee system
 
 PHASE 6: Endgame (Year 2+)
-├── Full robot fleet + expert staff + skilled mechanics
-├── Employee events are occasional, satisfying micro-decisions
-├── The economic engine hums
-├── Your attention is on: course design, tournaments, prestige
-└── You step onto the course with a mower sometimes, just because
++-- Full robot fleet + expert staff + skilled mechanics
++-- Employee events are occasional, satisfying micro-decisions
++-- Your attention is on: course design, tournaments, prestige
 ```
 
 ### The Robot-Employee Dependency
@@ -489,7 +309,7 @@ Robots are NOT a replacement for employees. They're a complement that shifts the
 | Late | 3-4 + robots | 2 (robot repair) | 1-2 | 1-2 | 1 |
 | Endgame | 1-2 + full robots | 2-3 (critical) | 2 | 2-3 | 1 |
 
-Notice: **mechanics become MORE important as you automate, not less.** And total employee count doesn't drop dramatically — the mix shifts from groundskeepers to support roles.
+**Mechanics become MORE important as you automate, not less.**
 
 ---
 
@@ -497,103 +317,117 @@ Notice: **mechanics become MORE important as you automate, not less.** And total
 
 ### Each Role Must Create a Real Decision
 
-No role should be an obvious hire or an obvious skip. Every role should have a point where it "turns on" — a course size, prestige tier, or revenue level where the math starts working.
-
 | Role | Turns On When... | Monthly Cost | Monthly Value |
 |------|-----------------|--------------|---------------|
 | Groundskeeper | Course > 200 tiles (can't keep up solo) | $1,920-3,840 | Prevents $3,000+ in degradation |
 | Mechanic | Own 3+ pieces of equipment OR robots | $2,880-6,400 | Saves $2,000+ in repairs, keeps robots running |
 | Pro Shop Staff | 15+ golfers/day | $1,600-2,720 | Generates $2,000-4,000 in merch revenue |
 | Caddy | 4-star prestige, premium pricing | $1,280-2,080 | +$1,500-3,000 in satisfaction-driven retention |
-| Manager | 5+ other employees | $4,000-10,080 | 15% efficiency boost × team size |
+| Manager | 5+ other employees | $4,000-10,080 | 15% efficiency boost x team size |
 
 ### The Novice vs. Expert Dilemma
 
-This should be a genuine strategic choice:
-
 **Hire novice ($12/hr):**
-- Cheap
-- But slow (0.5x efficiency) and low quality (0.7x)
-- Unknown personality traits — might be great, might be terrible
-- Takes ~17 game hours to reach "trained" level
+- Cheap but slow (0.5x efficiency) and low quality (0.7x)
+- Unknown personality traits -- might be great, might be terrible
 - Investment: you're betting on their growth
 
 **Hire experienced ($18/hr, rare in hiring pool):**
-- Expensive
-- But productive immediately (0.85x efficiency, 0.9x quality)
+- Expensive but productive immediately (0.85x efficiency, 0.9x quality)
 - 1 trait visible at hire time
 - Less upside (already near peak)
-- No training gamble
-
-**Promote from within:**
-- Zero hiring cost, trait already known
-- But takes time — and they might quit before reaching expert
-- Loyalty factor: promoted employees have +10 happiness baseline
-
-### Wage Pressure
-
-As your course grows, so does the "market rate" for your area. This is tied to prestige tier:
-
-| Prestige Tier | Wage Multiplier | Effect |
-|---------------|----------------|--------|
-| Municipal (1★) | 1.0x | Base wages |
-| Public (2★) | 1.0x | Base wages |
-| Semi-Private (3★) | 1.1x | 10% higher wages expected |
-| Private Club (4★) | 1.25x | 25% higher wages expected |
-| Championship (5★) | 1.5x | 50% higher wages expected |
-
-If you pay below market rate for your tier, happiness decays faster. If you pay above, happiness is more stable. This creates a natural economic pressure: as your course improves, your costs increase. Revenue should outpace this, but it's not free.
 
 ---
 
-## Part 5: Integration Points
+## Part 5: Integration Points (Implemented)
 
-### Employee → Prestige
+### BabylonMain.ts Integration
 
-- Pro shop staff: Affect "service" satisfaction factor
-- Caddies: Affect "service" + "amenities" satisfaction factors
-- Groundskeeper quality: Directly affects "current conditions" component
-- Manager presence: Indirectly improves all employee quality → conditions
+All new systems are wired into the game loop:
 
-### Employee → Economy
+- **Daily tick (10 PM):** Happiness consequences, employee events check, event auto-resolution, role-specific work calculations
+- **Save/Load:** Happiness state and event state serialized/deserialized with backward compatibility
+- **Revenue:** Pro shop merch and caddy tips applied as `other_income` transactions at end of day
+- **Maintenance savings:** Mechanic savings applied as `other_income` at end of day
+- **Event costs:** Resolution costs applied as `employee_wages` expenses
 
-- Wages are the single largest expense category (50% of operating costs)
-- Pro shop staff generate direct revenue (merch)
+### Employee -> Prestige
+- Pro shop staff: booking rate bonus
+- Caddies: prestige bonus (up to +5)
+- Groundskeeper quality: directly affects course conditions
+- Manager presence: multiplies team efficiency -> better conditions
+
+### Employee -> Economy
+- Wages are the single largest expense category
+- Pro shop staff generate merch revenue
 - Caddies generate tip revenue
-- Mechanics reduce equipment costs
-- Better maintenance → higher prestige → higher green fees → more revenue
-
-### Employee → Research
-
-- "Basic Staff Training" research: +15% experience gain for all employees
-- "Advanced Staff Training" research: +30% experience gain, unlocks training facility
-- "Weather Gear" research: Eliminates weather happiness penalty
-- Robot research: Supplements groundskeeper work, requires mechanic support
-
-### Employee → Tee Times
-
-- Pro shop staff: +5% booking rate
-- Caddies: Improve pace of play → better tee time utilization
-- Groundskeepers: Course condition affects golfer satisfaction → reputation → demand
+- Mechanics generate maintenance savings
 
 ---
 
-## Implementation Priority
+## Part 6: Deferred Features (Future Work)
 
-### Phase 1: Cleanup
-Remove walk-on and marketing systems. This is prerequisite work that simplifies the codebase before adding depth.
+These features are described in the original design vision but not yet implemented. They should be added during the balance pass or as separate enhancements.
 
-### Phase 2: Happiness Consequences
-Add efficiency modifiers, sick days, and quitting. This transforms the existing happiness tracking from decorative to functional.
+### Raise Request Market Rate Comparison
+- Design: raise requests should check employee wage against prestige-tier market rate
+- Current: only checks happiness threshold (< 60)
+- Needed: compare current wage to `PRESTIGE_HIRING_CONFIG[tier].expectedWageMultiplier`
 
-### Phase 3: Role-Specific Work
-Wire up mechanics (equipment/irrigation/robot repair), pro shop staff (passive revenue/satisfaction), caddies (golfer walking/satisfaction), and managers (team bonuses). Each role needs to produce visible, tangible value.
+### Wage Pressure by Prestige Tier
+- Design: as prestige grows, employee wage expectations increase (1.0x -> 1.5x)
+- Current: not implemented
+- Impact: would create natural economic pressure as course improves
 
-### Phase 4: Employee Events
-Add the event system with raise requests, personality clashes, exceptional performance, poaching, and personal emergencies. These are the micro-stories that make management engaging.
+### Training Milestone Event
+- Design: event fires when employee reaches new skill level, with celebration option
+- Current: promotions happen silently in `tickEmployees()`
+- Needed: generate `training_milestone` event in `checkForEvents()`
 
-### Phase 5: Personality Traits
-Add trait generation at hire time, hidden trait reveal over first few days, and trait effects on behavior and events. This makes hiring decisions more interesting.
+### Manager Quality Checks
+- Design: manager occasionally inspects work, redirects low-quality employees
+- Current: manager bonuses are passive multipliers only
+- Impact: would add active manager gameplay
 
-### Phase 6: Balance Pass
-Tune all numbers — wages, efficiency multipliers, event frequencies, skill scaling — against the actual economy. This requires playtesting and iteration.
+### Manager Conflict Resolution
+- Design: manager auto-boosts (+3 happiness) employees below 50 happiness every 8 hours
+- Current: not implemented
+- Impact: would make managers a direct counter to unhappiness spiral
+
+### Caddy Assignment Logic
+- Design: caddies assigned to specific golfer groups by priority (professional > casual)
+- Current: abstract daily calculation (caddies serve ~3 groups/day)
+- Impact: would connect caddy system to golfer type system
+
+### Social Trait Contextual Effects
+- Design: +5 happiness to nearby employees, -10% efficiency when working alone
+- Current: trait exists but contextual effects not implemented
+- Needed: requires area-based employee proximity detection
+
+### Exceptional Performance Quality Check
+- Design: requires 50+ tasks AND quality > 90%
+- Current: only checks task count >= 50
+- Impact: minor -- prevents low-quality workers from triggering the event
+
+### Weather Complaint Duration Tracking
+- Design: trigger after 2+ hours in bad weather, -5 happiness per hour
+- Current: simple random chance (15%) when weather is bad
+- Impact: would make weather a more nuanced management factor
+
+### Raise Request Cooldown Enforcement
+- Design: 60-day cooldown after grant, 15-day cooldown after "promise later"
+- Current: `lastRaiseRequestDay` is tracked in state but not checked during event generation
+- Fix: add cooldown check in raise request generation logic
+
+---
+
+## Implementation Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Remove walk-ons and marketing | DONE |
+| Phase 2 | Happiness consequences | DONE |
+| Phase 3 | Role-specific work | DONE |
+| Phase 4 | Employee events | DONE |
+| Phase 5 | Personality traits | DONE |
+| Phase 6 | Balance pass + deferred features | PENDING |
