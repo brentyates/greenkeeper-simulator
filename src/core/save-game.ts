@@ -13,14 +13,6 @@ import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
 import { WeatherState } from './weather';
 import { IrrigationSystem } from './irrigation';
-import {
-  HappinessConsequenceState,
-  serializeHappinessState,
-} from './employee-happiness';
-import {
-  EmployeeEventSystemState,
-  serializeEventState,
-} from './employee-events';
 
 export interface SaveGameState {
   version: number;
@@ -46,8 +38,6 @@ export interface SaveGameState {
   autonomousState: AutonomousEquipmentState;
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
-  happinessState?: object;
-  eventState?: object;
 
   cells: CellState[][];
   faceStates?: FaceState[];
@@ -77,9 +67,7 @@ export function createSaveState(
   weatherState: WeatherState,
   cells: CellState[][],
   irrigationSystem?: IrrigationSystem,
-  faceStates?: Map<number, FaceState>,
-  happinessState?: HappinessConsequenceState,
-  eventState?: EmployeeEventSystemState
+  faceStates?: Map<number, FaceState>
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -103,8 +91,6 @@ export function createSaveState(
     autonomousState,
     weatherState,
     irrigationSystem,
-    happinessState: happinessState ? serializeHappinessState(happinessState) : undefined,
-    eventState: eventState ? serializeEventState(eventState) : undefined,
     cells,
     faceStates: faceStates ? Array.from(faceStates.values()) : undefined,
   };
