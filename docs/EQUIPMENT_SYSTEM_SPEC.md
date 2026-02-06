@@ -550,7 +550,7 @@ interface EmployeeEquipmentTask {
 }
 
 // Groundskeepers operate mowers
-// Irrigators operate sprinklers
+// Groundskeepers operate sprinklers
 // Groundskeepers operate spreaders
 ```
 
