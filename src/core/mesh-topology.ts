@@ -958,7 +958,7 @@ export function findNearestTopologyVertex(
 }
 
 export interface TopologyModification {
-  type: 'subdivide' | 'delete' | 'collapse' | 'flip';
+  type: string;
   vertexId?: number;
   edgeId?: number;
   subdivideT?: number;

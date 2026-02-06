@@ -535,10 +535,7 @@ export class BabylonMain {
       onToolSelect: (tool: EditorTool) => this.handleEditorToolSelect(tool),
       onModeChange: (mode) => this.terrainEditorSystem?.setMode(mode),
       onClose: () => this.handleEditorToggle(),
-      onExport: () => this.handleEditorExport(),
-      onUndo: () => this.handleEditorUndo(),
-      onRedo: () => this.handleEditorRedo(),
-      onBrushSizeChange: (delta: number) => this.handleEditorBrushSize(delta),
+      onBrushSizeChange: (size: number) => this.handleEditorBrushSize(size),
       onBrushStrengthChange: (strength: number) => this.handleEditorBrushStrength(strength),
       onSelectAll: () => this.terrainEditorSystem?.selectAllVertices(),
       onDeselectAll: () => this.terrainEditorSystem?.deselectAllVertices(),
@@ -626,10 +623,6 @@ export class BabylonMain {
       },
       onBrushSizeChange: (size: number) => {
         this.terrainEditorUI?.setBrushSize(size);
-      },
-      onUndoRedoChange: (canUndo: boolean, canRedo: boolean) => {
-        this.terrainEditorUI?.setUndoEnabled(canUndo);
-        this.terrainEditorUI?.setRedoEnabled(canRedo);
       },
       onSelectionChange: (count: number) => {
         this.terrainEditorUI?.setSelectionCount(count);
@@ -1358,17 +1351,9 @@ export class BabylonMain {
       onEditorBrushSelect: (brush: string) =>
         this.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>
-        this.handleEditorBrushSize(delta),
+        this.handleEditorBrushSizeDelta(delta),
       onEditorBrushStrengthChange: (delta: number) =>
         this.handleEditorBrushStrengthDelta(delta),
-
-      onUndo: () => {
-        this.undoTerrainEdit();
-      },
-
-      onRedo: () => {
-        this.redoTerrainEdit();
-      },
 
       onMouseMove: (screenX: number, screenY: number) =>
         this.handleMouseMove(screenX, screenY),
@@ -2191,7 +2176,13 @@ export class BabylonMain {
     }
   }
 
-  private handleEditorBrushSize(delta: number): void {
+  private handleEditorBrushSize(size: number): void {
+    if (!this.terrainEditorSystem) return;
+    this.terrainEditorSystem.setBrushSize(size);
+    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
+  }
+
+  private handleEditorBrushSizeDelta(delta: number): void {
     if (!this.terrainEditorSystem) return;
     this.terrainEditorSystem.changeBrushSize(delta);
     this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
@@ -2209,31 +2200,6 @@ export class BabylonMain {
     this.handleEditorBrushStrength(current + delta);
   }
 
-  private handleEditorUndo(): void {
-    this.terrainEditorSystem?.undo();
-  }
-
-  private handleEditorRedo(): void {
-    this.terrainEditorSystem?.redo();
-  }
-
-  private handleEditorExport(): void {
-    if (!this.terrainEditorSystem) return;
-
-    const json = this.terrainEditorSystem.exportToJSON();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "terrain_export.json";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    this.uiManager.showNotification("Terrain exported!");
-  }
 
   private handleMouseMove(screenX: number, screenY: number): void {
     if (!this.terrainEditorSystem?.isEnabled()) return;
@@ -3749,23 +3715,6 @@ export class BabylonMain {
     }
   }
 
-  /**
-   * Undo last terrain edit.
-   */
-  public undoTerrainEdit(): void {
-    if (this.terrainEditorSystem) {
-      this.terrainEditorSystem.undo();
-    }
-  }
-
-  /**
-   * Redo last undone terrain edit.
-   */
-  public redoTerrainEdit(): void {
-    if (this.terrainEditorSystem) {
-      this.terrainEditorSystem.redo();
-    }
-  }
 
   /**
    * Get elevation at a grid position.
@@ -4568,16 +4517,12 @@ export class BabylonMain {
     enabled: boolean;
     tool: string | null;
     brushSize: number;
-    canUndo: boolean;
-    canRedo: boolean;
   } {
     if (!this.terrainEditorSystem) {
       return {
         enabled: false,
         tool: null,
         brushSize: 1,
-        canUndo: false,
-        canRedo: false,
       };
     }
 
@@ -4585,8 +4530,6 @@ export class BabylonMain {
       enabled: this.terrainEditorSystem.isEnabled(),
       tool: this.terrainEditorSystem.getCurrentTool(),
       brushSize: this.terrainEditorSystem.getBrushSize(),
-      canUndo: this.terrainEditorSystem.canUndo,
-      canRedo: this.terrainEditorSystem.canRedo,
     };
   }
 

@@ -1,6 +1,5 @@
 import {
   TerrainType,
-  getTerrainCode,
 } from "./terrain";
 
 export type EditorMode = 'sculpt' | 'paint';
@@ -38,28 +37,8 @@ export interface VertexModification {
   newZ: number;
 }
 
-export interface TerrainTypeModification {
-  x: number;
-  y: number;
-  oldType: number;
-  newType: number;
-}
-
-export interface PositionModification {
-  vx: number;
-  vy: number;
-  oldPos: Vec3;
-  newPos: Vec3;
-}
-
-import { Vec3, TopologyModification } from './mesh-topology';
+import { Vec3 } from './mesh-topology';
 export type { Vec3 };
-
-export type EditorAction =
-  | { type: 'elevation'; modifications: VertexModification[] }
-  | { type: 'paint'; modifications: TerrainTypeModification[] }
-  | { type: 'position'; modifications: PositionModification[] }
-  | { type: 'topology'; modification: TopologyModification };
 
 
 export function createInitialEditorState(): EditorState {
@@ -522,49 +501,6 @@ export function applySculptTool(
 }
 
 
-function applyTerrainTypeInternal(
-  x: number,
-  y: number,
-  layout: number[][],
-  newType: TerrainType
-): TerrainTypeModification | null {
-  if (y < 0 || y >= layout.length) return null;
-  if (x < 0 || x >= (layout[y]?.length ?? 0)) return null;
-
-  const oldCode = layout[y][x];
-  const newCode = getTerrainCode(newType);
-
-  if (oldCode === newCode) return null;
-
-  return {
-    x,
-    y,
-    oldType: oldCode,
-    newType: newCode,
-  };
-}
-
-export function applyPaintBrush(
-  centerX: number,
-  centerY: number,
-  layout: number[][],
-  terrainType: TerrainType,
-  brushSize: number,
-  mapWidth: number,
-  mapHeight: number
-): TerrainTypeModification[] {
-  const modifications: TerrainTypeModification[] = [];
-  const cells = getCellsInBrush(centerX, centerY, brushSize);
-
-  for (const cell of cells) {
-    if (cell.x >= 0 && cell.x < mapWidth && cell.y >= 0 && cell.y < mapHeight) {
-      const mod = applyTerrainTypeInternal(cell.x, cell.y, layout, terrainType);
-      if (mod) modifications.push(mod);
-    }
-  }
-
-  return modifications;
-}
 
 export function commitVertexModifications(
   modifications: VertexModification[],
@@ -577,100 +513,6 @@ export function commitVertexModifications(
   }
 }
 
-export function revertVertexModifications(
-  modifications: VertexModification[],
-  vertexElevations: number[][]
-): void {
-  for (const mod of modifications) {
-    if (vertexElevations[mod.vy]) {
-      vertexElevations[mod.vy][mod.vx] = mod.oldZ;
-    }
-  }
-}
-
-export function commitTerrainTypeModifications(
-  modifications: TerrainTypeModification[],
-  layout: number[][]
-): void {
-  for (const mod of modifications) {
-    if (layout[mod.y]) {
-      layout[mod.y][mod.x] = mod.newType;
-    }
-  }
-}
-
-export function revertTerrainTypeModifications(
-  modifications: TerrainTypeModification[],
-  layout: number[][]
-): void {
-  for (const mod of modifications) {
-    if (layout[mod.y]) {
-      layout[mod.y][mod.x] = mod.oldType;
-    }
-  }
-}
-
-export function createElevationAction(modifications: VertexModification[]): EditorAction {
-  return { type: 'elevation', modifications };
-}
-
-export function createPaintAction(modifications: TerrainTypeModification[]): EditorAction {
-  return { type: 'paint', modifications };
-}
-
-export function createPositionAction(modifications: PositionModification[]): EditorAction {
-  return { type: 'position', modifications };
-}
-
-export function createTopologyAction(modification: TopologyModification): EditorAction {
-  return { type: 'topology', modification };
-}
-
-export function canUndo(undoStack: EditorAction[]): boolean {
-  return undoStack.length > 0;
-}
-
-export function canRedo(redoStack: EditorAction[]): boolean {
-  return redoStack.length > 0;
-}
-
-export function undoAction(
-  undoStack: EditorAction[],
-  redoStack: EditorAction[],
-  vertexElevations: number[][],
-  layout: number[][]
-): EditorAction | null {
-  const action = undoStack.pop();
-  if (!action) return null;
-
-  if (action.type === 'elevation') {
-    revertVertexModifications(action.modifications, vertexElevations);
-  } else if (action.type === 'paint') {
-    revertTerrainTypeModifications(action.modifications, layout);
-  }
-
-  redoStack.push(action);
-  return action;
-}
-
-export function redoAction(
-  undoStack: EditorAction[],
-  redoStack: EditorAction[],
-  vertexElevations: number[][],
-  layout: number[][]
-): EditorAction | null {
-  const action = redoStack.pop();
-  if (!action) return null;
-
-  if (action.type === 'elevation') {
-    commitVertexModifications(action.modifications, vertexElevations);
-  } else if (action.type === 'paint') {
-    commitTerrainTypeModifications(action.modifications, layout);
-  }
-
-  undoStack.push(action);
-  return action;
-}
 
 
 

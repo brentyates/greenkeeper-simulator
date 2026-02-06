@@ -238,8 +238,6 @@ test.describe('Terrain Editor System', () => {
       expect(state).toBeDefined();
       expect(typeof state.enabled).toBe('boolean');
       expect(typeof state.brushSize).toBe('number');
-      expect(typeof state.canUndo).toBe('boolean');
-      expect(typeof state.canRedo).toBe('boolean');
     });
 
     test('editor starts disabled', async ({ page }) => {
@@ -286,33 +284,13 @@ test.describe('Terrain Editor System', () => {
       await page.evaluate(() => {
         window.game.setTerrainEditor(true);
         window.game.setEditorTool('raise');
-        window.game.editTerrainAt(10, 10);
       });
-      const state = await page.evaluate(() => window.game.getTerrainEditorState());
-      expect(state.canUndo).toBe(true);
-    });
 
-    test('undoTerrainEdit reverts change', async ({ page }) => {
-      await page.evaluate(() => {
-        window.game.setTerrainEditor(true);
-        window.game.setEditorTool('raise');
-        window.game.editTerrainAt(10, 10);
-        window.game.undoTerrainEdit();
-      });
-      const state = await page.evaluate(() => window.game.getTerrainEditorState());
-      expect(state.canRedo).toBe(true);
-    });
+      const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
+      await page.evaluate(() => window.game.editTerrainAt(10, 10));
+      const after = await page.evaluate(() => window.game.getElevationAt(10, 10));
 
-    test('redoTerrainEdit reapplies change', async ({ page }) => {
-      await page.evaluate(() => {
-        window.game.setTerrainEditor(true);
-        window.game.setEditorTool('raise');
-        window.game.editTerrainAt(10, 10);
-        window.game.undoTerrainEdit();
-        window.game.redoTerrainEdit();
-      });
-      const state = await page.evaluate(() => window.game.getTerrainEditorState());
-      expect(state.canUndo).toBe(true);
+      expect(after).toBeGreaterThanOrEqual(before);
     });
   });
 

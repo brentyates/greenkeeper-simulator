@@ -158,30 +158,6 @@ test.describe('Terrain Editor UI', () => {
       expect(after).toBeGreaterThanOrEqual(before);
     });
 
-    test('undoTerrainEdit reverses edit', async ({ page }) => {
-      await page.evaluate(() => window.game.setTerrainEditor(true));
-      await page.evaluate(() => window.game.setEditorTool('raise'));
-
-      const before = await page.evaluate(() => window.game.getElevationAt(10, 10));
-      await page.evaluate(() => window.game.editTerrainAt(10, 10));
-      await page.evaluate(() => window.game.undoTerrainEdit());
-      const after = await page.evaluate(() => window.game.getElevationAt(10, 10));
-
-      expect(after).toBe(before);
-    });
-
-    test('redoTerrainEdit reapplies edit', async ({ page }) => {
-      await page.evaluate(() => window.game.setTerrainEditor(true));
-      await page.evaluate(() => window.game.setEditorTool('raise'));
-
-      await page.evaluate(() => window.game.editTerrainAt(10, 10));
-      const raised = await page.evaluate(() => window.game.getElevationAt(10, 10));
-      await page.evaluate(() => window.game.undoTerrainEdit());
-      await page.evaluate(() => window.game.redoTerrainEdit());
-      const after = await page.evaluate(() => window.game.getElevationAt(10, 10));
-
-      expect(after).toBe(raised);
-    });
   });
 });
 

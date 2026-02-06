@@ -52,6 +52,5 @@ export function createVectorTerrainModifier(vts: VectorTerrainSystem): Partial<T
     getVerticesInWorldRadius: (x, z, r) => vts.getVerticesInWorldRadius(x, z, r),
     getVerticesFromEdgesInBrush: (x, z, r) => vts.getVerticesFromEdgesInBrush(x, z, r),
     getVerticesFromFacesInBrush: (x, z, r) => vts.getVerticesFromFacesInBrush(x, z, r),
-    updateFaceTerrainVisuals: () => vts.updateFaceTerrainVisuals(),
   };
 }

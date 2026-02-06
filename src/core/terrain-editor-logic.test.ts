@@ -23,21 +23,13 @@ import {
   applyFlattenVertices,
   applyLevelVertices,
   applySculptTool,
-  applyPaintBrush,
   commitVertexModifications,
-  revertVertexModifications,
-  commitTerrainTypeModifications,
-  revertTerrainTypeModifications,
 } from './terrain-editor-logic';
-import { TERRAIN_CODES } from './terrain';
 
 function createTestVertexElevations(width: number, height: number, defaultValue: number = 0): number[][] {
   return Array.from({ length: height }, () => Array(width).fill(defaultValue));
 }
 
-function createTestLayout(width: number, height: number, defaultValue: number = TERRAIN_CODES.FAIRWAY): number[][] {
-  return Array.from({ length: height }, () => Array(width).fill(defaultValue));
-}
 
 describe('Editor State', () => {
   it('creates initial editor state with defaults', () => {
@@ -205,46 +197,7 @@ describe('Vertex Sculpt Operations', () => {
   });
 });
 
-describe('Terrain Type Painting', () => {
-  describe('applyPaintBrush', () => {
-    it('paints terrain type', () => {
-      const layout = createTestLayout(5, 5, TERRAIN_CODES.FAIRWAY);
-      const mods = applyPaintBrush(2, 2, layout, 'rough', 1, 5, 5);
-
-      expect(mods.length).toBe(1);
-      expect(mods[0].oldType).toBe(TERRAIN_CODES.FAIRWAY);
-      expect(mods[0].newType).toBe(TERRAIN_CODES.ROUGH);
-    });
-
-    it('returns empty when same type', () => {
-      const layout = createTestLayout(5, 5, TERRAIN_CODES.FAIRWAY);
-      const mods = applyPaintBrush(2, 2, layout, 'fairway', 1, 5, 5);
-
-      expect(mods.length).toBe(0);
-    });
-
-    it('paints with brush size', () => {
-      const layout = createTestLayout(10, 10, TERRAIN_CODES.FAIRWAY);
-      const mods = applyPaintBrush(5, 5, layout, 'bunker', 2, 10, 10);
-
-      expect(mods.length).toBeGreaterThan(1);
-    });
-
-    it('clamps to bounds', () => {
-      const layout = createTestLayout(5, 5, TERRAIN_CODES.FAIRWAY);
-      const mods = applyPaintBrush(0, 0, layout, 'green', 3, 5, 5);
-
-      for (const mod of mods) {
-        expect(mod.x).toBeGreaterThanOrEqual(0);
-        expect(mod.y).toBeGreaterThanOrEqual(0);
-        expect(mod.x).toBeLessThan(5);
-        expect(mod.y).toBeLessThan(5);
-      }
-    });
-  });
-});
-
-describe('Commit and Revert Modifications', () => {
+describe('Commit Modifications', () => {
   describe('vertex modifications', () => {
     it('commits vertex elevation changes', () => {
       const elevations = createTestVertexElevations(5, 5, 0);
@@ -253,35 +206,6 @@ describe('Commit and Revert Modifications', () => {
       commitVertexModifications(mods, elevations);
 
       expect(elevations[2][2]).toBe(3);
-    });
-
-    it('reverts vertex elevation changes', () => {
-      const elevations = createTestVertexElevations(5, 5, 3);
-      const mods = [{ vx: 2, vy: 2, oldZ: 0, newZ: 3 }];
-
-      revertVertexModifications(mods, elevations);
-
-      expect(elevations[2][2]).toBe(0);
-    });
-  });
-
-  describe('terrain type modifications', () => {
-    it('commits terrain type changes', () => {
-      const layout = createTestLayout(5, 5, TERRAIN_CODES.FAIRWAY);
-      const mods = [{ x: 2, y: 2, oldType: TERRAIN_CODES.FAIRWAY, newType: TERRAIN_CODES.BUNKER }];
-
-      commitTerrainTypeModifications(mods, layout);
-
-      expect(layout[2][2]).toBe(TERRAIN_CODES.BUNKER);
-    });
-
-    it('reverts terrain type changes', () => {
-      const layout = createTestLayout(5, 5, TERRAIN_CODES.BUNKER);
-      const mods = [{ x: 2, y: 2, oldType: TERRAIN_CODES.FAIRWAY, newType: TERRAIN_CODES.BUNKER }];
-
-      revertTerrainTypeModifications(mods, layout);
-
-      expect(layout[2][2]).toBe(TERRAIN_CODES.FAIRWAY);
     });
   });
 });

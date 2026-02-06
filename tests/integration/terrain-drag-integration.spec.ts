@@ -78,29 +78,6 @@ test.describe('Terrain Drag Operations', () => {
       expect(finalElev).toBeGreaterThan(initialElev);
     });
 
-    test('drag operation can be undone', async ({ page }) => {
-      await page.evaluate(() => {
-        window.game.setTerrainEditor(true);
-        window.game.setEditorTool('raise');
-      });
-
-      const initialElev = await page.evaluate(() => window.game.getElevationAt(10, 10)) ?? 0;
-
-      await page.evaluate(() => {
-        window.game.dragTerrainStart(10, 10, 300);
-        window.game.dragTerrainMove(10, 10, 200);
-        window.game.dragTerrainEnd();
-      });
-
-      const afterDrag = await page.evaluate(() => window.game.getElevationAt(10, 10));
-      // Drag may or may not have raised it depending on implementation
-      // Just verify undo brings it back to initial
-      await page.evaluate(() => window.game.undoTerrainEdit());
-
-      const afterUndo = await page.evaluate(() => window.game.getElevationAt(10, 10));
-      // Undo should restore to initial or close to it
-      expect(afterUndo).toBeDefined();
-    });
   });
 
   test.describe('Terrain Type Painting', () => {
@@ -177,11 +154,8 @@ test.describe('Terrain Drag Operations', () => {
       const state = await page.evaluate(() => window.game.getTerrainEditorState());
 
       expect(state.enabled).toBe(true);
-      // Tool should be one of the valid tools
       expect(['raise', 'lower', 'paint', 'smooth', null]).toContain(state.tool);
       expect(state.brushSize).toBe(3);
-      expect(typeof state.canUndo).toBe('boolean');
-      expect(typeof state.canRedo).toBe('boolean');
     });
   });
 });

@@ -269,8 +269,6 @@ test.describe('Edge Cases', () => {
       window.game.setTerrainEditor(true);
       window.game.setEditorTool('raise');
       window.game.editTerrainAt(5, 5);
-      window.game.undoTerrainEdit();
-      window.game.redoTerrainEdit();
       window.game.setTerrainEditor(false);
     });
 

@@ -7,7 +7,7 @@ import { Direction } from "../../core/movement";
 export type { Direction };
 export type EquipmentSlot = 1 | 2 | 3;
 
-export type AxisConstraint = 'x' | 'y' | 'z' | 'xz' | 'all';
+export type AxisConstraint = 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz';
 
 export interface InputCallbacks {
   onMove?: (direction: Direction) => void;
@@ -29,8 +29,6 @@ export interface InputCallbacks {
   onEditorBrushSelect?: (brush: string) => void;
   onEditorBrushSizeChange?: (delta: number) => void;
   onEditorBrushStrengthChange?: (delta: number) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
   onMouseMove?: (screenX: number, screenY: number) => void;
   onEmployeePanel?: () => void;
   onResearchPanel?: () => void;
@@ -102,7 +100,6 @@ export class InputManager {
       const key = kbInfo.event.key.toLowerCase();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-        this.handleKeyDownWithModifiers(kbInfo.event as KeyboardEvent);
         if (this.keysDown.has(key)) return;
         this.keysDown.add(key);
         this.handleKeyDown(kbInfo.event);
@@ -241,24 +238,6 @@ export class InputManager {
       this.callbacks.onAxisConstraint?.('z');
     } else if (key === "v" && this.callbacks.isEditorActive?.()) {
       this.callbacks.onAxisConstraint?.('xz');
-    }
-  }
-
-  private handleKeyDownWithModifiers(event: KeyboardEvent): void {
-    const key = event.key.toLowerCase();
-
-    if (event.ctrlKey || event.metaKey) {
-      if (key === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          this.callbacks.onRedo?.();
-        } else {
-          this.callbacks.onUndo?.();
-        }
-      } else if (key === "y") {
-        event.preventDefault();
-        this.callbacks.onRedo?.();
-      }
     }
   }
 

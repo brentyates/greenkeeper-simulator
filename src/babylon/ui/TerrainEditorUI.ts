@@ -4,21 +4,19 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { Slider } from '@babylonjs/gui/2D/controls/sliders/slider';
 
 import { UIParent } from './UIParent';
 import { EditorTool, EditorMode, TopologyMode, InteractionMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
-import { TerrainType, getTerrainDisplayName } from '../../core/terrain';
+import { TerrainType } from '../../core/terrain';
 
-export type AxisConstraint = 'x' | 'y' | 'z' | 'xz' | 'all';
+export type AxisConstraint = 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz';
 
 export interface TerrainEditorUICallbacks {
   onToolSelect: (tool: EditorTool) => void;
   onModeChange: (mode: EditorMode) => void;
   onClose: () => void;
-  onExport: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  onBrushSizeChange: (delta: number) => void;
+  onBrushSizeChange: (size: number) => void;
   onBrushStrengthChange?: (strength: number) => void;
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
@@ -39,27 +37,32 @@ export class TerrainEditorUI {
   private panel: Rectangle | null = null;
   private toolButtons: Map<EditorTool, Rectangle> = new Map();
   private modeButtons: Map<EditorMode, Rectangle> = new Map();
-  private axisButtons: Map<AxisConstraint, Rectangle> = new Map();
-  private undoButton: Button | null = null;
-  private redoButton: Button | null = null;
-  private coordsText: TextBlock | null = null;
+  private axisButtons: Map<string, Rectangle> = new Map();
+  // coordsText removed
   private brushSizeText: TextBlock | null = null;
+  private brushSizeSlider: Slider | null = null;
   private brushStrengthText: TextBlock | null = null;
+  private brushStrengthSlider: Slider | null = null;
   private selectionCountText: TextBlock | null = null;
-  private vertexPosText: TextBlock | null = null;
+
 
   private activeTool: EditorTool = 'terrain_fairway';
   private activeMode: EditorMode = 'sculpt';
   private activeAxis: AxisConstraint = 'xz';
   private activeTopologyMode: TopologyMode = 'vertex';
   private topologyButtons: Map<TopologyMode, Rectangle> = new Map();
-  private topologyStatusText: TextBlock | null = null;
+
   private sculptToolsPanel: StackPanel | null = null;
   private paintToolsPanel: StackPanel | null = null;
   private activeInteractionMode: InteractionMode = 'brush';
   private interactionButtons: Map<InteractionMode, Rectangle> = new Map();
   private brushSizeContainer: StackPanel | null = null;
   private brushStrengthContainer: StackPanel | null = null;
+  private interactionToggleContainer: StackPanel | null = null;
+  private topologyToggleContainer: StackPanel | null = null;
+  private selectionContainer: StackPanel | null = null;
+  private transformContainer: StackPanel | null = null;
+  private edgeActionsContainer: StackPanel | null = null;
 
   constructor(parent: UIParent, callbacks: TerrainEditorUICallbacks) {
     this.parent = parent;
@@ -70,7 +73,7 @@ export class TerrainEditorUI {
   private createPanel(): void {
     this.panel = new Rectangle('terrainEditorPanel');
     this.panel.width = '360px';
-    this.panel.height = '720px';
+    this.panel.adaptHeightToChildren = true;
     this.panel.cornerRadius = 8;
     this.panel.color = '#5a9a6a';
     this.panel.thickness = 2;
@@ -98,13 +101,14 @@ export class TerrainEditorUI {
     this.createInteractionModeToggle(stack);
     this.createSculptTools(stack);
     this.createTerrainBrushes(stack);
+    this.createTopologyModeToggle(stack);
     this.createBrushSizeControl(stack);
     this.createBrushStrengthControl(stack);
-    this.createTopologySection(stack);
     this.createSelectionSection(stack);
+    this.createEdgeActionsSection(stack);
     this.createTransformSection(stack);
-    this.createActionButtons(stack);
-    this.createStatusBar(stack);
+
+    this.updateVisibility();
   }
 
   private createHeader(parent: StackPanel): void {
@@ -137,14 +141,6 @@ export class TerrainEditorUI {
     closeBtn.onPointerEnterObservable.add(() => { closeBtn.background = '#6a3a3a'; });
     closeBtn.onPointerOutObservable.add(() => { closeBtn.background = '#4a2a2a'; });
     headerContainer.addControl(closeBtn);
-
-    const divider = new Rectangle('divider1');
-    divider.height = '1px';
-    divider.width = '316px';
-    divider.background = '#3a5a4a';
-    divider.thickness = 0;
-    divider.paddingTop = '8px';
-    parent.addControl(divider);
   }
 
   private createModeToggle(parent: StackPanel): void {
@@ -166,13 +162,17 @@ export class TerrainEditorUI {
   }
 
   private createInteractionModeToggle(parent: StackPanel): void {
+    this.interactionToggleContainer = new StackPanel('interactionToggleContainer');
+    this.interactionToggleContainer.width = '316px';
+    parent.addControl(this.interactionToggleContainer);
+
     const grid = new Grid('interactionGrid');
     grid.height = '36px';
     grid.width = '316px';
     grid.paddingTop = '4px';
     grid.addColumnDefinition(0.5);
     grid.addColumnDefinition(0.5);
-    parent.addControl(grid);
+    this.interactionToggleContainer.addControl(grid);
 
     const brushBtn = this.createInteractionButton('brush', 'BRUSH (B)');
     grid.addControl(brushBtn, 0, 0);
@@ -235,12 +235,6 @@ export class TerrainEditorUI {
     }
   }
 
-  private updateBrushControlsAlpha(): void {
-    const alpha = this.activeInteractionMode === 'select' ? 0.3 : 1.0;
-    if (this.brushSizeContainer) this.brushSizeContainer.alpha = alpha;
-    if (this.brushStrengthContainer) this.brushStrengthContainer.alpha = alpha;
-  }
-
   private createModeButton(mode: EditorMode, label: string): Rectangle {
     const container = new Rectangle(`mode_${mode}`);
     container.width = '95%';
@@ -281,11 +275,8 @@ export class TerrainEditorUI {
   public setMode(mode: EditorMode): void {
     this.activeMode = mode;
     this.updateModeButtonStyles();
-    
-    if (this.sculptToolsPanel) this.sculptToolsPanel.isVisible = (mode === 'sculpt');
-    if (this.paintToolsPanel) this.paintToolsPanel.isVisible = (mode === 'paint');
-    
-    // Auto-select first tool in mode if current tool is incompatible
+    this.updateVisibility();
+
     if (mode === 'sculpt' && !isSculptTool(this.activeTool)) {
       this.callbacks.onToolSelect('raise');
     } else if (mode === 'paint' && !isTerrainBrush(this.activeTool)) {
@@ -311,7 +302,6 @@ export class TerrainEditorUI {
   private createSculptTools(parent: StackPanel): void {
     this.sculptToolsPanel = new StackPanel('sculptToolsPanel');
     this.sculptToolsPanel.width = '316px';
-    this.sculptToolsPanel.isVisible = (this.activeMode === 'sculpt');
     parent.addControl(this.sculptToolsPanel);
 
     const sectionLabel = new TextBlock('sculptLabel');
@@ -348,7 +338,6 @@ export class TerrainEditorUI {
   private createTerrainBrushes(parent: StackPanel): void {
     this.paintToolsPanel = new StackPanel('paintToolsPanel');
     this.paintToolsPanel.width = '316px';
-    this.paintToolsPanel.isVisible = (this.activeMode === 'paint');
     parent.addControl(this.paintToolsPanel);
 
     const sectionLabel = new TextBlock('terrainLabel');
@@ -441,124 +430,105 @@ export class TerrainEditorUI {
     this.brushSizeContainer.width = '316px';
     parent.addControl(this.brushSizeContainer);
 
+    const header = new Grid();
+    header.height = '24px';
+    header.width = '316px';
+    header.addColumnDefinition(0.5);
+    header.addColumnDefinition(0.5);
+    this.brushSizeContainer.addControl(header);
+
     const sectionLabel = new TextBlock('brushLabel');
     sectionLabel.text = 'BRUSH SIZE';
     sectionLabel.color = '#8aba9a';
     sectionLabel.fontSize = 11;
-    sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    this.brushSizeContainer.addControl(sectionLabel);
-
-    const grid = new Grid('brushGrid');
-    grid.height = '36px';
-    grid.width = '316px';
-    grid.addColumnDefinition(0.3);
-    grid.addColumnDefinition(0.4);
-    grid.addColumnDefinition(0.3);
-    this.brushSizeContainer.addControl(grid);
-
-    const minusBtn = Button.CreateSimpleButton('brushMinus', '-');
-    minusBtn.width = '40px';
-    minusBtn.height = '32px';
-    minusBtn.color = '#aaccaa';
-    minusBtn.fontSize = 18;
-    minusBtn.fontWeight = 'bold';
-    minusBtn.background = '#1a3a2a';
-    minusBtn.cornerRadius = 4;
-    minusBtn.thickness = 1;
-    minusBtn.onPointerUpObservable.add(() => this.callbacks.onBrushSizeChange(-1));
-    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = '#2a4a3a'; });
-    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = '#1a3a2a'; });
-    grid.addControl(minusBtn, 0, 0);
+    header.addControl(sectionLabel, 0, 0);
 
     this.brushSizeText = new TextBlock('brushSizeText');
     this.brushSizeText.text = '1';
     this.brushSizeText.color = '#7FFF7F';
-    this.brushSizeText.fontSize = 18;
+    this.brushSizeText.fontSize = 12;
     this.brushSizeText.fontWeight = 'bold';
-    grid.addControl(this.brushSizeText, 0, 1);
+    this.brushSizeText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    header.addControl(this.brushSizeText, 0, 1);
 
-    const plusBtn = Button.CreateSimpleButton('brushPlus', '+');
-    plusBtn.width = '40px';
-    plusBtn.height = '32px';
-    plusBtn.color = '#aaccaa';
-    plusBtn.fontSize = 18;
-    plusBtn.fontWeight = 'bold';
-    plusBtn.background = '#1a3a2a';
-    plusBtn.cornerRadius = 4;
-    plusBtn.thickness = 1;
-    plusBtn.onPointerUpObservable.add(() => this.callbacks.onBrushSizeChange(1));
-    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = '#2a4a3a'; });
-    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = '#1a3a2a'; });
-    grid.addControl(plusBtn, 0, 2);
+    const slider = new Slider('brushSizeSlider');
+    slider.minimum = 1;
+    slider.maximum = 10;
+    slider.step = 1;
+    slider.value = 1;
+    slider.isThumbClamped = true;
+    slider.height = '20px';
+    slider.width = '310px';
+    slider.thumbWidth = 20;
+    slider.color = '#3a6a4a';
+    slider.background = '#1a3a2a';
+    slider.onValueChangedObservable.add((value) => {
+        const intVal = Math.round(value);
+        if (this.brushSizeText) this.brushSizeText.text = intVal.toString();
+        this.callbacks.onBrushSizeChange(intVal);
+    });
+    
+    this.brushSizeSlider = slider;
+    this.brushSizeContainer.addControl(slider);
   }
+
+  // ... (keeping other methods or relying on context match for smaller chunks if possible, but replace_file_content needs contiguous block)
+  // I will split this into chunks.
+
 
   private createBrushStrengthControl(parent: StackPanel): void {
     this.brushStrengthContainer = new StackPanel('brushStrengthContainer');
     this.brushStrengthContainer.width = '316px';
     parent.addControl(this.brushStrengthContainer);
 
+    const header = new Grid();
+    header.height = '24px';
+    header.width = '316px';
+    header.addColumnDefinition(0.5);
+    header.addColumnDefinition(0.5);
+    this.brushStrengthContainer.addControl(header);
+
     const sectionLabel = new TextBlock('strengthLabel');
     sectionLabel.text = 'BRUSH STRENGTH';
     sectionLabel.color = '#8aba9a';
     sectionLabel.fontSize = 11;
-    sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    this.brushStrengthContainer.addControl(sectionLabel);
-
-    const grid = new Grid('strengthGrid');
-    grid.height = '36px';
-    grid.width = '316px';
-    grid.addColumnDefinition(0.3);
-    grid.addColumnDefinition(0.4);
-    grid.addColumnDefinition(0.3);
-    this.brushStrengthContainer.addControl(grid);
-
-    const minusBtn = Button.CreateSimpleButton('strengthMinus', '-');
-    minusBtn.width = '40px';
-    minusBtn.height = '32px';
-    minusBtn.color = '#aaccaa';
-    minusBtn.fontSize = 18;
-    minusBtn.fontWeight = 'bold';
-    minusBtn.background = '#1a3a2a';
-    minusBtn.cornerRadius = 4;
-    minusBtn.thickness = 1;
-    minusBtn.onPointerUpObservable.add(() => {
-        const current = parseFloat(this.brushStrengthText?.text ?? "1.0");
-        this.callbacks.onBrushStrengthChange?.(Math.max(0.1, current - 0.1));
-    });
-    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = '#2a4a3a'; });
-    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = '#1a3a2a'; });
-    grid.addControl(minusBtn, 0, 0);
+    header.addControl(sectionLabel, 0, 0);
 
     this.brushStrengthText = new TextBlock('brushStrengthText');
     this.brushStrengthText.text = '1.0';
     this.brushStrengthText.color = '#7FFF7F';
-    this.brushStrengthText.fontSize = 18;
+    this.brushStrengthText.fontSize = 12;
     this.brushStrengthText.fontWeight = 'bold';
-    grid.addControl(this.brushStrengthText, 0, 1);
+    this.brushStrengthText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    header.addControl(this.brushStrengthText, 0, 1);
 
-    const plusBtn = Button.CreateSimpleButton('strengthPlus', '+');
-    plusBtn.width = '40px';
-    plusBtn.height = '32px';
-    plusBtn.color = '#aaccaa';
-    plusBtn.fontSize = 18;
-    plusBtn.fontWeight = 'bold';
-    plusBtn.background = '#1a3a2a';
-    plusBtn.cornerRadius = 4;
-    plusBtn.thickness = 1;
-    plusBtn.onPointerUpObservable.add(() => {
-        const current = parseFloat(this.brushStrengthText?.text ?? "1.0");
-        this.callbacks.onBrushStrengthChange?.(Math.min(5.0, current + 0.1));
+    const slider = new Slider('brushStrengthSlider');
+    slider.minimum = 0.1;
+    slider.maximum = 1.0;
+    slider.step = 0.1;
+    slider.value = 1.0;
+    slider.isThumbClamped = true;
+    slider.height = '20px';
+    slider.width = '310px';
+    slider.thumbWidth = 20;
+    slider.color = '#3a6a4a';
+    slider.background = '#1a3a2a';
+    slider.onValueChangedObservable.add((value) => {
+       if (this.brushStrengthText) this.brushStrengthText.text = value.toFixed(1);
+       this.callbacks.onBrushStrengthChange?.(value);
     });
-    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = '#2a4a3a'; });
-    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = '#1a3a2a'; });
-    grid.addControl(plusBtn, 0, 2);
+    
+    this.brushStrengthSlider = slider;
+    this.brushStrengthContainer.addControl(slider);
   }
 
-  private createTopologySection(parent: StackPanel): void {
+  private createTopologyModeToggle(parent: StackPanel): void {
+    this.topologyToggleContainer = new StackPanel('topologyToggleContainer');
+    this.topologyToggleContainer.width = '316px';
+    parent.addControl(this.topologyToggleContainer);
+
     const sectionLabel = new TextBlock('topologyLabel');
     sectionLabel.text = 'TOPOLOGY MODE';
     sectionLabel.color = '#8aba9a';
@@ -566,19 +536,16 @@ export class TerrainEditorUI {
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '4px';
-    parent.addControl(sectionLabel);
+    this.topologyToggleContainer.addControl(sectionLabel);
 
     const grid = new Grid('topologyGrid');
-    grid.height = '64px';
+    grid.height = '32px';
     grid.width = '316px';
-    grid.addRowDefinition(0.5);
-    grid.addRowDefinition(0.5);
     grid.addColumnDefinition(0.33);
     grid.addColumnDefinition(0.33);
     grid.addColumnDefinition(0.33);
-    parent.addControl(grid);
+    this.topologyToggleContainer.addControl(grid);
 
-    // Row 1: Topology Modes
     const vertexBtn = this.createTopologyButton('vertex', 'Vertex (V)', '#6a9a7a');
     grid.addControl(vertexBtn, 0, 0);
 
@@ -588,7 +555,30 @@ export class TerrainEditorUI {
     const faceBtn = this.createTopologyButton('face', 'Face', '#ffcc44');
     grid.addControl(faceBtn, 0, 2);
 
-    // Row 2: Topology Actions
+    this.updateTopologyModeStyles();
+  }
+
+  private createEdgeActionsSection(parent: StackPanel): void {
+    this.edgeActionsContainer = new StackPanel('edgeActionsContainer');
+    this.edgeActionsContainer.width = '316px';
+    parent.addControl(this.edgeActionsContainer);
+
+    const sectionLabel = new TextBlock('edgeActionsLabel');
+    sectionLabel.text = 'EDGE ACTIONS';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '24px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '4px';
+    this.edgeActionsContainer.addControl(sectionLabel);
+
+    const grid = new Grid('edgeActionsGrid');
+    grid.height = '32px';
+    grid.width = '316px';
+    grid.addColumnDefinition(0.5);
+    grid.addColumnDefinition(0.5);
+    this.edgeActionsContainer.addControl(grid);
+
     const splitBtn = Button.CreateSimpleButton('splitEdgeBtn', 'Split');
     splitBtn.width = '90%';
     splitBtn.height = '24px';
@@ -598,7 +588,7 @@ export class TerrainEditorUI {
     splitBtn.cornerRadius = 4;
     splitBtn.thickness = 1;
     splitBtn.onPointerUpObservable.add(() => this.callbacks.onSplitEdge?.());
-    grid.addControl(splitBtn, 1, 0);
+    grid.addControl(splitBtn, 0, 0);
 
     const flipBtn = Button.CreateSimpleButton('flipEdgeBtn', 'Flip');
     flipBtn.width = '90%';
@@ -609,34 +599,7 @@ export class TerrainEditorUI {
     flipBtn.cornerRadius = 4;
     flipBtn.thickness = 1;
     flipBtn.onPointerUpObservable.add(() => this.callbacks.onFlipEdge?.());
-    grid.addControl(flipBtn, 1, 1);
-
-    const deleteBtn = Button.CreateSimpleButton('deleteVertexBtn', 'Delete');
-    deleteBtn.width = '90%';
-    deleteBtn.height = '24px';
-    deleteBtn.color = '#ff8888';
-    deleteBtn.fontSize = 10;
-    deleteBtn.background = '#1a3a2a';
-    deleteBtn.cornerRadius = 4;
-    deleteBtn.thickness = 1;
-    deleteBtn.onPointerUpObservable.add(() => {
-        if (this.activeTopologyMode === 'edge') {
-            this.callbacks.onCollapseEdge?.();
-        } else {
-            this.callbacks.onDeleteVertex?.();
-        }
-    });
-    grid.addControl(deleteBtn, 1, 2);
-
-    this.topologyStatusText = new TextBlock('topologyStatus');
-    this.topologyStatusText.text = 'Vertex Mode';
-    this.topologyStatusText.color = '#6a9a7a';
-    this.topologyStatusText.fontSize = 10;
-    this.topologyStatusText.height = '18px';
-    this.topologyStatusText.paddingTop = '2px';
-    parent.addControl(this.topologyStatusText);
-    
-    this.updateTopologyModeStyles();
+    grid.addControl(flipBtn, 0, 1);
   }
 
   private createTopologyButton(mode: TopologyMode, label: string, accentColor: string): Rectangle {
@@ -692,306 +655,202 @@ export class TerrainEditorUI {
       }
     }
 
-    if (this.topologyStatusText) {
-       let status = 'Vertex Mode';
-       if (this.activeTopologyMode === 'edge') status = 'Click edge to select (Shift+Click to toggle)';
-       if (this.activeTopologyMode === 'face') status = 'Click face to select (Shift+Click to toggle)';
-       this.topologyStatusText.text = status;
-       
-       const activeBtn = this.topologyButtons.get(this.activeTopologyMode);
-       this.topologyStatusText.color = activeBtn?.metadata?.accentColor ?? '#6a9a7a';
-    }
   }
 
   private createSelectionSection(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('selectionLabel');
-    sectionLabel.text = 'SELECTION';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
-    sectionLabel.height = '24px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '4px';
-    parent.addControl(sectionLabel);
+    this.selectionContainer = new StackPanel('selectionContainer');
+    this.selectionContainer.width = '316px';
+    parent.addControl(this.selectionContainer);
 
     const grid = new Grid('selectionGrid');
-    grid.height = '36px';
+    grid.height = '32px';
     grid.width = '316px';
-    grid.addColumnDefinition(0.35);
-    grid.addColumnDefinition(0.35);
+    grid.paddingTop = '4px';
+    grid.addColumnDefinition(0.7);
     grid.addColumnDefinition(0.3);
-    parent.addControl(grid);
-
-    const selectAllBtn = Button.CreateSimpleButton('selectAllBtn', 'Select All');
-    selectAllBtn.width = '90%';
-    selectAllBtn.height = '28px';
-    selectAllBtn.color = '#aaccaa';
-    selectAllBtn.fontSize = 11;
-    selectAllBtn.background = '#1a3a2a';
-    selectAllBtn.cornerRadius = 4;
-    selectAllBtn.thickness = 1;
-    selectAllBtn.onPointerUpObservable.add(() => this.callbacks.onSelectAll?.());
-    selectAllBtn.onPointerEnterObservable.add(() => { selectAllBtn.background = '#2a4a3a'; });
-    selectAllBtn.onPointerOutObservable.add(() => { selectAllBtn.background = '#1a3a2a'; });
-    grid.addControl(selectAllBtn, 0, 0);
-
-    const deselectBtn = Button.CreateSimpleButton('deselectBtn', 'Deselect');
-    deselectBtn.width = '90%';
-    deselectBtn.height = '28px';
-    deselectBtn.color = '#aaccaa';
-    deselectBtn.fontSize = 11;
-    deselectBtn.background = '#1a3a2a';
-    deselectBtn.cornerRadius = 4;
-    deselectBtn.thickness = 1;
-    deselectBtn.onPointerUpObservable.add(() => this.callbacks.onDeselectAll?.());
-    deselectBtn.onPointerEnterObservable.add(() => { deselectBtn.background = '#2a4a3a'; });
-    deselectBtn.onPointerOutObservable.add(() => { deselectBtn.background = '#1a3a2a'; });
-    grid.addControl(deselectBtn, 0, 1);
+    this.selectionContainer.addControl(grid);
 
     this.selectionCountText = new TextBlock('selCountText');
-    this.selectionCountText.text = '0 sel';
-    this.selectionCountText.color = '#7FFF7F';
+    this.selectionCountText.text = '0 selected';
+    this.selectionCountText.color = '#6a9a7a';
     this.selectionCountText.fontSize = 12;
     this.selectionCountText.fontWeight = 'bold';
-    grid.addControl(this.selectionCountText, 0, 2);
+    this.selectionCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    grid.addControl(this.selectionCountText, 0, 0);
+
+    const deleteBtn = Button.CreateSimpleButton('deleteBtn', 'Delete');
+    deleteBtn.width = '80px';
+    deleteBtn.height = '24px';
+    deleteBtn.color = '#ff8888';
+    deleteBtn.fontSize = 10;
+    deleteBtn.background = '#1a3a2a';
+    deleteBtn.cornerRadius = 4;
+    deleteBtn.thickness = 1;
+    deleteBtn.onPointerUpObservable.add(() => {
+      if (this.activeTopologyMode === 'edge') {
+        this.callbacks.onCollapseEdge?.();
+      } else {
+        this.callbacks.onDeleteVertex?.();
+      }
+    });
+    deleteBtn.onPointerEnterObservable.add(() => { deleteBtn.background = '#3a2a2a'; });
+    deleteBtn.onPointerOutObservable.add(() => { deleteBtn.background = '#1a3a2a'; });
+    grid.addControl(deleteBtn, 0, 1);
   }
 
   private createTransformSection(parent: StackPanel): void {
+    this.transformContainer = new StackPanel('transformContainer');
+    this.transformContainer.width = '316px';
+    parent.addControl(this.transformContainer);
+
     const sectionLabel = new TextBlock('constraintLabel');
-    sectionLabel.text = 'MOVEMENT CONSTRAINT';
+    sectionLabel.text = 'MOVE AXIS';
     sectionLabel.color = '#8aba9a';
     sectionLabel.fontSize = 11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '6px';
-    parent.addControl(sectionLabel);
+    this.transformContainer.addControl(sectionLabel);
 
-    const axisGrid = new Grid('axisGrid');
-    axisGrid.height = '32px';
-    axisGrid.width = '316px';
-    axisGrid.addColumnDefinition(0.25);
-    axisGrid.addColumnDefinition(0.25);
-    axisGrid.addColumnDefinition(0.25);
-    axisGrid.addColumnDefinition(0.25);
-    parent.addControl(axisGrid);
+    // Visual Axis Gizmo Container
+    const gizmoContainer = new Rectangle('gizmoContainer');
+    gizmoContainer.height = '140px';
+    gizmoContainer.width = '316px';
+    gizmoContainer.thickness = 0;
+    gizmoContainer.background = 'transparent';
+    this.transformContainer.addControl(gizmoContainer);
+    
+    // Y Axis (Green, Up)
+    this.createAxisRod(gizmoContainer, 'y', '#44cc44', 0, -32, 6, 60, 0);
+    this.createAxisLabel(gizmoContainer, 'Y', '#44cc44', 0, -70);
+    
+    // X Axis (Red, Right)
+    this.createAxisRod(gizmoContainer, 'x', '#cc4444', 32, 0, 60, 6, 0);
+    this.createAxisLabel(gizmoContainer, 'X', '#cc4444', 70, 0);
 
-    // User-friendly labels instead of X/Y/Z
-    const axes: { axis: AxisConstraint; label: string; color: string }[] = [
-      { axis: 'y', label: 'Elev', color: '#44cc44' },      // Green for vertical
-      { axis: 'x', label: 'E/W', color: '#cc4444' },       // Red for X axis
-      { axis: 'z', label: 'N/S', color: '#4444cc' },       // Blue for Z axis
-      { axis: 'xz', label: 'Horiz', color: '#cccc44' },    // Yellow for horizontal plane
-    ];
+    // Z Axis (Blue, Diagonal Top-Right for "Into Screen")
+    // Rotation -45 deg points Top-Right
+    // Offset calc: Center of 50px rod at angle -45
+    // x = cos(-45)*28 = 19.8, y = sin(-45)*28 = -19.8
+    this.createAxisRod(gizmoContainer, 'z', '#4444cc', 20, -20, 50, 6, -Math.PI / 4);
+    this.createAxisLabel(gizmoContainer, 'Z', '#4444cc', 50, -50);
 
-    axes.forEach((a, i) => {
-      const btn = this.createAxisButton(a.axis, a.label, a.color);
-      axisGrid.addControl(btn, 0, i);
-    });
+    // Center Hub
+    const hub = new Rectangle('hub');
+    hub.width = '12px';
+    hub.height = '12px';
+    hub.cornerRadius = 6;
+    hub.color = '#aaccaa';
+    hub.background = '#aaccaa';
+    hub.thickness = 0;
+    gizmoContainer.addControl(hub);
 
     this.updateAxisButtonStyles();
-
-    // Quick movement buttons
-    this.createMovementButtons(parent);
-
-    this.vertexPosText = new TextBlock('vertexPosText');
-    this.vertexPosText.text = 'No selection';
-    this.vertexPosText.color = '#aaccaa';
-    this.vertexPosText.fontSize = 11;
-    this.vertexPosText.height = '24px';
-    this.vertexPosText.paddingTop = '4px';
-    parent.addControl(this.vertexPosText);
   }
 
-  private createMovementButtons(parent: StackPanel): void {
-    const moveLabel = new TextBlock('moveLabel');
-    moveLabel.text = 'QUICK MOVE';
-    moveLabel.color = '#8aba9a';
-    moveLabel.fontSize = 11;
-    moveLabel.height = '24px';
-    moveLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    moveLabel.paddingTop = '6px';
-    parent.addControl(moveLabel);
-
-    const moveGrid = new Grid('moveGrid');
-    moveGrid.height = '70px';
-    moveGrid.width = '316px';
-    moveGrid.addRowDefinition(0.5);
-    moveGrid.addRowDefinition(0.5);
-    moveGrid.addColumnDefinition(0.25);
-    moveGrid.addColumnDefinition(0.25);
-    moveGrid.addColumnDefinition(0.25);
-    moveGrid.addColumnDefinition(0.25);
-    parent.addControl(moveGrid);
-
-    // Row 1: Raise, North, Lower
-    const raiseBtn = this.createMoveButton('Raise', '#44cc44', () => this.callbacks.onMoveBy?.(0, 1, 0));
-    moveGrid.addControl(raiseBtn, 0, 0);
-
-    const northBtn = this.createMoveButton('North', '#4444cc', () => this.callbacks.onMoveBy?.(0, 0, -1));
-    moveGrid.addControl(northBtn, 0, 1);
-
-    const lowerBtn = this.createMoveButton('Lower', '#44cc44', () => this.callbacks.onMoveBy?.(0, -1, 0));
-    moveGrid.addControl(lowerBtn, 0, 2);
-
-    // Placeholder for symmetry
-    const emptySpace = new Rectangle('emptySpace');
-    emptySpace.thickness = 0;
-    emptySpace.background = 'transparent';
-    moveGrid.addControl(emptySpace, 0, 3);
-
-    // Row 2: West, South, East
-    const westBtn = this.createMoveButton('West', '#cc4444', () => this.callbacks.onMoveBy?.(-1, 0, 0));
-    moveGrid.addControl(westBtn, 1, 0);
-
-    const southBtn = this.createMoveButton('South', '#4444cc', () => this.callbacks.onMoveBy?.(0, 0, 1));
-    moveGrid.addControl(southBtn, 1, 1);
-
-    const eastBtn = this.createMoveButton('East', '#cc4444', () => this.callbacks.onMoveBy?.(1, 0, 0));
-    moveGrid.addControl(eastBtn, 1, 2);
+  private createAxisLabel(parent: Rectangle, text: string, color: string, left: number, top: number): void {
+      const label = new TextBlock();
+      label.text = text;
+      label.color = color; // dim if needed, but axis colors usually bright
+      label.fontSize = 12;
+      label.fontWeight = 'bold';
+      label.left = `${left}px`;
+      label.top = `${top}px`;
+      parent.addControl(label);
   }
 
-  private createMoveButton(label: string, accentColor: string, onClick: () => void): Button {
-    const btn = Button.CreateSimpleButton(`move_${label}`, label);
-    btn.width = '90%';
-    btn.height = '28px';
-    btn.color = accentColor;
-    btn.fontSize = 10;
-    btn.fontWeight = 'bold';
-    btn.background = '#1a3a2a';
-    btn.cornerRadius = 4;
-    btn.thickness = 1;
-    btn.onPointerUpObservable.add(onClick);
-    btn.onPointerEnterObservable.add(() => { btn.background = '#2a4a3a'; });
-    btn.onPointerOutObservable.add(() => { btn.background = '#1a3a2a'; });
-    return btn;
-  }
+  private createAxisRod(parent: Rectangle, axis: string, color: string, left: number, top: number, width: number, height: number, rotation: number): void {
+      const container = new Rectangle(`axis_${axis}`);
+      container.width = `${width}px`;
+      container.height = `${height}px`;
+      container.left = `${left}px`;
+      container.top = `${top}px`;
+      container.rotation = rotation;
+      container.color = color; // Border
+      container.background = '#1a3a2a'; // Dim fill
+      container.thickness = 2;
+      container.cornerRadius = 3;
+      container.isPointerBlocker = true;
+      container.metadata = { accentColor: color }; 
 
-  private createAxisButton(axis: AxisConstraint, label: string, accentColor?: string): Rectangle {
-    const container = new Rectangle(`axis_${axis}`);
-    container.width = '90%';
-    container.height = '28px';
-    container.cornerRadius = 4;
-    container.background = '#1a3a2a';
-    container.color = '#3a5a4a';
-    container.thickness = 2;
-    container.metadata = { accentColor: accentColor ?? '#aaccaa' };
+      container.onPointerEnterObservable.add(() => {
+          const isActive = this.activeAxis.includes(axis);
+          if (!isActive) {
+              container.background = '#2a4a3a';
+          }
+      });
+      container.onPointerOutObservable.add(() => {
+          const isActive = this.activeAxis.includes(axis);
+          if (!isActive) {
+              container.background = '#1a3a2a';
+          }
+      });
+      container.onPointerUpObservable.add((_info, state) => {
+        const evt = (state as any).event as PointerEvent;
+        const shift = evt?.shiftKey ?? false;
+        
+        // Use 'xyz' as default/all if needed
+        let current = this.activeAxis;
+        let newSet = new Set<string>(current.split(''));
+        
+        if (shift) {
+            if (newSet.has(axis)) {
+                newSet.delete(axis);
+            } else {
+                newSet.add(axis);
+            }
+        } else {
+             newSet.clear();
+             newSet.add(axis);
+        }
 
-    const text = new TextBlock();
-    text.text = label;
-    text.color = accentColor ?? '#aaccaa';
-    text.fontSize = 11;
-    text.fontWeight = 'bold';
-    container.addControl(text);
+        if (newSet.size === 0) {
+            newSet.add('y'); // Default fallback
+        }
 
-    container.onPointerEnterObservable.add(() => {
-      if (this.activeAxis !== axis) {
-        container.background = '#2a4a3a';
-      }
-    });
+        let chars = Array.from(newSet).sort().join('');
+        // Validate against allowed union members
+        if (chars === 'xy' || chars === 'xz' || chars === 'yz' || chars === 'xyz' || chars === 'x' || chars === 'y' || chars === 'z') {
+             this.callbacks.onAxisChange?.(chars as AxisConstraint);
+        }
+      });
 
-    container.onPointerOutObservable.add(() => {
-      if (this.activeAxis !== axis) {
-        container.background = '#1a3a2a';
-      }
-    });
-
-    container.onPointerUpObservable.add(() => {
-      this.callbacks.onAxisChange?.(axis);
-    });
-
-    this.axisButtons.set(axis, container);
-    return container;
+      this.axisButtons.set(axis, container);
+      parent.addControl(container);
   }
 
   private updateAxisButtonStyles(): void {
-    for (const [axis, btn] of this.axisButtons) {
-      const text = btn.children[0] as TextBlock;
-      if (axis === this.activeAxis) {
-        btn.background = '#2a6a4a';
-        btn.color = '#7FFF7F';
-        if (text) text.color = '#7FFF7F';
-      } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
-        if (text) text.color = '#aaccaa';
-      }
-    }
+    const current = this.activeAxis;
+    this.axisButtons.forEach((btn, axis) => {
+        const isActive = current.includes(axis);
+        const accent = btn.metadata.accentColor;
+        
+        if (isActive) {
+            btn.background = accent;
+            // Label is now separate, no child text to update
+        } else {
+            btn.background = '#1a3a2a';
+        }
+    });
   }
 
-  private createActionButtons(parent: StackPanel): void {
-    const divider = new Rectangle('divider2');
-    divider.height = '1px';
-    divider.width = '316px';
-    divider.background = '#3a5a4a';
-    divider.thickness = 0;
-    divider.paddingTop = '12px';
-    parent.addControl(divider);
 
-    const grid = new Grid('actionGrid');
-    grid.height = '44px';
-    grid.width = '316px';
-    grid.paddingTop = '12px';
-    grid.addColumnDefinition(0.3);
-    grid.addColumnDefinition(0.3);
-    grid.addColumnDefinition(0.4);
-    parent.addControl(grid);
 
-    this.undoButton = Button.CreateSimpleButton('undoBtn', 'Undo');
-    this.undoButton.width = '68px';
-    this.undoButton.height = '32px';
-    this.undoButton.color = '#aaccaa';
-    this.undoButton.fontSize = 12;
-    this.undoButton.background = '#1a3a2a';
-    this.undoButton.cornerRadius = 4;
-    this.undoButton.thickness = 1;
-    this.undoButton.onPointerUpObservable.add(() => this.callbacks.onUndo());
-    this.undoButton.onPointerEnterObservable.add(() => { if (this.undoButton) this.undoButton.background = '#2a4a3a'; });
-    this.undoButton.onPointerOutObservable.add(() => { if (this.undoButton) this.undoButton.background = '#1a3a2a'; });
-    grid.addControl(this.undoButton, 0, 0);
 
-    this.redoButton = Button.CreateSimpleButton('redoBtn', 'Redo');
-    this.redoButton.width = '68px';
-    this.redoButton.height = '32px';
-    this.redoButton.color = '#aaccaa';
-    this.redoButton.fontSize = 12;
-    this.redoButton.background = '#1a3a2a';
-    this.redoButton.cornerRadius = 4;
-    this.redoButton.thickness = 1;
-    this.redoButton.onPointerUpObservable.add(() => this.callbacks.onRedo());
-    this.redoButton.onPointerEnterObservable.add(() => { if (this.redoButton) this.redoButton.background = '#2a4a3a'; });
-    this.redoButton.onPointerOutObservable.add(() => { if (this.redoButton) this.redoButton.background = '#1a3a2a'; });
-    grid.addControl(this.redoButton, 0, 1);
+  private updateVisibility(): void {
+    const mode = this.activeMode;
+    const interaction = this.activeInteractionMode;
+    const topology = this.activeTopologyMode;
 
-    const exportBtn = Button.CreateSimpleButton('exportBtn', 'Export');
-    exportBtn.width = '90px';
-    exportBtn.height = '32px';
-    exportBtn.color = '#ccffcc';
-    exportBtn.fontSize = 12;
-    exportBtn.fontWeight = 'bold';
-    exportBtn.background = '#2a5a3a';
-    exportBtn.cornerRadius = 4;
-    exportBtn.thickness = 1;
-    exportBtn.onPointerUpObservable.add(() => this.callbacks.onExport());
-    exportBtn.onPointerEnterObservable.add(() => { exportBtn.background = '#3a6a4a'; });
-    exportBtn.onPointerOutObservable.add(() => { exportBtn.background = '#2a5a3a'; });
-    grid.addControl(exportBtn, 0, 2);
-  }
-
-  private createStatusBar(parent: StackPanel): void {
-    const container = new Rectangle('statusContainer');
-    container.height = '36px';
-    container.width = '316px';
-    container.background = '#0a1a10';
-    container.cornerRadius = 4;
-    container.thickness = 0;
-    container.paddingTop = '12px';
-    parent.addControl(container);
-
-    this.coordsText = new TextBlock('coordsText');
-    this.coordsText.text = 'Press T to toggle editor';
-    this.coordsText.color = '#6a9a7a';
-    this.coordsText.fontSize = 12;
-    this.coordsText.fontFamily = 'monospace';
-    container.addControl(this.coordsText);
+    if (this.interactionToggleContainer) this.interactionToggleContainer.isVisible = (mode === 'sculpt');
+    if (this.sculptToolsPanel) this.sculptToolsPanel.isVisible = (mode === 'sculpt' && interaction === 'brush');
+    if (this.paintToolsPanel) this.paintToolsPanel.isVisible = (mode === 'paint');
+    if (this.topologyToggleContainer) this.topologyToggleContainer.isVisible = (mode === 'sculpt');
+    if (this.brushSizeContainer) this.brushSizeContainer.isVisible = (interaction === 'brush' || mode === 'paint');
+    if (this.brushStrengthContainer) this.brushStrengthContainer.isVisible = (mode === 'sculpt' && interaction === 'brush');
+    if (this.selectionContainer) this.selectionContainer.isVisible = (mode === 'sculpt' && interaction === 'select');
+    if (this.transformContainer) this.transformContainer.isVisible = (mode === 'sculpt' && interaction === 'select');
+    if (this.edgeActionsContainer) this.edgeActionsContainer.isVisible = (mode === 'sculpt' && interaction === 'select' && topology === 'edge');
   }
 
   public show(): void {
@@ -1026,31 +885,26 @@ export class TerrainEditorUI {
   public setActiveMode(mode: EditorMode): void {
     this.activeMode = mode;
     this.updateModeButtonStyles();
+    this.updateVisibility();
   }
 
   public setInteractionMode(mode: InteractionMode): void {
     this.activeInteractionMode = mode;
     this.updateInteractionButtonStyles();
-    this.updateBrushControlsAlpha();
+    this.updateVisibility();
   }
 
-  public setUndoEnabled(enabled: boolean): void {
-    if (this.undoButton) {
-      this.undoButton.alpha = enabled ? 1.0 : 0.4;
-      this.undoButton.isEnabled = enabled;
-    }
-  }
-
-  public setRedoEnabled(enabled: boolean): void {
-    if (this.redoButton) {
-      this.redoButton.alpha = enabled ? 1.0 : 0.4;
-      this.redoButton.isEnabled = enabled;
-    }
-  }
 
   public setBrushSize(size: number): void {
     if (this.brushSizeText) {
       this.brushSizeText.text = size.toString();
+      this.brushSizeText.metadata = size.toString();
+    }
+    if (this.brushSizeSlider) {
+        // Prevent loop if value is already close (slider might be 2.00001)
+        if (Math.abs(this.brushSizeSlider.value - size) > 0.1) {
+            this.brushSizeSlider.value = size;
+        }
     }
   }
 
@@ -1058,23 +912,22 @@ export class TerrainEditorUI {
     if (this.brushStrengthText) {
       this.brushStrengthText.text = strength.toFixed(1);
     }
+    if (this.brushStrengthSlider) {
+        if (Math.abs(this.brushStrengthSlider.value - strength) > 0.01) {
+            this.brushStrengthSlider.value = strength;
+        }
+    }
   }
 
-  public updateCoordinates(x: number, y: number, elevation: number, type: TerrainType): void {
-    if (this.coordsText) {
-      this.coordsText.text = `(${x}, ${y})  Elev: ${elevation}  ${getTerrainDisplayName(type)}`;
-    }
+  public updateCoordinates(_x: number, _y: number, _elevation: number, _type: TerrainType): void {
   }
 
   public clearCoordinates(): void {
-    if (this.coordsText) {
-      this.coordsText.text = 'Hover over terrain';
-    }
   }
 
   public setSelectionCount(count: number): void {
     if (this.selectionCountText) {
-      this.selectionCountText.text = count === 1 ? '1 sel' : `${count} sel`;
+      this.selectionCountText.text = count === 1 ? '1 selected' : `${count} selected`;
       this.selectionCountText.color = count > 0 ? '#7FFF7F' : '#6a9a7a';
     }
   }
@@ -1084,34 +937,22 @@ export class TerrainEditorUI {
     this.updateAxisButtonStyles();
   }
 
-  public updateVertexPosition(x: number | null, y: number | null, z: number | null): void {
-    if (this.vertexPosText) {
-      if (x === null && y === null && z === null) {
-        this.vertexPosText.text = 'No selection';
-      } else {
-        // User-friendly labels: E/W for X, Elev for Y, N/S for Z
-        const ewStr = x !== null ? x.toFixed(2) : '-';
-        const elevStr = y !== null ? y.toFixed(2) : '-';
-        const nsStr = z !== null ? z.toFixed(2) : '-';
-        this.vertexPosText.text = `E/W: ${ewStr}  Elev: ${elevStr}  N/S: ${nsStr}`;
-      }
-    }
+  public updateVertexPosition(_x: number | null, _y: number | null, _z: number | null): void {
   }
 
   public clearVertexPosition(): void {
-    if (this.vertexPosText) {
-      this.vertexPosText.text = 'No selection';
-    }
   }
 
   public setTopologyMode(mode: TopologyMode): void {
     this.activeTopologyMode = mode;
     this.updateTopologyModeStyles();
+    this.updateVisibility();
   }
 
   public setActiveTopologyMode(mode: TopologyMode): void {
     this.activeTopologyMode = mode;
     this.updateTopologyModeStyles();
+    this.updateVisibility();
   }
 
 

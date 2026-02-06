@@ -52,11 +52,8 @@ import {
   canDeleteVertex,
   isBoundaryVertex,
   findNearestTopologyVertex,
-  captureTopologyState,
-  restoreTopologyState,
   collapseEdge,
   flipEdge,
-  TopologyModification,
   sanitizeTopology,
   deserializeTopology,
   barycentricInterpolateY,
@@ -739,31 +736,24 @@ export class VectorTerrainSystem {
     return new Set(this.selectedEdgeIds);
   }
 
-  public subdivideSelectedEdge(): { newVertexId: number; beforeState: TopologyModification['beforeState'] } | null {
-    if (this.selectedEdgeId === null || !this.topology) return null;
+  public subdivideSelectedEdge(): void {
+    if (this.selectedEdgeId === null || !this.topology) return;
 
-    const beforeState = captureTopologyState(this.topology);
     const result = subdivideEdge(this.topology, this.selectedEdgeId, 0.5);
-    if (!result) return null;
+    if (!result) return;
 
     this.registerNewTopologyVertex(result.newVertexId);
-
     this.deselectAllEdges();
     this.rebuildMesh();
-
-    return { newVertexId: result.newVertexId, beforeState };
   }
 
-  public flipSelectedEdge(): { beforeState: TopologyModification['beforeState'] } | null {
-    if (this.selectedEdgeId === null || !this.topology) return null;
+  public flipSelectedEdge(): void {
+    if (this.selectedEdgeId === null || !this.topology) return;
 
-    const beforeState = captureTopologyState(this.topology);
     const result = flipEdge(this.topology, this.selectedEdgeId);
-    if (!result) return null;
+    if (!result) return;
 
     this.rebuildMesh();
-
-    return { beforeState };
   }
 
   private updateSelectedEdgeHighlight(): void {
@@ -835,24 +825,14 @@ export class VectorTerrainSystem {
     }
   }
 
-  public subdivideEdgeAt(edgeId: number, t: number = 0.5): {
-    newVertexId: number;
-    beforeState: TopologyModification['beforeState'];
-  } | null {
-    if (!this.topology) return null;
-
-    const beforeState = captureTopologyState(this.topology);
+  public subdivideEdgeAt(edgeId: number, t: number = 0.5): void {
+    if (!this.topology) return;
 
     const result = subdivideEdge(this.topology, edgeId, t);
-    if (!result) return null;
+    if (!result) return;
 
     this.registerNewTopologyVertex(result.newVertexId);
     this.rebuildMesh();
-
-    return {
-      newVertexId: result.newVertexId,
-      beforeState,
-    };
   }
 
   public canDeleteTopologyVertex(vertexId: number): boolean {
@@ -865,20 +845,14 @@ export class VectorTerrainSystem {
     return isBoundaryVertex(this.topology, vertexId);
   }
 
-  public deleteTopologyVertex(vertexId: number): {
-    beforeState: TopologyModification['beforeState'];
-  } | null {
-    if (!this.topology) return null;
-    if (!canDeleteVertex(this.topology, vertexId)) return null;
-
-    const beforeState = captureTopologyState(this.topology);
+  public deleteTopologyVertex(vertexId: number): void {
+    if (!this.topology) return;
+    if (!canDeleteVertex(this.topology, vertexId)) return;
 
     const result = deleteVertex(this.topology, vertexId);
-    if (!result) return null;
+    if (!result) return;
 
     this.rebuildMesh();
-
-    return { beforeState };
   }
 
   public findNearestTopologyVertexAt(worldX: number, worldZ: number): {
@@ -904,11 +878,6 @@ export class VectorTerrainSystem {
     }
   }
 
-  public restoreTopologyFromState(state: TopologyModification['beforeState']): void {
-    if (!this.topology) return;
-    restoreTopologyState(this.topology, state);
-    this.rebuildMesh();
-  }
 
   public setHoveredTopologyVertex(vertexId: number | null): void {
     if (this.hoveredTopologyVertexId === vertexId) return;
@@ -920,17 +889,14 @@ export class VectorTerrainSystem {
     return this.hoveredTopologyVertexId;
   }
 
-  public collapseEdge(edgeId: number): { beforeState: TopologyModification['beforeState'] } | null {
-    if (!this.topology) return null;
+  public collapseEdge(edgeId: number): void {
+    if (!this.topology) return;
 
-    const beforeState = captureTopologyState(this.topology);
     const result = collapseEdge(this.topology, edgeId);
-    if (!result) return null;
+    if (!result) return;
 
     this.deselectAllEdges();
     this.rebuildMesh();
-
-    return { beforeState };
   }
 
   public selectTopologyVertexById(vertexId: number, additive: boolean = false): void {
@@ -1319,21 +1285,15 @@ export class VectorTerrainSystem {
     this.applyMaterial();
   }
 
-  public setFaceTerrain(faceId: number, type: TerrainType): { beforeState: TopologyModification['beforeState'] } | null {
-      if (!this.topology) return null;
+  public setFaceTerrain(faceId: number, type: TerrainType): void {
+      if (!this.topology) return;
       const tri = this.topology.triangles.get(faceId);
-      if (!tri) return null;
+      if (!tri) return;
 
       const code = getTerrainCode(type);
-      if (tri.terrainCode === code) return null;
+      if (tri.terrainCode === code) return;
 
-      const beforeState = captureTopologyState(this.topology);
-      
       tri.terrainCode = code;
-      
-      this.meshDirty = true;
-      
-      return { beforeState };
   }
 
   private updateEdgeHighlight(): void {

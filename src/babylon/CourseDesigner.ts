@@ -192,11 +192,8 @@ export class CourseDesigner {
       onToolSelect: (tool: EditorTool) => this.terrainEditorSystem.setTool(tool),
       onModeChange: (mode) => this.terrainEditorSystem.setMode(mode),
       onClose: () => this.setDesignerMode('asset'),
-      onExport: () => this.save(),
-      onUndo: () => this.terrainEditorSystem.undo(),
-      onRedo: () => this.terrainEditorSystem.redo(),
-      onBrushSizeChange: (delta) => {
-        this.terrainEditorSystem.changeBrushSize(delta);
+      onBrushSizeChange: (size) => {
+        this.terrainEditorSystem.setBrushSize(size);
         this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
       },
       onBrushStrengthChange: (strength) => {
@@ -239,10 +236,6 @@ export class CourseDesigner {
         this.vectorTerrainSystem.setGridLinesEnabled(false);
       },
       onBrushSizeChange: (size) => this.terrainEditorUI?.setBrushSize(size),
-      onUndoRedoChange: (canUndo, canRedo) => {
-        this.terrainEditorUI?.setUndoEnabled(canUndo);
-        this.terrainEditorUI?.setRedoEnabled(canRedo);
-      },
       onSelectionChange: (count) => {
         this.terrainEditorUI?.setSelectionCount(count);
         this.updateVertexPositionDisplay();
@@ -508,8 +501,6 @@ export class CourseDesigner {
       onDragStart: (screenX, screenY) => this.handleDragStart(screenX, screenY),
       onDrag: (screenX, screenY) => this.handleDrag(screenX, screenY),
       onDragEnd: () => this.handleDragEnd(),
-      onUndo: () => this.terrainEditorSystem.undo(),
-      onRedo: () => this.terrainEditorSystem.redo(),
       onEditorBrushSizeChange: (delta) => {
         this.terrainEditorSystem.changeBrushSize(delta);
         this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
