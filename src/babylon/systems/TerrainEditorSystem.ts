@@ -76,6 +76,8 @@ export interface TerrainModifier {
   getSelectedFaceIds?(): Set<number>;
   findFaceAtPosition?(worldX: number, worldZ: number): number | null;
   moveSelectedFaces?(dx: number, dy: number, dz: number): void;
+  rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;
+  stampTemplate?(template: any, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
   getSelectedFaceVertexIds?(): Set<number>;
   getSelectedEdgeVertexIds?(): Set<number>;
   getSelectedVerticesFromSelection?(): Array<{ vx: number; vy: number }>;
@@ -132,6 +134,8 @@ export class TerrainEditorSystem {
   private selectedFaces: Set<number> = new Set();
   private meshResolution: number = 2.0;
   private lastWorldPos: { x: number; z: number } | null = null;
+  private activeTemplate: any | null = null;
+  private stampScale: number = 1;
 
   constructor(scene: Scene) {
     this.state = createInitialEditorState();
@@ -233,6 +237,13 @@ export class TerrainEditorSystem {
       if (this.state.interactionMode !== 'brush') {
         this.setInteractionMode('brush');
       }
+    } else if (mode === 'stamp') {
+      this.setTopologyMode('face');
+      this.refreshStampPreview();
+    }
+
+    if (mode !== 'stamp') {
+      this.highlightSystem.clearStampPreview();
     }
 
     this.callbacks.onModeChange?.(mode);
@@ -240,6 +251,20 @@ export class TerrainEditorSystem {
 
   public getMode(): EditorMode {
     return this.state.mode;
+  }
+
+  public setActiveTemplate(template: any): void {
+    this.activeTemplate = template;
+    this.refreshStampPreview();
+  }
+
+  public setStampScale(scale: number): void {
+    this.stampScale = Math.max(0.25, Math.min(6, scale));
+    this.refreshStampPreview();
+  }
+
+  public getStampScale(): number {
+    return this.stampScale;
   }
 
   public setTool(tool: EditorTool): void {
@@ -428,6 +453,12 @@ export class TerrainEditorSystem {
     this.highlightSystem.refresh();
   }
 
+  public rotateSelectedVertices(ax: number, ay: number, az: number): void {
+    this.terrainModifier?.rotateSelectedVertices?.(ax, ay, az);
+    this.terrainModifier?.rebuildMesh?.();
+    this.highlightSystem.refresh();
+  }
+
   public handleDeleteSelectedTopologyVertices(): void {
     if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
         const res = this.meshResolution;
@@ -575,6 +606,16 @@ export class TerrainEditorSystem {
 
   public handleMouseDown(_gridX: number, _gridY: number): void {
     if (!this.state.enabled) return;
+
+    if (this.state.mode === 'stamp') {
+      if (!this.lastWorldPos) {
+        const res = this.meshResolution || 1;
+        this.lastWorldPos = { x: _gridX / res, z: _gridY / res };
+      }
+      this.handleStampClick();
+      return;
+    }
+
     if (this.state.interactionMode === 'select') return;
 
     this.state.isDragging = true;
@@ -588,6 +629,30 @@ export class TerrainEditorSystem {
     }
   }
 
+  private handleStampClick(): void {
+    if (!this.lastWorldPos || !this.activeTemplate || !this.terrainModifier) return;
+
+    const result = this.terrainModifier.stampTemplate?.(
+      this.activeTemplate,
+      this.lastWorldPos.x,
+      this.lastWorldPos.z,
+      this.stampScale
+    );
+
+    if (result) {
+      this.terrainModifier.rebuildMesh?.();
+      this.highlightSystem.refresh();
+    }
+  }
+
+  private refreshStampPreview(): void {
+    if (this.state.mode === 'stamp' && this.activeTemplate) {
+      this.highlightSystem.setStampPreview(this.activeTemplate, this.stampScale);
+    } else {
+      this.highlightSystem.clearStampPreview();
+    }
+  }
+
   public handleMouseUp(): void {
     if (!this.state.enabled || !this.state.isDragging) return;
 
@@ -596,6 +661,9 @@ export class TerrainEditorSystem {
   }
 
   public handleClick(_gridX: number, _gridY: number): void {
+    if (!this.state.enabled) return;
+    this.handleMouseDown(_gridX, _gridY);
+    this.handleMouseUp();
   }
 
   private getSculptContext(): { anchorVx: number; anchorVy: number; worldX: number; worldZ: number; vertices: Array<{ vx: number; vy: number }> } | null {
@@ -727,7 +795,9 @@ export class TerrainEditorSystem {
             this.hoveredFaceId = faceId;
             this.terrainModifier?.setHoveredFace?.(faceId);
 
-            if (this.state.interactionMode === 'brush') {
+            if (this.state.mode === 'stamp') {
+                this.terrainModifier?.setBrushHoveredFaces?.([]);
+            } else if (this.state.interactionMode === 'brush') {
                 const facesInBrush = this.terrainModifier?.getFacesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
                 this.terrainModifier?.setBrushHoveredFaces?.(facesInBrush);
             } else {

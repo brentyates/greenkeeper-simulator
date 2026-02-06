@@ -58,6 +58,8 @@ import {
   deserializeTopology,
   barycentricInterpolateY,
 } from "../../core/mesh-topology";
+import { rotateAroundPivot } from "../../core/transform-ops";
+import { ShapeTemplate, generateStampTopology, stampIntoTopology } from "../../core/shape-templates";
 
 export interface VectorTerrainOptions {
   sdfResolution: number;
@@ -68,6 +70,7 @@ export interface VectorTerrainOptions {
   meshResolution: number;
   enableGridLines: boolean;
 }
+
 
 const DEFAULT_OPTIONS: VectorTerrainOptions = {
   sdfResolution: 8,
@@ -198,10 +201,21 @@ export class VectorTerrainSystem {
       this.topology = gridToTopology(
         this.vertexPositions,
         this.worldWidth,
-        this.worldHeight,
-        this.options.meshResolution
+        this.worldHeight
       );
     }
+
+    this.rebuildGridVertexMaps();
+
+    if (!courseData.topology) {
+      this.initializeTriangleTerrainsFromGrid(courseData);
+    }
+
+    this.rebuildFaceSpatialIndex();
+  }
+
+  private rebuildGridVertexMaps(): void {
+    if (!this.topology) return;
 
     this.gridToVertexId.clear();
     this.vertexIdToGrid.clear();
@@ -212,17 +226,14 @@ export class VectorTerrainSystem {
       const vx = Math.round(vertex.position.x * meshRes);
       const vy = Math.round(vertex.position.z * meshRes);
       const key = `${vx},${vy}`;
-      if (!this.gridToVertexId.has(key)) {
+      const inBounds = vx >= 0 && vy >= 0 && vx < this.vertexWidth && vy < this.vertexHeight;
+      if (inBounds && !this.gridToVertexId.has(key)) {
         this.gridToVertexId.set(key, id);
         this.vertexIdToGrid.set(id, { vx, vy });
+      } else {
+        this.registerNewTopologyVertex(id);
       }
     }
-
-    if (!courseData.topology) {
-      this.initializeTriangleTerrainsFromGrid(courseData);
-    }
-
-    this.rebuildFaceSpatialIndex();
   }
 
   private rebuildFaceSpatialIndex(): void {
@@ -648,6 +659,14 @@ export class VectorTerrainSystem {
         }
       }
     }
+
+    for (const [vertexId, gridCoords] of this.vertexIdToGrid) {
+      if (gridCoords.vx < this.vertexWidth && gridCoords.vy < this.vertexHeight) continue;
+      if (!result[gridCoords.vy]) result[gridCoords.vy] = [];
+      const vertex = this.topology!.vertices.get(vertexId);
+      result[gridCoords.vy][gridCoords.vx] = vertex?.position.y ?? 0;
+    }
+
     return result;
   }
 
@@ -1106,6 +1125,98 @@ export class VectorTerrainSystem {
     this.meshDirty = true;
   }
 
+  public rotateSelectedVertices(angleX: number, angleY: number, angleZ: number): void {
+    if (!this.topology) return;
+
+    const uniqueVertexIds = new Set<number>();
+    for (const faceId of this.selectedFaceIds) {
+      const tri = this.topology.triangles.get(faceId);
+      if (!tri) continue;
+      for (const vid of tri.vertices) uniqueVertexIds.add(vid);
+    }
+    for (const edgeId of this.selectedEdgeIds) {
+      const edge = this.topology.edges.get(edgeId);
+      if (edge) {
+        uniqueVertexIds.add(edge.v1);
+        uniqueVertexIds.add(edge.v2);
+      }
+    }
+    for (const vid of this.selectedTopologyVertices) {
+      uniqueVertexIds.add(vid);
+    }
+
+    if (uniqueVertexIds.size === 0) return;
+
+    let cx = 0, cy = 0, cz = 0;
+    for (const vid of uniqueVertexIds) {
+      const v = this.topology.vertices.get(vid);
+      if (v) { cx += v.position.x; cy += v.position.y; cz += v.position.z; }
+    }
+    const n = uniqueVertexIds.size;
+    const pivot = { x: cx / n, y: cy / n, z: cz / n };
+
+    for (const vid of uniqueVertexIds) {
+      const vertex = this.topology.vertices.get(vid);
+      if (vertex) {
+        vertex.position = rotateAroundPivot(vertex.position, pivot, angleX, angleY, angleZ);
+      }
+    }
+
+    this.meshDirty = true;
+  }
+
+  public stampTemplate(
+    template: ShapeTemplate,
+    centerX: number,
+    centerZ: number,
+    scale: number = 1
+  ): { faceIds: number[]; vertexIds: number[] } {
+    if (!this.topology) return { faceIds: [], vertexIds: [] };
+
+    const layoutGrid = this.getLayoutGrid();
+    const res = this.getResolution();
+    const gridWidth = layoutGrid[0]?.length ?? 0;
+    const gridHeight = layoutGrid.length;
+
+    const resolveTerrainCode = (x: number, z: number): number | null => {
+      const gx = Math.floor(x * res);
+      const gy = Math.floor(z * res);
+      if (gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight) return null;
+      return layoutGrid[gy][gx] ?? null;
+    };
+
+    const scaledTemplate: ShapeTemplate = {
+      ...template,
+      baseRadius: template.baseRadius * scale,
+    };
+    const getElevation = (x: number, z: number) => this.getInterpolatedElevation(x, z);
+    const stamp = generateStampTopology(
+      scaledTemplate,
+      centerX,
+      centerZ,
+      getElevation
+    );
+
+    const { newFaceIds, newVertexIds } = stampIntoTopology(
+      this.topology,
+      stamp,
+      scaledTemplate,
+      centerX,
+      centerZ,
+      resolveTerrainCode
+    );
+
+    for (const vid of newVertexIds) {
+      this.registerNewTopologyVertex(vid);
+    }
+
+    this.rebuildGridVertexMaps();
+    this.rebuildFaceSpatialIndex();
+    this.updateFaceTerrainVisuals();
+    this.meshDirty = true;
+    return { faceIds: newFaceIds, vertexIds: newVertexIds };
+  }
+
   public getSelectedFaceVertexIds(): Set<number> {
     if (!this.topology) return new Set();
 
@@ -1259,7 +1370,7 @@ export class VectorTerrainSystem {
   private createTerrainMeshFromTopology(): void {
     if (!this.topology) return;
 
-    const { positions, indices, uvs, normals, terrainTypes, faceIds } = buildMeshArrays(
+    const { positions, indices, normals, terrainTypes, faceIds } = buildMeshArrays(
       this.topology,
       HEIGHT_UNIT
     );
@@ -1268,7 +1379,6 @@ export class VectorTerrainSystem {
     vertexData.positions = positions;
     vertexData.indices = indices;
     vertexData.normals = normals;
-    vertexData.uvs = uvs;
 
     if (this.terrainMesh) {
       this.terrainMesh.dispose();

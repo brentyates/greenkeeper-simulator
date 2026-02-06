@@ -17,6 +17,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 
 import { CourseData, getCourseById } from '../data/courseData';
+import { BUILT_IN_TEMPLATES } from '../data/shape-templates';
 import { EditorTool } from '../core/terrain-editor-logic';
 import {
   CustomCourseData,
@@ -215,6 +216,17 @@ export class CourseDesigner {
       onSplitEdge: () => this.terrainEditorSystem.subdivideSelectedEdge(),
       onFlipEdge: () => this.terrainEditorSystem.flipSelectedEdge(),
       onCollapseEdge: () => this.terrainEditorSystem.collapseSelectedEdge(),
+      onInteractionModeChange: (mode) => this.terrainEditorSystem.setInteractionMode(mode),
+      onTemplateSelect: (templateName) => {
+        const template = BUILT_IN_TEMPLATES.find(t => t.name === templateName);
+        if (template) {
+          this.terrainEditorSystem.setActiveTemplate(template);
+        }
+      },
+      onStampSizeChange: (size) => {
+        this.terrainEditorSystem.setStampScale(size);
+        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem.getStampScale());
+      },
     });
 
     this.terrainEditorSystem.setCallbacks({
@@ -225,6 +237,7 @@ export class CourseDesigner {
         this.terrainEditorUI?.setActiveTool(this.terrainEditorSystem.getTool());
         this.terrainEditorUI?.setActiveMode(this.terrainEditorSystem.getMode());
         this.terrainEditorUI?.setActiveAxis(this.terrainEditorSystem.getAxisConstraint());
+        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem.getStampScale());
         this.vectorTerrainSystem.setWireframeEnabled(true);
         this.vectorTerrainSystem.setAxisIndicatorEnabled(true);
       },
@@ -241,6 +254,7 @@ export class CourseDesigner {
         this.updateVertexPositionDisplay();
       },
       onTopologyModeChange: (mode) => this.terrainEditorUI?.setActiveTopologyMode(mode),
+      onInteractionModeChange: (mode) => this.terrainEditorUI?.setInteractionMode(mode),
     });
 
     this.assetBrowserUI = new AssetBrowserUI(contentContainer, {

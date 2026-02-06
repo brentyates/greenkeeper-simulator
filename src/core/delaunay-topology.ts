@@ -8,7 +8,7 @@ export interface TerrainRegion {
   elevationFn?: (x: number, z: number) => number;
 }
 
-export interface OrganicTopologyOptions {
+export interface DelaunayTopologyOptions {
   worldWidth: number;
   worldHeight: number;
   regions: TerrainRegion[];
@@ -18,7 +18,7 @@ export interface OrganicTopologyOptions {
   fillPointSpacing?: number;
 }
 
-export function buildOrganicTopology(options: OrganicTopologyOptions): SerializedTopology {
+export function buildDelaunayTopology(options: DelaunayTopologyOptions): SerializedTopology {
   const {
     worldWidth,
     worldHeight,
@@ -112,7 +112,6 @@ export function buildOrganicTopology(options: OrganicTopologyOptions): Serialize
     vertices.push({
       id: i,
       position: { x: p.x, y, z: p.z },
-      gridUV: { u: p.x / worldWidth, v: p.z / worldHeight },
     });
   }
 

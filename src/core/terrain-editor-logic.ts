@@ -2,7 +2,7 @@ import {
   TerrainType,
 } from "./terrain";
 
-export type EditorMode = 'sculpt' | 'paint';
+export type EditorMode = 'sculpt' | 'paint' | 'stamp';
 export type TopologyMode = 'vertex' | 'edge' | 'face' | 'none';
 export type InteractionMode = 'brush' | 'select';
 export type SculptTool = 'raise' | 'lower' | 'smooth' | 'flatten' | 'level';

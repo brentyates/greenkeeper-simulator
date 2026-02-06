@@ -39,7 +39,7 @@ describe('mesh-topology', () => {
 
     it('converts a 3x3 grid to topology', () => {
       const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2, 1);
+      const topology = gridToTopology(grid, 2, 2);
 
       expect(topology.vertices.size).toBe(9);
       expect(topology.triangles.size).toBe(8);
@@ -47,28 +47,17 @@ describe('mesh-topology', () => {
 
     it('creates correct vertex positions', () => {
       const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2, 1);
+      const topology = gridToTopology(grid, 2, 2);
 
       const positions = Array.from(topology.vertices.values()).map(v => v.position);
       expect(positions.some(p => p.x === 0 && p.z === 0)).toBe(true);
       expect(positions.some(p => p.x === 2 && p.z === 2)).toBe(true);
     });
 
-    it('creates correct UV coordinates', () => {
-      const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2, 1);
-
-      for (const vertex of topology.vertices.values()) {
-        expect(vertex.gridUV.u).toBeGreaterThanOrEqual(0);
-        expect(vertex.gridUV.u).toBeLessThanOrEqual(1);
-        expect(vertex.gridUV.v).toBeGreaterThanOrEqual(0);
-        expect(vertex.gridUV.v).toBeLessThanOrEqual(1);
-      }
-    });
 
     it('sets up vertex neighbors correctly', () => {
       const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2, 1);
+      const topology = gridToTopology(grid, 2, 2);
 
       for (const vertex of topology.vertices.values()) {
         expect(vertex.neighbors.size).toBeGreaterThan(0);
@@ -83,7 +72,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      return gridToTopology(grid, 1, 1, 1);
+      return gridToTopology(grid, 1, 1);
     }
 
     it('finds nearest edge to a point', () => {
@@ -117,7 +106,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
       ];
-      return gridToTopology(grid, 2, 2, 1);
+      return gridToTopology(grid, 2, 2);
     }
 
     it('adds a new vertex at the midpoint', () => {
@@ -143,17 +132,6 @@ describe('mesh-topology', () => {
       expect(topology.edges.size).toBeGreaterThan(initialEdgeCount);
     });
 
-    it('interpolates UV coordinates for new vertex', () => {
-      const topology = createSimpleTopology();
-      const edgeId = Array.from(topology.edges.keys())[0];
-      const result = subdivideEdge(topology, edgeId, 0.5);
-
-      expect(result).not.toBeNull();
-      const newVertex = topology.vertices.get(result!.newVertexId);
-      expect(newVertex).toBeDefined();
-      expect(newVertex!.gridUV.u).toBeGreaterThanOrEqual(0);
-      expect(newVertex!.gridUV.v).toBeGreaterThanOrEqual(0);
-    });
 
     it('maintains mesh connectivity', () => {
       const topology = createSimpleTopology();
@@ -178,7 +156,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
         [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
       ];
-      return gridToTopology(grid, 2, 2, 1);
+      return gridToTopology(grid, 2, 2);
     }
 
     it('returns true for corner vertices', () => {
@@ -207,7 +185,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
         [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
       ];
-      return gridToTopology(grid, 2, 2, 1);
+      return gridToTopology(grid, 2, 2);
     }
 
     it('returns false for boundary vertices', () => {
@@ -232,7 +210,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
       for (const vertex of topology.vertices.values()) {
         expect(canDeleteVertex(topology, vertex.id)).toBe(false);
       }
@@ -244,7 +222,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
         [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
       ];
-      const topology = gridToTopology(grid, 2, 2, 1);
+      const topology = gridToTopology(grid, 2, 2);
 
       const boundaryEdge = Array.from(topology.edges.values()).find(
         e => e.triangles.length === 1
@@ -270,7 +248,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
         [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
       ];
-      return gridToTopology(grid, 2, 2, 1);
+      return gridToTopology(grid, 2, 2);
     }
 
     it('removes the vertex from topology', () => {
@@ -316,7 +294,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
 
       const result = findNearestTopologyVertex(topology, 0.1, 0.1);
 
@@ -333,12 +311,11 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
 
       const result = buildMeshArrays(topology, 1);
 
       expect(result.positions.length).toBe(6 * 3);
-      expect(result.uvs.length).toBe(6 * 2);
       expect(result.normals.length).toBe(6 * 3);
       expect(result.faceIds.length).toBe(6);
       expect(result.indices.length).toBe(2 * 3);
@@ -349,7 +326,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 5, z: 0 }, { x: 1, y: 5, z: 0 }],
         [{ x: 0, y: 5, z: 1 }, { x: 1, y: 5, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
 
       const heightUnit = 2;
       const result = buildMeshArrays(topology, heightUnit);
@@ -368,7 +345,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
       const originalVertexCount = topology.vertices.size;
       const originalTriangleCount = topology.triangles.size;
 
@@ -390,7 +367,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
 
       const state = captureTopologyState(topology);
 
@@ -412,7 +389,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
       const faceId = Array.from(topology.triangles.keys())[0];
 
       const angle = computeFaceSlopeAngle(topology, faceId, 1);
@@ -424,7 +401,7 @@ describe('mesh-topology', () => {
         [{ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }],
         [{ x: 0, y: 1, z: 1 }, { x: 1, y: 0, z: 1 }],
       ];
-      const topology = gridToTopology(grid, 1, 1, 1);
+      const topology = gridToTopology(grid, 1, 1);
 
       const faceId = Array.from(topology.triangles.keys())[0];
       const angle = computeFaceSlopeAngle(topology, faceId, 1);
@@ -436,17 +413,17 @@ describe('mesh-topology', () => {
       const v0Id = topology.nextVertexId++;
       topology.vertices.set(v0Id, {
         id: v0Id, position: { x: 0, y: 0, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
       const v1Id = topology.nextVertexId++;
       topology.vertices.set(v1Id, {
         id: v1Id, position: { x: 0, y: 1, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
       const v2Id = topology.nextVertexId++;
       topology.vertices.set(v2Id, {
         id: v2Id, position: { x: 0, y: 0.5, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
 
       const triId = topology.nextTriangleId++;
@@ -466,17 +443,17 @@ describe('mesh-topology', () => {
       const v0Id = topology.nextVertexId++;
       topology.vertices.set(v0Id, {
         id: v0Id, position: { x: 0, y: 0, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
       const v1Id = topology.nextVertexId++;
       topology.vertices.set(v1Id, {
         id: v1Id, position: { x: 1, y: 0, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
       const v2Id = topology.nextVertexId++;
       topology.vertices.set(v2Id, {
         id: v2Id, position: { x: 2, y: 0, z: 0 },
-        gridUV: { u: 0, v: 0 }, neighbors: new Set(),
+        neighbors: new Set(),
       });
 
       const triId = topology.nextTriangleId++;

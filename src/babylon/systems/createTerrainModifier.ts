@@ -31,6 +31,8 @@ export function createVectorTerrainModifier(vts: VectorTerrainSystem): Partial<T
     getSelectedFaceIds: () => vts.getSelectedFaceIds(),
     findFaceAtPosition: (worldX, worldZ) => vts.findFaceAtPosition(worldX, worldZ),
     moveSelectedFaces: (dx, dy, dz) => vts.moveSelectedFaces(dx, dy, dz),
+    rotateSelectedVertices: (ax, ay, az) => vts.rotateSelectedVertices(ax, ay, az),
+    stampTemplate: (template, cx, cz, scale) => vts.stampTemplate(template, cx, cz, scale),
     setFaceTerrain: (faceId, type) => vts.setFaceTerrain(faceId, type),
     getSelectedFaceVertexIds: () => vts.getSelectedFaceVertexIds(),
     getSelectedEdgeVertexIds: () => vts.getSelectedEdgeVertexIds(),

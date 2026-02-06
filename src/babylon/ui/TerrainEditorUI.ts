@@ -8,6 +8,8 @@ import { Slider } from '@babylonjs/gui/2D/controls/sliders/slider';
 
 import { UIParent } from './UIParent';
 import { EditorTool, EditorMode, TopologyMode, InteractionMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
+import { degreesToRadians } from '../../core/transform-ops';
+import { BUILT_IN_TEMPLATES } from '../../data/shape-templates';
 import { TerrainType } from '../../core/terrain';
 
 export type AxisConstraint = 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz';
@@ -28,6 +30,9 @@ export interface TerrainEditorUICallbacks {
   onFlipEdge?: () => void;
   onCollapseEdge?: () => void;
   onInteractionModeChange?: (mode: InteractionMode) => void;
+  onRotateBy?: (ax: number, ay: number, az: number) => void;
+  onTemplateSelect?: (templateName: string) => void;
+  onStampSizeChange?: (size: number) => void;
 }
 
 export class TerrainEditorUI {
@@ -44,6 +49,8 @@ export class TerrainEditorUI {
   private brushStrengthText: TextBlock | null = null;
   private brushStrengthSlider: Slider | null = null;
   private selectionCountText: TextBlock | null = null;
+  private stampSizeText: TextBlock | null = null;
+  private stampSizeSlider: Slider | null = null;
 
 
   private activeTool: EditorTool = 'terrain_fairway';
@@ -63,6 +70,10 @@ export class TerrainEditorUI {
   private selectionContainer: StackPanel | null = null;
   private transformContainer: StackPanel | null = null;
   private edgeActionsContainer: StackPanel | null = null;
+  private rotationContainer: StackPanel | null = null;
+  private stampToolsPanel: StackPanel | null = null;
+  private activeTemplateName: string | null = null;
+  private templateButtons: Map<string, Rectangle> = new Map();
 
   constructor(parent: UIParent, callbacks: TerrainEditorUICallbacks) {
     this.parent = parent;
@@ -107,6 +118,8 @@ export class TerrainEditorUI {
     this.createSelectionSection(stack);
     this.createEdgeActionsSection(stack);
     this.createTransformSection(stack);
+    this.createRotationSection(stack);
+    this.createStampSection(stack);
 
     this.updateVisibility();
   }
@@ -148,8 +161,9 @@ export class TerrainEditorUI {
     grid.height = '40px';
     grid.width = '316px';
     grid.paddingTop = '8px';
-    grid.addColumnDefinition(0.5);
-    grid.addColumnDefinition(0.5);
+    grid.addColumnDefinition(1 / 3);
+    grid.addColumnDefinition(1 / 3);
+    grid.addColumnDefinition(1 / 3);
     parent.addControl(grid);
 
     const sculptBtn = this.createModeButton('sculpt', 'SCULPT');
@@ -157,6 +171,9 @@ export class TerrainEditorUI {
 
     const paintBtn = this.createModeButton('paint', 'PAINT');
     grid.addControl(paintBtn, 0, 1);
+
+    const stampBtn = this.createModeButton('stamp', 'STAMP');
+    grid.addControl(stampBtn, 0, 2);
 
     this.updateModeButtonStyles();
   }
@@ -837,6 +854,186 @@ export class TerrainEditorUI {
 
 
 
+  private createStampSection(parent: StackPanel): void {
+    this.stampToolsPanel = new StackPanel('stampToolsPanel');
+    this.stampToolsPanel.width = '316px';
+    parent.addControl(this.stampToolsPanel);
+
+    const sectionLabel = new TextBlock('stampLabel');
+    sectionLabel.text = 'TEMPLATES';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '24px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '6px';
+    this.stampToolsPanel.addControl(sectionLabel);
+
+    const grid = new Grid('templateGrid');
+    grid.width = '316px';
+    const cols = 2;
+    const rows = Math.ceil(BUILT_IN_TEMPLATES.length / cols);
+    grid.height = `${rows * 36}px`;
+    for (let c = 0; c < cols; c++) grid.addColumnDefinition(1 / cols);
+    for (let r = 0; r < rows; r++) grid.addRowDefinition(1 / rows);
+    this.stampToolsPanel.addControl(grid);
+
+    for (let i = 0; i < BUILT_IN_TEMPLATES.length; i++) {
+      const template = BUILT_IN_TEMPLATES[i];
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+
+      const btn = new Rectangle(`template_${template.name}`);
+      btn.width = '95%';
+      btn.height = '30px';
+      btn.cornerRadius = 4;
+      btn.background = '#1a3a2a';
+      btn.color = '#3a5a4a';
+      btn.thickness = 2;
+
+      const text = new TextBlock();
+      text.text = template.name;
+      text.color = '#cde6d0';
+      text.fontSize = 11;
+      btn.addControl(text);
+
+      btn.onPointerEnterObservable.add(() => {
+        if (this.activeTemplateName !== template.name) btn.background = '#2a4a3a';
+      });
+      btn.onPointerOutObservable.add(() => {
+        if (this.activeTemplateName !== template.name) btn.background = '#1a3a2a';
+      });
+      btn.onPointerUpObservable.add(() => {
+        this.activeTemplateName = template.name;
+        this.updateTemplateButtonStyles();
+        this.callbacks.onTemplateSelect?.(template.name);
+      });
+
+      this.templateButtons.set(template.name, btn);
+      grid.addControl(btn, row, col);
+    }
+
+    const sizeHeader = new Grid('stampSizeHeader');
+    sizeHeader.height = '24px';
+    sizeHeader.width = '316px';
+    sizeHeader.addColumnDefinition(0.5);
+    sizeHeader.addColumnDefinition(0.5);
+    this.stampToolsPanel.addControl(sizeHeader);
+
+    const sizeLabel = new TextBlock('stampSizeLabel');
+    sizeLabel.text = 'STAMP SIZE';
+    sizeLabel.color = '#8aba9a';
+    sizeLabel.fontSize = 11;
+    sizeLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sizeHeader.addControl(sizeLabel, 0, 0);
+
+    this.stampSizeText = new TextBlock('stampSizeText');
+    this.stampSizeText.text = '1';
+    this.stampSizeText.color = '#7FFF7F';
+    this.stampSizeText.fontSize = 12;
+    this.stampSizeText.fontWeight = 'bold';
+    this.stampSizeText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    sizeHeader.addControl(this.stampSizeText, 0, 1);
+
+    const sizeSlider = new Slider('stampSizeSlider');
+    sizeSlider.minimum = 0.25;
+    sizeSlider.maximum = 6;
+    sizeSlider.step = 0.25;
+    sizeSlider.value = 1;
+    sizeSlider.isThumbClamped = true;
+    sizeSlider.height = '20px';
+    sizeSlider.width = '310px';
+    sizeSlider.thumbWidth = 20;
+    sizeSlider.color = '#3a6a4a';
+    sizeSlider.background = '#1a3a2a';
+    sizeSlider.onValueChangedObservable.add((value) => {
+      const snapped = Math.round(value / 0.25) * 0.25;
+      if (this.stampSizeText) this.stampSizeText.text = formatStampSize(snapped);
+      this.callbacks.onStampSizeChange?.(snapped);
+    });
+
+    this.stampSizeSlider = sizeSlider;
+    this.stampToolsPanel.addControl(sizeSlider);
+
+  }
+
+  private updateTemplateButtonStyles(): void {
+    this.templateButtons.forEach((btn, name) => {
+      if (name === this.activeTemplateName) {
+        btn.background = '#3a6a4a';
+        btn.color = '#8aba9a';
+      } else {
+        btn.background = '#1a3a2a';
+        btn.color = '#3a5a4a';
+      }
+    });
+  }
+
+
+  private createRotationSection(parent: StackPanel): void {
+    this.rotationContainer = new StackPanel('rotationContainer');
+    this.rotationContainer.width = '316px';
+    parent.addControl(this.rotationContainer);
+
+    const sectionLabel = new TextBlock('rotationLabel');
+    sectionLabel.text = 'ROTATE';
+    sectionLabel.color = '#8aba9a';
+    sectionLabel.fontSize = 11;
+    sectionLabel.height = '24px';
+    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    sectionLabel.paddingTop = '6px';
+    this.rotationContainer.addControl(sectionLabel);
+
+    const axes: Array<{ label: string; color: string; getArgs: (rad: number) => [number, number, number] }> = [
+      { label: 'X', color: '#cc4444', getArgs: (r) => [r, 0, 0] },
+      { label: 'Y', color: '#44cc44', getArgs: (r) => [0, r, 0] },
+      { label: 'Z', color: '#4444cc', getArgs: (r) => [0, 0, r] },
+    ];
+
+    for (const axis of axes) {
+      const row = new StackPanel(`rotRow${axis.label}`);
+      row.isVertical = false;
+      row.height = '30px';
+      row.width = '316px';
+      this.rotationContainer.addControl(row);
+
+      const label = new TextBlock();
+      label.text = axis.label;
+      label.color = axis.color;
+      label.fontSize = 12;
+      label.fontWeight = 'bold';
+      label.width = '30px';
+      label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+      row.addControl(label);
+
+      const minusBtn = Button.CreateSimpleButton(`rot${axis.label}Minus`, '-5');
+      minusBtn.width = '50px';
+      minusBtn.height = '26px';
+      minusBtn.color = '#cde6d0';
+      minusBtn.background = '#2a4a3a';
+      minusBtn.fontSize = 11;
+      minusBtn.cornerRadius = 4;
+      minusBtn.onPointerUpObservable.add(() => {
+        const [ax, ay, az] = axis.getArgs(degreesToRadians(-5));
+        this.callbacks.onRotateBy?.(ax, ay, az);
+      });
+      row.addControl(minusBtn);
+
+      const plusBtn = Button.CreateSimpleButton(`rot${axis.label}Plus`, '+5');
+      plusBtn.width = '50px';
+      plusBtn.height = '26px';
+      plusBtn.color = '#cde6d0';
+      plusBtn.background = '#2a4a3a';
+      plusBtn.fontSize = 11;
+      plusBtn.cornerRadius = 4;
+      plusBtn.paddingLeft = '4px';
+      plusBtn.onPointerUpObservable.add(() => {
+        const [ax, ay, az] = axis.getArgs(degreesToRadians(5));
+        this.callbacks.onRotateBy?.(ax, ay, az);
+      });
+      row.addControl(plusBtn);
+    }
+  }
+
   private updateVisibility(): void {
     const mode = this.activeMode;
     const interaction = this.activeInteractionMode;
@@ -846,11 +1043,13 @@ export class TerrainEditorUI {
     if (this.sculptToolsPanel) this.sculptToolsPanel.isVisible = (mode === 'sculpt' && interaction === 'brush');
     if (this.paintToolsPanel) this.paintToolsPanel.isVisible = (mode === 'paint');
     if (this.topologyToggleContainer) this.topologyToggleContainer.isVisible = (mode === 'sculpt');
-    if (this.brushSizeContainer) this.brushSizeContainer.isVisible = (interaction === 'brush' || mode === 'paint');
+    if (this.brushSizeContainer) this.brushSizeContainer.isVisible = ((mode === 'sculpt' && interaction === 'brush') || mode === 'paint');
     if (this.brushStrengthContainer) this.brushStrengthContainer.isVisible = (mode === 'sculpt' && interaction === 'brush');
     if (this.selectionContainer) this.selectionContainer.isVisible = (mode === 'sculpt' && interaction === 'select');
     if (this.transformContainer) this.transformContainer.isVisible = (mode === 'sculpt' && interaction === 'select');
+    if (this.rotationContainer) this.rotationContainer.isVisible = (mode === 'sculpt' && interaction === 'select');
     if (this.edgeActionsContainer) this.edgeActionsContainer.isVisible = (mode === 'sculpt' && interaction === 'select' && topology === 'edge');
+    if (this.stampToolsPanel) this.stampToolsPanel.isVisible = (mode === 'stamp');
   }
 
   public show(): void {
@@ -886,6 +1085,11 @@ export class TerrainEditorUI {
     this.activeMode = mode;
     this.updateModeButtonStyles();
     this.updateVisibility();
+    if (mode === 'stamp' && !this.activeTemplateName && BUILT_IN_TEMPLATES.length > 0) {
+      this.activeTemplateName = BUILT_IN_TEMPLATES[0].name;
+      this.updateTemplateButtonStyles();
+      this.callbacks.onTemplateSelect?.(this.activeTemplateName);
+    }
   }
 
   public setInteractionMode(mode: InteractionMode): void {
@@ -916,6 +1120,19 @@ export class TerrainEditorUI {
         if (Math.abs(this.brushStrengthSlider.value - strength) > 0.01) {
             this.brushStrengthSlider.value = strength;
         }
+    }
+  }
+
+  public setStampSize(size: number): void {
+    if (this.stampSizeText) {
+      const text = formatStampSize(size);
+      this.stampSizeText.text = text;
+      this.stampSizeText.metadata = text;
+    }
+    if (this.stampSizeSlider) {
+      if (Math.abs(this.stampSizeSlider.value - size) > 0.1) {
+        this.stampSizeSlider.value = size;
+      }
     }
   }
 
@@ -966,4 +1183,11 @@ export class TerrainEditorUI {
     this.axisButtons.clear();
     this.interactionButtons.clear();
   }
+}
+
+function formatStampSize(size: number): string {
+  const rounded = Math.round(size * 100) / 100;
+  return Number.isInteger(rounded)
+    ? rounded.toString()
+    : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }

@@ -1,7 +1,7 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
 import { HoleData } from '../core/golf-logic';
 import { Vec3, SerializedTopology } from '../core/mesh-topology';
-import { buildOrganicTopology, TerrainRegion } from '../core/organic-topology';
+import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 
 export type { TerrainType, ObstacleType };
@@ -286,7 +286,7 @@ function generate3HoleTopology(): SerializedTopology {
   regions.push({ terrainCode: B, boundary: makeEllipse(16, 90, 3.2, 6.8), elevationFn: elev });
   regions.push({ terrainCode: B, boundary: makeEllipse(32, 94, 2.6, 2.6), elevationFn: elev });
 
-  return buildOrganicTopology({
+  return buildDelaunayTopology({
     worldWidth: 100,
     worldHeight: 110,
     regions,

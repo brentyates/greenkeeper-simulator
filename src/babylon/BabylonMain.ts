@@ -7,6 +7,7 @@ import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { createVectorTerrainModifier } from "./systems/createTerrainModifier";
+import { BUILT_IN_TEMPLATES } from "../data/shape-templates";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import {
@@ -565,6 +566,19 @@ export class BabylonMain {
       onInteractionModeChange: (mode: InteractionMode) => {
         this.terrainEditorSystem?.setInteractionMode(mode);
       },
+      onRotateBy: (ax, ay, az) => {
+        this.terrainEditorSystem?.rotateSelectedVertices(ax, ay, az);
+      },
+      onTemplateSelect: (templateName) => {
+        const template = BUILT_IN_TEMPLATES.find(t => t.name === templateName);
+        if (template) {
+          this.terrainEditorSystem?.setActiveTemplate(template);
+        }
+      },
+      onStampSizeChange: (size) => {
+        this.terrainEditorSystem?.setStampScale(size);
+        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem?.getStampScale() ?? size);
+      },
     });
 
     this.terrainEditorSystem.setCallbacks({
@@ -579,6 +593,7 @@ export class BabylonMain {
         this.terrainEditorUI?.setActiveAxis(
           this.terrainEditorSystem!.getAxisConstraint()
         );
+        this.terrainEditorUI?.setStampSize(this.terrainEditorSystem!.getStampScale());
         if (this.vectorTerrainSystem) {
           if (this.terrainEditorSystem!.getMode() === 'sculpt') {
             this.vectorTerrainSystem.setWireframeEnabled(true);
@@ -1701,6 +1716,10 @@ export class BabylonMain {
     if (this.isPaused) return;
 
     if (this.terrainEditorSystem?.isEnabled()) {
+      const result = this.screenToGridAndWorld(screenX, screenY);
+      if (result) {
+        this.terrainEditorSystem.handleClick(result.gridX, result.gridY);
+      }
       return;
     }
 
@@ -2289,6 +2308,11 @@ export class BabylonMain {
 
     const result = this.screenToGridAndWorld(screenX, screenY);
     if (!result) return;
+
+    if (this.terrainEditorSystem.getMode() === 'stamp') {
+      this.terrainEditorSystem.handleDragStart(result.gridX, result.gridY);
+      return;
+    }
 
     if (this.terrainEditorSystem.getInteractionMode() === 'select') {
       if (this.terrainEditorSystem.isHoveredElementSelected()) {

@@ -5,6 +5,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { getVerticesInBrush, vertexKey } from "../../core/terrain-editor-logic";
+import { ShapeTemplate, StampShape } from "../../core/shape-templates";
 
 export type HighlightMode = 'vertex' | 'face' | 'edge' | 'none';
 
@@ -37,6 +38,9 @@ export class TileHighlightSystem {
   private vertexMeshes: Mesh[] = [];
   private selectionMeshes: Mesh[] = [];
   private boxSelectMesh: Mesh | null = null;
+  private stampPreviewMesh: Mesh | null = null;
+  private stampPreviewTemplate: ShapeTemplate | null = null;
+  private stampPreviewScale: number = 1;
   private highlightMode: HighlightMode = 'none';
   private showSelectedVertices: boolean = true;
 
@@ -151,17 +155,104 @@ export class TileHighlightSystem {
       this.brushCircleMesh.dispose();
       this.brushCircleMesh = null;
     }
+    if (this.stampPreviewMesh) {
+      this.stampPreviewMesh.dispose();
+      this.stampPreviewMesh = null;
+    }
+  }
+
+  public setStampPreview(template: ShapeTemplate, scale: number): void {
+    this.stampPreviewTemplate = template;
+    this.stampPreviewScale = scale;
+    this.updateHighlight();
+  }
+
+  public clearStampPreview(): void {
+    this.stampPreviewTemplate = null;
+    this.stampPreviewScale = 1;
+    if (this.stampPreviewMesh) {
+      this.stampPreviewMesh.dispose();
+      this.stampPreviewMesh = null;
+    }
+  }
+
+  private createStampPreviewMesh(
+    worldX: number, worldZ: number, elevation: number
+  ): Mesh {
+    const template = this.stampPreviewTemplate!;
+    const rings = template.rings;
+    const baseRadius = template.baseRadius * this.stampPreviewScale;
+    const aspectX = template.aspectX ?? 1;
+    const aspectZ = template.aspectZ ?? 1;
+    const kidneyStrength = template.kidneyStrength ?? 0.35;
+    const center = gridTo3D(worldX, worldZ, elevation);
+    const yOffset = 0.06;
+    const thickness = 0.04;
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const colors: number[] = [];
+
+    for (const ring of rings) {
+      const radius = baseRadius * ring.radiusFraction;
+      const innerRadius = radius - thickness;
+      const outerRadius = radius;
+      const segments = ring.pointCount * 3;
+      const baseIdx = positions.length / 3;
+
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const outer = getShapePoint(template.shape, t, outerRadius, aspectX, aspectZ, kidneyStrength);
+        const inner = getShapePoint(template.shape, t, innerRadius, aspectX, aspectZ, kidneyStrength);
+
+        positions.push(
+          center.x + inner.x, center.y + yOffset, center.z + inner.z,
+          center.x + outer.x, center.y + yOffset, center.z + outer.z
+        );
+        colors.push(1, 0.8, 0.3, 0.3, 1, 0.8, 0.3, 0.3);
+      }
+
+      for (let i = 0; i < segments; i++) {
+        const a = baseIdx + i * 2;
+        const b = baseIdx + i * 2 + 1;
+        const c = baseIdx + (i + 1) * 2;
+        const d = baseIdx + (i + 1) * 2 + 1;
+        indices.push(a, b, d, a, d, c);
+      }
+    }
+
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.indices = indices;
+    vertexData.colors = colors;
+
+    const mesh = new Mesh("stamp_preview", this.scene);
+    vertexData.applyToMesh(mesh);
+    mesh.material = this.brushCircleMaterial;
+    mesh.useVertexColors = true;
+    mesh.renderingGroupId = 1;
+
+    return mesh;
   }
 
   private updateHighlight(): void {
     this.disposeHighlightMeshes();
 
-    if (this.brushSize > 0 && (this.currentWorldX !== 0 || this.currentWorldZ !== 0)) {
+    if (this.brushSize > 0 && !this.stampPreviewTemplate && (this.currentWorldX !== 0 || this.currentWorldZ !== 0)) {
       const elevation = this.vertexProvider
         ? this.vertexProvider.getVertexElevation(Math.max(0, this.currentVx), Math.max(0, this.currentVy))
         : 0;
       this.brushCircleMesh = this.createBrushCircleMesh(
         this.currentWorldX, this.currentWorldZ, this.brushSize, elevation
+      );
+    }
+
+    if (this.stampPreviewTemplate && (this.currentWorldX !== 0 || this.currentWorldZ !== 0)) {
+      const elevation = this.vertexProvider
+        ? this.vertexProvider.getVertexElevation(Math.max(0, this.currentVx), Math.max(0, this.currentVy))
+        : 0;
+      this.stampPreviewMesh = this.createStampPreviewMesh(
+        this.currentWorldX, this.currentWorldZ, elevation
       );
     }
 
@@ -381,6 +472,53 @@ export class TileHighlightSystem {
     if (this.brushCircleMaterial) {
       this.brushCircleMaterial.dispose();
       this.brushCircleMaterial = null;
+    }
+  }
+}
+
+function getShapePoint(
+  shape: StampShape,
+  t: number,
+  radius: number,
+  aspectX: number,
+  aspectZ: number,
+  kidneyStrength: number
+): { x: number; z: number } {
+  switch (shape) {
+    case 'rectangle': {
+      const halfW = radius * aspectX;
+      const halfH = radius * aspectZ;
+      const w = halfW * 2;
+      const h = halfH * 2;
+      const perimeter = 2 * (w + h);
+      const dist = t * perimeter;
+      if (dist < w) {
+        return { x: -halfW + dist, z: -halfH };
+      }
+      if (dist < w + h) {
+        return { x: halfW, z: -halfH + (dist - w) };
+      }
+      if (dist < w + h + w) {
+        return { x: halfW - (dist - (w + h)), z: halfH };
+      }
+      return { x: -halfW, z: halfH - (dist - (w + h + w)) };
+    }
+    case 'kidney': {
+      const angle = t * Math.PI * 2;
+      const r = radius * (1 + kidneyStrength * Math.cos(angle));
+      const x = Math.cos(angle) * r * aspectX;
+      const z = Math.sin(angle) * r * aspectZ;
+      const shift = -kidneyStrength * radius * 0.8 * aspectX;
+      return { x: x + shift, z };
+    }
+    case 'oval':
+    case 'circle':
+    default: {
+      const angle = t * Math.PI * 2;
+      return {
+        x: Math.cos(angle) * radius * aspectX,
+        z: Math.sin(angle) * radius * aspectZ,
+      };
     }
   }
 }

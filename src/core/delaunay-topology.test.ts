@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildOrganicTopology, pointInPolygon, TerrainRegion } from './organic-topology';
+import { buildDelaunayTopology, pointInPolygon, TerrainRegion } from './delaunay-topology';
 import { deserializeTopology, serializeTopology, barycentricInterpolateY, Vec3 } from './mesh-topology';
 import { TERRAIN_CODES } from './terrain';
 
-describe('organic-topology', () => {
+describe('delaunay-topology', () => {
   describe('pointInPolygon', () => {
     const square = [
       { x: 0, z: 0 },
@@ -33,11 +33,11 @@ describe('organic-topology', () => {
     });
   });
 
-  describe('buildOrganicTopology', () => {
+  describe('buildDelaunayTopology', () => {
     const circularFairway = makeCircleRegion(10, 10, 5, TERRAIN_CODES.FAIRWAY);
 
     it('produces valid topology with vertices and triangles', () => {
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 20,
         worldHeight: 20,
         regions: [circularFairway],
@@ -53,7 +53,7 @@ describe('organic-topology', () => {
     });
 
     it('assigns correct terrain codes to regions', () => {
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 20,
         worldHeight: 20,
         regions: [circularFairway],
@@ -73,7 +73,7 @@ describe('organic-topology', () => {
       const elevated = makeCircleRegion(10, 10, 5, TERRAIN_CODES.GREEN);
       elevated.elevation = 3.0;
 
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 20,
         worldHeight: 20,
         regions: [elevated],
@@ -98,7 +98,7 @@ describe('organic-topology', () => {
       const region = makeCircleRegion(10, 10, 5, TERRAIN_CODES.GREEN);
       region.elevationFn = (x, z) => x * 0.1 + z * 0.2;
 
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 20,
         worldHeight: 20,
         regions: [region],
@@ -122,7 +122,7 @@ describe('organic-topology', () => {
       const outer = makeCircleRegion(10, 10, 8, TERRAIN_CODES.FAIRWAY);
       const inner = makeCircleRegion(10, 10, 3, TERRAIN_CODES.GREEN);
 
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 20,
         worldHeight: 20,
         regions: [outer, inner],
@@ -150,7 +150,7 @@ describe('organic-topology', () => {
 
   describe('serialization roundtrip', () => {
     it('survives serialize → deserialize', () => {
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 15,
         worldHeight: 15,
         regions: [makeCircleRegion(7, 7, 4, TERRAIN_CODES.FAIRWAY)],
@@ -177,7 +177,7 @@ describe('organic-topology', () => {
     });
 
     it('preserves terrain codes through roundtrip', () => {
-      const topo = buildOrganicTopology({
+      const topo = buildDelaunayTopology({
         worldWidth: 10,
         worldHeight: 10,
         regions: [makeCircleRegion(5, 5, 3, TERRAIN_CODES.GREEN)],

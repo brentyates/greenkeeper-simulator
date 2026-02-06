@@ -837,7 +837,7 @@ describe('isFaceWalkableBySlope', () => {
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
     ];
-    const topology = gridToTopology(grid, 1, 1, 1);
+    const topology = gridToTopology(grid, 1, 1);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.WATER;
 
@@ -849,7 +849,7 @@ describe('isFaceWalkableBySlope', () => {
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
     ];
-    const topology = gridToTopology(grid, 1, 1, 1);
+    const topology = gridToTopology(grid, 1, 1);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
 
@@ -861,7 +861,7 @@ describe('isFaceWalkableBySlope', () => {
       [{ x: 0, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 2, z: 1 }, { x: 1, y: 0, z: 1 }],
     ];
-    const topology = gridToTopology(grid, 1, 1, 1);
+    const topology = gridToTopology(grid, 1, 1);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
 
@@ -873,7 +873,7 @@ describe('isFaceWalkableBySlope', () => {
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
     ];
-    const topology = gridToTopology(grid, 1, 1, 1);
+    const topology = gridToTopology(grid, 1, 1);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.BUNKER;
 

@@ -6,15 +6,9 @@ export interface Vec3 {
   z: number;
 }
 
-export interface GridUV {
-  u: number;
-  v: number;
-}
-
 export interface TerrainVertex {
   id: number;
   position: Vec3;
-  gridUV: GridUV;
   neighbors: Set<number>;
 }
 
@@ -65,8 +59,7 @@ export function edgeKey(v1: number, v2: number): string {
 export function gridToTopology(
   vertexPositions: Vec3[][],
   worldWidth: number,
-  worldHeight: number,
-  meshResolution: number
+  worldHeight: number
 ): TerrainMeshTopology {
   const topology = createEmptyTopology(worldWidth, worldHeight);
   const vertexHeight = vertexPositions.length;
@@ -79,16 +72,9 @@ export function gridToTopology(
       const pos = vertexPositions[vy][vx];
       const vertexId = topology.nextVertexId++;
 
-      const originalX = vx / meshResolution;
-      const originalZ = vy / meshResolution;
-
       const vertex: TerrainVertex = {
         id: vertexId,
         position: { ...pos },
-        gridUV: {
-          u: originalX / worldWidth,
-          v: originalZ / worldHeight,
-        },
         neighbors: new Set(),
       };
 
@@ -285,16 +271,10 @@ export function subdivideEdge(
     z: v1.position.z + t * (v2.position.z - v1.position.z),
   };
 
-  const newUV: GridUV = {
-    u: v1.gridUV.u + t * (v2.gridUV.u - v1.gridUV.u),
-    v: v1.gridUV.v + t * (v2.gridUV.v - v1.gridUV.v),
-  };
-
   const newVertexId = topology.nextVertexId++;
   const newVertex: TerrainVertex = {
     id: newVertexId,
     position: newPos,
-    gridUV: newUV,
     neighbors: new Set([edge.v1, edge.v2]),
   };
   topology.vertices.set(newVertexId, newVertex);
@@ -565,11 +545,6 @@ export function collapseEdge(
     y: (v1.position.y + v2.position.y) / 2,
     z: (v1.position.z + v2.position.z) / 2,
   };
-  survivingVertex.gridUV = {
-    u: (v1.gridUV.u + v2.gridUV.u) / 2,
-    v: (v1.gridUV.v + v2.gridUV.v) / 2,
-  };
-
   const trianglesToRemove: number[] = [];
   for (const triId of edge.triangles) {
     trianglesToRemove.push(triId);
@@ -690,7 +665,7 @@ function findOrderedHoleVertices(
   return ordered;
 }
 
-function retriangulateHole(
+export function retriangulateHole(
   topology: TerrainMeshTopology,
   holeVertices: number[]
 ): { newTriangleIds: number[]; newEdgeIds: number[] } {
@@ -733,7 +708,7 @@ function retriangulateHole(
   return { newTriangleIds, newEdgeIds };
 }
 
-function createTriangle(
+export function createTriangle(
   topology: TerrainMeshTopology,
   v0: number,
   v1: number,
@@ -806,7 +781,6 @@ export function buildMeshArrays(
 ): {
   positions: number[];
   indices: number[];
-  uvs: number[];
   normals: number[];
   terrainTypes: number[];
   faceIds: number[];
@@ -814,7 +788,6 @@ export function buildMeshArrays(
 } {
   const positions: number[] = [];
   const indices: number[] = [];
-  const uvs: number[] = [];
   const normals: number[] = [];
   const terrainTypes: number[] = [];
   const faceIds: number[] = [];
@@ -838,7 +811,6 @@ export function buildMeshArrays(
       vertexIdMap.set(vId, existing);
 
       positions.push(vertex.position.x, vertex.position.y * heightUnit, vertex.position.z);
-      uvs.push(vertex.gridUV.u, vertex.gridUV.v);
       normals.push(0, 1, 0);
       terrainTypes.push(terrainCode);
       faceIds.push(triId);
@@ -870,7 +842,7 @@ export function buildMeshArrays(
     }
   }
 
-  return { positions, indices, uvs, normals, terrainTypes, faceIds, vertexIdMap };
+  return { positions, indices, normals, terrainTypes, faceIds, vertexIdMap };
 }
 
 function computeNormals(positions: number[], indices: number[], normals: number[]): void {
@@ -983,7 +955,6 @@ export function captureTopologyState(topology: TerrainMeshTopology): TopologyMod
       vertex: {
         id: vertex.id,
         position: { ...vertex.position },
-        gridUV: { ...vertex.gridUV },
         neighbors: new Set(vertex.neighbors),
       },
     });
@@ -1035,7 +1006,6 @@ export function restoreTopologyState(
     topology.vertices.set(id, {
       id: vertex.id,
       position: { ...vertex.position },
-      gridUV: { ...vertex.gridUV },
       neighbors: new Set(vertex.neighbors),
     });
   }
@@ -1241,7 +1211,6 @@ function segmentsIntersect(
 export interface SerializedVertex {
   id: number;
   position: Vec3;
-  gridUV: GridUV;
 }
 
 export interface SerializedTriangle {
@@ -1263,7 +1232,6 @@ export function serializeTopology(topology: TerrainMeshTopology): SerializedTopo
     vertices.push({
       id: v.id,
       position: { ...v.position },
-      gridUV: { ...v.gridUV },
     });
   }
 
@@ -1292,7 +1260,6 @@ export function deserializeTopology(data: SerializedTopology): TerrainMeshTopolo
     topology.vertices.set(sv.id, {
       id: sv.id,
       position: { ...sv.position },
-      gridUV: { ...sv.gridUV },
       neighbors: new Set(),
     });
     if (sv.id > maxVertexId) maxVertexId = sv.id;

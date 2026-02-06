@@ -11,7 +11,6 @@ precision highp float;
 // Attributes
 attribute vec3 position;
 attribute vec3 normal;
-attribute vec2 uv;
 attribute float terrainType;
 attribute float faceId;
 
@@ -22,7 +21,6 @@ uniform mat4 worldViewProjection;
 // Varyings
 varying vec3 vPosition;
 varying vec3 vNormal;
-varying vec2 vUV;
 varying vec3 vWorldPosition;
 varying float vTerrainType;
 varying float vFaceId;
@@ -32,7 +30,6 @@ void main() {
   vWorldPosition = worldPos.xyz;
   vPosition = position;
   vNormal = normalize((world * vec4(normal, 0.0)).xyz);
-  vUV = uv;
   vTerrainType = terrainType;
   vFaceId = faceId;
 
@@ -46,7 +43,6 @@ precision highp float;
 // Varyings
 varying vec3 vPosition;
 varying vec3 vNormal;
-varying vec2 vUV;
 varying vec3 vWorldPosition;
 varying float vTerrainType;
 varying float vFaceId;
