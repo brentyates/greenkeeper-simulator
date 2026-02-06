@@ -1,8 +1,8 @@
 import { BabylonEngine } from './engine/BabylonEngine';
 import { InputManager } from './engine/InputManager';
-import { VectorTerrainSystem } from './systems/VectorTerrainSystem';
+import { TerrainMeshSystem } from './systems/TerrainMeshSystem';
 import { TerrainEditorSystem } from './systems/TerrainEditorSystem';
-import { createVectorTerrainModifier } from './systems/createTerrainModifier';
+import { createTerrainMeshModifier } from './systems/createTerrainModifier';
 import { AssetPlacementSystem } from './systems/AssetPlacementSystem';
 import { TerrainEditorUI } from './ui/TerrainEditorUI';
 import { AssetBrowserUI } from './ui/AssetBrowserUI';
@@ -39,7 +39,7 @@ type DesignerMode = 'terrain' | 'asset';
 export class CourseDesigner {
   private babylonEngine: BabylonEngine;
   private inputManager: InputManager;
-  private vectorTerrainSystem: VectorTerrainSystem;
+  private terrainMeshSystem: TerrainMeshSystem;
   private terrainEditorSystem: TerrainEditorSystem;
   private terrainEditorUI: TerrainEditorUI | null = null;
   private assetPlacementSystem: AssetPlacementSystem;
@@ -87,12 +87,12 @@ export class CourseDesigner {
     const scene = this.babylonEngine.getScene();
     this.inputManager = new InputManager(scene);
 
-    this.vectorTerrainSystem = new VectorTerrainSystem(scene, this.currentCourseData, {
+    this.terrainMeshSystem = new TerrainMeshSystem(scene, this.currentCourseData, {
       meshResolution: 2,
       enableGridLines: false,
     });
 
-    this.vectorTerrainSystem.build(this.currentCourseData);
+    this.terrainMeshSystem.build(this.currentCourseData);
 
     this.terrainEditorSystem = this.setupTerrainEditor();
     this.assetPlacementSystem = new AssetPlacementSystem(scene, {
@@ -105,8 +105,8 @@ export class CourseDesigner {
     this.setupInput();
 
     this.terrainEditorSystem.enable();
-    this.vectorTerrainSystem.setWireframeEnabled(true);
-    this.vectorTerrainSystem.setAxisIndicatorEnabled(true);
+    this.terrainMeshSystem.setWireframeEnabled(true);
+    this.terrainMeshSystem.setAxisIndicatorEnabled(true);
 
     if (options.editCourse?.placedAssets?.length) {
       this.assetPlacementSystem.loadPlacedAssets(options.editCourse.placedAssets);
@@ -158,12 +158,12 @@ export class CourseDesigner {
 
     const editor = new TerrainEditorSystem(scene);
 
-    const vts = this.vectorTerrainSystem;
+    const vts = this.terrainMeshSystem;
     editor.setTerrainModifier({
       setElevationAt: () => {},
       setTerrainTypeAt: () => {},
       rebuildTileAndNeighbors: () => {},
-      ...createVectorTerrainModifier(vts),
+      ...createTerrainMeshModifier(vts),
     });
     editor.setMeshResolution(vts.getMeshResolution());
 
@@ -238,15 +238,15 @@ export class CourseDesigner {
         this.terrainEditorUI?.setActiveMode(this.terrainEditorSystem.getMode());
         this.terrainEditorUI?.setActiveAxis(this.terrainEditorSystem.getAxisConstraint());
         this.terrainEditorUI?.setStampSize(this.terrainEditorSystem.getStampScale());
-        this.vectorTerrainSystem.setWireframeEnabled(true);
-        this.vectorTerrainSystem.setAxisIndicatorEnabled(true);
+        this.terrainMeshSystem.setWireframeEnabled(true);
+        this.terrainMeshSystem.setAxisIndicatorEnabled(true);
       },
       onDisable: () => {},
       onToolChange: (tool) => this.terrainEditorUI?.setActiveTool(tool),
       onModeChange: (mode) => {
         this.terrainEditorUI?.setActiveMode(mode);
-        this.vectorTerrainSystem.setWireframeEnabled(true);
-        this.vectorTerrainSystem.setGridLinesEnabled(false);
+        this.terrainMeshSystem.setWireframeEnabled(true);
+        this.terrainMeshSystem.setGridLinesEnabled(false);
       },
       onBrushSizeChange: (size) => this.terrainEditorUI?.setBrushSize(size),
       onSelectionChange: (count) => {
@@ -279,7 +279,7 @@ export class CourseDesigner {
       onOpacityChange: (opacity) => {
         this.overlayOpacity = opacity;
         if (this.overlayVisible) {
-          this.vectorTerrainSystem.setImageOverlayOpacity(opacity / 100);
+          this.terrainMeshSystem.setImageOverlayOpacity(opacity / 100);
         }
       },
       onScaleChange: (scale) => {
@@ -296,27 +296,27 @@ export class CourseDesigner {
       },
       onFlipX: () => {
         this.overlayFlipX = !this.overlayFlipX;
-        this.vectorTerrainSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
+        this.terrainMeshSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
       },
       onFlipY: () => {
         this.overlayFlipY = !this.overlayFlipY;
-        this.vectorTerrainSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
+        this.terrainMeshSystem.setImageOverlayFlip(this.overlayFlipX, this.overlayFlipY);
       },
       onRotate: () => {
         this.overlayRotation = (this.overlayRotation + 1) % 4;
-        this.vectorTerrainSystem.setImageOverlayRotation(this.overlayRotation);
+        this.terrainMeshSystem.setImageOverlayRotation(this.overlayRotation);
       },
       onToggle: () => {
         if (!this.overlayLoaded) return;
         this.overlayVisible = !this.overlayVisible;
-        this.vectorTerrainSystem.setImageOverlayOpacity(
+        this.terrainMeshSystem.setImageOverlayOpacity(
           this.overlayVisible ? this.overlayOpacity / 100 : 0
         );
       },
       onClear: () => {
-        this.vectorTerrainSystem.clearImageOverlay();
-        this.vectorTerrainSystem.setImageOverlayFlip(false, false);
-        this.vectorTerrainSystem.setImageOverlayRotation(0);
+        this.terrainMeshSystem.clearImageOverlay();
+        this.terrainMeshSystem.setImageOverlayFlip(false, false);
+        this.terrainMeshSystem.setImageOverlayRotation(0);
         this.overlayLoaded = false;
         this.overlayVisible = true;
         this.overlayOpacity = 50;
@@ -333,7 +333,7 @@ export class CourseDesigner {
     this.overlayFileInput = createFileInput('image/*,.svg', (file) => {
       const scene = this.babylonEngine.getScene();
       loadImageAsTexture(file, scene, (texture, _w, _h) => {
-        this.vectorTerrainSystem.setImageOverlayTexture(texture);
+        this.terrainMeshSystem.setImageOverlayTexture(texture);
         this.overlayLoaded = true;
         this.overlayVisible = true;
         this.overlayOpacity = 50;
@@ -341,11 +341,11 @@ export class CourseDesigner {
         this.overlayOffsetX = 0;
         this.overlayOffsetZ = 0;
 
-        const worldW = this.vectorTerrainSystem.getWorldWidth();
-        const worldH = this.vectorTerrainSystem.getWorldHeight();
+        const worldW = this.terrainMeshSystem.getWorldWidth();
+        const worldH = this.terrainMeshSystem.getWorldHeight();
         this.overlayScale = 1.0;
-        this.vectorTerrainSystem.setImageOverlayTransform(0, 0, worldW, worldH);
-        this.vectorTerrainSystem.setImageOverlayOpacity(this.overlayOpacity / 100);
+        this.terrainMeshSystem.setImageOverlayTransform(0, 0, worldW, worldH);
+        this.terrainMeshSystem.setImageOverlayOpacity(this.overlayOpacity / 100);
 
         this.overlayPanelUI?.resetControls();
         this.overlayPanelUI?.show();
@@ -480,11 +480,11 @@ export class CourseDesigner {
       this.assetBrowserUI?.hide();
       this.assetPlacementSystem.exitPlaceMode();
       this.assetPlacementSystem.clearSelection();
-      this.vectorTerrainSystem.setWireframeEnabled(true);
+      this.terrainMeshSystem.setWireframeEnabled(true);
     } else {
       this.terrainEditorUI?.hide();
       this.assetBrowserUI?.show();
-      this.vectorTerrainSystem.setWireframeEnabled(false);
+      this.terrainMeshSystem.setWireframeEnabled(false);
     }
   }
 
@@ -638,13 +638,13 @@ export class CourseDesigner {
     const canvasY = (screenY - rect.top) * scaleY;
 
     const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith('terrain') || mesh.name.startsWith('tile_') || mesh.name === 'vectorTerrain';
+      return mesh.name.startsWith('terrain') || mesh.name.startsWith('tile_') || mesh.name === 'terrainMesh';
     });
 
     if (pickResult?.hit && pickResult.pickedPoint) {
       const worldX = pickResult.pickedPoint.x;
       const worldZ = pickResult.pickedPoint.z;
-      const res = this.vectorTerrainSystem.getResolution();
+      const res = this.terrainMeshSystem.getResolution();
       const gridX = Math.floor(worldX * res);
       const gridY = Math.floor(worldZ * res);
       return { gridX, gridY, worldPos: { x: worldX, z: worldZ } };
@@ -670,8 +670,8 @@ export class CourseDesigner {
   }
 
   private getTerrainElevation(worldX: number, worldZ: number): number {
-    const vCoord = this.vectorTerrainSystem.worldToVertex(worldX, worldZ);
-    const pos = this.vectorTerrainSystem.getVertexPosition(vCoord.vx, vCoord.vy);
+    const vCoord = this.terrainMeshSystem.worldToVertex(worldX, worldZ);
+    const pos = this.terrainMeshSystem.getVertexPosition(vCoord.vx, vCoord.vy);
     return pos ? pos.y : 0;
   }
 
@@ -689,9 +689,9 @@ export class CourseDesigner {
   }
 
   private applyOverlayTransform(): void {
-    const worldW = this.vectorTerrainSystem.getWorldWidth();
-    const worldH = this.vectorTerrainSystem.getWorldHeight();
-    this.vectorTerrainSystem.setImageOverlayTransform(
+    const worldW = this.terrainMeshSystem.getWorldWidth();
+    const worldH = this.terrainMeshSystem.getWorldHeight();
+    this.terrainMeshSystem.setImageOverlayTransform(
       this.overlayOffsetX,
       this.overlayOffsetZ,
       worldW * this.overlayScale,
@@ -708,7 +708,7 @@ export class CourseDesigner {
   }
 
   public save(): void {
-    const vts = this.vectorTerrainSystem;
+    const vts = this.terrainMeshSystem;
 
     this.courseData.layout = vts.getLayoutGrid();
     this.courseData.vertexElevations = vts.getVertexElevationsGrid();
@@ -739,7 +739,7 @@ export class CourseDesigner {
       this.overlayFileInput = null;
     }
     this.uiTexture?.dispose();
-    this.vectorTerrainSystem.dispose();
+    this.terrainMeshSystem.dispose();
     this.babylonEngine.stop();
     this.babylonEngine.dispose();
   }

@@ -423,16 +423,10 @@ export class PlayerController {
         const h = heuristic(neighbor.x, neighbor.y);
         const f = g + h;
 
-        const existing = openSet.find(
+        const alreadyOpen = openSet.some(
           (n) => n.x === neighbor.x && n.y === neighbor.y
         );
-        if (existing) {
-          if (g < existing.g) {
-            existing.g = g;
-            existing.f = f;
-            existing.parent = current;
-          }
-        } else {
+        if (!alreadyOpen) {
           openSet.push({
             x: neighbor.x,
             y: neighbor.y,

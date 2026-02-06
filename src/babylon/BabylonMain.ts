@@ -1,10 +1,11 @@
 import { BabylonEngine, gridTo3D, HEIGHT_UNIT } from "./engine/BabylonEngine";
-import { GameAPI, GameContext } from "./GameAPI";
-import { SimulationContext, runSimulationTick } from "./SimulationTick";
+import { GameAPI, GameSystems } from "./GameAPI";
+import { SimulationSystems, runSimulationTick } from "./SimulationTick";
+import { GameState } from "./GameState";
 
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
-import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
+import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
@@ -29,78 +30,28 @@ import { PlayerController } from "./PlayerController";
 import { UIPanelCoordinator } from "./UIPanelCoordinator";
 import { TerrainEditorController } from "./TerrainEditorController";
 
-import {
-  COURSE_HOLE_1,
-  REFILL_STATIONS,
-  CourseData,
-  getCourseById,
-} from "../data/courseData";
-import { ScenarioDefinition } from "../data/scenarioData";
+import { REFILL_STATIONS } from "../data/courseData";
 
 import {
-  EconomyState,
-  createInitialEconomyState,
-  addIncome,
   addExpense,
 } from "../core/economy";
 import {
-  IrrigationSystem,
-  createInitialIrrigationSystem,
-} from "../core/irrigation";
-import {
-  EmployeeRoster,
-  createInitialRoster,
-  ApplicationState,
   createInitialApplicationState,
 } from "../core/employees";
 import {
-  EmployeeWorkSystemState,
-  createInitialWorkSystemState,
   syncWorkersWithRoster,
 } from "../core/employee-work";
 import {
-  GolferPoolState,
-  GreenFeeStructure,
-  createInitialPoolState,
   getActiveGolferCount,
   getAverageSatisfaction,
-  WeatherCondition,
-  DEFAULT_GREEN_FEES,
 } from "../core/golfers";
 import {
-  ResearchState,
-  createInitialResearchState,
   getBestFertilizerEffectiveness,
 } from "../core/research";
-import { ScenarioManager } from "../core/scenario";
 import {
-  PrestigeState,
-  createInitialPrestigeState,
-  calculateCurrentConditionsFromFaces,
-  updatePrestigeScore,
   takeDailySnapshot,
   updateHistoricalExcellence,
-  upgradeAmenity,
 } from "../core/prestige";
-import { AmenityUpgrade, getUpgradeCost } from "../core/amenities";
-import {
-  TeeTimeSystemState,
-  createInitialTeeTimeState,
-} from "../core/tee-times";
-import {
-  WalkOnState,
-  createInitialWalkOnState,
-} from "../core/walk-ons";
-import {
-  RevenueState,
-  createInitialRevenueState,
-} from "../core/tee-revenue";
-import {
-  MarketingState,
-  createInitialMarketingState,
-  startCampaign,
-  canStartCampaign,
-} from "../core/marketing";
 import {
   createSaveState,
   saveGame,
@@ -109,166 +60,44 @@ import {
   deserializeFaceStates,
 } from "../core/save-game";
 import {
-  AutonomousEquipmentState,
-  createInitialAutonomousState,
-} from "../core/autonomous-equipment";
-import {
-  WeatherState,
   createInitialWeatherState,
   getSeasonFromDay,
 } from "../core/weather";
-import {
-  ReputationState,
-  createInitialReputationState,
-} from "../core/reputation";
 
 export interface GameOptions {
-  scenario?: ScenarioDefinition;
+  scenario?: import("../data/scenarioData").ScenarioDefinition;
   loadFromSave?: boolean;
   onReturnToMenu?: () => void;
   onScenarioComplete?: (score: number) => void;
-  useVectorTerrain?: boolean;  // Use SDF-based vector terrain rendering
+  useMeshTerrain?: boolean;
 }
 
 export class BabylonMain {
+  public state: GameState;
+
   private babylonEngine: BabylonEngine;
   private inputManager: InputManager;
   private terrainSystem: TerrainSystem;
-  private vectorTerrainSystem: VectorTerrainSystem | null = null;
+  private terrainMeshSystem: TerrainMeshSystem | null = null;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
   private lastTime: number = 0;
-  private gameTime: number = 6 * 60;
-  private gameDay: number = 1;
-  private timeScale: number = 1;
-  private isPaused: boolean = false;
-  private isMuted: boolean = false;
-  private overlayAutoSwitched: boolean = false;
 
   private playerController!: PlayerController;
   private uiPanelCoordinator!: UIPanelCoordinator;
   private terrainEditorController!: TerrainEditorController;
 
-  private score: number = 0;
   private obstacleMeshes: Mesh[] = [];
   private treeInstances: AssetInstance[] = [];
   private refillStationInstances: AssetInstance[] = [];
 
   private employeeVisualSystem: EmployeeVisualSystem | null = null;
   private irrigationRenderSystem: IrrigationRenderSystem | null = null;
-  private irrigationSystem: IrrigationSystem = createInitialIrrigationSystem();
-
-  private applicationState: ApplicationState = createInitialApplicationState();
-  private dailyStats = {
-    revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
-    expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
-    golfersServed: 0,
-    totalSatisfaction: 0,
-    courseHealthStart: 0,
-    prestigeStart: 0,
-    maintenance: {
-      tasksCompleted: 0,
-      tilesMowed: 0,
-      tilesWatered: 0,
-      tilesFertilized: 0,
-    },
-  };
-
-  private gameOptions: GameOptions;
-  private currentCourse: CourseData;
-  private currentScenario: ScenarioDefinition | null = null;
-
-  private economyState: EconomyState;
-  private employeeRoster: EmployeeRoster;
-  private employeeWorkState: EmployeeWorkSystemState;
-  private golferPool: GolferPoolState;
-  private researchState: ResearchState;
-  private scenarioManager: ScenarioManager | null = null;
-  private weatherState: WeatherState = createInitialWeatherState();
-  private weather: WeatherCondition = this.weatherState.current;
-  private greenFees: GreenFeeStructure = { ...DEFAULT_GREEN_FEES };
-  private lastPayrollHour: number = -1;
-  private lastArrivalHour: number = -1;
-  private lastAutoSaveHour: number = -1;
-  private accumulatedResearchTime: number = 0;
-  private prestigeState: PrestigeState;
-  private lastPrestigeUpdateHour: number = -1;
-  private teeTimeState: TeeTimeSystemState;
-  private walkOnState: WalkOnState;
-  private revenueState: RevenueState;
-  private marketingState: MarketingState;
-  private autonomousState: AutonomousEquipmentState;
-  private reputationState: ReputationState = createInitialReputationState();
-  private lastTeeTimeUpdateHour: number = -1;
-  private shownTutorialHints: Set<string> = new Set();
 
   constructor(canvasId: string, options: GameOptions = {}) {
-    this.gameOptions = options;
-    this.currentScenario = options.scenario || null;
+    this.state = GameState.createGameState(options);
 
-    // Determine which course to load
-    if (options.scenario) {
-      const scenarioCourse = getCourseById(options.scenario.courseId);
-      this.currentCourse = scenarioCourse || COURSE_HOLE_1;
-    } else {
-      this.currentCourse = COURSE_HOLE_1;
-    }
-
-    const course = this.currentCourse;
-
-    // Initialize economy and management systems
-    const startingCash = options.scenario?.conditions.startingCash ?? 10000;
-    this.economyState = createInitialEconomyState(startingCash);
-    this.employeeRoster = createInitialRoster();
-    const maintenanceShedX =
-      REFILL_STATIONS[0]?.x ?? Math.floor(course.width / 2);
-    const maintenanceShedY =
-      REFILL_STATIONS[0]?.y ?? Math.floor(course.height / 2);
-    this.employeeWorkState = createInitialWorkSystemState(
-      maintenanceShedX,
-      maintenanceShedY
-    );
-    this.golferPool = createInitialPoolState();
-    this.researchState = createInitialResearchState();
-    this.prestigeState = createInitialPrestigeState(100);
-    this.teeTimeState = createInitialTeeTimeState();
-    this.walkOnState = createInitialWalkOnState();
-    this.revenueState = createInitialRevenueState();
-    this.marketingState = createInitialMarketingState();
-    this.autonomousState = createInitialAutonomousState(
-      REFILL_STATIONS[0]?.x ?? 25,
-      REFILL_STATIONS[0]?.y ?? 19
-    );
-
-    // Set green fees based on course size
-    const courseHoles = course.par ? Math.round(course.par / 4) : 9;
-    if (courseHoles <= 3) {
-      this.greenFees = {
-        weekday9Holes: 15,
-        weekday18Holes: 25,
-        weekend9Holes: 20,
-        weekend18Holes: 30,
-        twilight9Holes: 10,
-        twilight18Holes: 15,
-      };
-    } else if (courseHoles <= 9) {
-      this.greenFees = {
-        weekday9Holes: 25,
-        weekday18Holes: 45,
-        weekend9Holes: 35,
-        weekend18Holes: 55,
-        twilight9Holes: 18,
-        twilight18Holes: 30,
-      };
-    }
-
-    // Initialize scenario manager if we have a scenario
-    if (options.scenario) {
-      this.scenarioManager = new ScenarioManager(
-        options.scenario.objective,
-        options.scenario.conditions
-      );
-    }
+    const course = this.state.currentCourse;
 
     const startX = Math.floor(course.width / 2);
     const startY = Math.floor(course.height * 0.75);
@@ -279,9 +108,9 @@ export class BabylonMain {
     );
     this.inputManager = new InputManager(this.babylonEngine.getScene());
 
-    if (options.useVectorTerrain) {
-      this.vectorTerrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
-      this.terrainSystem = this.vectorTerrainSystem;
+    if (options.useMeshTerrain) {
+      this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
+      this.terrainSystem = this.terrainMeshSystem;
     } else {
       this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     }
@@ -340,9 +169,9 @@ export class BabylonMain {
       screenToWorldPosition: (sx, sy) => this.babylonEngine.screenToWorldPosition(sx, sy),
       setCameraTarget: (t) => this.babylonEngine.setCameraTarget(t),
       getTerrainSystem: () => this.terrainSystem,
-      getVectorTerrainSystem: () => this.vectorTerrainSystem,
-      getCourseWidth: () => this.currentCourse.width,
-      getCourseHeight: () => this.currentCourse.height,
+      getTerrainMeshSystem: () => this.terrainMeshSystem,
+      getCourseWidth: () => this.state.currentCourse.width,
+      getCourseHeight: () => this.state.currentCourse.height,
       getPlayerVisual: () => this.playerController.getPlayerVisual(),
       getPlayerGridPosition: () => {
         const p = this.playerController.getPlayer();
@@ -358,42 +187,12 @@ export class BabylonMain {
       snapAssetsToTerrain: () => this.snapAssetsToTerrain(),
     });
 
-    const self = this;
     this.uiPanelCoordinator = new UIPanelCoordinator(
       this.babylonEngine.getScene(),
+      this.state,
       {
-        get economyState() { return self.economyState; },
-        set economyState(v) { self.economyState = v; },
-        get employeeRoster() { return self.employeeRoster; },
-        set employeeRoster(v) { self.employeeRoster = v; },
-        get employeeWorkState() { return self.employeeWorkState; },
-        set employeeWorkState(v) { self.employeeWorkState = v; },
-        get applicationState() { return self.applicationState; },
-        set applicationState(v) { self.applicationState = v; },
-        get researchState() { return self.researchState; },
-        set researchState(v) { self.researchState = v; },
-        get prestigeState() { return self.prestigeState; },
-        set prestigeState(v) { self.prestigeState = v; },
-        get teeTimeState() { return self.teeTimeState; },
-        set teeTimeState(v) { self.teeTimeState = v; },
-        get walkOnState() { return self.walkOnState; },
-        set walkOnState(v) { self.walkOnState = v; },
-        get revenueState() { return self.revenueState; },
-        set revenueState(v) { self.revenueState = v; },
-        get marketingState() { return self.marketingState; },
-        set marketingState(v) { self.marketingState = v; },
-        get autonomousState() { return self.autonomousState; },
-        set autonomousState(v) { self.autonomousState = v; },
-        get irrigationSystem() { return self.irrigationSystem; },
-        set irrigationSystem(v) { self.irrigationSystem = v; },
-        get irrigationRenderSystem() { return self.irrigationRenderSystem; },
-        get greenFees() { return self.greenFees; },
-        set greenFees(v) { self.greenFees = v; },
-        get gameTime() { return self.gameTime; },
-        get gameDay() { return self.gameDay; },
-        get dailyStats() { return self.dailyStats; },
-        set dailyStats(v) { self.dailyStats = v; },
         uiManager: this.uiManager,
+        irrigationRenderSystem: this.irrigationRenderSystem,
         resetDailyStats: () => this.resetDailyStats(),
         pauseGame: () => this.pauseGame(),
       }
@@ -406,18 +205,18 @@ export class BabylonMain {
     this.setupUpdateLoop();
 
     if (options.loadFromSave && this.loadSavedGame()) {
-      this.uiManager.showNotification(`Loaded Day ${this.gameDay}`);
+      this.uiManager.showNotification(`Loaded Day ${this.state.gameDay}`);
       this.playerController.updatePlayerPosition();
     }
 
-    if (this.currentScenario) {
+    if (this.state.currentScenario) {
       this.uiManager.updateObjective(this.getObjectiveText());
     }
   }
 
   private getObjectiveText(): string {
-    if (!this.currentScenario) return "";
-    const obj = this.currentScenario.objective;
+    if (!this.state.currentScenario) return "";
+    const obj = this.state.currentScenario.objective;
     switch (obj.type) {
       case "economic":
         if (obj.targetProfit)
@@ -438,13 +237,13 @@ export class BabylonMain {
 
   private resetDailyStats(): void {
     const courseStats = this.terrainSystem.getCourseStats();
-    this.dailyStats = {
+    this.state.dailyStats = {
       revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
       expenses: { wages: 0, supplies: 0, research: 0, utilities: 0, other: 0 },
       golfersServed: 0,
       totalSatisfaction: 0,
       courseHealthStart: courseStats.health,
-      prestigeStart: this.prestigeState.currentScore,
+      prestigeStart: this.state.prestigeState.currentScore,
       maintenance: {
         tasksCompleted: 0,
         tilesMowed: 0,
@@ -457,124 +256,123 @@ export class BabylonMain {
   private showDaySummary(): void {
     const courseStats = this.terrainSystem.getCourseStats();
     const avgSatisfaction =
-      this.dailyStats.golfersServed > 0
-        ? this.dailyStats.totalSatisfaction / this.dailyStats.golfersServed
+      this.state.dailyStats.golfersServed > 0
+        ? this.state.dailyStats.totalSatisfaction / this.state.dailyStats.golfersServed
         : 0;
 
     const summaryData: DaySummaryData = {
-      day: this.gameDay,
-      revenue: { ...this.dailyStats.revenue },
-      expenses: { ...this.dailyStats.expenses },
+      day: this.state.gameDay,
+      revenue: { ...this.state.dailyStats.revenue },
+      expenses: { ...this.state.dailyStats.expenses },
       courseHealth: {
-        start: this.dailyStats.courseHealthStart,
+        start: this.state.dailyStats.courseHealthStart,
         end: courseStats.health,
-        change: courseStats.health - this.dailyStats.courseHealthStart,
+        change: courseStats.health - this.state.dailyStats.courseHealthStart,
       },
       golfers: {
-        totalServed: this.dailyStats.golfersServed,
+        totalServed: this.state.dailyStats.golfersServed,
         averageSatisfaction: avgSatisfaction,
-        tipsEarned: this.dailyStats.revenue.tips,
+        tipsEarned: this.state.dailyStats.revenue.tips,
       },
       prestige: {
-        score: this.prestigeState.currentScore,
-        change: this.prestigeState.currentScore - this.dailyStats.prestigeStart,
+        score: this.state.prestigeState.currentScore,
+        change: this.state.prestigeState.currentScore - this.state.dailyStats.prestigeStart,
       },
-      maintenance: { ...this.dailyStats.maintenance },
+      maintenance: { ...this.state.dailyStats.maintenance },
     };
 
     this.uiPanelCoordinator.showDaySummary(summaryData);
   }
 
   public saveCurrentGame(): void {
-    if (!this.currentScenario || !this.scenarioManager) return;
+    if (!this.state.currentScenario || !this.state.scenarioManager) return;
 
     const cells = this.terrainSystem.getAllCells();
     const faceStates = this.terrainSystem.getAllFaceStates();
-    const scenarioProgress = this.scenarioManager.getProgress();
-    const state = createSaveState(
-      this.currentScenario.id,
-      this.gameTime,
-      this.gameDay,
+    const scenarioProgress = this.state.scenarioManager.getProgress();
+    const savedState = createSaveState(
+      this.state.currentScenario.id,
+      this.state.gameTime,
+      this.state.gameDay,
       this.playerController.getPlayer().gridX,
       this.playerController.getPlayer().gridY,
-      this.score,
-      this.economyState,
-      this.employeeRoster,
-      this.employeeWorkState,
-      this.golferPool,
-      this.researchState,
-      this.prestigeState,
-      this.teeTimeState,
-      this.walkOnState,
-      this.revenueState,
-      this.marketingState,
-      this.applicationState,
+      this.state.score,
+      this.state.economyState,
+      this.state.employeeRoster,
+      this.state.employeeWorkState,
+      this.state.golferPool,
+      this.state.researchState,
+      this.state.prestigeState,
+      this.state.teeTimeState,
+      this.state.walkOnState,
+      this.state.revenueState,
+      this.state.marketingState,
+      this.state.applicationState,
       scenarioProgress,
-      this.autonomousState,
-      this.weatherState,
+      this.state.autonomousState,
+      this.state.weatherState,
       cells,
-      this.irrigationSystem,
+      this.state.irrigationSystem,
       faceStates
     );
 
-    if (saveGame(state)) {
+    if (saveGame(savedState)) {
       this.uiManager.showNotification("Game saved");
     }
   }
 
   private loadSavedGame(): boolean {
-    if (!this.currentScenario) return false;
+    if (!this.state.currentScenario) return false;
 
-    const saved = loadGame(this.currentScenario.id);
+    const saved = loadGame(this.state.currentScenario.id);
     if (!saved) return false;
 
-    this.gameTime = saved.gameTime;
-    this.gameDay = saved.gameDay;
+    this.state.gameTime = saved.gameTime;
+    this.state.gameDay = saved.gameDay;
     this.playerController.teleport(saved.playerX, saved.playerY);
-    this.score = saved.score;
-    this.economyState = saved.economyState;
-    this.employeeRoster = saved.employeeRoster;
+    this.state.score = saved.score;
+    this.state.economyState = saved.economyState;
+    this.state.employeeRoster = saved.employeeRoster;
     if (saved.employeeWorkState) {
-      this.employeeWorkState = saved.employeeWorkState;
+      this.state.employeeWorkState = saved.employeeWorkState;
     } else {
-      this.employeeWorkState = syncWorkersWithRoster(
-        this.employeeWorkState,
-        this.employeeRoster.employees
+      this.state.employeeWorkState = syncWorkersWithRoster(
+        this.state.employeeWorkState,
+        this.state.employeeRoster.employees
       );
     }
-    this.golferPool = saved.golferPool;
-    this.researchState = saved.researchState;
-    this.prestigeState = saved.prestigeState;
-    // Reconstruct teeTimes Map from saved data (Map doesn't serialize to JSON properly)
+    this.state.golferPool = saved.golferPool;
+    this.state.researchState = saved.researchState;
+    this.state.prestigeState = saved.prestigeState;
     const teeTimesData = saved.teeTimeState.teeTimes;
     const reconstructedTeeTimes = teeTimesData instanceof Map
       ? teeTimesData
       : new Map(Object.entries(teeTimesData || {}).map(([k, v]) => [Number(k), v as import('../core/tee-times').TeeTime[]]));
-    this.teeTimeState = {
+    this.state.teeTimeState = {
       ...saved.teeTimeState,
       teeTimes: reconstructedTeeTimes,
     };
-    this.walkOnState = saved.walkOnState;
-    this.revenueState = saved.revenueState;
-    this.marketingState = saved.marketingState;
-    this.applicationState =
+    this.state.walkOnState = saved.walkOnState;
+    this.state.revenueState = saved.revenueState;
+    this.state.marketingState = saved.marketingState;
+    this.state.applicationState =
       saved.applicationState ||
       createInitialApplicationState(
-        this.gameTime + this.gameDay * 24 * 60,
-        this.prestigeState.tier
+        this.state.gameTime + this.state.gameDay * 24 * 60,
+        this.state.prestigeState.tier
       );
 
-    if (saved.scenarioProgress && this.scenarioManager) {
-      this.scenarioManager.updateProgress(saved.scenarioProgress);
+    if (saved.scenarioProgress && this.state.scenarioManager) {
+      this.state.scenarioManager.updateProgress(saved.scenarioProgress);
     }
 
     if (saved.autonomousState) {
-      this.autonomousState = saved.autonomousState;
+      this.state.autonomousState = saved.autonomousState;
     }
 
     if (saved.weatherState) {
-      this.weatherState = saved.weatherState;
-      this.weather = this.weatherState.current;
+      this.state.weatherState = saved.weatherState;
+      this.state.weather = this.state.weatherState.current;
     }
 
     if (saved.faceStates && saved.faceStates.length > 0) {
@@ -584,9 +382,9 @@ export class BabylonMain {
     }
 
     if (saved.irrigationSystem) {
-      this.irrigationSystem = saved.irrigationSystem;
+      this.state.irrigationSystem = saved.irrigationSystem;
       if (this.irrigationRenderSystem) {
-        this.irrigationRenderSystem.update(this.irrigationSystem);
+        this.irrigationRenderSystem.update(this.state.irrigationSystem);
       }
     }
 
@@ -594,8 +392,8 @@ export class BabylonMain {
   }
 
   public hasSavedGame(): boolean {
-    if (!this.currentScenario) return false;
-    return hasSave(this.currentScenario.id);
+    if (!this.state.currentScenario) return false;
+    return hasSave(this.state.currentScenario.id);
   }
 
   private setupInputCallbacks(): void {
@@ -706,7 +504,7 @@ export class BabylonMain {
   }
 
   private buildScene(): void {
-    this.terrainSystem.build(this.currentCourse);
+    this.terrainSystem.build(this.state.currentCourse);
     this.buildObstacles();
     this.buildRefillStations();
     this.playerController.createPlayer();
@@ -714,7 +512,7 @@ export class BabylonMain {
   }
 
   private buildObstacles(): void {
-    const { obstacles } = this.currentCourse;
+    const { obstacles } = this.state.currentCourse;
     if (!obstacles) return;
 
     for (const obs of obstacles) {
@@ -787,7 +585,7 @@ export class BabylonMain {
   }
 
   private handleClick(screenX: number, screenY: number): void {
-    if (this.isPaused) return;
+    if (this.state.isPaused) return;
 
     if (this.terrainEditorController.isEnabled()) {
       const result = this.terrainEditorController.screenToGridAndWorld(screenX, screenY);
@@ -802,28 +600,27 @@ export class BabylonMain {
 
   private applyEquipmentEffect(x: number, y: number): void {
     const type = this.equipmentManager.getSelected();
-    const state = this.equipmentManager.getCurrentState();
-    if (!type || !state) return;
+    const eqState = this.equipmentManager.getCurrentState();
+    if (!type || !eqState) return;
 
     switch (type) {
       case "mower":
         this.terrainSystem.mowAt(x, y);
         break;
       case "sprinkler":
-        this.terrainSystem.waterArea(x, y, state.effectRadius, 15);
+        this.terrainSystem.waterArea(x, y, eqState.effectRadius, 15);
         break;
       case "spreader":
         this.terrainSystem.fertilizeArea(
           x,
           y,
-          state.effectRadius,
+          eqState.effectRadius,
           10,
-          getBestFertilizerEffectiveness(this.researchState)
+          getBestFertilizerEffectiveness(this.state.researchState)
         );
         break;
     }
   }
-
 
   private handleRefill(): void {
     const player = this.playerController.getPlayer();
@@ -836,9 +633,9 @@ export class BabylonMain {
     if (nearStation) {
       const cost = this.equipmentManager.refill();
       if (cost > 0) {
-        const timestamp = this.gameDay * 1440 + this.gameTime;
+        const timestamp = this.state.gameDay * 1440 + this.state.gameTime;
         const expenseResult = addExpense(
-          this.economyState,
+          this.state.economyState,
           cost,
           "supplies",
           "Equipment refill",
@@ -846,8 +643,8 @@ export class BabylonMain {
           true
         );
         if (expenseResult) {
-          this.economyState = expenseResult;
-          this.dailyStats.expenses.supplies += cost;
+          this.state.economyState = expenseResult;
+          this.state.dailyStats.expenses.supplies += cost;
         }
         this.uiManager.showNotification(`Refilled! Cost: $${cost.toFixed(2)}`);
       } else {
@@ -861,7 +658,7 @@ export class BabylonMain {
   private handleOverlayCycle(): void {
     const mode = this.terrainSystem.cycleOverlayMode();
     this.uiManager.updateOverlayLegend(mode);
-    this.overlayAutoSwitched = false;
+    this.state.overlayAutoSwitched = false;
     this.updateIrrigationVisibility();
   }
 
@@ -873,7 +670,7 @@ export class BabylonMain {
   }
 
   private handlePause(): void {
-    if (this.isPaused) {
+    if (this.state.isPaused) {
       this.resumeGame();
     } else {
       this.pauseGame();
@@ -881,41 +678,41 @@ export class BabylonMain {
   }
 
   private pauseGame(): void {
-    this.isPaused = true;
+    this.state.isPaused = true;
     this.uiManager.showPauseMenu(
       () => this.resumeGame(),
       () => this.restartGame(),
-      this.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined,
+      this.state.gameOptions.onReturnToMenu ? () => this.returnToMenu() : undefined,
       () => this.saveCurrentGame(),
       () => this.uiPanelCoordinator.handleEmployeePanel(),
       () => this.uiPanelCoordinator.handleResearchPanel(),
       () => this.uiPanelCoordinator.handleTeeSheetPanel(),
       () => this.uiPanelCoordinator.handleMarketingPanel(),
       (delta: number) => this.handleTimeSpeed(delta),
-      this.timeScale
+      this.state.timeScale
     );
   }
 
   private resumeGame(): void {
-    this.isPaused = false;
+    this.state.isPaused = false;
     this.uiManager.hidePauseMenu();
   }
 
   private restartGame(): void {
-    const course = this.currentCourse;
+    const course = this.state.currentCourse;
     const startX = Math.floor(course.width / 2);
     const startY = Math.floor(course.height * 0.75);
     this.playerController.teleport(startX, startY);
-    this.gameTime = 6 * 60;
-    this.gameDay = 1;
-    this.score = 0;
-    this.timeScale = 1;
-    this.weatherState = createInitialWeatherState(this.gameDay);
-    this.weather = this.weatherState.current;
+    this.state.gameTime = 6 * 60;
+    this.state.gameDay = 1;
+    this.state.score = 0;
+    this.state.timeScale = 1;
+    this.state.weatherState = createInitialWeatherState(this.state.gameDay);
+    this.state.weather = this.state.weatherState.current;
     this.equipmentManager.refill();
     this.terrainSystem.dispose();
-    if (this.gameOptions.useVectorTerrain) {
-      this.terrainSystem = new VectorTerrainSystem(this.babylonEngine.getScene(), course);
+    if (this.state.gameOptions.useMeshTerrain) {
+      this.terrainSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
     } else {
       this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
     }
@@ -927,35 +724,32 @@ export class BabylonMain {
 
   private returnToMenu(): void {
     this.saveCurrentGame();
-    if (this.gameOptions.onReturnToMenu) {
-      this.gameOptions.onReturnToMenu();
+    if (this.state.gameOptions.onReturnToMenu) {
+      this.state.gameOptions.onReturnToMenu();
     }
   }
 
   private handleMute(): void {
-    this.isMuted = !this.isMuted;
+    this.state.isMuted = !this.state.isMuted;
   }
 
   private handleTimeSpeed(delta: number): void {
     const speeds = [0.5, 1, 2, 4, 8];
-    const currentIndex = speeds.indexOf(this.timeScale);
+    const currentIndex = speeds.indexOf(this.state.timeScale);
     const newIndex = Math.max(
       0,
       Math.min(speeds.length - 1, currentIndex + delta)
     );
-    this.timeScale = speeds[newIndex];
+    this.state.timeScale = speeds[newIndex];
   }
 
   private handleZoom(delta: number): void {
     this.babylonEngine.handleZoom(delta);
   }
 
-
-
   private updateZoom(deltaMs: number): void {
     this.babylonEngine.updateSmoothZoom(deltaMs);
   }
-
 
   private handleDebugReload(): void {
     window.location.reload();
@@ -963,20 +757,20 @@ export class BabylonMain {
 
   private handleDebugExport(): void {
     const player = this.playerController.getPlayer();
-    const state = {
+    const debugState = {
       playerX: player.gridX,
       playerY: player.gridY,
-      gameTime: this.gameTime,
-      gameDay: this.gameDay,
-      score: this.score,
+      gameTime: this.state.gameTime,
+      gameDay: this.state.gameDay,
+      score: this.state.score,
     };
-    console.log("Game State:", JSON.stringify(state, null, 2));
-    console.log("Base64:", btoa(JSON.stringify(state)));
+    console.log("Game State:", JSON.stringify(debugState, null, 2));
+    console.log("Base64:", btoa(JSON.stringify(debugState)));
   }
 
   private setupUpdateLoop(): void {
     this.lastTime = performance.now();
-    const course = this.currentCourse;
+    const course = this.state.currentCourse;
 
     const stats = this.terrainSystem.getCourseStats();
     this.uiManager.updateCourseStatus(
@@ -999,12 +793,12 @@ export class BabylonMain {
 
       this.updateZoom(deltaMs);
 
-      if (this.isPaused) {
+      if (this.state.isPaused) {
         return;
       }
 
       if (this.terrainEditorController.isPausedByEditor()) {
-        this.terrainSystem.update(0, this.gameDay * 1440 + this.gameTime, this.weather);
+        this.terrainSystem.update(0, this.state.gameDay * 1440 + this.state.gameTime, this.state.weather);
 
         if (this.terrainEditorController.isEnabled()) {
           this.playerController.updateEditorCamera(deltaMs);
@@ -1021,59 +815,55 @@ export class BabylonMain {
           pv.container.position
         );
         if (wasDeactivated) {
-          if (this.overlayAutoSwitched) {
+          if (this.state.overlayAutoSwitched) {
             this.terrainSystem.setOverlayMode("normal");
             this.uiManager.updateOverlayLegend("normal");
-            this.overlayAutoSwitched = false;
+            this.state.overlayAutoSwitched = false;
             this.updateIrrigationVisibility();
           }
         }
       }
 
-      this.gameTime += (deltaMs / 1000) * 2 * this.timeScale;
-      if (this.gameTime >= 24 * 60) {
-        this.gameTime -= 24 * 60;
+      this.state.gameTime += (deltaMs / 1000) * 2 * this.state.timeScale;
+      if (this.state.gameTime >= 24 * 60) {
+        this.state.gameTime -= 24 * 60;
 
-        // Take daily snapshot for historical tracking
         const snapshot = takeDailySnapshot(
-          this.prestigeState.currentConditions,
-          this.gameDay
+          this.state.prestigeState.currentConditions,
+          this.state.gameDay
         );
-        this.prestigeState = {
-          ...this.prestigeState,
+        this.state.prestigeState = {
+          ...this.state.prestigeState,
           historicalExcellence: updateHistoricalExcellence(
-            this.prestigeState.historicalExcellence,
+            this.state.prestigeState.historicalExcellence,
             snapshot
           ),
         };
 
-        this.gameDay++;
+        this.state.gameDay++;
       }
 
       this.terrainSystem.update(
-        deltaMs * this.timeScale,
-        this.gameDay * 1440 + this.gameTime,
-        this.weather
+        deltaMs * this.state.timeScale,
+        this.state.gameDay * 1440 + this.state.gameTime,
+        this.state.weather
       );
 
-      // Update economy and management systems
       this.updateEconomySystems(deltaMs);
 
-      // Check tutorial hints
       this.checkTutorialHints();
 
-      // Check scenario objectives periodically
-      if (this.scenarioManager && Math.random() < 0.01) {
+      if (this.state.scenarioManager && Math.random() < 0.01) {
         this.checkScenarioCompletion();
       }
 
       this.updateDayNightCycle();
 
-      const hours = Math.floor(this.gameTime / 60);
-      const minutes = Math.floor(this.gameTime % 60);
-      const season = getSeasonFromDay(this.gameDay).season;
-      this.uiManager.updateTime(hours, minutes, this.gameDay, season);
-      this.uiManager.updateWeather(this.weather.type, this.weather.temperature);
+      const hours = Math.floor(this.state.gameTime / 60);
+      const minutes = Math.floor(this.state.gameTime % 60);
+      const season = getSeasonFromDay(this.state.gameDay).season;
+      this.uiManager.updateTime(hours, minutes, this.state.gameDay, season);
+      this.uiManager.updateWeather(this.state.weather.type, this.state.weather.temperature);
       this.uiManager.updateEquipment(
         this.equipmentManager.getSelected(),
         this.equipmentManager.isActive()
@@ -1100,18 +890,17 @@ export class BabylonMain {
         courseStats.moisture,
         courseStats.nutrients
       );
-      this.uiManager.updateScore(this.score);
+      this.uiManager.updateScore(this.state.score);
       this.uiManager.updateEconomy(
-        this.economyState.cash,
-        getActiveGolferCount(this.golferPool),
-        getAverageSatisfaction(this.golferPool)
+        this.state.economyState.cash,
+        getActiveGolferCount(this.state.golferPool),
+        getAverageSatisfaction(this.state.golferPool)
       );
 
-      // Update scenario progress HUD
-      if (this.scenarioManager && this.currentScenario) {
-        const progress = this.scenarioManager.getProgress();
-        const objective = this.currentScenario.objective;
-        const conditions = this.currentScenario.conditions;
+      if (this.state.scenarioManager && this.state.currentScenario) {
+        const progress = this.state.scenarioManager.getProgress();
+        const objective = this.state.currentScenario.objective;
+        const conditions = this.state.currentScenario.conditions;
 
         let currentValue = 0;
         let targetValue = 1;
@@ -1148,7 +937,7 @@ export class BabylonMain {
             break;
         }
 
-        const result = this.scenarioManager.checkObjective();
+        const result = this.state.scenarioManager.checkObjective();
         this.uiManager.updateScenarioProgress(
           objectiveText,
           currentValue,
@@ -1170,7 +959,7 @@ export class BabylonMain {
   }
 
   private updateDayNightCycle(): void {
-    const hours = this.gameTime / 60;
+    const hours = this.state.gameTime / 60;
     let brightness = 1.0;
 
     if (hours < 6) {
@@ -1195,85 +984,30 @@ export class BabylonMain {
   }
 
   private updateEconomySystems(deltaMs: number): void {
-    const ctx: SimulationContext = {
-      economyState: this.economyState,
-      employeeRoster: this.employeeRoster,
-      employeeWorkState: this.employeeWorkState,
-      golferPool: this.golferPool,
-      researchState: this.researchState,
-      weatherState: this.weatherState,
-      weather: this.weather,
-      teeTimeState: this.teeTimeState,
-      walkOnState: this.walkOnState,
-      revenueState: this.revenueState,
-      marketingState: this.marketingState,
-      autonomousState: this.autonomousState,
-      prestigeState: this.prestigeState,
-      irrigationSystem: this.irrigationSystem,
-      reputationState: this.reputationState,
-      applicationState: this.applicationState,
-      dailyStats: this.dailyStats,
-      greenFees: this.greenFees,
-      gameTime: this.gameTime,
-      gameDay: this.gameDay,
-      timeScale: this.timeScale,
-      lastPayrollHour: this.lastPayrollHour,
-      lastArrivalHour: this.lastArrivalHour,
-      lastAutoSaveHour: this.lastAutoSaveHour,
-      lastPrestigeUpdateHour: this.lastPrestigeUpdateHour,
-      lastTeeTimeUpdateHour: this.lastTeeTimeUpdateHour,
-      accumulatedResearchTime: this.accumulatedResearchTime,
+    const systems: SimulationSystems = {
       terrainSystem: this.terrainSystem,
-      scenarioManager: this.scenarioManager,
       uiManager: this.uiManager,
       employeeVisualSystem: this.employeeVisualSystem,
       irrigationRenderSystem: this.irrigationRenderSystem,
-      currentCourse: this.currentCourse,
-      currentScenario: this.currentScenario,
-      gameOptions: this.gameOptions,
-      saveCurrentGame: () => this.saveCurrentGame(),
-      showDaySummary: () => this.showDaySummary(),
+      saveCallback: () => this.saveCurrentGame(),
+      showDaySummaryCallback: () => this.showDaySummary(),
     };
 
-    runSimulationTick(ctx, deltaMs);
-
-    this.economyState = ctx.economyState;
-    this.employeeRoster = ctx.employeeRoster;
-    this.employeeWorkState = ctx.employeeWorkState;
-    this.golferPool = ctx.golferPool;
-    this.researchState = ctx.researchState;
-    this.weatherState = ctx.weatherState;
-    this.weather = ctx.weather;
-    this.teeTimeState = ctx.teeTimeState;
-    this.walkOnState = ctx.walkOnState;
-    this.revenueState = ctx.revenueState;
-    this.marketingState = ctx.marketingState;
-    this.autonomousState = ctx.autonomousState;
-    this.prestigeState = ctx.prestigeState;
-    this.irrigationSystem = ctx.irrigationSystem;
-    this.reputationState = ctx.reputationState;
-    this.applicationState = ctx.applicationState;
-    this.dailyStats = ctx.dailyStats;
-    this.lastPayrollHour = ctx.lastPayrollHour;
-    this.lastArrivalHour = ctx.lastArrivalHour;
-    this.lastAutoSaveHour = ctx.lastAutoSaveHour;
-    this.lastPrestigeUpdateHour = ctx.lastPrestigeUpdateHour;
-    this.lastTeeTimeUpdateHour = ctx.lastTeeTimeUpdateHour;
-    this.accumulatedResearchTime = ctx.accumulatedResearchTime;
+    runSimulationTick(this.state, systems, deltaMs);
   }
 
   private checkScenarioCompletion(): void {
-    if (!this.scenarioManager) return;
+    if (!this.state.scenarioManager) return;
 
-    const result = this.scenarioManager.checkObjective();
+    const result = this.state.scenarioManager.checkObjective();
 
     if (result.completed) {
       const score = Math.round(
-        this.economyState.cash +
-          this.golferPool.totalVisitorsToday * 10 +
+        this.state.economyState.cash +
+          this.state.golferPool.totalVisitorsToday * 10 +
           this.terrainSystem.getCourseStats().health * 100
       );
-      this.gameOptions.onScenarioComplete?.(score);
+      this.state.gameOptions.onScenarioComplete?.(score);
       this.uiManager.showNotification(`Scenario Complete! Score: ${score}`);
     } else if (result.failed) {
       this.uiManager.showNotification(
@@ -1290,217 +1024,7 @@ export class BabylonMain {
     }
   }
 
-
-  public getScenarioState(): {
-    progress: number;
-    completed: boolean;
-    failed: boolean;
-    message?: string;
-  } | null {
-    if (!this.scenarioManager) return null;
-    const result = this.scenarioManager.checkObjective();
-    return {
-      progress: result.progress,
-      completed: result.completed,
-      failed: result.failed,
-      message: result.message,
-    };
-  }
-
-  public getEconomyState(): { cash: number; earned: number; spent: number } {
-    return {
-      cash: this.economyState.cash,
-      earned: this.economyState.totalEarned,
-      spent: this.economyState.totalSpent,
-    };
-  }
-
-  public getPrestigeState(): {
-    score: number;
-    stars: number;
-    tier: string;
-    amenityScore: number;
-  } {
-    return {
-      score: this.prestigeState.currentScore,
-      stars: this.prestigeState.starRating,
-      tier: this.prestigeState.tier,
-      amenityScore: this.prestigeState.amenityScore,
-    };
-  }
-
-  public getGameDay(): number {
-    return this.gameDay;
-  }
-
-  public getTeeTimeStats(): {
-    totalBookings: number;
-    cancellations: number;
-    noShows: number;
-    slotsAvailable: number;
-  } {
-    const todaySlots = this.teeTimeState.teeTimes.get(this.gameDay) ?? [];
-    const available = todaySlots.filter((t) => t.status === "available").length;
-
-    return {
-      totalBookings: this.teeTimeState.bookingMetrics.totalBookingsToday,
-      cancellations: this.teeTimeState.bookingMetrics.cancellationsToday,
-      noShows: this.teeTimeState.bookingMetrics.noShowsToday,
-      slotsAvailable: available,
-    };
-  }
-
-  public getMarketingStats(): {
-    activeCampaigns: number;
-    totalSpent: number;
-    totalROI: number;
-  } {
-    const totalSpent = this.marketingState.metrics.totalSpent;
-    const totalRevenue = this.marketingState.metrics.totalRevenueGenerated;
-    const roi =
-      totalSpent > 0 ? ((totalRevenue - totalSpent) / totalSpent) * 100 : 0;
-
-    return {
-      activeCampaigns: this.marketingState.activeCampaigns.length,
-      totalSpent,
-      totalROI: Math.round(roi),
-    };
-  }
-
-  public startMarketingCampaign(campaignId: string, days: number = 7): boolean {
-    const canStart = canStartCampaign(
-      this.marketingState,
-      campaignId,
-      this.economyState.cash
-    );
-    if (!canStart.canStart) {
-      return false;
-    }
-
-    const result = startCampaign(
-      this.marketingState,
-      campaignId,
-      this.gameDay,
-      days
-    );
-    if (result) {
-      this.marketingState = result.state;
-      const cost = result.setupCost;
-      if (cost > 0) {
-        const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-        const expenseResult = addExpense(
-          this.economyState,
-          cost,
-          "marketing",
-          `Campaign: ${campaignId}`,
-          timestamp,
-          false
-        );
-        if (expenseResult) {
-          this.economyState = expenseResult;
-        }
-      }
-      return true;
-    }
-    return false;
-  }
-
-  public getGameTime(): { hours: number; minutes: number } {
-    return {
-      hours: Math.floor(this.gameTime / 60),
-      minutes: Math.floor(this.gameTime % 60),
-    };
-  }
-
-  public setCash(amount: number): void {
-    const diff = amount - this.economyState.cash;
-    const timestamp = Date.now();
-    if (diff > 0) {
-      this.economyState = addIncome(
-        this.economyState,
-        diff,
-        "other_income",
-        "Test adjustment",
-        timestamp
-      );
-    } else if (diff < 0) {
-      const result = addExpense(
-        this.economyState,
-        -diff,
-        "other_expense",
-        "Test adjustment",
-        timestamp,
-        true
-      );
-      if (result) {
-        this.economyState = result;
-      }
-    }
-    this.uiManager.updateEconomy(
-      this.economyState.cash,
-      getActiveGolferCount(this.golferPool),
-      getAverageSatisfaction(this.golferPool)
-    );
-  }
-
-  public advanceDay(): void {
-    this.gameDay++;
-    if (this.scenarioManager) {
-      this.scenarioManager.incrementDay();
-    }
-    const conditionsScore = calculateCurrentConditionsFromFaces(this.terrainSystem.getAllFaceStates());
-    this.prestigeState = updatePrestigeScore(
-      this.prestigeState,
-      conditionsScore
-    );
-  }
-
-  public purchaseAmenity(upgradeType: string): boolean {
-    let upgrade: AmenityUpgrade;
-
-    switch (upgradeType) {
-      case "clubhouse_1":
-        upgrade = { type: "clubhouse", tier: 1 };
-        break;
-      case "pro_shop_1":
-        upgrade = { type: "proShop", tier: 1 };
-        break;
-      case "dining_1":
-        upgrade = { type: "dining", tier: 1 };
-        break;
-      case "facility_driving_range":
-        upgrade = { type: "facility", facility: "drivingRange" };
-        break;
-      case "facility_putting_green":
-        upgrade = { type: "facility", facility: "puttingGreen" };
-        break;
-      default:
-        return false;
-    }
-
-    const cost = getUpgradeCost(this.prestigeState.amenities, upgrade);
-    if (this.economyState.cash < cost) {
-      return false;
-    }
-
-    this.prestigeState = upgradeAmenity(this.prestigeState, upgrade);
-    const timestamp = this.gameDay * 24 * 60 + this.gameTime;
-    const expenseResult = addExpense(
-      this.economyState,
-      cost,
-      "equipment_purchase",
-      `Amenity: ${upgrade.type}`,
-      timestamp,
-      false
-    );
-    if (expenseResult) {
-      this.economyState = expenseResult;
-    }
-
-    return true;
-  }
-
-  public movePlayer(
+  private movePlayer(
     direction: "up" | "down" | "left" | "right" | "w" | "a" | "s" | "d"
   ): void {
     const dirMap: Record<string, "up" | "down" | "left" | "right"> = {
@@ -1519,7 +1043,7 @@ export class BabylonMain {
     }
   }
 
-  public selectEquipment(slot: 1 | 2 | 3): void {
+  private selectEquipment(slot: 1 | 2 | 3): void {
     const wasSelected = this.equipmentManager.getSelected();
     this.equipmentManager.handleSlot(slot);
     const nowSelected = this.equipmentManager.getSelected();
@@ -1534,23 +1058,23 @@ export class BabylonMain {
       if (targetOverlay && this.terrainSystem.getOverlayMode() !== targetOverlay) {
         this.terrainSystem.setOverlayMode(targetOverlay);
         this.uiManager.updateOverlayLegend(targetOverlay);
-        this.overlayAutoSwitched = true;
+        this.state.overlayAutoSwitched = true;
         this.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.overlayAutoSwitched) {
+      } else if (targetOverlay === null && this.state.overlayAutoSwitched) {
         this.terrainSystem.setOverlayMode("normal");
         this.uiManager.updateOverlayLegend("normal");
-        this.overlayAutoSwitched = false;
+        this.state.overlayAutoSwitched = false;
         this.updateIrrigationVisibility();
       }
-    } else if (nowSelected === null && this.overlayAutoSwitched) {
+    } else if (nowSelected === null && this.state.overlayAutoSwitched) {
       this.terrainSystem.setOverlayMode("normal");
       this.uiManager.updateOverlayLegend("normal");
-      this.overlayAutoSwitched = false;
+      this.state.overlayAutoSwitched = false;
       this.updateIrrigationVisibility();
     }
   }
 
-  public toggleEquipment(): void {
+  private toggleEquipment(): void {
     const selected = this.equipmentManager.getSelected();
     if (selected === null) return;
 
@@ -1561,7 +1085,8 @@ export class BabylonMain {
     };
     this.selectEquipment(slotMap[selected]);
   }
-  public setTerrainEditor(enabled: boolean): void {
+
+  private setTerrainEditor(enabled: boolean): void {
     const system = this.terrainEditorController.getSystem();
     if (!system) return;
     if (enabled) {
@@ -1571,82 +1096,23 @@ export class BabylonMain {
     }
   }
 
-  public isTerrainEditorEnabled(): boolean {
+  private isTerrainEditorEnabled(): boolean {
     return this.terrainEditorController.isEnabled();
   }
 
   public createAPI(): GameAPI {
-    const self = this;
-    const ctx: GameContext = {
-      get player() { return self.playerController.getPlayer(); },
-      set player(v) { self.playerController.setPlayer(v); },
-      get playerVisual() { return self.playerController.getPlayerVisual(); },
-      set playerVisual(v) { self.playerController.setPlayerVisual(v); },
-      get clickToMoveWaypoints() { return self.playerController.getClickToMoveWaypoints(); },
-      set clickToMoveWaypoints(v) { self.playerController.setClickToMoveWaypoints(v); },
-      get equipmentManager() { return self.equipmentManager; },
-      get terrainSystem() { return self.terrainSystem; },
-      get terrainEditorSystem() { return self.terrainEditorController.getSystem(); },
-      get uiManager() { return self.uiManager; },
-      get babylonEngine() { return self.babylonEngine; },
-      get overlayAutoSwitched() { return self.overlayAutoSwitched; },
-      set overlayAutoSwitched(v) { self.overlayAutoSwitched = v; },
-      get isPaused() { return self.isPaused; },
-      set isPaused(v) { self.isPaused = v; },
-      get isMuted() { return self.isMuted; },
-      set isMuted(v) { self.isMuted = v; },
-      get gameTime() { return self.gameTime; },
-      set gameTime(v) { self.gameTime = v; },
-      get gameDay() { return self.gameDay; },
-      set gameDay(v) { self.gameDay = v; },
-      get timeScale() { return self.timeScale; },
-      set timeScale(v) { self.timeScale = v; },
-      get score() { return self.score; },
-      set score(v) { self.score = v; },
-      get lastEquipmentFaceId() { return self.playerController.getLastEquipmentFaceId(); },
-      set lastEquipmentFaceId(v) { self.playerController.setLastEquipmentFaceId(v); },
-      get economyState() { return self.economyState; },
-      set economyState(v) { self.economyState = v; },
-      get employeeRoster() { return self.employeeRoster; },
-      set employeeRoster(v) { self.employeeRoster = v; },
-      get employeeWorkState() { return self.employeeWorkState; },
-      set employeeWorkState(v) { self.employeeWorkState = v; },
-      get applicationState() { return self.applicationState; },
-      set applicationState(v) { self.applicationState = v; },
-      get golferPool() { return self.golferPool; },
-      set golferPool(v) { self.golferPool = v; },
-      get researchState() { return self.researchState; },
-      set researchState(v) { self.researchState = v; },
-      get scenarioManager() { return self.scenarioManager; },
-      get weatherState() { return self.weatherState; },
-      set weatherState(v) { self.weatherState = v; },
-      get weather() { return self.weather; },
-      set weather(v) { self.weather = v; },
-      get greenFees() { return self.greenFees; },
-      set greenFees(v) { self.greenFees = v; },
-      get prestigeState() { return self.prestigeState; },
-      set prestigeState(v) { self.prestigeState = v; },
-      get teeTimeState() { return self.teeTimeState; },
-      set teeTimeState(v) { self.teeTimeState = v; },
-      get teeSheetViewDay() { return self.uiPanelCoordinator.getTeeSheetViewDay(); },
-      set teeSheetViewDay(v) { self.uiPanelCoordinator.setTeeSheetViewDay(v); },
-      get walkOnState() { return self.walkOnState; },
-      set walkOnState(v) { self.walkOnState = v; },
-      get revenueState() { return self.revenueState; },
-      set revenueState(v) { self.revenueState = v; },
-      get marketingState() { return self.marketingState; },
-      set marketingState(v) { self.marketingState = v; },
-      get autonomousState() { return self.autonomousState; },
-      set autonomousState(v) { self.autonomousState = v; },
-      get reputationState() { return self.reputationState; },
-      set reputationState(v) { self.reputationState = v; },
-      get irrigationSystem() { return self.irrigationSystem; },
-      set irrigationSystem(v) { self.irrigationSystem = v; },
-      get irrigationRenderSystem() { return self.irrigationRenderSystem; },
-      get currentCourse() { return self.currentCourse; },
-      get currentScenario() { return self.currentScenario; },
-      get dailyStats() { return self.dailyStats; },
-      set dailyStats(v) { self.dailyStats = v; },
+    const gameSystems: GameSystems = {
+      player: this.playerController.getPlayer(),
+      playerVisual: this.playerController.getPlayerVisual(),
+      clickToMoveWaypoints: this.playerController.getClickToMoveWaypoints(),
+      lastEquipmentFaceId: this.playerController.getLastEquipmentFaceId(),
+      equipmentManager: this.equipmentManager,
+      terrainSystem: this.terrainSystem,
+      terrainEditorSystem: this.terrainEditorController.getSystem(),
+      irrigationRenderSystem: this.irrigationRenderSystem,
+      uiManager: this.uiManager,
+      babylonEngine: this.babylonEngine,
+      teeSheetViewDay: this.uiPanelCoordinator.getTeeSheetViewDay(),
       handleMove: (d) => this.movePlayer(d),
       handleEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       handleResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
@@ -1664,7 +1130,7 @@ export class BabylonMain {
       saveCurrentGame: () => this.saveCurrentGame(),
       hasSavedGame: () => this.hasSavedGame(),
     };
-    return new GameAPI(ctx);
+    return new GameAPI(this.state, gameSystems);
   }
 
   public dispose(): void {
@@ -1701,26 +1167,26 @@ export class BabylonMain {
   }
 
   private showTutorialHint(id: string, message: string, color?: string): void {
-    if (this.shownTutorialHints.has(id)) return;
-    if (this.currentScenario?.id !== "tutorial_basics") return;
-    this.shownTutorialHints.add(id);
+    if (this.state.shownTutorialHints.has(id)) return;
+    if (this.state.currentScenario?.id !== "tutorial_basics") return;
+    this.state.shownTutorialHints.add(id);
     this.uiManager.showNotification(message, color, 5000);
   }
 
   private checkTutorialHints(): void {
-    if (this.currentScenario?.id !== "tutorial_basics") return;
+    if (this.state.currentScenario?.id !== "tutorial_basics") return;
 
     const courseStats = this.terrainSystem.getCourseStats();
-    const hours = Math.floor(this.gameTime / 60);
+    const hours = Math.floor(this.state.gameTime / 60);
 
-    if (this.gameDay === 1 && hours >= 6 && hours < 7) {
+    if (this.state.gameDay === 1 && hours >= 6 && hours < 7) {
       this.showTutorialHint(
         "welcome",
         "🎓 Welcome! Use WASD to move around your course."
       );
     }
 
-    if (this.gameDay === 1 && hours >= 8) {
+    if (this.state.gameDay === 1 && hours >= 8) {
       this.showTutorialHint(
         "equipment",
         "🎓 Press 1/2/3 to select equipment, Space to toggle on/off."
@@ -1748,14 +1214,14 @@ export class BabylonMain {
       );
     }
 
-    if (this.gameDay === 2 && hours >= 7) {
+    if (this.state.gameDay === 2 && hours >= 7) {
       this.showTutorialHint(
         "panels",
         "🎓 Press H=Employees, Y=Research, G=TeeSheet, K=Marketing"
       );
     }
 
-    if (this.prestigeState.golfersRejectedToday >= 3) {
+    if (this.state.prestigeState.golfersRejectedToday >= 3) {
       this.showTutorialHint(
         "pricing",
         "🎓 Golfers leaving! Lower prices with - button in prestige panel.",

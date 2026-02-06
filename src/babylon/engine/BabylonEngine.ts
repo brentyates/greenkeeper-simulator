@@ -280,7 +280,7 @@ export class BabylonEngine {
     const canvasY = (screenY - rect.top) * scaleY;
 
     const pickResult = this.scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith('terrain') || mesh.name.startsWith('tile_') || mesh.name === 'vectorTerrain';
+      return mesh.name.startsWith('terrain') || mesh.name.startsWith('tile_') || mesh.name === 'terrainMesh';
     });
 
     if (pickResult?.hit && pickResult.pickedPoint) {

@@ -10,12 +10,13 @@ import { BabylonEngine } from "./engine/BabylonEngine";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 
-import { CourseData, REFILL_STATIONS } from "../data/courseData";
+import { REFILL_STATIONS } from "../data/courseData";
 import { EditorTool } from "../core/terrain-editor-logic";
-import { ScenarioDefinition } from "../data/scenarioData";
+
+import { GameState } from "./GameState";
+export { GameState } from "./GameState";
 
 import {
-  EconomyState,
   addIncome,
   addExpense,
   canAfford,
@@ -29,7 +30,6 @@ import {
   calculateFinancialSummary,
 } from "../core/economy";
 import {
-  IrrigationSystem,
   addPipe,
   removePipe,
   addSprinklerHead,
@@ -42,30 +42,25 @@ import {
   WateringSchedule,
   PIPE_CONFIGS,
   SPRINKLER_CONFIGS,
+  IrrigationSystem,
 } from "../core/irrigation";
 import {
-  EmployeeRoster,
-  ApplicationState,
   hireEmployee,
   fireEmployee,
   Employee,
   createEmployee,
 } from "../core/employees";
 import {
-  EmployeeWorkSystemState,
   syncWorkersWithRoster,
   getWorkerPositions,
 } from "../core/employee-work";
 import { PlayerEntity, teleportEntity } from "../core/movable-entity";
 import {
-  GolferPoolState,
-  GreenFeeStructure,
   getActiveGolferCount,
   getAverageSatisfaction,
   WeatherCondition,
 } from "../core/golfers";
 import {
-  ResearchState,
   startResearch,
   cancelResearch,
   setFundingLevel,
@@ -76,24 +71,21 @@ import {
   getPrerequisiteChain,
   getResearchStatus,
   getResearchProgress,
+  ResearchState,
 } from "../core/research";
-import { ScenarioManager } from "../core/scenario";
 import {
-  PrestigeState,
   calculateCurrentConditionsFromFaces,
   updatePrestigeScore,
   upgradeAmenity,
 } from "../core/prestige";
 import { AmenityUpgrade, getUpgradeCost, getAvailableUpgrades, getUpgradeName } from "../core/amenities";
 import {
-  TeeTimeSystemState,
   bookTeeTime,
   checkInTeeTime,
   cancelTeeTime,
   type GameTime,
 } from "../core/tee-times";
 import {
-  WalkOnState,
   getWalkOnSummary,
   getQueueLength,
   getEstimatedWaitTime,
@@ -102,7 +94,6 @@ import {
   createWalkOnGolfer,
 } from "../core/walk-ons";
 import {
-  RevenueState,
   getRevenueSummary,
   calculateGreenFee,
   calculateCartFee,
@@ -112,7 +103,6 @@ import {
   isTwilightHour,
 } from "../core/tee-revenue";
 import {
-  MarketingState,
   startCampaign,
   stopCampaign,
   canStartCampaign,
@@ -123,7 +113,6 @@ import {
   listSaves,
 } from "../core/save-game";
 import {
-  AutonomousEquipmentState,
   purchaseRobot,
   sellRobot,
   countWorkingRobots,
@@ -131,73 +120,29 @@ import {
   getAvailableRobotsToPurchase,
 } from "../core/autonomous-equipment";
 import {
-  WeatherState,
   getWeatherDescription,
   getWeatherImpactDescription,
   getSeasonFromDay,
 } from "../core/weather";
 import {
-  ReputationState,
   getReputationSummary,
   calculateReputationScore,
   trackGolferVisit,
   trackTurnAway,
 } from "../core/reputation";
 
-export interface GameContext {
+export interface GameSystems {
   player: PlayerEntity;
   playerVisual: EntityVisualState | null;
   clickToMoveWaypoints: Array<{ x: number; z: number }>;
+  lastEquipmentFaceId: number | null;
   equipmentManager: EquipmentManager;
   terrainSystem: TerrainSystem;
   terrainEditorSystem: TerrainEditorSystem | null;
+  irrigationRenderSystem: IrrigationRenderSystem | null;
   uiManager: UIManager;
   babylonEngine: BabylonEngine;
-  overlayAutoSwitched: boolean;
-  isPaused: boolean;
-  isMuted: boolean;
-  gameTime: number;
-  gameDay: number;
-  timeScale: number;
-  score: number;
-  lastEquipmentFaceId: number | null;
-  economyState: EconomyState;
-  employeeRoster: EmployeeRoster;
-  employeeWorkState: EmployeeWorkSystemState;
-  applicationState: ApplicationState;
-  golferPool: GolferPoolState;
-  researchState: ResearchState;
-  scenarioManager: ScenarioManager | null;
-  weatherState: WeatherState;
-  weather: WeatherCondition;
-  greenFees: GreenFeeStructure;
-  prestigeState: PrestigeState;
-  teeTimeState: TeeTimeSystemState;
   teeSheetViewDay: number;
-  walkOnState: WalkOnState;
-  revenueState: RevenueState;
-  marketingState: MarketingState;
-  autonomousState: AutonomousEquipmentState;
-  reputationState: ReputationState;
-  irrigationSystem: IrrigationSystem;
-  irrigationRenderSystem: IrrigationRenderSystem | null;
-  currentCourse: CourseData;
-  currentScenario: ScenarioDefinition | null;
-  dailyStats: {
-    revenue: { greenFees: number; tips: number; addOns: number; other: number };
-    expenses: { wages: number; supplies: number; research: number; utilities: number; other: number };
-    golfersServed: number;
-    totalSatisfaction: number;
-    courseHealthStart: number;
-    prestigeStart: number;
-    maintenance: {
-      tasksCompleted: number;
-      tilesMowed: number;
-      tilesWatered: number;
-      tilesFertilized: number;
-    };
-  };
-
   handleMove(direction: Direction): void;
   handleEmployeePanel(): void;
   handleResearchPanel(): void;
@@ -217,39 +162,39 @@ export interface GameContext {
 }
 
 export class GameAPI {
-  constructor(private ctx: GameContext) {}
+  constructor(private state: GameState, private systems: GameSystems) {}
 
   public teleport(x: number, y: number): void {
-    const course = this.ctx.currentCourse;
+    const course = this.state.currentCourse;
     if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
       console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
       return;
     }
 
-    this.ctx.player = {
-      ...teleportEntity(this.ctx.player, x, y),
+    this.systems.player = {
+      ...teleportEntity(this.systems.player, x, y),
       worldX: x + 0.5,
       worldZ: y + 0.5,
     };
-    this.ctx.clickToMoveWaypoints = [];
-    this.ctx.lastEquipmentFaceId = null;
+    this.systems.clickToMoveWaypoints = [];
+    this.systems.lastEquipmentFaceId = null;
 
-    if (this.ctx.playerVisual) {
-      this.ctx.playerVisual.lastGridX = x;
-      this.ctx.playerVisual.lastGridY = y;
-      this.ctx.playerVisual.targetGridX = x;
-      this.ctx.playerVisual.targetGridY = y;
-      this.ctx.playerVisual.visualProgress = 1;
+    if (this.systems.playerVisual) {
+      this.systems.playerVisual.lastGridX = x;
+      this.systems.playerVisual.lastGridY = y;
+      this.systems.playerVisual.targetGridX = x;
+      this.systems.playerVisual.targetGridY = y;
+      this.systems.playerVisual.visualProgress = 1;
     }
 
-    this.ctx.updatePlayerPosition();
+    this.systems.updatePlayerPosition();
   }
 
   public setRunning(running: boolean): void {
     if (running) {
-      this.ctx.babylonEngine.start();
+      this.systems.babylonEngine.start();
     } else {
-      this.ctx.babylonEngine.stop();
+      this.systems.babylonEngine.stop();
     }
   }
 
@@ -259,8 +204,8 @@ export class GameAPI {
     failed: boolean;
     message?: string;
   } | null {
-    if (!this.ctx.scenarioManager) return null;
-    const result = this.ctx.scenarioManager.checkObjective();
+    if (!this.state.scenarioManager) return null;
+    const result = this.state.scenarioManager.checkObjective();
     return {
       progress: result.progress,
       completed: result.completed,
@@ -271,9 +216,9 @@ export class GameAPI {
 
   public getEconomyState(): { cash: number; earned: number; spent: number } {
     return {
-      cash: this.ctx.economyState.cash,
-      earned: this.ctx.economyState.totalEarned,
-      spent: this.ctx.economyState.totalSpent,
+      cash: this.state.economyState.cash,
+      earned: this.state.economyState.totalEarned,
+      spent: this.state.economyState.totalSpent,
     };
   }
 
@@ -284,15 +229,15 @@ export class GameAPI {
     amenityScore: number;
   } {
     return {
-      score: this.ctx.prestigeState.currentScore,
-      stars: this.ctx.prestigeState.starRating,
-      tier: this.ctx.prestigeState.tier,
-      amenityScore: this.ctx.prestigeState.amenityScore,
+      score: this.state.prestigeState.currentScore,
+      stars: this.state.prestigeState.starRating,
+      tier: this.state.prestigeState.tier,
+      amenityScore: this.state.prestigeState.amenityScore,
     };
   }
 
   public getGameDay(): number {
-    return this.ctx.gameDay;
+    return this.state.gameDay;
   }
 
   public getTeeTimeStats(): {
@@ -301,13 +246,13 @@ export class GameAPI {
     noShows: number;
     slotsAvailable: number;
   } {
-    const todaySlots = this.ctx.teeTimeState.teeTimes.get(this.ctx.gameDay) ?? [];
+    const todaySlots = this.state.teeTimeState.teeTimes.get(this.state.gameDay) ?? [];
     const available = todaySlots.filter((t) => t.status === "available").length;
 
     return {
-      totalBookings: this.ctx.teeTimeState.bookingMetrics.totalBookingsToday,
-      cancellations: this.ctx.teeTimeState.bookingMetrics.cancellationsToday,
-      noShows: this.ctx.teeTimeState.bookingMetrics.noShowsToday,
+      totalBookings: this.state.teeTimeState.bookingMetrics.totalBookingsToday,
+      cancellations: this.state.teeTimeState.bookingMetrics.cancellationsToday,
+      noShows: this.state.teeTimeState.bookingMetrics.noShowsToday,
       slotsAvailable: available,
     };
   }
@@ -317,13 +262,13 @@ export class GameAPI {
     totalSpent: number;
     totalROI: number;
   } {
-    const totalSpent = this.ctx.marketingState.metrics.totalSpent;
-    const totalRevenue = this.ctx.marketingState.metrics.totalRevenueGenerated;
+    const totalSpent = this.state.marketingState.metrics.totalSpent;
+    const totalRevenue = this.state.marketingState.metrics.totalRevenueGenerated;
     const roi =
       totalSpent > 0 ? ((totalRevenue - totalSpent) / totalSpent) * 100 : 0;
 
     return {
-      activeCampaigns: this.ctx.marketingState.activeCampaigns.length,
+      activeCampaigns: this.state.marketingState.activeCampaigns.length,
       totalSpent,
       totalROI: Math.round(roi),
     };
@@ -331,27 +276,27 @@ export class GameAPI {
 
   public startMarketingCampaign(campaignId: string, days: number = 7): boolean {
     const canStart = canStartCampaign(
-      this.ctx.marketingState,
+      this.state.marketingState,
       campaignId,
-      this.ctx.economyState.cash
+      this.state.economyState.cash
     );
     if (!canStart.canStart) {
       return false;
     }
 
     const result = startCampaign(
-      this.ctx.marketingState,
+      this.state.marketingState,
       campaignId,
-      this.ctx.gameDay,
+      this.state.gameDay,
       days
     );
     if (result) {
-      this.ctx.marketingState = result.state;
+      this.state.marketingState = result.state;
       const cost = result.setupCost;
       if (cost > 0) {
-        const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+        const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
         const expenseResult = addExpense(
-          this.ctx.economyState,
+          this.state.economyState,
           cost,
           "marketing",
           `Campaign: ${campaignId}`,
@@ -359,7 +304,7 @@ export class GameAPI {
           false
         );
         if (expenseResult) {
-          this.ctx.economyState = expenseResult;
+          this.state.economyState = expenseResult;
         }
       }
       return true;
@@ -369,17 +314,17 @@ export class GameAPI {
 
   public getGameTime(): { hours: number; minutes: number } {
     return {
-      hours: Math.floor(this.ctx.gameTime / 60),
-      minutes: Math.floor(this.ctx.gameTime % 60),
+      hours: Math.floor(this.state.gameTime / 60),
+      minutes: Math.floor(this.state.gameTime % 60),
     };
   }
 
   public setCash(amount: number): void {
-    const diff = amount - this.ctx.economyState.cash;
+    const diff = amount - this.state.economyState.cash;
     const timestamp = Date.now();
     if (diff > 0) {
-      this.ctx.economyState = addIncome(
-        this.ctx.economyState,
+      this.state.economyState = addIncome(
+        this.state.economyState,
         diff,
         "other_income",
         "Test adjustment",
@@ -387,7 +332,7 @@ export class GameAPI {
       );
     } else if (diff < 0) {
       const result = addExpense(
-        this.ctx.economyState,
+        this.state.economyState,
         -diff,
         "other_expense",
         "Test adjustment",
@@ -395,24 +340,24 @@ export class GameAPI {
         true
       );
       if (result) {
-        this.ctx.economyState = result;
+        this.state.economyState = result;
       }
     }
-    this.ctx.uiManager.updateEconomy(
-      this.ctx.economyState.cash,
-      getActiveGolferCount(this.ctx.golferPool),
-      getAverageSatisfaction(this.ctx.golferPool)
+    this.systems.uiManager.updateEconomy(
+      this.state.economyState.cash,
+      getActiveGolferCount(this.state.golferPool),
+      getAverageSatisfaction(this.state.golferPool)
     );
   }
 
   public advanceDay(): void {
-    this.ctx.gameDay++;
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.incrementDay();
+    this.state.gameDay++;
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.incrementDay();
     }
-    const conditionsScore = calculateCurrentConditionsFromFaces(this.ctx.terrainSystem.getAllFaceStates());
-    this.ctx.prestigeState = updatePrestigeScore(
-      this.ctx.prestigeState,
+    const conditionsScore = calculateCurrentConditionsFromFaces(this.systems.terrainSystem.getAllFaceStates());
+    this.state.prestigeState = updatePrestigeScore(
+      this.state.prestigeState,
       conditionsScore
     );
   }
@@ -440,15 +385,15 @@ export class GameAPI {
         return false;
     }
 
-    const cost = getUpgradeCost(this.ctx.prestigeState.amenities, upgrade);
-    if (this.ctx.economyState.cash < cost) {
+    const cost = getUpgradeCost(this.state.prestigeState.amenities, upgrade);
+    if (this.state.economyState.cash < cost) {
       return false;
     }
 
-    this.ctx.prestigeState = upgradeAmenity(this.ctx.prestigeState, upgrade);
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    this.state.prestigeState = upgradeAmenity(this.state.prestigeState, upgrade);
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const expenseResult = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       cost,
       "equipment_purchase",
       `Amenity: ${upgrade.type}`,
@@ -456,7 +401,7 @@ export class GameAPI {
       false
     );
     if (expenseResult) {
-      this.ctx.economyState = expenseResult;
+      this.state.economyState = expenseResult;
     }
 
     return true;
@@ -477,18 +422,18 @@ export class GameAPI {
     };
     const dir = dirMap[direction];
     if (dir) {
-      this.ctx.handleMove(dir);
+      this.systems.handleMove(dir);
     }
   }
 
   public getPlayerPosition(): { x: number; y: number } {
-    return { x: this.ctx.player.gridX, y: this.ctx.player.gridY };
+    return { x: this.systems.player.gridX, y: this.systems.player.gridY };
   }
 
   public selectEquipment(slot: 1 | 2 | 3): void {
-    const wasSelected = this.ctx.equipmentManager.getSelected();
-    this.ctx.equipmentManager.handleSlot(slot);
-    const nowSelected = this.ctx.equipmentManager.getSelected();
+    const wasSelected = this.systems.equipmentManager.getSelected();
+    this.systems.equipmentManager.handleSlot(slot);
+    const nowSelected = this.systems.equipmentManager.getSelected();
 
     if (nowSelected !== null && nowSelected !== wasSelected) {
       const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
@@ -497,27 +442,27 @@ export class GameAPI {
         3: "nutrients",
       };
       const targetOverlay = overlayMap[slot];
-      if (targetOverlay && this.ctx.terrainSystem.getOverlayMode() !== targetOverlay) {
-        this.ctx.terrainSystem.setOverlayMode(targetOverlay);
-        this.ctx.uiManager.updateOverlayLegend(targetOverlay);
-        this.ctx.overlayAutoSwitched = true;
-        this.ctx.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.ctx.overlayAutoSwitched) {
-        this.ctx.terrainSystem.setOverlayMode("normal");
-        this.ctx.uiManager.updateOverlayLegend("normal");
-        this.ctx.overlayAutoSwitched = false;
-        this.ctx.updateIrrigationVisibility();
+      if (targetOverlay && this.systems.terrainSystem.getOverlayMode() !== targetOverlay) {
+        this.systems.terrainSystem.setOverlayMode(targetOverlay);
+        this.systems.uiManager.updateOverlayLegend(targetOverlay);
+        this.state.overlayAutoSwitched = true;
+        this.systems.updateIrrigationVisibility();
+      } else if (targetOverlay === null && this.state.overlayAutoSwitched) {
+        this.systems.terrainSystem.setOverlayMode("normal");
+        this.systems.uiManager.updateOverlayLegend("normal");
+        this.state.overlayAutoSwitched = false;
+        this.systems.updateIrrigationVisibility();
       }
-    } else if (nowSelected === null && this.ctx.overlayAutoSwitched) {
-      this.ctx.terrainSystem.setOverlayMode("normal");
-      this.ctx.uiManager.updateOverlayLegend("normal");
-      this.ctx.overlayAutoSwitched = false;
-      this.ctx.updateIrrigationVisibility();
+    } else if (nowSelected === null && this.state.overlayAutoSwitched) {
+      this.systems.terrainSystem.setOverlayMode("normal");
+      this.systems.uiManager.updateOverlayLegend("normal");
+      this.state.overlayAutoSwitched = false;
+      this.systems.updateIrrigationVisibility();
     }
   }
 
   public toggleEquipment(): void {
-    const selected = this.ctx.equipmentManager.getSelected();
+    const selected = this.systems.equipmentManager.getSelected();
     if (selected === null) return;
 
     const slotMap: Record<string, 1 | 2 | 3> = {
@@ -534,11 +479,11 @@ export class GameAPI {
     sprinkler: { active: boolean; resource: number; max: number } | null;
     spreader: { active: boolean; resource: number; max: number } | null;
   } {
-    const mowerState = this.ctx.equipmentManager.getState("mower");
-    const sprinklerState = this.ctx.equipmentManager.getState("sprinkler");
-    const spreaderState = this.ctx.equipmentManager.getState("spreader");
+    const mowerState = this.systems.equipmentManager.getState("mower");
+    const sprinklerState = this.systems.equipmentManager.getState("sprinkler");
+    const spreaderState = this.systems.equipmentManager.getState("spreader");
 
-    const selected = this.ctx.equipmentManager.getSelected();
+    const selected = this.systems.equipmentManager.getSelected();
     const slotMap: Record<string, number> = {
       mower: 0,
       sprinkler: 1,
@@ -572,20 +517,20 @@ export class GameAPI {
   }
 
   public setTerrainEditor(enabled: boolean): void {
-    if (!this.ctx.terrainEditorSystem) return;
+    if (!this.systems.terrainEditorSystem) return;
     if (enabled) {
-      this.ctx.terrainEditorSystem.enable();
+      this.systems.terrainEditorSystem.enable();
     } else {
-      this.ctx.terrainEditorSystem.disable();
+      this.systems.terrainEditorSystem.disable();
     }
   }
 
   public isTerrainEditorEnabled(): boolean {
-    return this.ctx.terrainEditorSystem?.isEnabled() ?? false;
+    return this.systems.terrainEditorSystem?.isEnabled() ?? false;
   }
 
   public setEditorTool(tool: string): void {
-    if (!this.ctx.terrainEditorSystem) return;
+    if (!this.systems.terrainEditorSystem) return;
 
     const toolMap: Record<string, EditorTool> = {
       raise: "raise",
@@ -602,59 +547,59 @@ export class GameAPI {
 
     const editorTool = toolMap[tool];
     if (editorTool) {
-      this.ctx.terrainEditorSystem.setTool(editorTool);
+      this.systems.terrainEditorSystem.setTool(editorTool);
     }
   }
 
   public setEditorBrushSize(size: number): void {
-    if (this.ctx.terrainEditorSystem) {
-      this.ctx.terrainEditorSystem.setBrushSize(size);
+    if (this.systems.terrainEditorSystem) {
+      this.systems.terrainEditorSystem.setBrushSize(size);
     }
   }
 
   public editTerrainAt(gridX: number, gridY: number): void {
-    if (!this.ctx.terrainEditorSystem || !this.ctx.terrainEditorSystem.isEnabled()) {
+    if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
     const worldPos = new Vector3(gridX + 0.1, 0, gridY + 0.1);
-    this.ctx.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
-    this.ctx.terrainEditorSystem.handleClick(gridX, gridY);
+    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
+    this.systems.terrainEditorSystem.handleClick(gridX, gridY);
   }
 
   public dragTerrainStart(
     gridX: number,
     gridY: number
   ): void {
-    if (!this.ctx.terrainEditorSystem || !this.ctx.terrainEditorSystem.isEnabled()) {
+    if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
-    this.ctx.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.ctx.terrainEditorSystem.handleDragStart(gridX, gridY);
+    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    this.systems.terrainEditorSystem.handleDragStart(gridX, gridY);
   }
 
   public dragTerrainMove(gridX: number, gridY: number): void {
-    if (!this.ctx.terrainEditorSystem || !this.ctx.terrainEditorSystem.isEnabled()) {
+    if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
-    this.ctx.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.ctx.terrainEditorSystem.handleDrag(gridX, gridY);
+    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY);
+    this.systems.terrainEditorSystem.handleDrag(gridX, gridY);
   }
 
   public dragTerrainEnd(): void {
-    if (this.ctx.terrainEditorSystem) {
-      this.ctx.terrainEditorSystem.handleDragEnd();
+    if (this.systems.terrainEditorSystem) {
+      this.systems.terrainEditorSystem.handleDragEnd();
     }
   }
 
   public getElevationAt(x: number, y: number): number | undefined {
-    return this.ctx.terrainSystem.getElevationAt(x, y);
+    return this.systems.terrainSystem.getElevationAt(x, y);
   }
 
   public setElevationAt(x: number, y: number, elevation: number): void {
-    this.ctx.terrainSystem.setElevationAt(x, y, elevation);
+    this.systems.terrainSystem.setElevationAt(x, y, elevation);
   }
 
   public setCellState(
@@ -662,23 +607,23 @@ export class GameAPI {
     y: number,
     state: { height?: number; moisture?: number; nutrients?: number; health?: number }
   ): void {
-    this.ctx.terrainSystem.setCellState(x, y, state);
+    this.systems.terrainSystem.setCellState(x, y, state);
   }
 
   public setAllCellsState(
     state: { height?: number; moisture?: number; nutrients?: number; health?: number }
   ): void {
-    this.ctx.terrainSystem.setAllCellsState(state);
+    this.systems.terrainSystem.setAllCellsState(state);
   }
 
   public setAllFaceStates(
     state: { moisture?: number; nutrients?: number; grassHeight?: number; health?: number }
   ): void {
-    this.ctx.terrainSystem.setAllFaceStates(state);
+    this.systems.terrainSystem.setAllFaceStates(state);
   }
 
   public getTerrainTypeAt(x: number, y: number): string | undefined {
-    return this.ctx.terrainSystem.getTerrainTypeAt(x, y);
+    return this.systems.terrainSystem.getTerrainTypeAt(x, y);
   }
 
   public setTerrainTypeAt(
@@ -686,28 +631,28 @@ export class GameAPI {
     y: number,
     type: "fairway" | "rough" | "green" | "bunker" | "water" | "tee"
   ): void {
-    this.ctx.terrainSystem.setTerrainTypeAt(x, y, type);
+    this.systems.terrainSystem.setTerrainTypeAt(x, y, type);
   }
 
   public setOverlayMode(
     mode: "normal" | "moisture" | "nutrients" | "height" | "irrigation"
   ): void {
-    this.ctx.terrainSystem.setOverlayMode(mode);
+    this.systems.terrainSystem.setOverlayMode(mode);
 
-    const scene = this.ctx.babylonEngine.getScene();
+    const scene = this.systems.babylonEngine.getScene();
     if (mode === "irrigation") {
       scene.clearColor = new Color4(0.9, 0.88, 0.85, 1);
     } else {
       scene.clearColor = new Color4(0.4, 0.6, 0.9, 1);
     }
 
-    if (this.ctx.irrigationRenderSystem) {
-      this.ctx.irrigationRenderSystem.setVisible(mode === "irrigation");
+    if (this.systems.irrigationRenderSystem) {
+      this.systems.irrigationRenderSystem.setVisible(mode === "irrigation");
     }
 
-    this.ctx.uiManager.updateOverlayLegend(mode);
-    this.ctx.overlayAutoSwitched = false;
-    this.ctx.updateIrrigationVisibility();
+    this.systems.uiManager.updateOverlayLegend(mode);
+    this.state.overlayAutoSwitched = false;
+    this.systems.updateIrrigationVisibility();
   }
 
   public getOverlayMode():
@@ -716,13 +661,13 @@ export class GameAPI {
     | "nutrients"
     | "height"
     | "irrigation" {
-    return this.ctx.terrainSystem.getOverlayMode();
+    return this.systems.terrainSystem.getOverlayMode();
   }
 
   public async waitForPlayerIdle(): Promise<void> {
     return new Promise((resolve) => {
       const checkIdle = () => {
-        if (!this.ctx.isPlayerMoving()) {
+        if (!this.systems.isPlayerMoving()) {
           resolve();
         } else {
           setTimeout(checkIdle, 16);
@@ -733,31 +678,31 @@ export class GameAPI {
   }
 
   public toggleEmployeePanel(): void {
-    this.ctx.handleEmployeePanel();
+    this.systems.handleEmployeePanel();
   }
 
   public toggleResearchPanel(): void {
-    this.ctx.handleResearchPanel();
+    this.systems.handleResearchPanel();
   }
 
   public toggleTeeSheetPanel(): void {
-    this.ctx.handleTeeSheetPanel();
+    this.systems.handleTeeSheetPanel();
   }
 
   public toggleMarketingPanel(): void {
-    this.ctx.handleMarketingPanel();
+    this.systems.handleMarketingPanel();
   }
 
   public cycleOverlay(): void {
-    this.ctx.handleOverlayCycle();
+    this.systems.handleOverlayCycle();
   }
 
   public refillEquipment(): void {
-    this.ctx.handleRefill();
+    this.systems.handleRefill();
   }
 
   public toggleMute(): void {
-    this.ctx.handleMute();
+    this.systems.handleMute();
   }
 
   public getEmployeeState(): {
@@ -767,10 +712,10 @@ export class GameAPI {
     totalHourlyWages: number;
   } {
     return {
-      employees: this.ctx.employeeRoster.employees,
-      count: this.ctx.employeeRoster.employees.length,
-      maxEmployees: this.ctx.employeeRoster.maxEmployees,
-      totalHourlyWages: this.ctx.employeeRoster.employees.reduce(
+      employees: this.state.employeeRoster.employees,
+      count: this.state.employeeRoster.employees.length,
+      maxEmployees: this.state.employeeRoster.maxEmployees,
+      totalHourlyWages: this.state.employeeRoster.employees.reduce(
         (sum, e) => sum + e.hourlyWage,
         0
       ),
@@ -784,10 +729,10 @@ export class GameAPI {
     totalReceived: number;
   } {
     return {
-      applications: this.ctx.applicationState.applications,
-      nextApplicationTime: this.ctx.applicationState.nextApplicationTime,
-      activeJobPostings: this.ctx.applicationState.activeJobPostings.length,
-      totalReceived: this.ctx.applicationState.totalApplicationsReceived,
+      applications: this.state.applicationState.applications,
+      nextApplicationTime: this.state.applicationState.nextApplicationTime,
+      activeJobPostings: this.state.applicationState.activeJobPostings.length,
+      totalReceived: this.state.applicationState.totalApplicationsReceived,
     };
   }
 
@@ -799,18 +744,18 @@ export class GameAPI {
     terrain: { width: number; height: number };
     editorEnabled: boolean;
   } {
-    const layoutGrid = this.ctx.terrainSystem.getLayoutGrid();
+    const layoutGrid = this.systems.terrainSystem.getLayoutGrid();
     return {
       player: {
-        x: this.ctx.player.gridX,
-        y: this.ctx.player.gridY,
-        isMoving: this.ctx.isPlayerMoving(),
+        x: this.systems.player.gridX,
+        y: this.systems.player.gridY,
+        isMoving: this.systems.isPlayerMoving(),
       },
       equipment: this.getEquipmentState(),
       time: {
-        day: this.ctx.gameDay,
-        hours: Math.floor(this.ctx.gameTime / 60),
-        minutes: this.ctx.gameTime % 60,
+        day: this.state.gameDay,
+        hours: Math.floor(this.state.gameTime / 60),
+        minutes: this.state.gameTime % 60,
       },
       economy: this.getEconomyState(),
       terrain: {
@@ -822,23 +767,23 @@ export class GameAPI {
   }
 
   public placePipe(x: number, y: number, pipeType: PipeType): boolean {
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const config = PIPE_CONFIGS[pipeType];
     const cost = config.cost;
 
-    if (!canAfford(this.ctx.economyState, cost)) {
+    if (!canAfford(this.state.economyState, cost)) {
       return false;
     }
 
-    this.ctx.irrigationSystem = addPipe(
-      this.ctx.irrigationSystem,
+    this.state.irrigationSystem = addPipe(
+      this.state.irrigationSystem,
       x,
       y,
       pipeType,
       timestamp
     );
     const expenseResult = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       cost,
       "construction",
       `Pipe installation: ${pipeType}`,
@@ -846,20 +791,20 @@ export class GameAPI {
       false
     );
     if (expenseResult) {
-      this.ctx.economyState = expenseResult;
+      this.state.economyState = expenseResult;
     }
 
-    if (this.ctx.irrigationRenderSystem) {
-      this.ctx.irrigationRenderSystem.update(this.ctx.irrigationSystem);
+    if (this.systems.irrigationRenderSystem) {
+      this.systems.irrigationRenderSystem.update(this.state.irrigationSystem);
     }
 
     return true;
   }
 
   public removePipe(x: number, y: number): void {
-    this.ctx.irrigationSystem = removePipe(this.ctx.irrigationSystem, x, y);
-    if (this.ctx.irrigationRenderSystem) {
-      this.ctx.irrigationRenderSystem.update(this.ctx.irrigationSystem);
+    this.state.irrigationSystem = removePipe(this.state.irrigationSystem, x, y);
+    if (this.systems.irrigationRenderSystem) {
+      this.systems.irrigationRenderSystem.update(this.state.irrigationSystem);
     }
   }
 
@@ -868,23 +813,23 @@ export class GameAPI {
     y: number,
     sprinklerType: SprinklerType
   ): boolean {
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const config = SPRINKLER_CONFIGS[sprinklerType];
     const cost = config.cost + 20;
 
-    if (!canAfford(this.ctx.economyState, cost)) {
+    if (!canAfford(this.state.economyState, cost)) {
       return false;
     }
 
-    this.ctx.irrigationSystem = addSprinklerHead(
-      this.ctx.irrigationSystem,
+    this.state.irrigationSystem = addSprinklerHead(
+      this.state.irrigationSystem,
       x,
       y,
       sprinklerType,
       timestamp
     );
     const expenseResult = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       cost,
       "construction",
       `Sprinkler installation: ${sprinklerType}`,
@@ -892,42 +837,42 @@ export class GameAPI {
       false
     );
     if (expenseResult) {
-      this.ctx.economyState = expenseResult;
+      this.state.economyState = expenseResult;
     }
 
-    if (this.ctx.irrigationRenderSystem) {
-      this.ctx.irrigationRenderSystem.update(this.ctx.irrigationSystem);
+    if (this.systems.irrigationRenderSystem) {
+      this.systems.irrigationRenderSystem.update(this.state.irrigationSystem);
     }
 
     return true;
   }
 
   public removeSprinklerHead(x: number, y: number): void {
-    const head = getSprinklerHeadAt(this.ctx.irrigationSystem, x, y);
+    const head = getSprinklerHeadAt(this.state.irrigationSystem, x, y);
     if (head) {
-      this.ctx.irrigationSystem = removeSprinklerHead(
-        this.ctx.irrigationSystem,
+      this.state.irrigationSystem = removeSprinklerHead(
+        this.state.irrigationSystem,
         head.id
       );
-      if (this.ctx.irrigationRenderSystem) {
-        this.ctx.irrigationRenderSystem.update(this.ctx.irrigationSystem);
+      if (this.systems.irrigationRenderSystem) {
+        this.systems.irrigationRenderSystem.update(this.state.irrigationSystem);
       }
     }
   }
 
   public repairLeak(x: number, y: number): boolean {
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const cost = 20;
 
-    if (!canAfford(this.ctx.economyState, cost)) {
+    if (!canAfford(this.state.economyState, cost)) {
       return false;
     }
 
-    const result = repairLeak(this.ctx.irrigationSystem, x, y);
+    const result = repairLeak(this.state.irrigationSystem, x, y);
     if (result) {
-      this.ctx.irrigationSystem = result;
+      this.state.irrigationSystem = result;
       const expenseResult = addExpense(
-        this.ctx.economyState,
+        this.state.economyState,
         cost,
         "equipment_maintenance",
         "Pipe leak repair",
@@ -935,11 +880,11 @@ export class GameAPI {
         false
       );
       if (expenseResult) {
-        this.ctx.economyState = expenseResult;
+        this.state.economyState = expenseResult;
       }
 
-      if (this.ctx.irrigationRenderSystem) {
-        this.ctx.irrigationRenderSystem.update(this.ctx.irrigationSystem);
+      if (this.systems.irrigationRenderSystem) {
+        this.systems.irrigationRenderSystem.update(this.state.irrigationSystem);
       }
 
       return true;
@@ -949,15 +894,15 @@ export class GameAPI {
   }
 
   public getIrrigationSystem(): IrrigationSystem {
-    return this.ctx.irrigationSystem;
+    return this.state.irrigationSystem;
   }
 
   public setIrrigationSchedule(
     headId: string,
     schedule: WateringSchedule
   ): void {
-    this.ctx.irrigationSystem = updateSprinklerSchedule(
-      this.ctx.irrigationSystem,
+    this.state.irrigationSystem = updateSprinklerSchedule(
+      this.state.irrigationSystem,
       headId,
       schedule
     );
@@ -974,7 +919,7 @@ export class GameAPI {
     lastWatered: number;
     lastFertilized: number;
   } | null {
-    const cell = this.ctx.terrainSystem.getCell(x, y);
+    const cell = this.systems.terrainSystem.getCell(x, y);
     if (!cell) return null;
     return {
       type: cell.type,
@@ -995,66 +940,66 @@ export class GameAPI {
     nutrients: number;
     height: number;
   } {
-    return this.ctx.terrainSystem.getCourseStats();
+    return this.systems.terrainSystem.getCourseStats();
   }
 
   public setEquipmentResource(
     type: "mower" | "sprinkler" | "spreader",
     amount: number
   ): void {
-    this.ctx.equipmentManager.setResource(type, amount);
+    this.systems.equipmentManager.setResource(type, amount);
   }
 
   public advanceTimeByMinutes(minutes: number): void {
-    const deltaMs = minutes * 60 * 1000 / this.ctx.timeScale;
-    this.ctx.gameTime += (deltaMs / 1000) * 2 * this.ctx.timeScale;
-    if (this.ctx.gameTime >= 24 * 60) {
-      this.ctx.gameTime -= 24 * 60;
-      this.ctx.gameDay++;
+    const deltaMs = minutes * 60 * 1000 / this.state.timeScale;
+    this.state.gameTime += (deltaMs / 1000) * 2 * this.state.timeScale;
+    if (this.state.gameTime >= 24 * 60) {
+      this.state.gameTime -= 24 * 60;
+      this.state.gameDay++;
     }
-    this.ctx.terrainSystem.update(deltaMs, this.ctx.gameDay * 1440 + this.ctx.gameTime);
-    this.ctx.updateEconomySystems(deltaMs);
+    this.systems.terrainSystem.update(deltaMs, this.state.gameDay * 1440 + this.state.gameTime);
+    this.systems.updateEconomySystems(deltaMs);
   }
 
   public getResearchState(): ResearchState {
-    return this.ctx.researchState;
+    return this.state.researchState;
   }
 
   public startResearchItem(itemId: string): boolean {
-    const currentTime = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
-    const result = startResearch(this.ctx.researchState, itemId, currentTime);
+    const currentTime = this.state.gameDay * 24 * 60 + this.state.gameTime;
+    const result = startResearch(this.state.researchState, itemId, currentTime);
     if (result) {
-      this.ctx.researchState = result;
+      this.state.researchState = result;
       return true;
     }
     return false;
   }
 
   public cancelCurrentResearch(): void {
-    this.ctx.researchState = cancelResearch(this.ctx.researchState);
+    this.state.researchState = cancelResearch(this.state.researchState);
   }
 
   public setResearchFunding(level: FundingLevel): void {
-    this.ctx.researchState = setFundingLevel(this.ctx.researchState, level);
+    this.state.researchState = setFundingLevel(this.state.researchState, level);
   }
 
   public queueResearch(itemId: string): void {
-    this.ctx.researchState = {
-      ...this.ctx.researchState,
-      researchQueue: [...this.ctx.researchState.researchQueue, itemId],
+    this.state.researchState = {
+      ...this.state.researchState,
+      researchQueue: [...this.state.researchState.researchQueue, itemId],
     };
   }
 
   public isResearchCompleted(itemId: string): boolean {
-    return this.ctx.researchState.completedResearch.includes(itemId);
+    return this.state.researchState.completedResearch.includes(itemId);
   }
 
   public getAvailableResearch(): string[] {
     return RESEARCH_ITEMS
       .filter((item) => {
-        if (this.ctx.researchState.completedResearch.includes(item.id)) return false;
+        if (this.state.researchState.completedResearch.includes(item.id)) return false;
         return item.prerequisites.every((prereq) =>
-          this.ctx.researchState.completedResearch.includes(prereq)
+          this.state.researchState.completedResearch.includes(prereq)
         );
       })
       .map((item) => item.id);
@@ -1063,17 +1008,17 @@ export class GameAPI {
   public hireEmployee(applicationIndex: number): boolean {
     if (
       applicationIndex < 0 ||
-      applicationIndex >= this.ctx.applicationState.applications.length
+      applicationIndex >= this.state.applicationState.applications.length
     ) {
       return false;
     }
-    const application = this.ctx.applicationState.applications[applicationIndex];
-    const result = hireEmployee(this.ctx.employeeRoster, application);
+    const application = this.state.applicationState.applications[applicationIndex];
+    const result = hireEmployee(this.state.employeeRoster, application);
     if (result) {
-      this.ctx.employeeRoster = result;
-      this.ctx.applicationState = {
-        ...this.ctx.applicationState,
-        applications: this.ctx.applicationState.applications.filter((_, i) => i !== applicationIndex),
+      this.state.employeeRoster = result;
+      this.state.applicationState = {
+        ...this.state.applicationState,
+        applications: this.state.applicationState.applications.filter((_, i) => i !== applicationIndex),
       };
       return true;
     }
@@ -1081,9 +1026,9 @@ export class GameAPI {
   }
 
   public fireEmployee(employeeId: string): boolean {
-    const result = fireEmployee(this.ctx.employeeRoster, employeeId);
+    const result = fireEmployee(this.state.employeeRoster, employeeId);
     if (result) {
-      this.ctx.employeeRoster = result;
+      this.state.employeeRoster = result;
       return true;
     }
     return false;
@@ -1095,8 +1040,8 @@ export class GameAPI {
     status: string;
     playerCount: number;
   }> {
-    const targetDay = day ?? this.ctx.gameDay;
-    const teeTimes = this.ctx.teeTimeState.teeTimes.get(targetDay) ?? [];
+    const targetDay = day ?? this.state.gameDay;
+    const teeTimes = this.state.teeTimeState.teeTimes.get(targetDay) ?? [];
     return teeTimes.map((tt) => ({
       id: tt.id,
       time: `${tt.scheduledTime.hour}:${String(tt.scheduledTime.minute).padStart(2, "0")}`,
@@ -1110,32 +1055,32 @@ export class GameAPI {
       golferId: `golfer_${Date.now()}_${i}`,
       name: `Golfer ${i + 1}`,
       membershipStatus: 'public' as const,
-      greenFee: this.ctx.prestigeState.greenFee || 50,
+      greenFee: this.state.prestigeState.greenFee || 50,
       cartFee: 0,
       addOns: [],
     }));
     const currentTime: GameTime = {
-      day: this.ctx.gameDay,
-      hour: Math.floor(this.ctx.gameTime / 60),
-      minute: this.ctx.gameTime % 60,
+      day: this.state.gameDay,
+      hour: Math.floor(this.state.gameTime / 60),
+      minute: this.state.gameTime % 60,
     };
-    const result = bookTeeTime(this.ctx.teeTimeState, teeTimeId, golferBookings, 'reservation', currentTime);
-    if (result !== this.ctx.teeTimeState) {
-      this.ctx.teeTimeState = result;
+    const result = bookTeeTime(this.state.teeTimeState, teeTimeId, golferBookings, 'reservation', currentTime);
+    if (result !== this.state.teeTimeState) {
+      this.state.teeTimeState = result;
       return true;
     }
     return false;
   }
 
   public checkInTeeTime(teeTimeId: string): boolean {
-    const result = checkInTeeTime(this.ctx.teeTimeState, teeTimeId);
-    this.ctx.teeTimeState = result;
+    const result = checkInTeeTime(this.state.teeTimeState, teeTimeId);
+    this.state.teeTimeState = result;
     return true;
   }
 
   public cancelTeeTimeBooking(teeTimeId: string): boolean {
-    const result = cancelTeeTime(this.ctx.teeTimeState, teeTimeId);
-    this.ctx.teeTimeState = result;
+    const result = cancelTeeTime(this.state.teeTimeState, teeTimeId);
+    this.state.teeTimeState = result;
     return true;
   }
 
@@ -1143,7 +1088,7 @@ export class GameAPI {
     campaignId: string;
     daysRemaining: number;
   }> {
-    return this.ctx.marketingState.activeCampaigns
+    return this.state.marketingState.activeCampaigns
       .filter(c => c.status === 'active')
       .map((c) => ({
         campaignId: c.campaignId,
@@ -1152,8 +1097,8 @@ export class GameAPI {
   }
 
   public endMarketingCampaign(campaignId: string): boolean {
-    const result = stopCampaign(this.ctx.marketingState, campaignId, this.ctx.gameDay);
-    this.ctx.marketingState = result;
+    const result = stopCampaign(this.state.marketingState, campaignId, this.state.gameDay);
+    this.state.marketingState = result;
     return true;
   }
 
@@ -1163,11 +1108,11 @@ export class GameAPI {
     cost: number;
     purchased: boolean;
   }> {
-    const available = getAvailableUpgrades(this.ctx.prestigeState.amenities);
+    const available = getAvailableUpgrades(this.state.prestigeState.amenities);
     return available.map((upgrade, index) => ({
       id: `amenity_${index}`,
       name: getUpgradeName(upgrade),
-      cost: getUpgradeCost(this.ctx.prestigeState.amenities, upgrade),
+      cost: getUpgradeCost(this.state.prestigeState.amenities, upgrade),
       purchased: false,
     }));
   }
@@ -1178,9 +1123,9 @@ export class GameAPI {
     avgSatisfaction: number;
   } {
     return {
-      active: getActiveGolferCount(this.ctx.golferPool),
-      served: this.ctx.golferPool.totalVisitorsToday,
-      avgSatisfaction: getAverageSatisfaction(this.ctx.golferPool),
+      active: getActiveGolferCount(this.state.golferPool),
+      served: this.state.golferPool.totalVisitorsToday,
+      avgSatisfaction: getAverageSatisfaction(this.state.golferPool),
     };
   }
 
@@ -1193,17 +1138,17 @@ export class GameAPI {
     currentHealth: number;
     currentRating: number;
   } | null {
-    if (!this.ctx.scenarioManager) return null;
+    if (!this.state.scenarioManager) return null;
 
-    return this.ctx.scenarioManager.getProgress();
+    return this.state.scenarioManager.getProgress();
   }
 
   public hasActiveParticles(): boolean {
-    return this.ctx.equipmentManager.hasParticles();
+    return this.systems.equipmentManager.hasParticles();
   }
 
   public getGrassRenderUpdateCount(): number {
-    return this.ctx.terrainSystem.getUpdateCount();
+    return this.systems.terrainSystem.getUpdateCount();
   }
 
   public getUIState(): {
@@ -1212,22 +1157,22 @@ export class GameAPI {
     notificationCount: number;
   } {
     return {
-      isPaused: this.ctx.isPaused,
-      overlayMode: this.ctx.terrainSystem.getOverlayMode(),
+      isPaused: this.state.isPaused,
+      overlayMode: this.systems.terrainSystem.getOverlayMode(),
       notificationCount: 0,
     };
   }
 
   public setPaused(paused: boolean): void {
     if (paused) {
-      this.ctx.pauseGame();
+      this.systems.pauseGame();
     } else {
-      this.ctx.resumeGame();
+      this.systems.resumeGame();
     }
   }
 
   public refillAtCurrentPosition(): { success: boolean; cost: number } {
-    const playerPos = { x: this.ctx.player.gridX, y: this.ctx.player.gridY };
+    const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
     const isAtStation = REFILL_STATIONS.some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );
@@ -1236,10 +1181,10 @@ export class GameAPI {
       return { success: false, cost: 0 };
     }
 
-    const cost = this.ctx.equipmentManager.refill();
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    const cost = this.systems.equipmentManager.refill();
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const expenseResult = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       cost,
       "supplies",
       "Equipment refill",
@@ -1247,14 +1192,14 @@ export class GameAPI {
       false
     );
     if (expenseResult) {
-      this.ctx.economyState = expenseResult;
+      this.state.economyState = expenseResult;
     }
 
     return { success: true, cost };
   }
 
   public isAtRefillStation(): boolean {
-    const playerPos = { x: this.ctx.player.gridX, y: this.ctx.player.gridY };
+    const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
     return REFILL_STATIONS.some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );
@@ -1266,7 +1211,7 @@ export class GameAPI {
 
   public forceGrassGrowth(minutes: number): void {
     const deltaMs = minutes * 500;
-    this.ctx.terrainSystem.update(deltaMs, this.ctx.gameDay * 1440 + this.ctx.gameTime);
+    this.systems.terrainSystem.update(deltaMs, this.state.gameDay * 1440 + this.state.gameTime);
   }
 
   public getTerrainEditorState(): {
@@ -1274,7 +1219,7 @@ export class GameAPI {
     tool: string | null;
     brushSize: number;
   } {
-    if (!this.ctx.terrainEditorSystem) {
+    if (!this.systems.terrainEditorSystem) {
       return {
         enabled: false,
         tool: null,
@@ -1283,9 +1228,9 @@ export class GameAPI {
     }
 
     return {
-      enabled: this.ctx.terrainEditorSystem.isEnabled(),
-      tool: this.ctx.terrainEditorSystem.getCurrentTool(),
-      brushSize: this.ctx.terrainEditorSystem.getBrushSize(),
+      enabled: this.systems.terrainEditorSystem.isEnabled(),
+      tool: this.systems.terrainEditorSystem.getCurrentTool(),
+      brushSize: this.systems.terrainEditorSystem.getBrushSize(),
     };
   }
 
@@ -1295,14 +1240,14 @@ export class GameAPI {
     brokenRobots: number;
   } {
     return {
-      totalRobots: this.ctx.autonomousState.robots.length,
-      workingRobots: countWorkingRobots(this.ctx.autonomousState),
-      brokenRobots: countBrokenRobots(this.ctx.autonomousState),
+      totalRobots: this.state.autonomousState.robots.length,
+      workingRobots: countWorkingRobots(this.state.autonomousState),
+      brokenRobots: countBrokenRobots(this.state.autonomousState),
     };
   }
 
   public getAvailableRobots(): Array<{ equipmentId: string; ownedCount: number }> {
-    return getAvailableRobotsToPurchase(this.ctx.researchState, this.ctx.autonomousState);
+    return getAvailableRobotsToPurchase(this.state.researchState, this.state.autonomousState);
   }
 
   public getWalkOnState(): {
@@ -1311,9 +1256,9 @@ export class GameAPI {
     totalTurnedAway: number;
   } {
     return {
-      queueLength: this.ctx.walkOnState.queue.length,
-      totalServed: this.ctx.walkOnState.metrics.walkOnsServedToday,
-      totalTurnedAway: this.ctx.walkOnState.metrics.walkOnsTurnedAwayToday,
+      queueLength: this.state.walkOnState.queue.length,
+      totalServed: this.state.walkOnState.metrics.walkOnsServedToday,
+      totalTurnedAway: this.state.walkOnState.metrics.walkOnsTurnedAwayToday,
     };
   }
 
@@ -1324,10 +1269,10 @@ export class GameAPI {
     foodBeverage: number;
   } {
     return {
-      greenFees: this.ctx.revenueState.todaysRevenue.greenFees,
-      cartFees: this.ctx.revenueState.todaysRevenue.cartFees,
-      proShopSales: this.ctx.revenueState.todaysRevenue.proShop,
-      foodBeverage: this.ctx.revenueState.todaysRevenue.foodAndBeverage,
+      greenFees: this.state.revenueState.todaysRevenue.greenFees,
+      cartFees: this.state.revenueState.todaysRevenue.cartFees,
+      proShopSales: this.state.revenueState.todaysRevenue.proShop,
+      foodBeverage: this.state.revenueState.todaysRevenue.foodAndBeverage,
     };
   }
 
@@ -1337,20 +1282,20 @@ export class GameAPI {
     windSpeed: number;
   } {
     return {
-      condition: this.ctx.weatherState.current.type,
-      temperature: this.ctx.weatherState.current.temperature,
-      windSpeed: this.ctx.weatherState.current.windSpeed,
+      condition: this.state.weatherState.current.type,
+      temperature: this.state.weatherState.current.temperature,
+      windSpeed: this.state.weatherState.current.windSpeed,
     };
   }
 
   public setWeatherCondition(type: "sunny" | "cloudy" | "rainy" | "stormy"): void {
     const newCondition: WeatherCondition = {
       type,
-      temperature: this.ctx.weatherState.current.temperature,
-      windSpeed: this.ctx.weatherState.current.windSpeed,
+      temperature: this.state.weatherState.current.temperature,
+      windSpeed: this.state.weatherState.current.windSpeed,
     };
-    this.ctx.weatherState = {
-      ...this.ctx.weatherState,
+    this.state.weatherState = {
+      ...this.state.weatherState,
       current: newCondition,
     };
   }
@@ -1360,7 +1305,7 @@ export class GameAPI {
     activeWorkers: number;
     idleWorkers: number;
   } {
-    const workers = this.ctx.employeeWorkState.workers;
+    const workers = this.state.employeeWorkState.workers;
     const activeCount = workers.filter(w => w.currentTask !== 'idle').length;
     return {
       workerCount: workers.length,
@@ -1370,7 +1315,7 @@ export class GameAPI {
   }
 
   public getTerrainDimensions(): { width: number; height: number } {
-    return this.ctx.terrainSystem.getGridDimensions();
+    return this.systems.terrainSystem.getGridDimensions();
   }
 
   public getTerrainCellData(x: number, y: number): {
@@ -1381,7 +1326,7 @@ export class GameAPI {
     height: number;
     health: number;
   } | null {
-    const cell = this.ctx.terrainSystem.getCell(x, y);
+    const cell = this.systems.terrainSystem.getCell(x, y);
     if (!cell) return null;
 
     return {
@@ -1396,7 +1341,7 @@ export class GameAPI {
 
   public getTerrainTypes(): string[] {
     const types = new Set<string>();
-    const cells = this.ctx.terrainSystem.getAllCells();
+    const cells = this.systems.terrainSystem.getAllCells();
     for (const row of cells) {
       for (const cell of row) {
         types.add(cell.type);
@@ -1410,7 +1355,7 @@ export class GameAPI {
   }
 
   public getSaveGameInfo(scenarioId?: string): { savedAt: number; gameDay: number } | null {
-    const id = scenarioId || this.ctx.currentScenario?.id || 'sandbox';
+    const id = scenarioId || this.state.currentScenario?.id || 'sandbox';
     return getSaveInfo(id);
   }
 
@@ -1425,26 +1370,26 @@ export class GameAPI {
     totalTurnAways: number;
     returnRate: number;
   } {
-    const summary = getReputationSummary(this.ctx.reputationState);
+    const summary = getReputationSummary(this.state.reputationState);
     return {
-      score: calculateReputationScore(this.ctx.reputationState),
+      score: calculateReputationScore(this.state.reputationState),
       starRating: summary.starRating,
       trend: summary.trend,
-      totalTurnAways: this.ctx.reputationState.totalTurnAways,
+      totalTurnAways: this.state.reputationState.totalTurnAways,
       returnRate: summary.returnRate,
     };
   }
 
   public trackGolferVisitForReputation(golferId: string, isReturning: boolean): void {
-    this.ctx.reputationState = trackGolferVisit(
-      this.ctx.reputationState,
+    this.state.reputationState = trackGolferVisit(
+      this.state.reputationState,
       golferId,
       isReturning
     );
   }
 
   public trackTurnAwayForReputation(): void {
-    this.ctx.reputationState = trackTurnAway(this.ctx.reputationState);
+    this.state.reputationState = trackTurnAway(this.state.reputationState);
   }
 
   public getWalkOnSummary(): {
@@ -1455,14 +1400,14 @@ export class GameAPI {
     avgWait: number;
     estimatedWait: number;
   } {
-    const summary = getWalkOnSummary(this.ctx.walkOnState);
+    const summary = getWalkOnSummary(this.state.walkOnState);
     return {
-      queueLength: getQueueLength(this.ctx.walkOnState),
+      queueLength: getQueueLength(this.state.walkOnState),
       served: summary.served,
       turnedAway: summary.turnedAway,
       gaveUp: summary.gaveUp,
       avgWait: summary.averageWait,
-      estimatedWait: getEstimatedWaitTime(this.ctx.walkOnState),
+      estimatedWait: getEstimatedWaitTime(this.state.walkOnState),
     };
   }
 
@@ -1470,22 +1415,22 @@ export class GameAPI {
     const updates: Partial<{ maxWaitMinutes: number; maxQueueSize: number }> = {};
     if (maxWaitMinutes !== undefined) updates.maxWaitMinutes = maxWaitMinutes;
     if (maxQueueSize !== undefined) updates.maxQueueSize = maxQueueSize;
-    this.ctx.walkOnState = updateWalkOnPolicy(this.ctx.walkOnState, updates);
+    this.state.walkOnState = updateWalkOnPolicy(this.state.walkOnState, updates);
   }
 
   public addWalkOnGolfer(): boolean {
     const currentTime: GameTime = {
-      day: this.ctx.gameDay,
-      hour: Math.floor(this.ctx.gameTime / 60),
-      minute: this.ctx.gameTime % 60,
+      day: this.state.gameDay,
+      hour: Math.floor(this.state.gameTime / 60),
+      minute: this.state.gameTime % 60,
     };
     const golfer = createWalkOnGolfer(
       `walkon_${Date.now()}`,
       `Walk-On ${Date.now() % 1000}`,
       currentTime
     );
-    const result = addWalkOnToQueue(this.ctx.walkOnState, golfer);
-    this.ctx.walkOnState = result.state;
+    const result = addWalkOnToQueue(this.state.walkOnState, golfer);
+    this.state.walkOnState = result.state;
     return result.accepted;
   }
 
@@ -1496,7 +1441,7 @@ export class GameAPI {
     monthlyAvg: number;
     topRevenueSource: string;
   } {
-    const summary = getRevenueSummary(this.ctx.revenueState);
+    const summary = getRevenueSummary(this.state.revenueState);
     const sources: Array<{ name: string; value: number }> = [
       { name: 'greenFees', value: summary.today.greenFees },
       { name: 'cartFees', value: summary.today.cartFees },
@@ -1516,10 +1461,10 @@ export class GameAPI {
   public calculateGreenFeeForGolfer(
     membershipType: 'public' | 'member' | 'guest_of_member' = 'public'
   ): number {
-    const hour = Math.floor(this.ctx.gameTime / 60);
-    const dayOfWeek = this.ctx.gameDay % 7;
+    const hour = Math.floor(this.state.gameTime / 60);
+    const dayOfWeek = this.state.gameDay % 7;
     return calculateGreenFee(
-      this.ctx.revenueState.greenFeeStructure,
+      this.state.revenueState.greenFeeStructure,
       dayOfWeek,
       hour,
       membershipType
@@ -1527,59 +1472,59 @@ export class GameAPI {
   }
 
   public calculateCartFeeForGolfer(): number {
-    const hour = Math.floor(this.ctx.gameTime / 60);
-    return calculateCartFee(this.ctx.revenueState.cartFeeStructure, isTwilightHour(hour));
+    const hour = Math.floor(this.state.gameTime / 60);
+    return calculateCartFee(this.state.revenueState.cartFeeStructure, isTwilightHour(hour));
   }
 
   public getAverageRevenue(days: number = 7): number {
-    const avgRevenue = calculateAverageRevenue(this.ctx.revenueState, days);
+    const avgRevenue = calculateAverageRevenue(this.state.revenueState, days);
     return avgRevenue.grossRevenue;
   }
 
   public purchaseRobotUnit(equipmentId: string): boolean {
-    const availableRobots = getAvailableRobotsToPurchase(this.ctx.researchState, this.ctx.autonomousState);
+    const availableRobots = getAvailableRobotsToPurchase(this.state.researchState, this.state.autonomousState);
     const robot = availableRobots.find(r => r.equipmentId === equipmentId);
     if (!robot) return false;
 
-    const result = purchaseRobot(this.ctx.autonomousState, equipmentId, robot.stats);
+    const result = purchaseRobot(this.state.autonomousState, equipmentId, robot.stats);
     if (!result) return false;
 
-    if (result.cost > this.ctx.economyState.cash) return false;
+    if (result.cost > this.state.economyState.cash) return false;
 
-    this.ctx.autonomousState = result.state;
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    this.state.autonomousState = result.state;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const expenseResult = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       result.cost,
       'equipment_purchase',
       `Robot purchase: ${equipmentId}`,
       timestamp
     );
     if (expenseResult) {
-      this.ctx.economyState = expenseResult;
+      this.state.economyState = expenseResult;
     }
     return true;
   }
 
   public sellRobotUnit(robotId: string): boolean {
-    const result = sellRobot(this.ctx.autonomousState, robotId);
+    const result = sellRobot(this.state.autonomousState, robotId);
     if (!result) return false;
 
-    this.ctx.autonomousState = result.state;
-    const timestamp = this.ctx.gameDay * 24 * 60 + this.ctx.gameTime;
+    this.state.autonomousState = result.state;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
     const incomeResult = addIncome(
-      this.ctx.economyState,
+      this.state.economyState,
       result.refund,
       'equipment_purchase',
       `Robot sale: ${robotId}`,
       timestamp
     );
-    this.ctx.economyState = incomeResult;
+    this.state.economyState = incomeResult;
     return true;
   }
 
   public getRobotList(): Array<{ id: string; type: string; state: string; battery: number }> {
-    return this.ctx.autonomousState.robots.map(r => ({
+    return this.state.autonomousState.robots.map(r => ({
       id: r.id,
       type: r.type,
       state: r.state,
@@ -1588,43 +1533,43 @@ export class GameAPI {
   }
 
   public isCurrentTimeWeekend(): boolean {
-    return isWeekend(this.ctx.gameDay % 7);
+    return isWeekend(this.state.gameDay % 7);
   }
 
   public isCurrentTimePrimeMorning(): boolean {
-    return isPrimeMorning(Math.floor(this.ctx.gameTime / 60));
+    return isPrimeMorning(Math.floor(this.state.gameTime / 60));
   }
 
   public isCurrentTimeTwilight(): boolean {
-    return isTwilightHour(Math.floor(this.ctx.gameTime / 60));
+    return isTwilightHour(Math.floor(this.state.gameTime / 60));
   }
 
   public getWeatherDescription(): string {
-    return getWeatherDescription(this.ctx.weatherState.current);
+    return getWeatherDescription(this.state.weatherState.current);
   }
 
   public getWeatherImpact(): string {
-    return getWeatherImpactDescription(this.ctx.weatherState.current);
+    return getWeatherImpactDescription(this.state.weatherState.current);
   }
 
   public getCurrentSeason(): string {
-    return getSeasonFromDay(this.ctx.gameDay).season;
+    return getSeasonFromDay(this.state.gameDay).season;
   }
 
   public completeResearch(itemId: string): boolean {
-    const newState = completeResearchInstantly(this.ctx.researchState, itemId);
+    const newState = completeResearchInstantly(this.state.researchState, itemId);
     if (!newState) return false;
-    this.ctx.researchState = newState;
+    this.state.researchState = newState;
     return true;
   }
 
   public completeResearchWithPrerequisites(itemId: string): boolean {
     const chain = getPrerequisiteChain(itemId);
     for (const prereqId of chain) {
-      if (!this.ctx.researchState.completedResearch.includes(prereqId)) {
-        const result = completeResearchInstantly(this.ctx.researchState, prereqId);
+      if (!this.state.researchState.completedResearch.includes(prereqId)) {
+        const result = completeResearchInstantly(this.state.researchState, prereqId);
         if (result) {
-          this.ctx.researchState = result;
+          this.state.researchState = result;
         }
       }
     }
@@ -1637,31 +1582,31 @@ export class GameAPI {
     prerequisites: string[];
   } {
     return {
-      status: getResearchStatus(this.ctx.researchState, itemId),
-      progress: getResearchProgress(this.ctx.researchState),
+      status: getResearchStatus(this.state.researchState, itemId),
+      progress: getResearchProgress(this.state.researchState),
       prerequisites: getPrerequisiteChain(itemId) as string[],
     };
   }
 
   public takeLoan(size: "small" | "medium" | "large"): boolean {
     const terms = DEFAULT_LOAN_TERMS[size];
-    const result = takeLoan(this.ctx.economyState, terms, this.ctx.gameTime);
+    const result = takeLoan(this.state.economyState, terms, this.state.gameTime);
     if (!result) return false;
-    this.ctx.economyState = result;
+    this.state.economyState = result;
     return true;
   }
 
   public makeLoanPayment(loanId: string): boolean {
-    const result = makeLoanPayment(this.ctx.economyState, loanId, this.ctx.gameTime);
+    const result = makeLoanPayment(this.state.economyState, loanId, this.state.gameTime);
     if (!result) return false;
-    this.ctx.economyState = result;
+    this.state.economyState = result;
     return true;
   }
 
   public payOffLoan(loanId: string): boolean {
-    const result = payOffLoan(this.ctx.economyState, loanId, this.ctx.gameTime);
+    const result = payOffLoan(this.state.economyState, loanId, this.state.gameTime);
     if (!result) return false;
-    this.ctx.economyState = result;
+    this.state.economyState = result;
     return true;
   }
 
@@ -1678,16 +1623,16 @@ export class GameAPI {
     canTakeLoan: boolean;
   } {
     return {
-      loans: this.ctx.economyState.loans.map((l) => ({
+      loans: this.state.economyState.loans.map((l) => ({
         id: l.id,
         principal: l.principal,
         remainingBalance: l.remainingBalance,
         interestRate: l.interestRate,
         monthlyPayment: l.monthlyPayment,
       })),
-      totalDebt: getTotalDebt(this.ctx.economyState),
-      netWorth: getNetWorth(this.ctx.economyState),
-      canTakeLoan: this.ctx.economyState.loans.length < 3,
+      totalDebt: getTotalDebt(this.state.economyState),
+      netWorth: getNetWorth(this.state.economyState),
+      canTakeLoan: this.state.economyState.loans.length < 3,
     };
   }
 
@@ -1702,8 +1647,8 @@ export class GameAPI {
     timestamp: number;
   }> {
     const start = startTime ?? 0;
-    const end = endTime ?? this.ctx.gameTime;
-    return getTransactionsInRange(this.ctx.economyState, start, end).map((t) => ({
+    const end = endTime ?? this.state.gameTime;
+    return getTransactionsInRange(this.state.economyState, start, end).map((t) => ({
       id: t.id,
       amount: t.amount,
       category: t.category,
@@ -1717,7 +1662,7 @@ export class GameAPI {
     totalExpenses: number;
     netProfit: number;
   } {
-    const summary = calculateFinancialSummary(this.ctx.economyState.transactions);
+    const summary = calculateFinancialSummary(this.state.economyState.transactions);
     return {
       totalIncome: summary.totalIncome,
       totalExpenses: summary.totalExpenses,
@@ -1726,14 +1671,14 @@ export class GameAPI {
   }
 
   public forceHireGroundskeeper(): string | null {
-    const employee = createEmployee("groundskeeper", "novice", this.ctx.gameTime);
-    this.ctx.employeeRoster = {
-      ...this.ctx.employeeRoster,
-      employees: [...this.ctx.employeeRoster.employees, employee],
+    const employee = createEmployee("groundskeeper", "novice", this.state.gameTime);
+    this.state.employeeRoster = {
+      ...this.state.employeeRoster,
+      employees: [...this.state.employeeRoster.employees, employee],
     };
-    this.ctx.employeeWorkState = syncWorkersWithRoster(
-      this.ctx.employeeWorkState,
-      this.ctx.employeeRoster.employees
+    this.state.employeeWorkState = syncWorkersWithRoster(
+      this.state.employeeWorkState,
+      this.state.employeeRoster.employees
     );
     return employee.id;
   }
@@ -1746,7 +1691,7 @@ export class GameAPI {
     worldX: number;
     worldZ: number;
   }> {
-    return getWorkerPositions(this.ctx.employeeWorkState).map((w) => ({
+    return getWorkerPositions(this.state.employeeWorkState).map((w) => ({
       employeeId: w.employeeId,
       gridX: w.gridX,
       gridY: w.gridY,
@@ -1767,7 +1712,7 @@ export class GameAPI {
     targetY: number | null;
     breakdownTimeRemaining: number;
   }> {
-    return this.ctx.autonomousState.robots.map((r) => ({
+    return this.state.autonomousState.robots.map((r) => ({
       id: r.id,
       type: r.type,
       state: r.state,
@@ -1785,12 +1730,12 @@ export class GameAPI {
     description: string;
     timeLimitDays?: number;
   } | null {
-    if (!this.ctx.scenarioManager) return null;
-    const objective = this.ctx.scenarioManager.getObjective();
-    const conditions = this.ctx.scenarioManager.getConditions();
+    if (!this.state.scenarioManager) return null;
+    const objective = this.state.scenarioManager.getObjective();
+    const conditions = this.state.scenarioManager.getConditions();
     return {
       type: objective.type,
-      description: this.ctx.scenarioManager.getObjectiveDescription(),
+      description: this.state.scenarioManager.getObjectiveDescription(),
       timeLimitDays: conditions.timeLimitDays,
     };
   }
@@ -1805,8 +1750,8 @@ export class GameAPI {
     currentRating?: number;
     daysAtTargetRating?: number;
   }): void {
-    if (!this.ctx.scenarioManager) return;
-    this.ctx.scenarioManager.updateProgress(updates);
+    if (!this.state.scenarioManager) return;
+    this.state.scenarioManager.updateProgress(updates);
   }
 
   public checkScenarioObjective(): {
@@ -1815,69 +1760,69 @@ export class GameAPI {
     progress: number;
     message?: string;
   } {
-    if (!this.ctx.scenarioManager) {
+    if (!this.state.scenarioManager) {
       return { completed: false, failed: false, progress: 0 };
     }
-    return this.ctx.scenarioManager.checkObjective();
+    return this.state.scenarioManager.checkObjective();
   }
 
   public addRevenue(amount: number, category: string = "green_fees"): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.addRevenue(amount);
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.addRevenue(amount);
     }
-    this.ctx.economyState = addIncome(
-      this.ctx.economyState,
+    this.state.economyState = addIncome(
+      this.state.economyState,
       amount,
       category as any,
       "Test revenue",
-      this.ctx.gameTime
+      this.state.gameTime
     );
   }
 
   public addExpenseAmount(amount: number, category: string = "supplies"): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.addExpense(amount);
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.addExpense(amount);
     }
     const result = addExpense(
-      this.ctx.economyState,
+      this.state.economyState,
       amount,
       category as any,
       "Test expense",
-      this.ctx.gameTime,
+      this.state.gameTime,
       true
     );
     if (result) {
-      this.ctx.economyState = result;
+      this.state.economyState = result;
     }
   }
 
   public incrementScenarioDay(): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.incrementDay();
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.incrementDay();
     }
   }
 
   public updateCourseHealthForScenario(): void {
-    if (this.ctx.scenarioManager && this.ctx.terrainSystem) {
-      this.ctx.scenarioManager.updateCourseHealthFromFaces(this.ctx.terrainSystem.getAllFaceStates());
+    if (this.state.scenarioManager && this.systems.terrainSystem) {
+      this.state.scenarioManager.updateCourseHealthFromFaces(this.systems.terrainSystem.getAllFaceStates());
     }
   }
 
   public checkSatisfactionStreak(targetRating: number): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.checkSatisfactionStreak(targetRating);
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.checkSatisfactionStreak(targetRating);
     }
   }
 
   public addGolferCount(count: number): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.addGolfers(count);
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.addGolfers(count);
     }
   }
 
   public addRoundCount(): void {
-    if (this.ctx.scenarioManager) {
-      this.ctx.scenarioManager.addRound();
+    if (this.state.scenarioManager) {
+      this.state.scenarioManager.addRound();
     }
   }
 
@@ -1888,30 +1833,30 @@ export class GameAPI {
     fundingLevel: string;
     availableResearch: string[];
   } {
-    const available = getAvailableResearchItems(this.ctx.researchState);
+    const available = getAvailableResearchItems(this.state.researchState);
     return {
-      completedResearch: [...this.ctx.researchState.completedResearch],
-      currentResearch: this.ctx.researchState.currentResearch
+      completedResearch: [...this.state.researchState.completedResearch],
+      currentResearch: this.state.researchState.currentResearch
         ? {
-            itemId: this.ctx.researchState.currentResearch.itemId,
+            itemId: this.state.researchState.currentResearch.itemId,
             progress: Math.round(
-              (this.ctx.researchState.currentResearch.pointsEarned /
-                this.ctx.researchState.currentResearch.pointsRequired) *
+              (this.state.researchState.currentResearch.pointsEarned /
+                this.state.researchState.currentResearch.pointsRequired) *
                 100
             ),
           }
         : null,
-      researchQueue: [...this.ctx.researchState.researchQueue],
-      fundingLevel: this.ctx.researchState.fundingLevel,
+      researchQueue: [...this.state.researchState.researchQueue],
+      fundingLevel: this.state.researchState.fundingLevel,
       availableResearch: available.map((r) => r.id),
     };
   }
 
   public saveCurrentGame(): void {
-    this.ctx.saveCurrentGame();
+    this.systems.saveCurrentGame();
   }
 
   public hasSavedGame(): boolean {
-    return this.ctx.hasSavedGame();
+    return this.systems.hasSavedGame();
   }
 }

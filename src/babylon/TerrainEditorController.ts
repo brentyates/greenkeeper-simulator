@@ -3,8 +3,8 @@ import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
-import { createVectorTerrainModifier } from "./systems/createTerrainModifier";
-import { VectorTerrainSystem } from "./systems/VectorTerrainSystem";
+import { createTerrainMeshModifier } from "./systems/createTerrainModifier";
+import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { TerrainEditorUI } from "./ui/TerrainEditorUI";
 import { TerrainType } from "../core/terrain";
@@ -18,7 +18,7 @@ export interface TerrainEditorContext {
   screenToWorldPosition(screenX: number, screenY: number): { x: number; z: number } | null;
   setCameraTarget(target: any): void;
   getTerrainSystem(): TerrainSystem;
-  getVectorTerrainSystem(): VectorTerrainSystem | null;
+  getTerrainMeshSystem(): TerrainMeshSystem | null;
   getCourseWidth(): number;
   getCourseHeight(): number;
   getPlayerVisual(): EntityVisualState | null;
@@ -56,11 +56,11 @@ export class TerrainEditorController {
         terrainSystem.rebuildTileAndNeighbors(x, y),
     };
 
-    const vts = this.ctx.getVectorTerrainSystem();
+    const vts = this.ctx.getTerrainMeshSystem();
     if (vts) {
       this.terrainEditorSystem.setTerrainModifier({
         ...baseModifier,
-        ...createVectorTerrainModifier(vts),
+        ...createTerrainMeshModifier(vts),
       });
       this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
     } else {
@@ -134,7 +134,7 @@ export class TerrainEditorController {
           this.terrainEditorSystem!.getAxisConstraint()
         );
         this.terrainEditorUI?.setStampSize(this.terrainEditorSystem!.getStampScale());
-        const vts = this.ctx.getVectorTerrainSystem();
+        const vts = this.ctx.getTerrainMeshSystem();
         if (vts) {
           if (this.terrainEditorSystem!.getMode() === 'sculpt') {
             vts.setWireframeEnabled(true);
@@ -148,7 +148,7 @@ export class TerrainEditorController {
       },
       onDisable: () => {
         this.terrainEditorUI?.hide();
-        const vts = this.ctx.getVectorTerrainSystem();
+        const vts = this.ctx.getTerrainMeshSystem();
         if (vts) {
           vts.setWireframeEnabled(false);
           vts.setAxisIndicatorEnabled(false);
@@ -171,7 +171,7 @@ export class TerrainEditorController {
       },
       onModeChange: (mode) => {
         this.terrainEditorUI?.setActiveMode(mode);
-        const vts = this.ctx.getVectorTerrainSystem();
+        const vts = this.ctx.getTerrainMeshSystem();
         if (vts) {
           vts.setWireframeEnabled(true);
           vts.setGridLinesEnabled(false);
@@ -312,7 +312,7 @@ export class TerrainEditorController {
     const canvasY = (screenY - rect.top) * scaleY;
 
     const pickResult = scene.pick(canvasX, canvasY, (mesh) => {
-      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "vectorTerrain";
+      return mesh.name.startsWith("terrain") || mesh.name.startsWith("tile_") || mesh.name === "terrainMesh";
     });
 
     if (pickResult?.hit && pickResult.pickedPoint) {

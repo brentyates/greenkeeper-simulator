@@ -36,4 +36,4 @@ Topology (vertices/edges/faces) is the source of truth for terrain geometry and 
 - **Grid-generated courses**: `gridToTopology()` builds topology from `CourseData.layout`
 - **Organic courses**: `CourseData.topology` has pre-built Delaunay topology from polygon regions
 - **Face states** drive gameplay simulation (moisture, nutrients, grass height per triangle)
-- Grid APIs in VectorTerrainSystem are backed by topology lookups
+- Grid APIs in TerrainMeshSystem are backed by topology lookups

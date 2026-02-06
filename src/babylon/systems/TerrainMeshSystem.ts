@@ -61,7 +61,7 @@ import {
 import { rotateAroundPivot } from "../../core/transform-ops";
 import { ShapeTemplate, generateStampTopology, stampIntoTopology } from "../../core/shape-templates";
 
-export interface VectorTerrainOptions {
+export interface TerrainMeshOptions {
   sdfResolution: number;
   edgeBlend: number;
   enableStripes: boolean;
@@ -72,7 +72,7 @@ export interface VectorTerrainOptions {
 }
 
 
-const DEFAULT_OPTIONS: VectorTerrainOptions = {
+const DEFAULT_OPTIONS: TerrainMeshOptions = {
   sdfResolution: 8,
   edgeBlend: 0.5,
   enableStripes: true,
@@ -82,9 +82,9 @@ const DEFAULT_OPTIONS: VectorTerrainOptions = {
   enableGridLines: false,
 };
 
-export class VectorTerrainSystem {
+export class TerrainMeshSystem {
   private scene: Scene;
-  private options: VectorTerrainOptions;
+  private options: TerrainMeshOptions;
 
   private worldWidth: number;
   private worldHeight: number;
@@ -142,7 +142,7 @@ export class VectorTerrainSystem {
   constructor(
     scene: Scene,
     courseData: CourseData,
-    options: Partial<VectorTerrainOptions> = {}
+    options: Partial<TerrainMeshOptions> = {}
   ) {
     this.scene = scene;
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -1384,7 +1384,7 @@ export class VectorTerrainSystem {
       this.terrainMesh.dispose();
     }
 
-    this.terrainMesh = new Mesh("vectorTerrain", this.scene);
+    this.terrainMesh = new Mesh("terrainMesh", this.scene);
     vertexData.applyToMesh(this.terrainMesh, true);
 
     this.terrainMesh.setVerticesData("terrainType", terrainTypes, false, 1);
@@ -1744,7 +1744,7 @@ export class VectorTerrainSystem {
       if (faceId > maxFaceId) maxFaceId = faceId;
     }
     const totalPixels = Math.max(1, maxFaceId + 1);
-    const w = VectorTerrainSystem.FACE_DATA_TEX_WIDTH;
+    const w = TerrainMeshSystem.FACE_DATA_TEX_WIDTH;
     const h = Math.max(1, Math.ceil(totalPixels / w));
 
     const sameSize = this.faceDataTexWidth === w && this.faceDataTexHeight === h;
@@ -1895,7 +1895,7 @@ export class VectorTerrainSystem {
     }
 
     this.faceDataUpdateCounter++;
-    if (this.faceDataDirty || this.faceDataUpdateCounter >= VectorTerrainSystem.FACE_DATA_UPDATE_INTERVAL) {
+    if (this.faceDataDirty || this.faceDataUpdateCounter >= TerrainMeshSystem.FACE_DATA_UPDATE_INTERVAL) {
       this.updateFaceDataTexture();
       this.faceDataUpdateCounter = 0;
       this.faceDataDirty = false;

@@ -1,7 +1,7 @@
-import { VectorTerrainSystem } from './VectorTerrainSystem';
+import { TerrainMeshSystem } from './TerrainMeshSystem';
 import { TerrainModifier } from './TerrainEditorSystem';
 
-export function createVectorTerrainModifier(vts: VectorTerrainSystem): Partial<TerrainModifier> {
+export function createTerrainMeshModifier(vts: TerrainMeshSystem): Partial<TerrainModifier> {
   return {
     getVertexPosition: (vx, vy) => vts.getVertexPosition(vx, vy),
     setVertexPosition: (vx, vy, pos) => vts.setVertexPosition(vx, vy, pos),
