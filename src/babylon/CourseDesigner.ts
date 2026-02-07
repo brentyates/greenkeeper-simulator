@@ -144,7 +144,6 @@ export class CourseDesigner {
     editor.setTerrainModifier({
       setElevationAt: () => {},
       setTerrainTypeAt: () => {},
-      rebuildTileAndNeighbors: () => {},
       ...createTerrainMeshModifier(vts),
     });
     editor.setMeshResolution(vts.getMeshResolution());

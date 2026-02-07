@@ -50,10 +50,8 @@ export class TerrainEditorController {
     const baseModifier = {
       setElevationAt: (x: number, y: number, elev: number) =>
         terrainSystem.setElevationAt(x, y, elev),
-      setTerrainTypeAt: (x: number, y: number, type: TerrainType) =>
-        terrainSystem.setTerrainTypeAt(x, y, type),
-      rebuildTileAndNeighbors: (x: number, y: number) =>
-        terrainSystem.rebuildTileAndNeighbors(x, y),
+      setTerrainTypeAt: (worldX: number, worldZ: number, type: TerrainType) =>
+        terrainSystem.setTerrainTypeAt(worldX, worldZ, type),
     };
 
     const vts = this.ctx.getTerrainMeshSystem();

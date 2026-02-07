@@ -4,9 +4,9 @@ import { SimulationSystems, runSimulationTick } from "./SimulationTick";
 import { GameState } from "./GameState";
 
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
-import { GrassSystem, OverlayMode } from "./systems/GrassSystem";
 import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
+import { OverlayMode } from "../core/terrain";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
@@ -69,7 +69,6 @@ export interface GameOptions {
   loadFromSave?: boolean;
   onReturnToMenu?: () => void;
   onScenarioComplete?: (score: number) => void;
-  useMeshTerrain?: boolean;
 }
 
 export class BabylonMain {
@@ -78,7 +77,7 @@ export class BabylonMain {
   private babylonEngine: BabylonEngine;
   private inputManager: InputManager;
   private terrainSystem: TerrainSystem;
-  private terrainMeshSystem: TerrainMeshSystem | null = null;
+  private terrainMeshSystem: TerrainMeshSystem;
   private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
   private lastTime: number = 0;
@@ -108,12 +107,8 @@ export class BabylonMain {
     );
     this.inputManager = new InputManager(this.babylonEngine.getScene());
 
-    if (options.useMeshTerrain) {
-      this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
-      this.terrainSystem = this.terrainMeshSystem;
-    } else {
-      this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
-    }
+    this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
+    this.terrainSystem = this.terrainMeshSystem;
 
     this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
     this.employeeVisualSystem = new EmployeeVisualSystem(
@@ -129,17 +124,16 @@ export class BabylonMain {
     this.playerController = new PlayerController(
       this.babylonEngine.getScene(),
       {
-        getCell: (x, y) => this.terrainSystem.getCell(x, y),
         getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d),
         getCourseStats: () => this.terrainSystem.getCourseStats(),
-        getGridDimensions: () => this.terrainSystem.getGridDimensions(),
+        getWorldDimensions: () => this.terrainSystem.getWorldDimensions(),
+        getTerrainTypeAt: (wx, wz) => this.terrainSystem.getTerrainTypeAt(wx, wz),
         isPositionWalkable: (wx, wz) => this.terrainSystem.isPositionWalkable(wx, wz),
         getTerrainSpeedAt: (wx, wz) => this.terrainSystem.getTerrainSpeedAt(wx, wz),
         findFaceAtPosition: (wx, wz) => this.terrainSystem.findFaceAtPosition(wx, wz),
         mowAt: (wx, wz) => this.terrainSystem.mowAt(wx, wz),
         waterArea: (cx, cy, r, a) => this.terrainSystem.waterArea(cx, cy, r, a),
         fertilizeArea: (cx, cy, r, a, e) => this.terrainSystem.fertilizeArea(cx, cy, r, a, e),
-        getResolution: () => this.terrainSystem.getResolution?.() ?? 1,
       },
       {
         getSelected: () => this.equipmentManager.getSelected(),
@@ -310,9 +304,8 @@ export class BabylonMain {
       scenarioProgress,
       this.state.autonomousState,
       this.state.weatherState,
-      [],
-      this.state.irrigationSystem,
-      faceStates
+      faceStates,
+      this.state.irrigationSystem
     );
 
     if (saveGame(savedState)) {
@@ -376,8 +369,6 @@ export class BabylonMain {
 
     if (saved.faceStates && saved.faceStates.length > 0) {
       this.terrainSystem.restoreFaceStates(deserializeFaceStates(saved.faceStates));
-    } else if (saved.cells && saved.cells.length > 0) {
-      (this.terrainSystem as any).restoreCells?.(saved.cells);
     }
 
     if (saved.irrigationSystem) {
@@ -514,11 +505,14 @@ export class BabylonMain {
     const { obstacles } = this.state.currentCourse;
     if (!obstacles) return;
 
+    const res = this.terrainMeshSystem.getMeshResolution();
     for (const obs of obstacles) {
-      const pos = this.terrainSystem.gridToWorld(obs.x, obs.y);
+      const worldX = obs.x / res;
+      const worldZ = obs.y / res;
+      const elevation = this.terrainSystem.getElevationAt(worldX, worldZ);
 
       if (obs.type === 1 || obs.type === 2) {
-        this.createTree(pos.x, pos.y, pos.z, obs.type === 2);
+        this.createTree(worldX, elevation * HEIGHT_UNIT, worldZ, obs.type === 2);
       }
     }
   }
@@ -544,12 +538,15 @@ export class BabylonMain {
 
     for (let i = 0; i < REFILL_STATIONS.length; i++) {
       const station = REFILL_STATIONS[i];
-      const pos = this.terrainSystem.gridToWorld(station.x, station.y);
+      const sRes = this.terrainMeshSystem.getMeshResolution();
+      const sWorldX = station.x / sRes;
+      const sWorldZ = station.y / sRes;
+      const sElevation = this.terrainSystem.getElevationAt(sWorldX, sWorldZ);
 
       loadAsset(scene, "building.refill.station")
         .then((loadedAsset) => {
           const instance = createInstance(scene, loadedAsset, `refill_${i}`);
-          instance.root.position = new Vector3(pos.x, pos.y, pos.z);
+          instance.root.position = new Vector3(sWorldX, sElevation * HEIGHT_UNIT, sWorldZ);
           this.refillStationInstances.push(instance);
         })
         .catch((error) => {
@@ -710,11 +707,8 @@ export class BabylonMain {
     this.state.weather = this.state.weatherState.current;
     this.equipmentManager.refill();
     this.terrainSystem.dispose();
-    if (this.state.gameOptions.useMeshTerrain) {
-      this.terrainSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
-    } else {
-      this.terrainSystem = new GrassSystem(this.babylonEngine.getScene(), course);
-    }
+    this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
+    this.terrainSystem = this.terrainMeshSystem;
     this.terrainSystem.build(course);
     this.playerController.updatePlayerPosition();
     this.resumeGame();

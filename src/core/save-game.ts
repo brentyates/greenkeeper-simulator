@@ -8,7 +8,6 @@ import { TeeTimeSystemState } from './tee-times';
 import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
 import { MarketingState } from './marketing';
-import { GrassCell } from './grass-simulation';
 import { FaceState } from './face-state';
 import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
@@ -43,11 +42,10 @@ export interface SaveGameState {
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
 
-  cells: GrassCell[][];
-  faceStates?: FaceState[];
+  faceStates: FaceState[];
 }
 
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 const SAVE_KEY_PREFIX = 'greenkeeper_save_';
 
 export function createSaveState(
@@ -71,9 +69,8 @@ export function createSaveState(
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
-  cells: GrassCell[][],
+  faceStates: Map<number, FaceState>,
   irrigationSystem?: IrrigationSystem,
-  faceStates?: Map<number, FaceState>
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -99,8 +96,7 @@ export function createSaveState(
     autonomousState,
     weatherState,
     irrigationSystem,
-    cells,
-    faceStates: faceStates ? Array.from(faceStates.values()) : undefined,
+    faceStates: Array.from(faceStates.values()),
   };
 }
 
@@ -135,7 +131,6 @@ export function loadGame(scenarioId: string): SaveGameState | null {
     const state = JSON.parse(serialized) as SaveGameState;
 
     if (state.version !== SAVE_VERSION) {
-      console.warn(`Save version mismatch: ${state.version} vs ${SAVE_VERSION}`);
       return null;
     }
 

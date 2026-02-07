@@ -13,7 +13,7 @@ export function createTerrainMeshModifier(vts: TerrainMeshSystem): Partial<Terra
     getVertexIdsInWorldRadius: (worldX, worldZ, radius) => vts.getVertexIdsInWorldRadius(worldX, worldZ, radius),
     getWorldDimensions: () => vts.getWorldDimensions(),
     rebuildMesh: () => vts.rebuildMesh(),
-    paintTerrainType: (cells, type) => vts.paintTerrainType(cells, type),
+    paintTerrainType: (faceIds, type) => vts.paintTerrainType(faceIds, type),
     getTopology: () => vts.getTopology(),
     setTopologyMode: (mode) => vts.setTopologyMode(mode),
     getTopologyMode: () => vts.getTopologyMode(),

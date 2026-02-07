@@ -573,12 +573,14 @@ function tickResearch(state: GameState, systems: SimulationSystems, gameMinutes:
 
 function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, gameMinutes: number, timestamp: number): void {
   if (state.autonomousState.robots.length > 0) {
-    const cells = systems.terrainSystem.getAllCells();
+    const candidates = state.autonomousState.robots
+      .filter(r => r.state !== 'broken' && r.state !== 'charging')
+      .flatMap(r => systems.terrainSystem.findWorkCandidates(r.worldX, r.worldZ, 50));
     const fleetAIActive =
       state.researchState.completedResearch.includes("fleet_ai");
     const robotResult = coreTickAutonomousEquipment(
       state.autonomousState,
-      cells,
+      candidates,
       gameMinutes,
       fleetAIActive
     );
@@ -600,11 +602,11 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
 
     for (const effect of robotResult.effects) {
       if (effect.type === "mower") {
-        systems.terrainSystem.mowAt(effect.gridX, effect.gridY);
+        systems.terrainSystem.mowAt(effect.worldX, effect.worldZ);
       } else if (effect.type === "sprayer") {
         systems.terrainSystem.waterArea(
-          effect.gridX,
-          effect.gridY,
+          effect.worldX,
+          effect.worldZ,
           1,
           10 * effect.efficiency
         );
@@ -613,8 +615,8 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
           state.researchState
         );
         systems.terrainSystem.fertilizeArea(
-          effect.gridX,
-          effect.gridY,
+          effect.worldX,
+          effect.worldZ,
           1,
           10 * effect.efficiency,
           effectiveness
@@ -690,8 +692,8 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
       const pressure = pipe ? pipe.pressureLevel : 0;
 
       for (const tile of head.coverageTiles) {
-        const cell = systems.terrainSystem.getCell(tile.x, tile.y);
-        if (cell) {
+        const faceId = systems.terrainSystem.findFaceAtPosition(tile.x, tile.y);
+        if (faceId !== null) {
           const waterAmount = 15 * tile.efficiency * (pressure / 100);
           systems.terrainSystem.waterArea(tile.x, tile.y, 0, waterAmount);
           state.dailyStats.maintenance.tilesWatered++;

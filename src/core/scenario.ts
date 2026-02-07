@@ -1,4 +1,4 @@
-import { getAverageStats, getOverallCondition, GrassCell } from './grass-simulation';
+import { getOverallCondition } from './grass-simulation';
 import { FaceState, getAverageFaceStats } from './face-state';
 
 export type ScenarioType = 'economic' | 'attendance' | 'satisfaction' | 'restoration';
@@ -124,20 +124,6 @@ export class ScenarioManager {
 
   public addRound(): void {
     this.progress.totalRounds++;
-  }
-
-  public updateCourseHealth(cells: GrassCell[][]): void {
-    const stats = getAverageStats(cells);
-    this.progress.currentHealth = stats.health;
-
-    const condition = getOverallCondition(stats.health);
-    const conditionToRating: Record<'Excellent' | 'Good' | 'Fair' | 'Poor', number> = {
-      'Excellent': 90,
-      'Good': 70,
-      'Fair': 50,
-      'Poor': 30,
-    };
-    this.progress.currentRating = conditionToRating[condition];
   }
 
   public updateCourseHealthFromFaces(faceStates: Map<number, FaceState>): void {

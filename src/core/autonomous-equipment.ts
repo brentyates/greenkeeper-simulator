@@ -1,5 +1,6 @@
 import { EquipmentStats, getUnlockedAutonomousEquipment, ResearchState } from './research';
-import { GrassCell } from './grass-simulation';
+import { WorkCandidate } from '../babylon/systems/TerrainSystemInterface';
+import { TERRAIN_CODES } from './terrain';
 
 export type RobotType = 'mower' | 'sprayer' | 'spreader';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
@@ -9,8 +10,8 @@ export interface RobotUnit {
   readonly equipmentId: string;
   readonly type: RobotType;
   readonly stats: EquipmentStats;
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
   readonly resourceCurrent: number;
   readonly resourceMax: number;
   readonly state: RobotState;
@@ -33,8 +34,8 @@ export interface RobotTickResult {
 
 export interface RobotEffect {
   readonly type: RobotType;
-  readonly gridX: number;
-  readonly gridY: number;
+  readonly worldX: number;
+  readonly worldZ: number;
   readonly efficiency: number;
 }
 
@@ -72,8 +73,8 @@ export function purchaseRobot(
     equipmentId,
     type: robotType,
     stats,
-    gridX: state.chargingStationX,
-    gridY: state.chargingStationY,
+    worldX: state.chargingStationX,
+    worldZ: state.chargingStationY,
     resourceCurrent: stats.fuelCapacity,
     resourceMax: stats.fuelCapacity,
     state: 'idle',
@@ -122,83 +123,78 @@ export function countBrokenRobots(state: AutonomousEquipmentState): number {
 }
 
 function findNeedsWork(
-  cells: GrassCell[][],
+  candidates: WorkCandidate[],
   type: RobotType,
   currentX: number,
-  currentY: number,
-  maxDistance: number = 50
-): { x: number; y: number } | null {
-  let bestTarget: { x: number; y: number; priority: number; distance: number } | null = null;
+  currentZ: number,
+): { x: number; z: number } | null {
+  let bestTarget: { x: number; z: number; priority: number; distance: number } | null = null;
 
-  for (let y = 0; y < cells.length; y++) {
-    for (let x = 0; x < cells[y].length; x++) {
-      const cell = cells[y][x];
-      if (cell.type === 'water') continue;
+  for (const c of candidates) {
+    if (c.dominantTerrainCode === TERRAIN_CODES.WATER) continue;
 
-      const distance = Math.abs(x - currentX) + Math.abs(y - currentY);
-      if (distance > maxDistance) continue;
+    const distance = Math.abs(c.worldX - currentX) + Math.abs(c.worldZ - currentZ);
 
-      let priority = 0;
+    let priority = 0;
 
-      switch (type) {
-        case 'mower':
-          if (cell.health < 100 && cell.type === 'fairway' || cell.type === 'green') {
-            priority = 100 - cell.health;
-          }
-          break;
-        case 'sprayer':
-          if (cell.moisture < 50) {
-            priority = 50 - cell.moisture;
-          }
-          break;
-        case 'spreader':
-          if (cell.nutrients < 50) {
-            priority = 50 - cell.nutrients;
-          }
-          break;
-      }
-
-      if (priority > 0) {
-        if (!bestTarget || priority > bestTarget.priority ||
-            (priority === bestTarget.priority && distance < bestTarget.distance)) {
-          bestTarget = { x, y, priority, distance };
+    switch (type) {
+      case 'mower':
+        if (c.avgHealth < 100) {
+          priority = 100 - c.avgHealth;
         }
+        break;
+      case 'sprayer':
+        if (c.avgMoisture < 50) {
+          priority = 50 - c.avgMoisture;
+        }
+        break;
+      case 'spreader':
+        if (c.avgNutrients < 50) {
+          priority = 50 - c.avgNutrients;
+        }
+        break;
+    }
+
+    if (priority > 0) {
+      if (!bestTarget || priority > bestTarget.priority ||
+          (priority === bestTarget.priority && distance < bestTarget.distance)) {
+        bestTarget = { x: c.worldX, z: c.worldZ, priority, distance };
       }
     }
   }
 
-  return bestTarget ? { x: bestTarget.x, y: bestTarget.y } : null;
+  return bestTarget ? { x: bestTarget.x, z: bestTarget.z } : null;
 }
 
 function moveToward(
   robot: RobotUnit,
   targetX: number,
-  targetY: number,
+  targetZ: number,
   speed: number,
   deltaMinutes: number
-): { gridX: number; gridY: number; arrived: boolean } {
+): { worldX: number; worldZ: number; arrived: boolean } {
   const moveAmount = speed * (deltaMinutes / 60);
-  const dx = targetX - robot.gridX;
-  const dy = targetY - robot.gridY;
-  const distance = Math.abs(dx) + Math.abs(dy);
+  const dx = targetX - robot.worldX;
+  const dz = targetZ - robot.worldZ;
+  const distance = Math.abs(dx) + Math.abs(dz);
 
   if (distance <= moveAmount) {
-    return { gridX: targetX, gridY: targetY, arrived: true };
+    return { worldX: targetX, worldZ: targetZ, arrived: true };
   }
 
   const ratio = moveAmount / distance;
   return {
-    gridX: robot.gridX + dx * ratio,
-    gridY: robot.gridY + dy * ratio,
+    worldX: robot.worldX + dx * ratio,
+    worldZ: robot.worldZ + dz * ratio,
     arrived: false,
   };
 }
 
 function tickRobot(
   robot: RobotUnit,
-  cells: GrassCell[][],
+  candidates: WorkCandidate[],
   chargingX: number,
-  chargingY: number,
+  chargingZ: number,
   deltaMinutes: number,
   fleetAIActive: boolean
 ): { robot: RobotUnit; effect: RobotEffect | null; operatingCost: number } {
@@ -254,14 +250,14 @@ function tickRobot(
   const newResource = Math.max(0, robot.resourceCurrent - resourceConsumption);
 
   if (newResource < robot.resourceMax * 0.1) {
-    const { gridX, gridY, arrived } = moveToward(robot, chargingX, chargingY, robot.stats.speed, deltaMinutes);
+    const { worldX, worldZ, arrived } = moveToward(robot, chargingX, chargingZ, robot.stats.speed, deltaMinutes);
 
     if (arrived) {
       return {
         robot: {
           ...robot,
-          gridX,
-          gridY,
+          worldX,
+          worldZ,
           state: 'charging',
           resourceCurrent: Math.min(robot.resourceMax, newResource + deltaMinutes * 5),
           targetX: null,
@@ -275,12 +271,12 @@ function tickRobot(
     return {
       robot: {
         ...robot,
-        gridX,
-        gridY,
+        worldX,
+        worldZ,
         state: 'moving',
         resourceCurrent: newResource,
         targetX: chargingX,
-        targetY: chargingY,
+        targetY: chargingZ,
       },
       effect: null,
       operatingCost,
@@ -314,7 +310,7 @@ function tickRobot(
   }
 
   if (robot.targetX === null || robot.targetY === null) {
-    const target = findNeedsWork(cells, robot.type, Math.round(robot.gridX), Math.round(robot.gridY));
+    const target = findNeedsWork(candidates, robot.type, robot.worldX, robot.worldZ);
 
     if (!target) {
       return {
@@ -334,28 +330,28 @@ function tickRobot(
         state: 'moving',
         resourceCurrent: newResource,
         targetX: target.x,
-        targetY: target.y,
+        targetY: target.z,
       },
       effect: null,
       operatingCost,
     };
   }
 
-  const { gridX, gridY, arrived } = moveToward(robot, robot.targetX, robot.targetY, robot.stats.speed, deltaMinutes);
+  const { worldX, worldZ, arrived } = moveToward(robot, robot.targetX, robot.targetY, robot.stats.speed, deltaMinutes);
 
   if (arrived) {
     const effect: RobotEffect = {
       type: robot.type,
-      gridX: Math.round(gridX),
-      gridY: Math.round(gridY),
+      worldX,
+      worldZ,
       efficiency: robot.stats.efficiency,
     };
 
     return {
       robot: {
         ...robot,
-        gridX,
-        gridY,
+        worldX,
+        worldZ,
         state: 'working',
         resourceCurrent: newResource,
         targetX: null,
@@ -369,8 +365,8 @@ function tickRobot(
   return {
     robot: {
       ...robot,
-      gridX,
-      gridY,
+      worldX,
+      worldZ,
       state: 'moving',
       resourceCurrent: newResource,
     },
@@ -381,7 +377,7 @@ function tickRobot(
 
 export function tickAutonomousEquipment(
   state: AutonomousEquipmentState,
-  cells: GrassCell[][],
+  candidates: WorkCandidate[],
   deltaMinutes: number,
   fleetAIActive: boolean = false
 ): RobotTickResult {
@@ -392,7 +388,7 @@ export function tickAutonomousEquipment(
   for (const robot of state.robots) {
     const result = tickRobot(
       robot,
-      cells,
+      candidates,
       state.chargingStationX,
       state.chargingStationY,
       deltaMinutes,

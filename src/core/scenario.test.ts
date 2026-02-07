@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ScenarioManager, ScenarioObjective, ScenarioConditions } from './scenario';
-import { GrassCell } from './grass-simulation';
+import { FaceState, createFaceState } from './face-state';
+import { TERRAIN_CODES } from './terrain';
 
 describe('ScenarioManager', () => {
   describe('Economic Objectives', () => {
@@ -291,7 +292,7 @@ describe('ScenarioManager', () => {
       expect(result.progress).toBe(100);
     });
 
-    it('updates health from cell states', () => {
+    it('updates health from face states', () => {
       const objective: ScenarioObjective = {
         type: 'restoration',
         targetHealth: 80,
@@ -303,22 +304,25 @@ describe('ScenarioManager', () => {
 
       const manager = new ScenarioManager(objective, conditions);
 
-      const cells: GrassCell[][] = [
-        [
-          { type: 'fairway', height: 20, moisture: 70, nutrients: 80, health: 85 },
-          { type: 'fairway', height: 15, moisture: 65, nutrients: 75, health: 80 },
-        ],
-        [
-          { type: 'fairway', height: 25, moisture: 60, nutrients: 70, health: 75 },
-          { type: 'fairway', height: 18, moisture: 75, nutrients: 85, health: 90 },
-        ],
-      ];
+      const faceStates = new Map<number, FaceState>();
+      const f1 = createFaceState(0, TERRAIN_CODES.FAIRWAY);
+      f1.health = 85;
+      faceStates.set(0, f1);
+      const f2 = createFaceState(1, TERRAIN_CODES.FAIRWAY);
+      f2.health = 80;
+      faceStates.set(1, f2);
+      const f3 = createFaceState(2, TERRAIN_CODES.FAIRWAY);
+      f3.health = 75;
+      faceStates.set(2, f3);
+      const f4 = createFaceState(3, TERRAIN_CODES.FAIRWAY);
+      f4.health = 90;
+      faceStates.set(3, f4);
 
-      manager.updateCourseHealth(cells);
+      manager.updateCourseHealthFromFaces(faceStates);
 
       const progress = manager.getProgress();
       expect(progress.currentHealth).toBeCloseTo(82.5, 1);
-      expect(progress.currentRating).toBe(90); // Excellent condition
+      expect(progress.currentRating).toBe(90);
     });
   });
 

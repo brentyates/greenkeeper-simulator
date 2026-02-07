@@ -7,7 +7,6 @@ import {
   screenToGrid,
   calculateHealth,
   isWalkable,
-  canMoveFromTo,
   getRampDirection,
   getTerrainSpeedModifier,
   getTerrainMowable,
@@ -25,7 +24,6 @@ import {
   isFaceWalkableBySlope,
   TerrainType,
   WalkableCell,
-  MovableCell,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
@@ -259,17 +257,6 @@ describe('Walkability', () => {
     };
   }
 
-  function makeMovable(overrides: Partial<MovableCell> = {}): MovableCell {
-    return {
-      type: 'fairway',
-      obstacle: 'none',
-      x: 0,
-      y: 0,
-      elevation: 0,
-      ...overrides
-    };
-  }
-
   describe('isWalkable', () => {
     it('returns false for null cell', () => {
       expect(isWalkable(null)).toBe(false);
@@ -309,40 +296,6 @@ describe('Walkability', () => {
 
     it('returns false when obstacle is bush', () => {
       expect(isWalkable(makeWalkable({ obstacle: 'bush' }))).toBe(false);
-    });
-  });
-
-  describe('canMoveFromTo', () => {
-    it('returns false when target cell is null', () => {
-      expect(canMoveFromTo(makeMovable(), null)).toBe(false);
-    });
-
-    it('returns false when source cell is null', () => {
-      expect(canMoveFromTo(null, makeMovable())).toBe(false);
-    });
-
-    it('returns false when target is not walkable', () => {
-      expect(canMoveFromTo(makeMovable(), makeMovable({ type: 'water' }))).toBe(false);
-    });
-
-    it('allows movement between same elevation', () => {
-      expect(canMoveFromTo(makeMovable({ elevation: 1 }), makeMovable({ elevation: 1 }))).toBe(true);
-    });
-
-    it('allows movement with elevation difference of 1', () => {
-      expect(canMoveFromTo(makeMovable({ elevation: 0 }), makeMovable({ elevation: 1 }))).toBe(true);
-    });
-
-    it('allows movement down with elevation difference of 1', () => {
-      expect(canMoveFromTo(makeMovable({ elevation: 2 }), makeMovable({ elevation: 1 }))).toBe(true);
-    });
-
-    it('blocks movement with elevation difference of 2 or more', () => {
-      expect(canMoveFromTo(makeMovable({ elevation: 0 }), makeMovable({ elevation: 2 }))).toBe(false);
-    });
-
-    it('blocks movement down with elevation difference of 2 or more', () => {
-      expect(canMoveFromTo(makeMovable({ elevation: 3 }), makeMovable({ elevation: 1 }))).toBe(false);
     });
   });
 });

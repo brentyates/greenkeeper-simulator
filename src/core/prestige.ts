@@ -1,5 +1,4 @@
 import { TerrainType, getTerrainType } from './terrain';
-import { GrassCell } from './grass-simulation';
 import { FaceState, isGrassFace } from './face-state';
 import { AmenityState, AmenityUpgrade, createInitialAmenityState, calculateAmenityScore, applyUpgrade as applyAmenityUpgrade } from './amenities';
 import { ReputationState, createInitialReputationState, calculateReputationScore } from './reputation';
@@ -209,64 +208,6 @@ export function getStarDisplay(rating: number): string {
   const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
 
   return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
-}
-
-function calculateTerrainTypeScore(cells: GrassCell[][], targetType: TerrainType): number {
-  let totalHealth = 0;
-  let count = 0;
-
-  for (const row of cells) {
-    for (const cell of row) {
-      if (cell.type === targetType) {
-        totalHealth += cell.health;
-        count++;
-      }
-    }
-  }
-
-  if (count === 0) return 100;
-  return totalHealth / count;
-}
-
-export function calculateCurrentConditions(cells: GrassCell[][]): CurrentConditionsScore {
-  let totalHealth = 0;
-  let grassCount = 0;
-
-  for (const row of cells) {
-    for (const cell of row) {
-      if (cell.type === 'fairway' || cell.type === 'rough' || cell.type === 'green' || cell.type === 'tee') {
-        totalHealth += cell.health;
-        grassCount++;
-      }
-    }
-  }
-
-  const averageHealth = grassCount > 0 ? totalHealth / grassCount : 100;
-  const greenScore = calculateTerrainTypeScore(cells, 'green');
-  const fairwayScore = calculateTerrainTypeScore(cells, 'fairway');
-  const teeBoxScore = calculateTerrainTypeScore(cells, 'tee');
-
-  const bunkerScore = 100;
-  const hazardScore = 100;
-
-  const composite = Math.round(
-    (averageHealth * CONDITION_WEIGHTS.averageHealth +
-     greenScore * CONDITION_WEIGHTS.greenScore +
-     fairwayScore * CONDITION_WEIGHTS.fairwayScore +
-     bunkerScore * CONDITION_WEIGHTS.bunkerScore +
-     hazardScore * CONDITION_WEIGHTS.hazardScore +
-     teeBoxScore * CONDITION_WEIGHTS.teeBoxScore) * 10
-  );
-
-  return {
-    averageHealth: Math.round(averageHealth),
-    greenScore: Math.round(greenScore),
-    fairwayScore: Math.round(fairwayScore),
-    bunkerScore,
-    hazardScore,
-    teeBoxScore: Math.round(teeBoxScore),
-    composite: Math.max(0, Math.min(1000, composite)),
-  };
 }
 
 function faceTerrainTypeScore(faceStates: Map<number, FaceState>, targetType: TerrainType): number {

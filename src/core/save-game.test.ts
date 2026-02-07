@@ -74,7 +74,7 @@ function createMockSaveState(scenarioId = 'test_scenario'): SaveGameState {
     createMockScenarioProgress(),
     createInitialAutonomousState(),
     createInitialWeatherState(),
-    []
+    new Map()
   );
 }
 
@@ -88,7 +88,7 @@ describe('save-game', () => {
     it('creates save state with all required fields', () => {
       const state = createMockSaveState();
 
-      expect(state.version).toBe(1);
+      expect(state.version).toBe(2);
       expect(state.savedAt).toBeGreaterThan(0);
       expect(state.scenarioId).toBe('test_scenario');
       expect(state.gameTime).toBe(420);
@@ -108,7 +108,7 @@ describe('save-game', () => {
       expect(state.scenarioProgress).toBeDefined();
       expect(state.autonomousState).toBeDefined();
       expect(state.weatherState).toBeDefined();
-      expect(state.cells).toBeDefined();
+      expect(state.faceStates).toBeDefined();
     });
 
     it('creates save state with optional irrigationSystem', () => {
@@ -134,7 +134,7 @@ describe('save-game', () => {
         createMockScenarioProgress(),
         createInitialAutonomousState(),
         createInitialWeatherState(),
-        [],
+        new Map(),
         irrigationSystem
       );
 

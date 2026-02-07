@@ -188,8 +188,8 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
   const terrainSystem = overrides.terrainSystem ?? {
     getAllFaceStates: vi.fn(() => new Map()),
     getCourseStats: vi.fn(() => ({ health: 50, moisture: 50, nutrients: 50, height: 50 })),
-    getCell: vi.fn(() => ({ terrainType: 1, elevation: 0, moisture: 50, nutrients: 50, grassHeight: 50, health: 50 })),
-    getAllCells: vi.fn(() => []),
+    findFaceAtPosition: vi.fn(() => 1),
+    findWorkCandidates: vi.fn(() => []),
     applyWorkEffect: vi.fn(() => []),
     mowAt: vi.fn(() => true),
     waterArea: vi.fn(() => 1),
@@ -1326,7 +1326,7 @@ describe("SimulationTick", () => {
     it("ticks autonomous equipment when robots exist", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1343,7 +1343,7 @@ describe("SimulationTick", () => {
     it("charges operating cost when > 0", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1368,7 +1368,7 @@ describe("SimulationTick", () => {
     it("does not charge operating cost when 0", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1392,7 +1392,7 @@ describe("SimulationTick", () => {
     it("does not update economy when operating addExpense returns null", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1411,14 +1411,14 @@ describe("SimulationTick", () => {
     it("applies mower effects", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "mower" as const, gridX: 5, gridY: 5, efficiency: 1.0 }],
+        effects: [{ type: "mower" as const, worldX: 5, worldZ: 5, efficiency: 1.0 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
@@ -1428,14 +1428,14 @@ describe("SimulationTick", () => {
     it("applies sprayer effects", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_sprayer_1", type: "sprayer" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_sprayer_1", type: "sprayer" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "sprayer" as const, gridX: 5, gridY: 5, efficiency: 0.8 }],
+        effects: [{ type: "sprayer" as const, worldX: 5, worldZ: 5, efficiency: 0.8 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
@@ -1445,14 +1445,14 @@ describe("SimulationTick", () => {
     it("applies spreader effects with fertilizer effectiveness", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_spreader_1", type: "spreader" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_spreader_1", type: "spreader" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "spreader" as const, gridX: 5, gridY: 5, efficiency: 0.9 }],
+        effects: [{ type: "spreader" as const, worldX: 5, worldZ: 5, efficiency: 0.9 }],
         operatingCost: 0,
       });
       vi.mocked(getBestFertilizerEffectiveness).mockReturnValue(1.5);
@@ -1463,14 +1463,14 @@ describe("SimulationTick", () => {
     it("ignores unknown robot effect types", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "unknown" as any, gridX: 5, gridY: 5, efficiency: 1.0 }],
+        effects: [{ type: "unknown" as any, worldX: 5, worldZ: 5, efficiency: 1.0 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
@@ -1482,7 +1482,7 @@ describe("SimulationTick", () => {
     it("checks fleet AI research state", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1505,7 +1505,7 @@ describe("SimulationTick", () => {
     it("passes false for fleet AI when not researched", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
-          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, gridX: 5, gridY: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
           chargingStationX: 0,
           chargingStationY: 0,
         },
@@ -1829,7 +1829,7 @@ describe("SimulationTick", () => {
           pressureCache: new Map(),
         },
       });
-      vi.mocked(systems.terrainSystem.getCell as any).mockReturnValue(null);
+      vi.mocked(systems.terrainSystem.findFaceAtPosition as any).mockReturnValue(null);
       vi.mocked(getPipeAt).mockReturnValue({ gridX: 5, gridY: 5, pipeType: "pvc" as const, installDate: 0, durability: 100, isLeaking: false, pressureLevel: 80, connectedTo: [] });
       runSimulationTick(state, systems, 16);
       expect(systems.terrainSystem.waterArea).not.toHaveBeenCalledWith(99, 99, expect.anything(), expect.anything());

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { MovableCell } from "../core/terrain";
 import { PLAYER_BASE_SPEED } from "../core/movable-entity";
 import { HEIGHT_UNIT } from "./engine/BabylonEngine";
 
@@ -45,34 +44,16 @@ import {
 } from "./PlayerController";
 import { disposeEntityMesh, createEntityMesh } from "./systems/EntityVisualSystem";
 
-function makeCell(
-  x: number,
-  y: number,
-  type: MovableCell["type"] = "fairway",
-  elevation = 0
-): MovableCell {
-  return {
-    x,
-    y,
-    type,
-    elevation,
-    obstacle: "none",
-  };
-}
-
 function createMockTerrain(
   width = 50,
   height = 40,
   overrides?: Partial<TerrainProvider>
 ): TerrainProvider {
   return {
-    getCell: (x, y) => {
-      if (x < 0 || x >= width || y < 0 || y >= height) return null;
-      return makeCell(x, y);
-    },
     getElevationAt: () => 0,
     getCourseStats: () => ({ health: 1, moisture: 0.5, nutrients: 0.5, height: 0.5 }),
-    getGridDimensions: () => ({ width, height }),
+    getWorldDimensions: () => ({ width, height }),
+    getTerrainTypeAt: () => "fairway",
     isPositionWalkable: () => true,
     getTerrainSpeedAt: () => 1.0,
     findFaceAtPosition: () => null,
@@ -887,7 +868,7 @@ describe("PlayerController", () => {
 
     it("returns early when target cell is water", () => {
       const waterTerrain = createMockTerrain(50, 40, {
-        getCell: (x, y) => makeCell(x, y, "water"),
+        getTerrainTypeAt: () => "water",
       });
       const mockScene = {
         getEngine: () => ({
@@ -922,7 +903,7 @@ describe("PlayerController", () => {
 
     it("returns early when target cell is null", () => {
       const nullTerrain = createMockTerrain(50, 40, {
-        getCell: () => null,
+        getTerrainTypeAt: () => undefined,
       });
       const mockScene = {
         getEngine: () => ({
@@ -1022,12 +1003,14 @@ describe("PlayerController", () => {
 
     it("does not set waypoints when no path found", () => {
       const blockedTerrain = createMockTerrain(50, 40, {
-        getCell: (x, y) => {
-          if (x === 6 && y === 5) return makeCell(x, y, "water");
-          if (x === 5 && y === 6) return makeCell(x, y, "water");
-          if (x === 5 && y === 4) return makeCell(x, y, "water");
-          if (x === 4 && y === 5) return makeCell(x, y, "water");
-          return makeCell(x, y);
+        getTerrainTypeAt: (wx, wz) => {
+          const x = Math.floor(wx);
+          const y = Math.floor(wz);
+          if (x === 6 && y === 5) return "water";
+          if (x === 5 && y === 6) return "water";
+          if (x === 5 && y === 4) return "water";
+          if (x === 4 && y === 5) return "water";
+          return "fairway";
         },
       });
       const mockScene = {
@@ -1376,9 +1359,9 @@ describe("PlayerController", () => {
 
     it("finds path around obstacles", () => {
       const obstacleTerrain = createMockTerrain(10, 10, {
-        getCell: (x, y) => {
-          if (x === 2 && y === 0) return makeCell(x, y, "water");
-          return makeCell(x, y);
+        getTerrainTypeAt: (wx, wz) => {
+          if (Math.floor(wx) === 2 && Math.floor(wz) === 0) return "water";
+          return "fairway";
         },
       });
       const ctrl = new PlayerController(
@@ -1397,9 +1380,9 @@ describe("PlayerController", () => {
 
     it("returns empty array when no path exists", () => {
       const blockedTerrain = createMockTerrain(10, 10, {
-        getCell: (x, y) => {
-          if (x === 1) return makeCell(x, y, "water");
-          return makeCell(x, y);
+        getTerrainTypeAt: (wx) => {
+          if (Math.floor(wx) === 1) return "water";
+          return "fairway";
         },
       });
       const ctrl = new PlayerController(
@@ -1443,15 +1426,19 @@ describe("PlayerController", () => {
       }
     });
 
-    it("uses slopeChecker when provided", () => {
-      const checker = vi.fn(() => true);
-      controller.findPath(0, 0, 2, 0, checker);
-      expect(checker).toHaveBeenCalled();
-    });
-
-    it("avoids cells rejected by slopeChecker", () => {
-      const checker = (x: number, y: number) => !(x === 1 && y === 0);
-      const path = controller.findPath(0, 0, 2, 0, checker);
+    it("avoids cells rejected by isPositionWalkable", () => {
+      const unwalkableTerrain = createMockTerrain(50, 40, {
+        isPositionWalkable: (wx, wz) => !(Math.floor(wx) === 1 && Math.floor(wz) === 0),
+      });
+      const ctrl = new PlayerController(
+        {} as any,
+        unwalkableTerrain,
+        equipment,
+        engine,
+        input,
+        { editor, startX: 0, startY: 0 }
+      );
+      const path = ctrl.findPath(0, 0, 2, 0);
       expect(path.find((p) => p.x === 1 && p.y === 0)).toBeUndefined();
       if (path.length > 0) {
         expect(path[path.length - 1]).toEqual({ x: 2, y: 0 });
@@ -1460,9 +1447,9 @@ describe("PlayerController", () => {
 
     it("updates existing node in open set when finding shorter path", () => {
       const customTerrain = createMockTerrain(10, 10, {
-        getCell: (x, y) => {
-          if (x === 1 && y === 0) return makeCell(x, y, "water");
-          return makeCell(x, y);
+        getTerrainTypeAt: (wx, wz) => {
+          if (Math.floor(wx) === 1 && Math.floor(wz) === 0) return "water";
+          return "fairway";
         },
       });
       const ctrl = new PlayerController(
@@ -1480,11 +1467,13 @@ describe("PlayerController", () => {
 
     it("handles multiple paths to same neighbor in open set", () => {
       const customTerrain = createMockTerrain(6, 4, {
-        getCell: (x, y) => {
-          if (x === 1 && y === 0) return makeCell(x, y, "water");
-          if (x === 0 && y === 2) return makeCell(x, y, "water");
-          if (x === 2 && y === 2) return makeCell(x, y, "water");
-          return makeCell(x, y);
+        getTerrainTypeAt: (wx, wz) => {
+          const x = Math.floor(wx);
+          const y = Math.floor(wz);
+          if (x === 1 && y === 0) return "water";
+          if (x === 0 && y === 2) return "water";
+          if (x === 2 && y === 2) return "water";
+          return "fairway";
         },
       });
       const ctrl = new PlayerController(
@@ -1501,12 +1490,7 @@ describe("PlayerController", () => {
     });
 
     it("handles null cells at boundary", () => {
-      const edgeTerrain = createMockTerrain(3, 3, {
-        getCell: (x, y) => {
-          if (x < 0 || x >= 3 || y < 0 || y >= 3) return null;
-          return makeCell(x, y);
-        },
-      });
+      const edgeTerrain = createMockTerrain(3, 3);
       const ctrl = new PlayerController(
         {} as any,
         edgeTerrain,

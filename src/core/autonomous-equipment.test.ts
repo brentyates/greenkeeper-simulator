@@ -14,7 +14,8 @@ import {
   RobotUnit,
 } from './autonomous-equipment';
 import { EquipmentStats, createInitialResearchState, ResearchState } from './research';
-import { GrassCell } from './grass-simulation';
+import { WorkCandidate } from '../babylon/systems/TerrainSystemInterface';
+import { TERRAIN_CODES } from './terrain';
 
 function createMockRobotStats(overrides: Partial<EquipmentStats> = {}): EquipmentStats {
   return {
@@ -32,26 +33,34 @@ function createMockRobotStats(overrides: Partial<EquipmentStats> = {}): Equipmen
   };
 }
 
-function createMockCell(health: number = 80): GrassCell {
+function createMockCandidate(overrides: Partial<WorkCandidate> = {}): WorkCandidate {
   return {
-    type: 'fairway',
-    height: 0,
-    moisture: 50,
-    nutrients: 50,
-    health,
+    worldX: 5,
+    worldZ: 5,
+    avgMoisture: 50,
+    avgNutrients: 50,
+    avgGrassHeight: 0.5,
+    avgHealth: 80,
+    dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+    faceCount: 4,
+    ...overrides,
   };
 }
 
-function createMockCells(width: number, height: number, health: number = 80): GrassCell[][] {
-  const cells: GrassCell[][] = [];
-  for (let y = 0; y < height; y++) {
-    const row: GrassCell[] = [];
-    for (let x = 0; x < width; x++) {
-      row.push(createMockCell(health));
+function createMockCandidates(health: number = 80, moisture: number = 50, nutrients: number = 50): WorkCandidate[] {
+  const candidates: WorkCandidate[] = [];
+  for (let z = 0; z < 10; z++) {
+    for (let x = 0; x < 10; x++) {
+      candidates.push(createMockCandidate({
+        worldX: x,
+        worldZ: z,
+        avgHealth: health,
+        avgMoisture: moisture,
+        avgNutrients: nutrients,
+      }));
     }
-    cells.push(row);
   }
-  return cells;
+  return candidates;
 }
 
 describe('autonomous-equipment', () => {
@@ -109,8 +118,8 @@ describe('autonomous-equipment', () => {
 
       const result = purchaseRobot(state, 'robot_mower_fairway', stats);
 
-      expect(result!.state.robots[0].gridX).toBe(10);
-      expect(result!.state.robots[0].gridY).toBe(15);
+      expect(result!.state.robots[0].worldX).toBe(10);
+      expect(result!.state.robots[0].worldZ).toBe(15);
     });
 
     it('initializes robot with full resources', () => {
@@ -207,16 +216,15 @@ describe('autonomous-equipment', () => {
 
     it('returns 0 refund when purchaseCost is undefined', () => {
       const stats = createMockRobotStats();
-      delete (stats as any).purchaseCost;  // Make purchaseCost undefined
+      delete (stats as any).purchaseCost;
 
-      // Manually create a robot with undefined purchaseCost
       const robot: RobotUnit = {
         id: 'robot_test_1',
         equipmentId: 'robot_test',
         type: 'mower',
         stats,
-        gridX: 0,
-        gridY: 0,
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 100,
         resourceMax: 300,
         state: 'idle',
@@ -259,8 +267,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats(),
-        gridX: 0,
-        gridY: 0,
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 100,
         resourceMax: 300,
         state: 'working',
@@ -286,8 +294,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats(),
-        gridX: 0,
-        gridY: 0,
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 100,
         resourceMax: 300,
         state: 'broken',
@@ -314,8 +322,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats(),
-        gridX: 0,
-        gridY: 0,
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 100,
         resourceMax: 300,
         state,
@@ -349,9 +357,9 @@ describe('autonomous-equipment', () => {
   describe('tickAutonomousEquipment', () => {
     it('returns empty effects for empty state', () => {
       const state = createInitialAutonomousState();
-      const cells = createMockCells(10, 10);
+      const candidates = createMockCandidates();
 
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.effects).toHaveLength(0);
       expect(result.operatingCost).toBe(0);
@@ -362,8 +370,8 @@ describe('autonomous-equipment', () => {
       const stats = createMockRobotStats({ operatingCostPerHour: 10 });
       state = purchaseRobot(state, 'robot_mower', stats)!.state;
 
-      const cells = createMockCells(10, 10, 50);
-      const result = tickAutonomousEquipment(state, cells, 60);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60);
 
       expect(result.operatingCost).toBeCloseTo(10, 1);
     });
@@ -373,8 +381,8 @@ describe('autonomous-equipment', () => {
       const stats = createMockRobotStats({ breakdownRate: 0 });
       state = purchaseRobot(state, 'robot_mower', stats)!.state;
 
-      const cells = createMockCells(10, 10, 50);
-      const result = tickAutonomousEquipment(state, cells, 1, false);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 1, false);
 
       expect(result.state.robots[0].state).toBe('moving');
       expect(result.state.robots[0].targetX).not.toBeNull();
@@ -385,8 +393,8 @@ describe('autonomous-equipment', () => {
       const stats = createMockRobotStats({ breakdownRate: 0 });
       state = purchaseRobot(state, 'robot_mower', stats)!.state;
 
-      const cells = createMockCells(10, 10, 100);
-      const result = tickAutonomousEquipment(state, cells, 1, false);
+      const candidates = createMockCandidates(100);
+      const result = tickAutonomousEquipment(state, candidates, 1, false);
 
       expect(result.state.robots[0].state).toBe('idle');
     });
@@ -397,8 +405,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ speed: 100, breakdownRate: 0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'moving',
@@ -413,8 +421,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      const result = tickAutonomousEquipment(state, cells, 60);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60);
 
       expect(result.effects.length).toBeGreaterThan(0);
       expect(result.effects[0].type).toBe('mower');
@@ -426,8 +434,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ repairTime: 60 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'broken',
@@ -442,8 +450,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10);
-      const result = tickAutonomousEquipment(state, cells, 30);
+      const candidates = createMockCandidates();
+      const result = tickAutonomousEquipment(state, candidates, 30);
 
       expect(result.state.robots[0].state).toBe('idle');
       expect(result.state.robots[0].breakdownTimeRemaining).toBe(0);
@@ -455,8 +463,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 20,
         resourceMax: 300,
         state: 'working',
@@ -471,8 +479,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.state.robots[0].targetX).toBe(0);
       expect(result.state.robots[0].targetY).toBe(0);
@@ -484,8 +492,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 1.0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'working',
@@ -500,19 +508,19 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
+      const candidates = createMockCandidates(50);
 
       let breakdownsWithoutAI = 0;
       let breakdownsWithAI = 0;
       const trials = 100;
 
       for (let i = 0; i < trials; i++) {
-        const result = tickAutonomousEquipment({ ...state }, cells, 60, false);
+        const result = tickAutonomousEquipment({ ...state }, candidates, 60, false);
         if (result.state.robots[0].state === 'broken') breakdownsWithoutAI++;
       }
 
       for (let i = 0; i < trials; i++) {
-        const result = tickAutonomousEquipment({ ...state }, cells, 60, true);
+        const result = tickAutonomousEquipment({ ...state }, candidates, 60, true);
         if (result.state.robots[0].state === 'broken') breakdownsWithAI++;
       }
 
@@ -525,9 +533,9 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 0,
-        gridY: 0,
-        resourceCurrent: 250,  // Near full (resourceMax * 0.9 = 270)
+        worldX: 0,
+        worldZ: 0,
+        resourceCurrent: 250,
         resourceMax: 300,
         state: 'charging',
         targetX: null,
@@ -541,9 +549,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 100);
-      // With deltaMinutes=10, chargeAmount = 10*5 = 50, charged = 250+50 = 300 >= 270
-      const result = tickAutonomousEquipment(state, cells, 10);
+      const candidates = createMockCandidates(100);
+      const result = tickAutonomousEquipment(state, candidates, 10);
 
       expect(result.state.robots[0].state).toBe('idle');
       expect(result.state.robots[0].resourceCurrent).toBeGreaterThanOrEqual(270);
@@ -555,9 +562,9 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 0,
-        gridY: 0,
-        resourceCurrent: 50,  // Low charge
+        worldX: 0,
+        worldZ: 0,
+        resourceCurrent: 50,
         resourceMax: 300,
         state: 'charging',
         targetX: null,
@@ -571,9 +578,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 100);
-      // With deltaMinutes=1, chargeAmount = 1*5 = 5, charged = 50+5 = 55 < 270
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const candidates = createMockCandidates(100);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.state.robots[0].state).toBe('charging');
       expect(result.state.robots[0].resourceCurrent).toBe(55);
@@ -584,13 +590,13 @@ describe('autonomous-equipment', () => {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
-        stats: createMockRobotStats({ speed: 1, breakdownRate: 0 }),  // Slow speed
-        gridX: 0,
-        gridY: 0,
+        stats: createMockRobotStats({ speed: 1, breakdownRate: 0 }),
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'moving',
-        targetX: 50,  // Far target
+        targetX: 50,
         targetY: 50,
         breakdownTimeRemaining: 0,
       };
@@ -601,12 +607,11 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(100, 100, 50);
-      // With slow speed and short time, robot won't reach target
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.state.robots[0].state).toBe('moving');
-      expect(result.state.robots[0].gridX).toBeGreaterThan(0);
+      expect(result.state.robots[0].worldX).toBeGreaterThan(0);
       expect(result.effects).toHaveLength(0);
     });
 
@@ -616,8 +621,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_sprayer',
         type: 'sprayer',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -632,11 +637,10 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 100);
-      // Make some cells dry (low moisture)
-      cells[3][3].moisture = 20;
+      const candidates = createMockCandidates(100, 60, 50);
+      candidates.push(createMockCandidate({ worldX: 3, worldZ: 3, avgMoisture: 20 }));
 
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.state.robots[0].state).toBe('moving');
       expect(result.state.robots[0].targetX).not.toBeNull();
@@ -648,8 +652,8 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_fertilizer',
         type: 'spreader',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -664,11 +668,10 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 100);
-      // Make some cells low on nutrients
-      cells[3][3].nutrients = 20;
+      const candidates = createMockCandidates(100, 50, 60);
+      candidates.push(createMockCandidate({ worldX: 3, worldZ: 3, avgNutrients: 20 }));
 
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
       expect(result.state.robots[0].state).toBe('moving');
       expect(result.state.robots[0].targetX).not.toBeNull();
@@ -680,14 +683,14 @@ describe('autonomous-equipment', () => {
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ repairTime: 60 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'broken',
         targetX: null,
         targetY: null,
-        breakdownTimeRemaining: 60,  // Lots of time remaining
+        breakdownTimeRemaining: 60,
       };
 
       const state: AutonomousEquipmentState = {
@@ -696,8 +699,8 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10);
-      const result = tickAutonomousEquipment(state, cells, 10);  // Not enough to repair
+      const candidates = createMockCandidates();
+      const result = tickAutonomousEquipment(state, candidates, 10);
 
       expect(result.state.robots[0].state).toBe('broken');
       expect(result.state.robots[0].breakdownTimeRemaining).toBe(50);
@@ -708,10 +711,10 @@ describe('autonomous-equipment', () => {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
-        stats: createMockRobotStats({ speed: 100, breakdownRate: 0 }),  // Fast speed
-        gridX: 1,
-        gridY: 0,
-        resourceCurrent: 10,  // Very low resources
+        stats: createMockRobotStats({ speed: 100, breakdownRate: 0 }),
+        worldX: 1,
+        worldZ: 0,
+        resourceCurrent: 10,
         resourceMax: 300,
         state: 'working',
         targetX: null,
@@ -725,13 +728,12 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // Fast robot near charging station should arrive
-      const result = tickAutonomousEquipment(state, cells, 60);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60);
 
       expect(result.state.robots[0].state).toBe('charging');
-      expect(result.state.robots[0].gridX).toBe(0);
-      expect(result.state.robots[0].gridY).toBe(0);
+      expect(result.state.robots[0].worldX).toBe(0);
+      expect(result.state.robots[0].worldZ).toBe(0);
     });
 
     it('fleetAIActive reduces breakdown rate for working robot', () => {
@@ -739,9 +741,9 @@ describe('autonomous-equipment', () => {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
-        stats: createMockRobotStats({ breakdownRate: 0 }),  // No breakdown
-        gridX: 5,
-        gridY: 5,
+        stats: createMockRobotStats({ breakdownRate: 0 }),
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -756,24 +758,23 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // With fleetAIActive=true, line 236 is covered
-      const result = tickAutonomousEquipment(state, cells, 60, true);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60, true);
 
       expect(result.state.robots[0].state).toBe('moving');
     });
 
     it('handles undefined breakdownRate with fleetAI active', () => {
       const stats = createMockRobotStats();
-      delete (stats as any).breakdownRate;  // Make breakdownRate undefined
+      delete (stats as any).breakdownRate;
 
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats,
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -788,24 +789,23 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // Should use 0 as fallback for undefined breakdownRate
-      const result = tickAutonomousEquipment(state, cells, 60, true);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60, true);
 
       expect(result.state.robots[0].state).not.toBe('broken');
     });
 
     it('handles undefined repairTime when breakdown occurs', () => {
-      const stats = createMockRobotStats({ breakdownRate: 1000 });  // Very high rate
-      delete (stats as any).repairTime;  // Make repairTime undefined
+      const stats = createMockRobotStats({ breakdownRate: 1000 });
+      delete (stats as any).repairTime;
 
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats,
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -820,14 +820,12 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
+      const candidates = createMockCandidates(50);
 
-      // Run until we get a breakdown
       let broken = false;
       for (let i = 0; i < 100 && !broken; i++) {
-        const result = tickAutonomousEquipment({ ...state, robots: [{ ...robot }] }, cells, 60, false);
+        const result = tickAutonomousEquipment({ ...state, robots: [{ ...robot }] }, candidates, 60, false);
         if (result.state.robots[0].state === 'broken') {
-          // Should use 60 as fallback for undefined repairTime
           expect(result.state.robots[0].breakdownTimeRemaining).toBe(60);
           broken = true;
         }
@@ -837,15 +835,15 @@ describe('autonomous-equipment', () => {
 
     it('handles undefined operatingCostPerHour', () => {
       const stats = createMockRobotStats({ breakdownRate: 0 });
-      delete (stats as any).operatingCostPerHour;  // Make operatingCostPerHour undefined
+      delete (stats as any).operatingCostPerHour;
 
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats,
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -860,24 +858,23 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // Should use 0 as fallback for undefined operatingCostPerHour
-      const result = tickAutonomousEquipment(state, cells, 60, false);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60, false);
 
       expect(result.operatingCost).toBe(0);
     });
 
     it('handles undefined fuelEfficiency', () => {
       const stats = createMockRobotStats({ breakdownRate: 0 });
-      delete (stats as any).fuelEfficiency;  // Make fuelEfficiency undefined
+      delete (stats as any).fuelEfficiency;
 
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats,
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -892,23 +889,20 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // Should use 1 as fallback for undefined fuelEfficiency
-      const result = tickAutonomousEquipment(state, cells, 60, false);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60, false);
 
-      // Resource consumption uses fuelEfficiency * deltaMinutes * 0.5
-      // With fuelEfficiency=1 and deltaMinutes=60: consumption = 1 * 60 * 0.5 = 30
       expect(result.state.robots[0].resourceCurrent).toBe(200 - 30);
     });
 
-    it('robot stays idle when work is beyond maxDistance', () => {
+    it('robot stays idle when candidates are all water terrain', () => {
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 0,
-        gridY: 0,
+        worldX: 0,
+        worldZ: 0,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -923,25 +917,26 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      // Create large grid where only far cells need work
-      const cells = createMockCells(100, 100, 100);  // All healthy
-      // Only cell beyond maxDistance (50) has low health
-      cells[99][99].health = 50;  // Distance = |99-0| + |99-0| = 198 > 50
+      const candidates = [createMockCandidate({
+        worldX: 6,
+        worldZ: 6,
+        avgHealth: 20,
+        dominantTerrainCode: TERRAIN_CODES.WATER,
+      })];
 
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
-      // Should stay idle because only work is beyond maxDistance
       expect(result.state.robots[0].state).toBe('idle');
     });
 
-    it('robot skips non-walkable cells when finding work', () => {
+    it('robot skips water candidates when finding work', () => {
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats: createMockRobotStats({ breakdownRate: 0 }),
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -956,29 +951,28 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      // Create grid with mostly healthy cells
-      const cells = createMockCells(10, 10, 100);
-      // Make one cell with low health but also non-walkable (water)
-      cells[6][6].health = 20;
-      cells[6][6].type = 'water';
+      const candidates = createMockCandidates(100);
+      candidates.push(createMockCandidate({
+        worldX: 6, worldZ: 6, avgHealth: 20,
+        dominantTerrainCode: TERRAIN_CODES.WATER,
+      }));
 
-      const result = tickAutonomousEquipment(state, cells, 1);
+      const result = tickAutonomousEquipment(state, candidates, 1);
 
-      // Should stay idle because the only cell needing work is water (non-walkable)
       expect(result.state.robots[0].state).toBe('idle');
     });
 
     it('handles undefined breakdownRate without fleetAI', () => {
       const stats = createMockRobotStats();
-      delete (stats as any).breakdownRate;  // Make breakdownRate undefined
+      delete (stats as any).breakdownRate;
 
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower',
         type: 'mower',
         stats,
-        gridX: 5,
-        gridY: 5,
+        worldX: 5,
+        worldZ: 5,
         resourceCurrent: 200,
         resourceMax: 300,
         state: 'idle',
@@ -993,11 +987,9 @@ describe('autonomous-equipment', () => {
         chargingStationY: 0,
       };
 
-      const cells = createMockCells(10, 10, 50);
-      // With fleetAIActive=false and undefined breakdownRate, should use 0
-      const result = tickAutonomousEquipment(state, cells, 60, false);
+      const candidates = createMockCandidates(50);
+      const result = tickAutonomousEquipment(state, candidates, 60, false);
 
-      // Should not break down since breakdownRate defaults to 0
       expect(result.state.robots[0].state).not.toBe('broken');
     });
   });

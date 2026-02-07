@@ -1,5 +1,5 @@
 import { Direction, EquipmentSlot } from "./engine/InputManager";
-import { OverlayMode } from "./systems/GrassSystem";
+import { OverlayMode, getTerrainType } from "../core/terrain";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
@@ -619,16 +619,16 @@ export class GameAPI {
     this.systems.terrainSystem.setAllFaceStates(state);
   }
 
-  public getTerrainTypeAt(x: number, y: number): string | undefined {
-    return this.systems.terrainSystem.getTerrainTypeAt(x, y);
+  public getTerrainTypeAt(worldX: number, worldZ: number): string | undefined {
+    return this.systems.terrainSystem.getTerrainTypeAt(worldX, worldZ);
   }
 
   public setTerrainTypeAt(
-    x: number,
-    y: number,
+    worldX: number,
+    worldZ: number,
     type: "fairway" | "rough" | "green" | "bunker" | "water" | "tee"
   ): void {
-    this.systems.terrainSystem.setTerrainTypeAt(x, y, type);
+    this.systems.terrainSystem.setTerrainTypeAt(worldX, worldZ, type);
   }
 
   public setOverlayMode(
@@ -741,7 +741,7 @@ export class GameAPI {
     terrain: { width: number; height: number };
     editorEnabled: boolean;
   } {
-    const dims = this.systems.terrainSystem.getGridDimensions();
+    const dims = this.systems.terrainSystem.getWorldDimensions();
     return {
       player: {
         x: this.systems.player.worldX,
@@ -1329,7 +1329,7 @@ export class GameAPI {
   }
 
   public getTerrainDimensions(): { width: number; height: number } {
-    return this.systems.terrainSystem.getGridDimensions();
+    return this.systems.terrainSystem.getWorldDimensions();
   }
 
   public getTerrainCellData(x: number, y: number): {
@@ -1356,12 +1356,8 @@ export class GameAPI {
 
   public getTerrainTypes(): string[] {
     const types = new Set<string>();
-    const dims = this.systems.terrainSystem.getGridDimensions();
-    for (let y = 0; y < dims.height; y++) {
-      for (let x = 0; x < dims.width; x++) {
-        const t = this.systems.terrainSystem.getTerrainTypeAt(x, y);
-        if (t) types.add(t);
-      }
+    for (const face of this.systems.terrainSystem.getAllFaceStates().values()) {
+      types.add(getTerrainType(face.terrainCode));
     }
     return Array.from(types);
   }
@@ -1722,8 +1718,8 @@ export class GameAPI {
     type: string;
     state: string;
     battery: number;
-    gridX: number;
-    gridY: number;
+    worldX: number;
+    worldZ: number;
     targetX: number | null;
     targetY: number | null;
     breakdownTimeRemaining: number;
@@ -1733,8 +1729,8 @@ export class GameAPI {
       type: r.type,
       state: r.state,
       battery: Math.round((r.resourceCurrent / r.resourceMax) * 100),
-      gridX: Math.round(r.gridX),
-      gridY: Math.round(r.gridY),
+      worldX: Math.round(r.worldX),
+      worldZ: Math.round(r.worldZ),
       targetX: r.targetX,
       targetY: r.targetY,
       breakdownTimeRemaining: r.breakdownTimeRemaining,

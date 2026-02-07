@@ -30,8 +30,7 @@ import { TerrainMeshTopology } from "../../core/mesh-topology";
 
 export interface TerrainModifier {
   setElevationAt(x: number, y: number, elevation: number): void;
-  setTerrainTypeAt(x: number, y: number, type: TerrainType): void;
-  rebuildTileAndNeighbors(x: number, y: number): void;
+  setTerrainTypeAt(worldX: number, worldZ: number, type: TerrainType): void;
   setVertexElevationsById?(changes: Array<{ vertexId: number; y: number }>): void;
   setVertexPositionsById?(changes: Array<{ vertexId: number; pos: Vec3 }>): void;
   moveVerticesById?(vertexIds: number[], delta: Vec3): void;
@@ -42,7 +41,7 @@ export interface TerrainModifier {
   getVertexIdsInWorldRadius?(worldX: number, worldZ: number, radius: number): number[];
   getWorldDimensions?(): { width: number; height: number };
   rebuildMesh?(): void;
-  paintTerrainType?(cells: Array<{ x: number; y: number }>, type: TerrainType): void;
+  paintTerrainType?(faceIds: number[], type: TerrainType): void;
   getTopology?(): TerrainMeshTopology | null;
   findNearestEdgeAt?(worldX: number, worldZ: number, maxDist?: number): { edgeId: number; t: number; dist: number } | null;
   setHoveredEdge?(edgeId: number | null): void;

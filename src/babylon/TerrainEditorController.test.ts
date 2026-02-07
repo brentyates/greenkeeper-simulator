@@ -136,7 +136,6 @@ function createMockTerrainSystem() {
   return {
     setElevationAt: vi.fn(),
     setTerrainTypeAt: vi.fn(),
-    rebuildTileAndNeighbors: vi.fn(),
     getResolution: vi.fn(() => 1),
   };
 }
@@ -249,8 +248,6 @@ describe("TerrainEditorController", () => {
       expect(mocks.terrainSystem.setElevationAt).toHaveBeenCalledWith(1, 2, 5);
       modifier.setTerrainTypeAt(3, 4, 1);
       expect(mocks.terrainSystem.setTerrainTypeAt).toHaveBeenCalledWith(3, 4, 1);
-      modifier.rebuildTileAndNeighbors(5, 6);
-      expect(mocks.terrainSystem.rebuildTileAndNeighbors).toHaveBeenCalledWith(5, 6);
     });
   });
 

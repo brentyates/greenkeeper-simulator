@@ -1,7 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HEIGHT_UNIT } from "./engine/BabylonEngine";
-import { MovableCell, canMoveFromTo } from "../core/terrain";
 import {
   PlayerEntity,
   createPlayerEntity,
@@ -17,17 +16,16 @@ import {
 import { EquipmentType, EquipmentState } from "../core/equipment-logic";
 
 export interface TerrainProvider {
-  getCell(x: number, y: number): MovableCell | null;
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
   getCourseStats(): { health: number; moisture: number; nutrients: number; height: number };
-  getGridDimensions(): { width: number; height: number };
+  getWorldDimensions(): { width: number; height: number };
+  getTerrainTypeAt(worldX: number, worldZ: number): string | undefined;
   isPositionWalkable(worldX: number, worldZ: number): boolean;
   getTerrainSpeedAt(worldX: number, worldZ: number): number;
   findFaceAtPosition(worldX: number, worldZ: number): number | null;
   mowAt(gridX: number, gridY: number): boolean;
   waterArea(centerX: number, centerY: number, radius: number, amount: number): number;
   fertilizeArea(centerX: number, centerY: number, radius: number, amount: number, effectiveness?: number): number;
-  getResolution?(): number;
 }
 
 export interface EquipmentProvider {
@@ -155,7 +153,7 @@ export class PlayerController {
   }
 
   teleport(x: number, y: number): void {
-    const dims = this.terrain.getGridDimensions();
+    const dims = this.terrain.getWorldDimensions();
     if (x < 0 || x >= dims.width || y < 0 || y >= dims.height) {
       console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
       return;
@@ -289,7 +287,7 @@ export class PlayerController {
     const gridPos = this.screenToGridFromScreen(screenX, screenY);
     if (!gridPos) return;
 
-    const dims = this.terrain.getGridDimensions();
+    const dims = this.terrain.getWorldDimensions();
     if (
       gridPos.x < 0 ||
       gridPos.x >= dims.width ||
@@ -299,22 +297,18 @@ export class PlayerController {
       return;
     }
 
-    const targetCell = this.terrain.getCell(gridPos.x, gridPos.y);
-    if (!targetCell || targetCell.type === "water") return;
+    const targetType = this.terrain.getTerrainTypeAt(gridPos.x + 0.5, gridPos.y + 0.5);
+    if (!targetType || targetType === "water") return;
 
     if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
       return;
     }
 
-    const slopeChecker = (x: number, y: number) =>
-      this.terrain.isPositionWalkable(x + 0.5, y + 0.5);
-
     const path = this.findPath(
       this.player.gridX,
       this.player.gridY,
       gridPos.x,
-      gridPos.y,
-      slopeChecker
+      gridPos.y
     );
     if (path.length > 0) {
       this.clickToMoveWaypoints = path.map(p => ({ x: p.x + 0.5, z: p.y + 0.5 }));
@@ -354,8 +348,7 @@ export class PlayerController {
     startX: number,
     startY: number,
     endX: number,
-    endY: number,
-    slopeChecker?: (x: number, y: number) => boolean
+    endY: number
   ): { x: number; y: number }[] {
     interface PathNode {
       x: number;
@@ -366,7 +359,7 @@ export class PlayerController {
       parent: PathNode | null;
     }
 
-    const dims = this.terrain.getGridDimensions();
+    const dims = this.terrain.getWorldDimensions();
     const openSet: PathNode[] = [];
     const closedSet = new Set<string>();
 
@@ -415,9 +408,9 @@ export class PlayerController {
           continue;
         if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
 
-        const fromCell = this.terrain.getCell(current.x, current.y);
-        const toCell = this.terrain.getCell(neighbor.x, neighbor.y);
-        if (!canMoveFromTo(fromCell, toCell, slopeChecker)) continue;
+        const neighborType = this.terrain.getTerrainTypeAt(neighbor.x + 0.5, neighbor.y + 0.5);
+        if (!neighborType || neighborType === "water") continue;
+        if (!this.terrain.isPositionWalkable(neighbor.x + 0.5, neighbor.y + 0.5)) continue;
 
         const g = current.g + 1;
         const h = heuristic(neighbor.x, neighbor.y);
@@ -507,7 +500,7 @@ export class PlayerController {
     const gridX = Math.floor(groundX);
     const gridY = Math.floor(groundZ);
 
-    const dims = this.terrain.getGridDimensions();
+    const dims = this.terrain.getWorldDimensions();
     if (
       gridX < 0 ||
       gridX >= dims.width ||

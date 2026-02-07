@@ -132,32 +132,10 @@ export interface WalkableCell {
   obstacle: ObstacleType;
 }
 
-export interface MovableCell extends WalkableCell {
-  x: number;
-  y: number;
-  elevation: number;
-}
-
 export function isWalkable(cell: WalkableCell | null): boolean {
   if (!cell) return false;
   if (cell.type === "water") return false;
   if (cell.obstacle !== "none") return false;
-  return true;
-}
-
-export function canMoveFromTo(
-  fromCell: MovableCell | null,
-  toCell: MovableCell | null,
-  slopeChecker?: (x: number, y: number) => boolean
-): boolean {
-  if (!fromCell || !toCell) return false;
-  if (!isWalkable(toCell)) return false;
-
-  const elevationDiff = Math.abs(toCell.elevation - fromCell.elevation);
-  if (elevationDiff > 1) return false;
-
-  if (slopeChecker && !slopeChecker(toCell.x, toCell.y)) return false;
-
   return true;
 }
 

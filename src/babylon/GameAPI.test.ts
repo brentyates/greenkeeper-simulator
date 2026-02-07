@@ -348,7 +348,7 @@ function createMockState(): GameState {
     } as any,
     autonomousState: {
       robots: [
-        { id: "r1", equipmentId: "eq1", type: "mower_bot", stats: {}, gridX: 3.2, gridY: 4.8, resourceCurrent: 80, resourceMax: 100, state: "working", targetX: 5, targetY: null, breakdownTimeRemaining: 0 },
+        { id: "r1", equipmentId: "eq1", type: "mower_bot", stats: {}, worldX: 3.2, worldZ: 4.8, resourceCurrent: 80, resourceMax: 100, state: "working", targetX: 5, targetY: null, breakdownTimeRemaining: 0 },
       ],
       chargingStationX: 0, chargingStationY: 0,
     } as any,
@@ -410,9 +410,6 @@ function createMockSystems(): GameSystems {
       setAllFaceStates: vi.fn(),
       getTerrainTypeAt: vi.fn(() => "fairway"),
       setTerrainTypeAt: vi.fn(),
-      getCell: vi.fn(() => ({
-        type: "fairway", elevation: 1.0, obstacle: "none", x: 0, y: 0,
-      })),
       findFaceAtPosition: vi.fn(() => 1),
       getFaceState: vi.fn(() => ({
         faceId: 1, terrainCode: 0, moisture: 60, nutrients: 50,
@@ -423,10 +420,10 @@ function createMockSystems(): GameSystems {
         avgMoisture: 60, avgNutrients: 50, avgGrassHeight: 0.5, avgHealth: 80, count: 1,
       })),
       getCourseStats: vi.fn(() => ({ health: 75, moisture: 60, nutrients: 50, height: 0.5 })),
-      getGridDimensions: vi.fn(() => ({ width: 10, height: 10 })),
+      getWorldDimensions: vi.fn(() => ({ width: 10, height: 10 })),
       update: vi.fn(),
       getUpdateCount: vi.fn(() => 42),
-      getAllFaceStates: vi.fn(() => new Map()),
+      getAllFaceStates: vi.fn(() => new Map([[0, { terrainCode: 0, moisture: 50, nutrients: 50, grassHeight: 0.5, health: 80, lastMowed: 0, lastWatered: 0, lastFertilized: 0, lastRaked: 0 }]])),
     } as any,
     terrainEditorSystem: null,
     irrigationRenderSystem: null,
@@ -1056,7 +1053,7 @@ describe("GameAPI", () => {
     });
 
     it("handles zero dimensions", () => {
-      (sys.terrainSystem.getGridDimensions as Mock).mockReturnValue({ width: 0, height: 0 });
+      (sys.terrainSystem.getWorldDimensions as Mock).mockReturnValue({ width: 0, height: 0 });
       (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
       (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       expect(api.getFullGameState().terrain.width).toBe(0);
@@ -1654,8 +1651,8 @@ describe("GameAPI", () => {
     it("returns details", () => {
       const result = api.getRobotDetails();
       expect(result[0].battery).toBe(80);
-      expect(result[0].gridX).toBe(3);
-      expect(result[0].gridY).toBe(5);
+      expect(result[0].worldX).toBe(3);
+      expect(result[0].worldZ).toBe(5);
       expect(result[0].targetX).toBe(5);
       expect(result[0].targetY).toBeNull();
     });

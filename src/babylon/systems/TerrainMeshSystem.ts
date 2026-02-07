@@ -20,9 +20,9 @@ import {
 import { HEIGHT_UNIT } from "../engine/BabylonEngine";
 import { CourseData } from "../../data/courseData";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { TerrainType, MovableCell, getTerrainType, getTerrainCode, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode, getTerrainSpeedModifier, isFaceWalkableBySlope } from "../../core/terrain";
+import { TerrainType, getTerrainType, getTerrainCode, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode, getTerrainSpeedModifier, isFaceWalkableBySlope } from "../../core/terrain";
 import { TopologyMode, getEdgesInBrush } from "../../core/terrain-editor-logic";
-import { GrassCell, WeatherEffect } from "../../core/grass-simulation";
+import { WeatherEffect } from "../../core/grass-simulation";
 import {
   FaceState,
   createFaceState,
@@ -86,7 +86,6 @@ export class TerrainMeshSystem {
   private gridLinesMesh: Mesh | null = null;
 
   private faceStates: Map<number, FaceState> = new Map();
-  private faceToGridCache: Map<number, { gx: number; gy: number }> = new Map();
 
   private time: number = 0;
   private gameTime: number = 0;
@@ -190,22 +189,8 @@ export class TerrainMeshSystem {
     if (!this.topology) return;
 
     this.faceStates.clear();
-    this.faceToGridCache.clear();
-
     for (const [id, tri] of this.topology.triangles) {
       this.faceStates.set(id, createFaceState(id, tri.terrainCode));
-
-      const v0 = this.topology.vertices.get(tri.vertices[0]);
-      const v1 = this.topology.vertices.get(tri.vertices[1]);
-      const v2 = this.topology.vertices.get(tri.vertices[2]);
-      if (v0 && v1 && v2) {
-        const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
-        const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
-        this.faceToGridCache.set(id, {
-          gx: Math.floor(cx),
-          gy: Math.floor(cz),
-        });
-      }
     }
   }
 
@@ -1123,7 +1108,6 @@ export class TerrainMeshSystem {
     for (const faceId of this.faceStates.keys()) {
       if (!currentFaceIds.has(faceId)) {
         this.faceStates.delete(faceId);
-        this.faceToGridCache.delete(faceId);
       }
     }
 
@@ -1152,16 +1136,6 @@ export class TerrainMeshSystem {
       const state = this.faceStates.get(id);
       if (state && state.terrainCode !== tri.terrainCode) {
         state.terrainCode = tri.terrainCode;
-      }
-
-      const v0 = this.topology.vertices.get(tri.vertices[0]);
-      const v1 = this.topology.vertices.get(tri.vertices[1]);
-      const v2 = this.topology.vertices.get(tri.vertices[2]);
-      if (v0 && v1 && v2) {
-        this.faceToGridCache.set(id, {
-          gx: Math.floor((v0.position.x + v1.position.x + v2.position.x) / 3),
-          gy: Math.floor((v0.position.z + v1.position.z + v2.position.z) / 3),
-        });
       }
     }
   }
@@ -1223,14 +1197,6 @@ export class TerrainMeshSystem {
 
   public getResolution(): number {
     return this.options.meshResolution;
-  }
-
-  public gridToWorld(gridX: number, gridY: number): Vector3 {
-    const res = this.options.meshResolution;
-    const worldX = gridX / res;
-    const worldZ = gridY / res;
-    const elevation = this.getInterpolatedElevation(worldX, worldZ);
-    return new Vector3(worldX, elevation * HEIGHT_UNIT, worldZ);
   }
 
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
@@ -1466,100 +1432,6 @@ export class TerrainMeshSystem {
     this.shaderMaterial.setColor3(uniformName, color);
   }
 
-  private getFacesAtGrid(gx: number, gy: number): number[] | undefined {
-    const gridWidth = Math.ceil(this.worldWidth);
-    const gridHeight = Math.ceil(this.worldHeight);
-    if (gx < 0 || gx >= gridWidth || gy < 0 || gy >= gridHeight) return undefined;
-    const cellSet = this.faceSpatialIndex[gy * gridWidth + gx];
-    if (!cellSet || cellSet.size === 0) return undefined;
-    return Array.from(cellSet);
-  }
-
-  public getAllCells(): GrassCell[][] {
-    const dims = this.getGridDimensions();
-    const cells: GrassCell[][] = [];
-    for (let y = 0; y < dims.height; y++) {
-      const row: GrassCell[] = [];
-      for (let x = 0; x < dims.width; x++) {
-        const faceIds = this.getFacesAtGrid(x, y);
-        if (faceIds && faceIds.length > 0) {
-          const face = this.faceStates.get(faceIds[0]);
-          if (face) {
-            row.push({
-              type: getTerrainType(face.terrainCode),
-              height: face.grassHeight,
-              moisture: face.moisture,
-              nutrients: face.nutrients,
-              health: face.health,
-            });
-            continue;
-          }
-        }
-        row.push({ type: 'rough', height: 0, moisture: 0, nutrients: 0, health: 0 });
-      }
-      cells.push(row);
-    }
-    return cells;
-  }
-
-  public setCellState(x: number, y: number, state: Partial<Pick<GrassCell, 'height' | 'moisture' | 'nutrients' | 'health'>>): void {
-    const faceIds = this.getFacesAtGrid(x, y);
-    if (!faceIds) return;
-    for (const fid of faceIds) {
-      const face = this.faceStates.get(fid);
-      if (face) {
-        if (state.height !== undefined) face.grassHeight = state.height;
-        if (state.moisture !== undefined) face.moisture = state.moisture;
-        if (state.nutrients !== undefined) face.nutrients = state.nutrients;
-        if (state.health !== undefined) face.health = state.health;
-      }
-    }
-  }
-
-  public setAllCellsState(state: Partial<Pick<GrassCell, 'height' | 'moisture' | 'nutrients' | 'health'>>): void {
-    for (const face of this.faceStates.values()) {
-      if (state.height !== undefined) face.grassHeight = state.height;
-      if (state.moisture !== undefined) face.moisture = state.moisture;
-      if (state.nutrients !== undefined) face.nutrients = state.nutrients;
-      if (state.health !== undefined) face.health = state.health;
-    }
-  }
-
-  public restoreCells(savedCells: GrassCell[][]): void {
-    for (let y = 0; y < savedCells.length; y++) {
-      for (let x = 0; x < savedCells[y].length; x++) {
-        const cell = savedCells[y][x];
-        const faceIds = this.getFacesAtGrid(x, y);
-        if (!faceIds) continue;
-        for (const fid of faceIds) {
-          const face = this.faceStates.get(fid);
-          if (face) {
-            face.grassHeight = cell.height;
-            face.moisture = cell.moisture;
-            face.nutrients = cell.nutrients;
-            face.health = cell.health;
-          }
-        }
-      }
-    }
-  }
-
-  public getCell(worldX: number, worldY: number): MovableCell | null {
-    const gx = Math.floor(worldX);
-    const gy = Math.floor(worldY);
-    const faceIds = this.getFacesAtGrid(gx, gy);
-    if (!faceIds || faceIds.length === 0) return null;
-    const face = this.faceStates.get(faceIds[0]);
-    if (!face) return null;
-    return {
-      x: gx,
-      y: gy,
-      type: getTerrainType(face.terrainCode),
-      obstacle: "none",
-      elevation: this.getElevationAt(gx, gy),
-    };
-  }
-
   public getElevationAt(worldX: number, worldY: number, defaultForOutOfBounds?: number): number {
     if (worldX < 0 || worldX >= this.worldWidth || worldY < 0 || worldY >= this.worldHeight) {
       return defaultForOutOfBounds ?? 0;
@@ -1590,13 +1462,10 @@ export class TerrainMeshSystem {
     this.meshDirty = true;
   }
 
-  public setTerrainTypeAt(gx: number, gy: number, type: TerrainType): void {
-    const res = this.getResolution();
-    const worldX = gx / res;
-    const worldY = gy / res;
+  public setTerrainTypeAt(worldX: number, worldZ: number, type: TerrainType): void {
     const terrainCode = getTerrainCode(type);
 
-    const faceId = this.findFaceAtPosition(worldX, worldY);
+    const faceId = this.findFaceAtPosition(worldX, worldZ);
     if (faceId !== null && this.topology) {
       const tri = this.topology.triangles.get(faceId);
       if (tri) {
@@ -1617,30 +1486,21 @@ export class TerrainMeshSystem {
 
   }
 
-  public getTerrainTypeAt(gx: number, gy: number): TerrainType {
-    const res = this.getResolution();
-    const worldX = gx / res;
-    const worldY = gy / res;
-    
-    const faceId = this.findFaceAtPosition(worldX, worldY);
+  public getTerrainTypeAt(worldX: number, worldZ: number): TerrainType {
+    const faceId = this.findFaceAtPosition(worldX, worldZ);
     if (faceId !== null && this.topology) {
       const tri = this.topology.triangles.get(faceId);
       if (tri) return getTerrainType(tri.terrainCode);
     }
-    
+
     return getTerrainType(TERRAIN_CODES.ROUGH);
   }
 
-  public paintTerrainType(cells: Array<{ x: number; y: number }>, type: TerrainType): void {
-    const res = this.getResolution();
+  public paintTerrainType(faceIds: number[], type: TerrainType): void {
     const terrainCode = getTerrainCode(type);
 
-    for (const pos of cells) {
-      const worldX = pos.x / res;
-      const worldY = pos.y / res;
-
-      const faceId = this.findFaceAtPosition(worldX, worldY);
-      if (faceId !== null && this.topology) {
+    for (const faceId of faceIds) {
+      if (this.topology) {
         const tri = this.topology.triangles.get(faceId);
         if (tri) {
           tri.terrainCode = terrainCode;
@@ -1657,12 +1517,7 @@ export class TerrainMeshSystem {
           });
         }
       }
-
     }
-    this.meshDirty = true;
-  }
-
-  public rebuildTileAndNeighbors(_x: number, _y: number): void {
     this.meshDirty = true;
   }
 
@@ -1700,10 +1555,6 @@ export class TerrainMeshSystem {
       if (state.grassHeight !== undefined) face.grassHeight = state.grassHeight;
       if (state.health !== undefined) face.health = state.health;
     }
-  }
-
-  public getGridDimensions(): { width: number; height: number } {
-    return { width: Math.ceil(this.worldWidth), height: Math.ceil(this.worldHeight) };
   }
 
   public sampleFaceStatesInRadius(
