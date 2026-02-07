@@ -24,17 +24,16 @@ export interface EditorState {
   brushStrength: number;
   isDragging: boolean;
   hoverTile: { x: number; y: number } | null;
-  hoverVertex: { vx: number; vy: number } | null;
-  selectedVertices: Set<string>;
+  hoverVertex: { vertexId: number } | null;
+  selectedVertices: Set<number>;
   dragStartScreenY: number | null;
   dragLastScreenY: number | null;
 }
 
 export interface VertexModification {
-  vx: number;
-  vy: number;
-  oldZ: number;
-  newZ: number;
+  vertexId: number;
+  oldY: number;
+  newY: number;
 }
 
 import { Vec3 } from './mesh-topology';
@@ -58,54 +57,40 @@ export function createInitialEditorState(): EditorState {
   };
 }
 
-export function vertexKey(vx: number, vy: number): string {
-  return `${vx},${vy}`;
-}
-
-export function parseVertexKey(key: string): { vx: number; vy: number } {
-  const [vxStr, vyStr] = key.split(',');
-  return { vx: parseInt(vxStr), vy: parseInt(vyStr) };
-}
-
 export function selectVertex(
   state: EditorState,
-  vx: number,
-  vy: number,
+  vertexId: number,
   additive: boolean = false
 ): void {
   if (!additive) {
     state.selectedVertices.clear();
   }
-  state.selectedVertices.add(vertexKey(vx, vy));
+  state.selectedVertices.add(vertexId);
 }
 
-export function deselectVertex(state: EditorState, vx: number, vy: number): void {
-  state.selectedVertices.delete(vertexKey(vx, vy));
+export function deselectVertex(state: EditorState, vertexId: number): void {
+  state.selectedVertices.delete(vertexId);
 }
 
-export function toggleVertex(state: EditorState, vx: number, vy: number): void {
-  const key = vertexKey(vx, vy);
-  if (state.selectedVertices.has(key)) {
-    state.selectedVertices.delete(key);
+export function toggleVertex(state: EditorState, vertexId: number): void {
+  if (state.selectedVertices.has(vertexId)) {
+    state.selectedVertices.delete(vertexId);
   } else {
-    state.selectedVertices.add(key);
+    state.selectedVertices.add(vertexId);
   }
 }
 
-export function isVertexSelected(state: EditorState, vx: number, vy: number): boolean {
-  return state.selectedVertices.has(vertexKey(vx, vy));
+export function isVertexSelected(state: EditorState, vertexId: number): boolean {
+  return state.selectedVertices.has(vertexId);
 }
 
 export function selectAll(
   state: EditorState,
-  vertexWidth: number,
-  vertexHeight: number
+  topology: { vertices: Map<number, any> }
 ): void {
   state.selectedVertices.clear();
-  for (let vy = 0; vy < vertexHeight; vy++) {
-    for (let vx = 0; vx < vertexWidth; vx++) {
-      state.selectedVertices.add(vertexKey(vx, vy));
-    }
+  for (const vertexId of topology.vertices.keys()) {
+    state.selectedVertices.add(vertexId);
   }
 }
 
@@ -115,16 +100,12 @@ export function deselectAll(state: EditorState): void {
 
 export function invertSelection(
   state: EditorState,
-  vertexWidth: number,
-  vertexHeight: number
+  topology: { vertices: Map<number, any> }
 ): void {
-  const newSelection = new Set<string>();
-  for (let vy = 0; vy < vertexHeight; vy++) {
-    for (let vx = 0; vx < vertexWidth; vx++) {
-      const key = vertexKey(vx, vy);
-      if (!state.selectedVertices.has(key)) {
-        newSelection.add(key);
-      }
+  const newSelection = new Set<number>();
+  for (const vertexId of topology.vertices.keys()) {
+    if (!state.selectedVertices.has(vertexId)) {
+      newSelection.add(vertexId);
     }
   }
   state.selectedVertices = newSelection;
@@ -132,50 +113,53 @@ export function invertSelection(
 
 export function selectVerticesInBox(
   state: EditorState,
-  vx1: number,
-  vy1: number,
-  vx2: number,
-  vy2: number,
-  vertexWidth: number,
-  vertexHeight: number,
+  minX: number,
+  minZ: number,
+  maxX: number,
+  maxZ: number,
+  topology: { vertices: Map<number, { position: Vec3 }> },
   additive: boolean = false
 ): void {
   if (!additive) {
     state.selectedVertices.clear();
   }
 
-  const minVx = Math.max(0, Math.min(vx1, vx2));
-  const maxVx = Math.min(vertexWidth - 1, Math.max(vx1, vx2));
-  const minVy = Math.max(0, Math.min(vy1, vy2));
-  const maxVy = Math.min(vertexHeight - 1, Math.max(vy1, vy2));
+  const x1 = Math.min(minX, maxX);
+  const x2 = Math.max(minX, maxX);
+  const z1 = Math.min(minZ, maxZ);
+  const z2 = Math.max(minZ, maxZ);
 
-  for (let vy = minVy; vy <= maxVy; vy++) {
-    for (let vx = minVx; vx <= maxVx; vx++) {
-      state.selectedVertices.add(vertexKey(vx, vy));
+  for (const [vertexId, vertex] of topology.vertices) {
+    const pos = vertex.position;
+    if (pos.x >= x1 && pos.x <= x2 && pos.z >= z1 && pos.z <= z2) {
+      state.selectedVertices.add(vertexId);
     }
   }
 }
 
 export function selectVerticesInBrush(
   state: EditorState,
-  centerVx: number,
-  centerVy: number,
+  worldX: number,
+  worldZ: number,
   radius: number,
-  vertexWidth: number,
-  vertexHeight: number,
+  topology: { vertices: Map<number, { position: Vec3 }> },
   additive: boolean = true
 ): void {
-  const vertices = getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
   if (!additive) {
     state.selectedVertices.clear();
   }
-  for (const v of vertices) {
-    state.selectedVertices.add(vertexKey(v.vx, v.vy));
+  const radiusSq = radius * radius;
+  for (const [vertexId, vertex] of topology.vertices) {
+    const dx = vertex.position.x - worldX;
+    const dz = vertex.position.z - worldZ;
+    if (dx * dx + dz * dz <= radiusSq) {
+      state.selectedVertices.add(vertexId);
+    }
   }
 }
 
-export function getSelectedVerticesList(state: EditorState): Array<{ vx: number; vy: number }> {
-  return Array.from(state.selectedVertices).map(parseVertexKey);
+export function getSelectedVerticesList(state: EditorState): number[] {
+  return Array.from(state.selectedVertices);
 }
 
 export function isSculptTool(tool: EditorTool): tool is SculptTool {
@@ -203,59 +187,6 @@ export function getTerrainTypeFromBrush(brush: TerrainBrush): TerrainType {
   }
 }
 
-export function getVerticesInBrush(
-  centerVx: number,
-  centerVy: number,
-  brushSize: number,
-  vertexWidth: number,
-  vertexHeight: number
-): Array<{ vx: number; vy: number }> {
-  const vertices: Array<{ vx: number; vy: number }> = [];
-  const geoRadius = brushSize - 1;
-  const r = Math.ceil(geoRadius);
-
-  for (let dvy = -r; dvy <= r; dvy++) {
-    for (let dvx = -r; dvx <= r; dvx++) {
-      if (dvx * dvx + dvy * dvy <= geoRadius * geoRadius + 0.1) {
-        const vx = centerVx + dvx;
-        const vy = centerVy + dvy;
-        if (vx >= 0 && vx < vertexWidth && vy >= 0 && vy < vertexHeight) {
-          vertices.push({ vx, vy });
-        }
-      }
-    }
-  }
-
-  if (vertices.length === 0) {
-    vertices.push({ vx: centerVx, vy: centerVy });
-  }
-
-  return vertices;
-}
-
-export function getCellsInBrush(
-  centerX: number,
-  centerY: number,
-  brushSize: number
-): Array<{ x: number; y: number }> {
-  const cells: Array<{ x: number; y: number }> = [];
-  const geoRadius = brushSize - 1;
-  const r = Math.ceil(geoRadius);
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= geoRadius * geoRadius + 0.1) {
-        cells.push({ x: centerX + dx, y: centerY + dy });
-      }
-    }
-  }
-
-  if (cells.length === 0) {
-    cells.push({ x: centerX, y: centerY });
-  }
-
-  return cells;
-}
-
 export function getEdgesInBrush(
   worldX: number,
   worldZ: number,
@@ -270,7 +201,6 @@ export function getEdgesInBrush(
     const v2 = topology.vertices.get(edge.v2);
     if (!v1 || !v2) continue;
 
-    // Center of the edge
     const cx = (v1.position.x + v2.position.x) / 2;
     const cz = (v1.position.z + v2.position.z) / 2;
 
@@ -298,7 +228,6 @@ export function getFacesInBrush(
     const v3 = topology.vertices.get(tri.vertices[2]);
     if (!v1 || !v2 || !v3) continue;
 
-    // Centroid of the triangle
     const cx = (v1.position.x + v2.position.x + v3.position.x) / 3;
     const cz = (v1.position.z + v2.position.z + v3.position.z) / 3;
 
@@ -312,73 +241,63 @@ export function getFacesInBrush(
 }
 
 export function applyRaiseVertex(
-  vx: number,
-  vy: number,
-  vertexElevations: number[][],
+  vertexId: number,
+  topology: { vertices: Map<number, { position: Vec3 }> },
   amount: number = 1
 ): VertexModification | null {
-  const oldZ = vertexElevations[vy]?.[vx];
-  if (oldZ === undefined) return null;
+  const vertex = topology.vertices.get(vertexId);
+  if (!vertex) return null;
 
-  return {
-    vx,
-    vy,
-    oldZ,
-    newZ: oldZ + amount,
-  };
+  const oldY = vertex.position.y;
+  const newY = oldY + amount;
+  vertex.position.y = newY;
+
+  return { vertexId, oldY, newY };
 }
 
 export function applyLowerVertex(
-  vx: number,
-  vy: number,
-  vertexElevations: number[][],
+  vertexId: number,
+  topology: { vertices: Map<number, { position: Vec3 }> },
   amount: number = 1,
   minElev: number = -10
 ): VertexModification | null {
-  const oldZ = vertexElevations[vy]?.[vx];
-  if (oldZ === undefined) return null;
+  const vertex = topology.vertices.get(vertexId);
+  if (!vertex) return null;
 
-  const newZ = Math.max(minElev, oldZ - amount);
-  if (newZ === oldZ) return null;
+  const oldY = vertex.position.y;
+  const newY = Math.max(minElev, oldY - amount);
+  if (newY === oldY) return null;
 
-  return {
-    vx,
-    vy,
-    oldZ,
-    newZ,
-  };
+  vertex.position.y = newY;
+  return { vertexId, oldY, newY };
 }
 
 export function applySmoothVertices(
-  centerVx: number,
-  centerVy: number,
-  vertexElevations: number[][],
-  radius: number,
-  vertexWidth: number,
-  vertexHeight: number,
-  brushStrength: number = 1.0,
-  precomputedVertices?: Array<{ vx: number; vy: number }>
+  vertexIds: number[],
+  topology: { vertices: Map<number, { position: Vec3 }> },
+  brushStrength: number = 1.0
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
-  const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
 
-  if (vertices.length === 0) return [];
+  if (vertexIds.length === 0) return [];
 
-  const totalElev = vertices.reduce((sum, v) => {
-    return sum + (vertexElevations[v.vy]?.[v.vx] ?? 0);
+  const totalElev = vertexIds.reduce((sum, id) => {
+    const v = topology.vertices.get(id);
+    return sum + (v?.position.y ?? 0);
   }, 0);
-  const avgElev = totalElev / vertices.length;
+  const avgElev = totalElev / vertexIds.length;
 
-  for (const v of vertices) {
-    const oldZ = vertexElevations[v.vy]?.[v.vx];
-    if (oldZ === undefined) continue;
+  for (const id of vertexIds) {
+    const vertex = topology.vertices.get(id);
+    if (!vertex) continue;
 
-    const diff = avgElev - oldZ;
-    // Blend towards average based on strength
-    const newZ = oldZ + diff * 0.1 * brushStrength;
+    const oldY = vertex.position.y;
+    const diff = avgElev - oldY;
+    const newY = oldY + diff * 0.1 * brushStrength;
 
-    if (Math.abs(newZ - oldZ) > 0.001) {
-      modifications.push({ vx: v.vx, vy: v.vy, oldZ, newZ });
+    if (Math.abs(newY - oldY) > 0.001) {
+      vertex.position.y = newY;
+      modifications.push({ vertexId: id, oldY, newY });
     }
   }
 
@@ -386,26 +305,24 @@ export function applySmoothVertices(
 }
 
 export function applyFlattenVertices(
-  centerVx: number,
-  centerVy: number,
-  vertexElevations: number[][],
-  radius: number,
-  vertexWidth: number,
-  vertexHeight: number,
-  targetZ?: number,
-  precomputedVertices?: Array<{ vx: number; vy: number }>
+  vertexIds: number[],
+  topology: { vertices: Map<number, { position: Vec3 }> },
+  targetY?: number
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
 
-  const centerZ = targetZ ?? (vertexElevations[centerVy]?.[centerVx] ?? 0);
-  const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, radius, vertexWidth, vertexHeight);
+  if (vertexIds.length === 0) return [];
 
-  for (const v of vertices) {
-    const oldZ = vertexElevations[v.vy]?.[v.vx];
-    if (oldZ === undefined) continue;
+  const flattenY = targetY ?? (topology.vertices.get(vertexIds[0])?.position.y ?? 0);
 
-    if (Math.abs(oldZ - centerZ) > 0.01) {
-      modifications.push({ vx: v.vx, vy: v.vy, oldZ, newZ: centerZ });
+  for (const id of vertexIds) {
+    const vertex = topology.vertices.get(id);
+    if (!vertex) continue;
+
+    const oldY = vertex.position.y;
+    if (Math.abs(oldY - flattenY) > 0.01) {
+      vertex.position.y = flattenY;
+      modifications.push({ vertexId: id, oldY, newY: flattenY });
     }
   }
 
@@ -413,23 +330,20 @@ export function applyFlattenVertices(
 }
 
 export function applyLevelVertices(
-  selectedVertices: Set<string>,
-  vertexElevations: number[][]
+  selectedVertexIds: Set<number>,
+  topology: { vertices: Map<number, { position: Vec3 }> }
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
 
-  if (selectedVertices.size === 0) return [];
+  if (selectedVertexIds.size === 0) return [];
 
   let totalElev = 0;
   let count = 0;
 
-  for (const key of selectedVertices) {
-    const [vxStr, vyStr] = key.split(',');
-    const vx = parseInt(vxStr);
-    const vy = parseInt(vyStr);
-    const z = vertexElevations[vy]?.[vx];
-    if (z !== undefined) {
-      totalElev += z;
+  for (const id of selectedVertexIds) {
+    const vertex = topology.vertices.get(id);
+    if (vertex) {
+      totalElev += vertex.position.y;
       count++;
     }
   }
@@ -438,13 +352,12 @@ export function applyLevelVertices(
 
   const avgElev = totalElev / count;
 
-  for (const key of selectedVertices) {
-    const [vxStr, vyStr] = key.split(',');
-    const vx = parseInt(vxStr);
-    const vy = parseInt(vyStr);
-    const oldZ = vertexElevations[vy]?.[vx];
-    if (oldZ !== undefined && Math.abs(oldZ - avgElev) > 0.01) {
-      modifications.push({ vx, vy, oldZ, newZ: avgElev });
+  for (const id of selectedVertexIds) {
+    const vertex = topology.vertices.get(id);
+    if (vertex && Math.abs(vertex.position.y - avgElev) > 0.01) {
+      const oldY = vertex.position.y;
+      vertex.position.y = avgElev;
+      modifications.push({ vertexId: id, oldY, newY: avgElev });
     }
   }
 
@@ -453,45 +366,37 @@ export function applyLevelVertices(
 
 export function applySculptTool(
   tool: SculptTool,
-  centerVx: number,
-  centerVy: number,
-  vertexElevations: number[][],
-  brushSize: number,
+  vertexIds: number[],
+  topology: { vertices: Map<number, { position: Vec3 }> },
   brushStrength: number,
-  vertexWidth: number,
-  vertexHeight: number,
-  selectedVertices?: Set<string>,
-  precomputedVertices?: Array<{ vx: number; vy: number }>
+  selectedVertices?: Set<number>
 ): VertexModification[] {
   const modifications: VertexModification[] = [];
 
   switch (tool) {
     case 'raise': {
-      const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
-      for (const v of vertices) {
-        const mod = applyRaiseVertex(v.vx, v.vy, vertexElevations, brushStrength);
+      for (const id of vertexIds) {
+        const mod = applyRaiseVertex(id, topology, brushStrength);
         if (mod) modifications.push(mod);
       }
       break;
     }
     case 'lower': {
-      const vertices = precomputedVertices ?? getVerticesInBrush(centerVx, centerVy, brushSize, vertexWidth, vertexHeight);
-      for (const v of vertices) {
-        const mod = applyLowerVertex(v.vx, v.vy, vertexElevations, brushStrength);
+      for (const id of vertexIds) {
+        const mod = applyLowerVertex(id, topology, brushStrength);
         if (mod) modifications.push(mod);
       }
       break;
     }
     case 'smooth': {
-      const effectiveRadius = Math.max(brushSize, 1.5);
-      return applySmoothVertices(centerVx, centerVy, vertexElevations, effectiveRadius, vertexWidth, vertexHeight, brushStrength, precomputedVertices);
+      return applySmoothVertices(vertexIds, topology, brushStrength);
     }
     case 'flatten': {
-      return applyFlattenVertices(centerVx, centerVy, vertexElevations, brushSize, vertexWidth, vertexHeight, undefined, precomputedVertices);
+      return applyFlattenVertices(vertexIds, topology);
     }
     case 'level': {
       if (selectedVertices && selectedVertices.size > 0) {
-        return applyLevelVertices(selectedVertices, vertexElevations);
+        return applyLevelVertices(selectedVertices, topology);
       }
       break;
     }
@@ -499,26 +404,3 @@ export function applySculptTool(
 
   return modifications;
 }
-
-
-
-export function commitVertexModifications(
-  modifications: VertexModification[],
-  vertexElevations: number[][]
-): void {
-  for (const mod of modifications) {
-    if (vertexElevations[mod.vy]) {
-      vertexElevations[mod.vy][mod.vx] = mod.newZ;
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-

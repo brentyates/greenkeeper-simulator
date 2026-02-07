@@ -8,14 +8,11 @@ import {
   EditorState,
   Vec3,
   InteractionMode,
-  vertexKey,
-  parseVertexKey,
   createInitialEditorState,
   isSculptTool,
   isTerrainBrush,
   getTerrainTypeFromBrush,
   applySculptTool,
-  commitVertexModifications,
   isVertexSelected,
 } from "../../core/terrain-editor-logic";
 
@@ -35,20 +32,14 @@ export interface TerrainModifier {
   setElevationAt(x: number, y: number, elevation: number): void;
   setTerrainTypeAt(x: number, y: number, type: TerrainType): void;
   rebuildTileAndNeighbors(x: number, y: number): void;
-  getVertexPosition?(vx: number, vy: number): Vec3 | null;
-  setVertexPosition?(vx: number, vy: number, pos: Vec3): void;
-  setVertexPositions?(changes: Array<{ vx: number; vy: number; pos: Vec3 }>): void;
-  moveVertices?(vertices: Array<{ vx: number; vy: number }>, delta: Vec3): void;
-  getVertexElevation?(vx: number, vy: number): number;
-  setVertexElevation?(vx: number, vy: number, z: number): void;
-  setVertexElevations?(changes: Array<{ vx: number; vy: number; z: number }>): void;
-  worldToVertex?(worldX: number, worldZ: number): { vx: number; vy: number };
-  findNearestVertex?(worldX: number, worldZ: number): { vx: number; vy: number; dist: number };
-  vertexToWorld?(vx: number, vy: number): { x: number; z: number };
-  getVertexDimensions?(): { width: number; height: number };
-  getVertexPositionsGrid?(): Vec3[][];
-  getVertexElevationsGrid?(): number[][];
-  getLayoutGrid?(): number[][];
+  setVertexElevationsById?(changes: Array<{ vertexId: number; y: number }>): void;
+  setVertexPositionsById?(changes: Array<{ vertexId: number; pos: Vec3 }>): void;
+  moveVerticesById?(vertexIds: number[], delta: Vec3): void;
+  findNearestVertexId?(worldX: number, worldZ: number): number | null;
+  getVertexPositionById?(vertexId: number): Vec3 | null;
+  getVertexElevationById?(vertexId: number): number | null;
+  getVertexWorldPosition?(vertexId: number): { x: number; z: number } | null;
+  getVertexIdsInWorldRadius?(worldX: number, worldZ: number, radius: number): number[];
   getWorldDimensions?(): { width: number; height: number };
   rebuildMesh?(): void;
   paintTerrainType?(cells: Array<{ x: number; y: number }>, type: TerrainType): void;
@@ -80,15 +71,11 @@ export interface TerrainModifier {
   stampTemplate?(template: any, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
   getSelectedFaceVertexIds?(): Set<number>;
   getSelectedEdgeVertexIds?(): Set<number>;
-  getSelectedVerticesFromSelection?(): Array<{ vx: number; vy: number }>;
   collapseEdge?(edgeId: number): void;
   getFacesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredFaces?(faceIds: number[]): void;
   getEdgesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredEdges?(edgeIds: number[]): void;
-  getVerticesInWorldRadius?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
-  getVerticesFromEdgesInBrush?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
-  getVerticesFromFacesInBrush?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
   subdivideEdgeAt?(edgeId: number, t?: number): void;
   canDeleteTopologyVertex?(vertexId: number): boolean;
   deleteTopologyVertex?(vertexId: number): void;
@@ -119,12 +106,11 @@ export class TerrainEditorSystem {
   private callbacks: TerrainEditorCallbacks = {};
 
   private state: EditorState;
-  private boxSelectStart: { vx: number; vy: number } | null = null;
   private axisConstraint: 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz' = 'xz';
   private isMovingVertices: boolean = false;
   private moveStartWorldPos: { x: number; z: number } | null = null;
   private moveStartScreenY: number | null = null;
-  private moveDragStartPositions: Map<string, Vec3> = new Map();
+  private moveDragStartPositions: Map<number, Vec3> = new Map();
 
   private topologyMode: TopologyMode = 'vertex';
   private hoveredEdgeId: number | null = null;
@@ -142,10 +128,6 @@ export class TerrainEditorSystem {
     this.highlightSystem = new TileHighlightSystem(scene);
   }
 
-  private getVertexDims(): { width: number; height: number } {
-    return this.terrainModifier?.getVertexDimensions?.() ?? { width: 0, height: 0 };
-  }
-
   private getWorldDims(): { width: number; height: number } {
     return this.terrainModifier?.getWorldDimensions?.() ?? { width: 0, height: 0 };
   }
@@ -153,27 +135,20 @@ export class TerrainEditorSystem {
   public setTerrainModifier(modifier: TerrainModifier): void {
     this.terrainModifier = modifier;
 
-    if (modifier.getVertexDimensions) {
-      const vertexProvider: VertexPositionProvider = {
-        getVertexElevation: (vx, vy) => modifier.getVertexElevation!(vx, vy),
-        vertexToWorld: (vx, vy) => modifier.vertexToWorld!(vx, vy),
-        getVertexDimensions: () => modifier.getVertexDimensions!(),
-        getVerticesInWorldRadius: modifier.getVerticesInWorldRadius
-          ? (worldX, worldZ, radius) => modifier.getVerticesInWorldRadius!(worldX, worldZ, radius)
-          : undefined,
-      };
-      this.highlightSystem.setVertexProvider(vertexProvider);
+    const vertexProvider: VertexPositionProvider = {
+      getVertexPosition: (vertexId) => modifier.getVertexPositionById?.(vertexId) ?? null,
+      getVertexElevation: (vertexId) => modifier.getVertexElevationById?.(vertexId) ?? 0,
+      getVertexWorldPosition: (vertexId) => modifier.getVertexWorldPosition?.(vertexId) ?? null,
+      getVertexIdsInWorldRadius: modifier.getVertexIdsInWorldRadius
+        ? (worldX, worldZ, radius) => modifier.getVertexIdsInWorldRadius!(worldX, worldZ, radius)
+        : undefined,
+    };
+    this.highlightSystem.setVertexProvider(vertexProvider);
 
-      const selectionProvider: SelectionProvider = {
-        getSelectedVertices: () => this.state.selectedVertices,
-        getBoxSelectBounds: () => {
-            const bounds = this.getBoxSelectBounds();
-            if (!bounds) return null;
-            return { vx1: bounds.x1, vy1: bounds.y1, vx2: bounds.x2, vy2: bounds.y2 };
-        },
-      };
-      this.highlightSystem.setSelectionProvider(selectionProvider);
-    }
+    const selectionProvider: SelectionProvider = {
+      getSelectedVertices: () => this.state.selectedVertices,
+    };
+    this.highlightSystem.setSelectionProvider(selectionProvider);
   }
 
   public setCallbacks(callbacks: TerrainEditorCallbacks): void {
@@ -320,18 +295,17 @@ export class TerrainEditorSystem {
     if (!this.terrainModifier) return;
 
     if (this.topologyMode === 'vertex') {
-      const nearest = this.terrainModifier.findNearestVertex?.(worldPos.x, worldPos.z);
-      if (nearest) {
+      const vertexId = this.terrainModifier.findNearestVertexId?.(worldPos.x, worldPos.z);
+      if (vertexId != null) {
         if (shiftKey) {
-          const key = vertexKey(nearest.vx, nearest.vy);
-          if (this.state.selectedVertices.has(key)) {
-            this.state.selectedVertices.delete(key);
+          if (this.state.selectedVertices.has(vertexId)) {
+            this.state.selectedVertices.delete(vertexId);
           } else {
-            this.state.selectedVertices.add(key);
+            this.state.selectedVertices.add(vertexId);
           }
         } else {
           this.state.selectedVertices.clear();
-          this.state.selectedVertices.add(vertexKey(nearest.vx, nearest.vy));
+          this.state.selectedVertices.add(vertexId);
         }
         this.notifySelectionChange();
         this.highlightSystem.refresh();
@@ -383,12 +357,12 @@ export class TerrainEditorSystem {
     return this.state.brushStrength;
   }
 
-  public selectVertices(vertices: Array<{ vx: number; vy: number }>, additive: boolean = false): void {
+  public selectVerticesById(vertexIds: number[], additive: boolean = false): void {
     if (!additive) {
       this.state.selectedVertices.clear();
     }
-    for (const v of vertices) {
-      this.state.selectedVertices.add(vertexKey(v.vx, v.vy));
+    for (const id of vertexIds) {
+      this.state.selectedVertices.add(id);
     }
     this.notifySelectionChange();
     this.highlightSystem.refresh();
@@ -400,12 +374,8 @@ export class TerrainEditorSystem {
     this.highlightSystem.refresh();
   }
 
-  public getSelectedVertices(): Array<{ vx: number; vy: number }> {
-    const list: Array<{ vx: number; vy: number }> = [];
-    this.state.selectedVertices.forEach(key => {
-      list.push(parseVertexKey(key));
-    });
-    return list;
+  public getSelectedVertexIds(): number[] {
+    return Array.from(this.state.selectedVertices);
   }
 
   private notifySelectionChange(): void {
@@ -413,25 +383,12 @@ export class TerrainEditorSystem {
     this.callbacks.onSelectionChange?.(count);
   }
 
-  private getBoxSelectBounds(): { x1: number; y1: number; x2: number; y2: number } | null {
-    if (!this.boxSelectStart || !this.state.hoverVertex) return null;
-    return {
-      x1: Math.min(this.boxSelectStart.vx, this.state.hoverVertex.vx),
-      y1: Math.min(this.boxSelectStart.vy, this.state.hoverVertex.vy),
-      x2: Math.max(this.boxSelectStart.vx, this.state.hoverVertex.vx),
-      y2: Math.max(this.boxSelectStart.vy, this.state.hoverVertex.vy),
-    };
-  }
-
   public selectAllVertices(): void {
-    const { width, height } = this.getVertexDims();
-    const vertices: Array<{ vx: number; vy: number }> = [];
-    for (let vy = 0; vy < height; vy++) {
-      for (let vx = 0; vx < width; vx++) {
-        vertices.push({ vx, vy });
-      }
+    const topology = this.terrainModifier?.getTopology?.();
+    if (topology) {
+      const ids = Array.from(topology.vertices.keys());
+      this.selectVerticesById(ids, false);
     }
-    this.selectVertices(vertices, false);
   }
 
   public deselectAllVertices(): void {
@@ -448,7 +405,7 @@ export class TerrainEditorSystem {
 
   public async moveSelectedVerticesBy(delta: Vec3): Promise<void> {
     if (!this.terrainModifier || this.state.selectedVertices.size === 0) return;
-    this.terrainModifier.moveVertices?.(this.getSelectedVertices(), delta);
+    this.terrainModifier.moveVerticesById?.(this.getSelectedVertexIds(), delta);
     this.terrainModifier.rebuildMesh?.();
     this.highlightSystem.refresh();
   }
@@ -461,10 +418,11 @@ export class TerrainEditorSystem {
 
   public handleDeleteSelectedTopologyVertices(): void {
     if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
-        const res = this.meshResolution;
-        const worldX = this.state.hoverVertex.vx * res;
-        const worldZ = this.state.hoverVertex.vy * res;
-        const nearest = this.terrainModifier?.findNearestTopologyVertexAt?.(worldX, worldZ);
+        const vertexId = this.state.hoverVertex.vertexId;
+        const nearest = this.terrainModifier?.findNearestTopologyVertexAt?.(
+          this.terrainModifier.getVertexWorldPosition?.(vertexId)?.x ?? 0,
+          this.terrainModifier.getVertexWorldPosition?.(vertexId)?.z ?? 0
+        );
         if (nearest && nearest.dist < 0.1) {
             this.terrainModifier?.deleteTopologyVertex?.(nearest.vertexId);
             this.terrainModifier?.rebuildMesh?.();
@@ -494,16 +452,17 @@ export class TerrainEditorSystem {
   public getSelectionCentroid(): Vec3 | null {
     if (this.state.selectedVertices.size === 0) return null;
     let sumX = 0, sumY = 0, sumZ = 0;
-    const vertices = this.getSelectedVertices();
-    for (const v of vertices) {
-      const pos = this.terrainModifier?.getVertexPosition?.(v.vx, v.vy);
+    let count = 0;
+    for (const vertexId of this.state.selectedVertices) {
+      const pos = this.terrainModifier?.getVertexPositionById?.(vertexId);
       if (pos) {
         sumX += pos.x;
         sumY += pos.y;
         sumZ += pos.z;
+        count++;
       }
     }
-    const count = vertices.length;
+    if (count === 0) return null;
     return { x: sumX / count, y: sumY / count, z: sumZ / count };
   }
 
@@ -518,22 +477,25 @@ export class TerrainEditorSystem {
 
   public getHoverInfo(): { x: number; y: number; elevation: number; type: TerrainType } | null {
     if (this.state.hoverVertex) {
-        const vx = this.state.hoverVertex.vx;
-        const vy = this.state.hoverVertex.vy;
-        const pos = this.terrainModifier?.getVertexPosition?.(vx, vy);
-        const typeCode = this.terrainModifier?.getLayoutGrid?.()?.[vy]?.[vx] ?? 0;
+        const vertexId = this.state.hoverVertex.vertexId;
+        const pos = this.terrainModifier?.getVertexPositionById?.(vertexId);
+        const worldPos = this.terrainModifier?.getVertexWorldPosition?.(vertexId);
         return {
-            x: vx,
-            y: vy,
+            x: Math.round(worldPos?.x ?? 0),
+            y: Math.round(worldPos?.z ?? 0),
             elevation: pos?.y ?? 0,
-            type: getTerrainType(typeCode)
+            type: 'rough'
         };
     }
     if (this.state.hoverTile) {
         const x = this.state.hoverTile.x;
         const y = this.state.hoverTile.y;
-        const elev = this.terrainModifier?.getVertexElevation?.(x, y) ?? 0;
-        const typeCode = this.terrainModifier?.getLayoutGrid?.()?.[y]?.[x] ?? 0;
+        const nearestId = this.terrainModifier?.findNearestVertexId?.(x / this.meshResolution, y / this.meshResolution);
+        const elev = nearestId != null ? (this.terrainModifier?.getVertexElevationById?.(nearestId) ?? 0) : 0;
+        const res = this.meshResolution || 1;
+        const faceId = this.terrainModifier?.findFaceAtPosition?.(x / res, y / res);
+        const tri = faceId != null ? this.terrainModifier?.getTopology?.()?.triangles.get(faceId) : null;
+        const typeCode = tri?.terrainCode ?? 0;
         return {
             x,
             y,
@@ -546,7 +508,7 @@ export class TerrainEditorSystem {
 
   public isHoveredElementSelected(): boolean {
     if (this.hoveredFaceId !== null) return this.selectedFaces.has(this.hoveredFaceId);
-    if (this.state.hoverVertex) return isVertexSelected(this.state, this.state.hoverVertex.vx, this.state.hoverVertex.vy);
+    if (this.state.hoverVertex) return isVertexSelected(this.state, this.state.hoverVertex.vertexId);
     return false;
   }
 
@@ -559,11 +521,10 @@ export class TerrainEditorSystem {
     this.moveStartWorldPos = { x: worldX, z: worldZ };
     this.moveStartScreenY = screenY;
     this.moveDragStartPositions.clear();
-    const vertices = this.getSelectedVertices();
-    for (const v of vertices) {
-      const pos = this.terrainModifier?.getVertexPosition?.(v.vx, v.vy);
+    for (const vertexId of this.state.selectedVertices) {
+      const pos = this.terrainModifier?.getVertexPositionById?.(vertexId);
       if (pos) {
-        this.moveDragStartPositions.set(`${v.vx},${v.vy}`, { ...pos });
+        this.moveDragStartPositions.set(vertexId, { ...pos });
       }
     }
   }
@@ -574,19 +535,18 @@ export class TerrainEditorSystem {
     const dz = worldZ - this.moveStartWorldPos.z;
     const dy = (this.moveStartScreenY - screenY) * 0.1;
 
-    const changes: Array<{ vx: number; vy: number; pos: Vec3 }> = [];
-    const vertices = this.getSelectedVertices();
-    for (const v of vertices) {
-      const startPos = this.moveDragStartPositions.get(`${v.vx},${v.vy}`);
+    const changes: Array<{ vertexId: number; pos: Vec3 }> = [];
+    for (const vertexId of this.state.selectedVertices) {
+      const startPos = this.moveDragStartPositions.get(vertexId);
       if (startPos) {
         const newPos = { ...startPos };
         if (this.axisConstraint.includes('x')) newPos.x += dx;
         if (this.axisConstraint.includes('y')) newPos.y += dy;
         if (this.axisConstraint.includes('z')) newPos.z += dz;
-        changes.push({ vx: v.vx, vy: v.vy, pos: newPos });
+        changes.push({ vertexId, pos: newPos });
       }
     }
-    this.terrainModifier?.setVertexPositions?.(changes);
+    this.terrainModifier?.setVertexPositionsById?.(changes);
     this.terrainModifier?.rebuildMesh?.();
     this.highlightSystem.refresh();
   }
@@ -666,16 +626,16 @@ export class TerrainEditorSystem {
     this.handleMouseUp();
   }
 
-  private getSculptContext(): { anchorVx: number; anchorVy: number; worldX: number; worldZ: number; vertices: Array<{ vx: number; vy: number }> } | null {
+  private getSculptContext(): { vertexIds: number[]; worldX: number; worldZ: number } | null {
     if (!this.terrainModifier) return null;
 
     let worldX: number;
     let worldZ: number;
 
     if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
-      const wp = this.terrainModifier.vertexToWorld?.(this.state.hoverVertex.vx, this.state.hoverVertex.vy);
-      worldX = wp?.x ?? this.state.hoverVertex.vx / this.meshResolution;
-      worldZ = wp?.z ?? this.state.hoverVertex.vy / this.meshResolution;
+      const wp = this.terrainModifier.getVertexWorldPosition?.(this.state.hoverVertex.vertexId);
+      worldX = wp?.x ?? 0;
+      worldZ = wp?.z ?? 0;
     } else if (this.lastWorldPos) {
       worldX = this.lastWorldPos.x;
       worldZ = this.lastWorldPos.z;
@@ -683,31 +643,12 @@ export class TerrainEditorSystem {
       return null;
     }
 
-    const nearest = this.terrainModifier.findNearestVertex?.(worldX, worldZ);
-    if (!nearest) return null;
-    const anchorVx = nearest.vx;
-    const anchorVy = nearest.vy;
-
     const radius = this.getBrushRadius();
-    let vertices: Array<{ vx: number; vy: number }>;
-    switch (this.topologyMode) {
-      case 'vertex':
-        vertices = this.terrainModifier.getVerticesInWorldRadius?.(worldX, worldZ, radius) ?? [];
-        break;
-      case 'edge':
-        vertices = this.terrainModifier.getVerticesFromEdgesInBrush?.(worldX, worldZ, radius) ?? [];
-        break;
-      case 'face':
-        vertices = this.terrainModifier.getVerticesFromFacesInBrush?.(worldX, worldZ, radius) ?? [];
-        break;
-      default:
-        vertices = this.terrainModifier.getVerticesInWorldRadius?.(worldX, worldZ, radius) ?? [];
-        break;
-    }
+    const vertexIds = this.terrainModifier.getVertexIdsInWorldRadius?.(worldX, worldZ, radius) ?? [];
 
-    if (vertices.length === 0) return null;
+    if (vertexIds.length === 0) return null;
 
-    return { anchorVx, anchorVy, worldX, worldZ, vertices };
+    return { vertexIds, worldX, worldZ };
   }
 
   private handleSculptClick(): void {
@@ -735,27 +676,23 @@ export class TerrainEditorSystem {
     if (!sculpt) return;
 
     const tool = this.state.activeTool as SculptTool;
-    const { width: vertexWidth, height: vertexHeight } = this.getVertexDims();
-    const elevGrid = this.terrainModifier.getVertexElevationsGrid?.() ?? [];
+    const topology = this.terrainModifier.getTopology?.();
+    if (!topology) return;
+
     const modifications = applySculptTool(
       tool,
-      sculpt.anchorVx,
-      sculpt.anchorVy,
-      elevGrid,
-      this.getBrushRadius() * this.meshResolution,
+      sculpt.vertexIds,
+      topology,
       this.state.brushStrength,
-      vertexWidth,
-      vertexHeight,
-      this.state.selectedVertices,
-      sculpt.vertices
+      this.state.selectedVertices
     );
 
     if (modifications.length > 0) {
-      commitVertexModifications(modifications, elevGrid);
-
-      this.terrainModifier.setVertexElevations?.(modifications.map(m => ({ vx: m.vx, vy: m.vy, z: m.newZ })));
+      this.terrainModifier.setVertexElevationsById?.(
+        modifications.map(m => ({ vertexId: m.vertexId, y: m.newY }))
+      );
       this.terrainModifier.rebuildMesh?.();
-      this.callbacks.onModification?.(modifications.map(m => ({ x: m.vx, y: m.vy })));
+      this.callbacks.onModification?.(modifications.map(m => ({ x: m.vertexId, y: 0 })));
       this.highlightSystem.refresh();
     }
   }
@@ -778,15 +715,15 @@ export class TerrainEditorSystem {
     this.state.hoverTile = { x: gridX, y: gridY };
 
     if (this.topologyMode === 'vertex') {
-        const worldX = gridX / res;
-        const worldZ = gridY / res;
-        const nearest = this.terrainModifier?.findNearestVertex?.(worldX, worldZ);
-        if (nearest) {
-            this.state.hoverVertex = { vx: nearest.vx, vy: nearest.vy };
-            this.highlightSystem.setVertexHighlightPosition(nearest.vx, nearest.vy, worldX, worldZ);
+        const worldX = worldPos?.x ?? gridX / res;
+        const worldZ = worldPos?.z ?? gridY / res;
+        const vertexId = this.terrainModifier?.findNearestVertexId?.(worldX, worldZ);
+        if (vertexId != null) {
+            this.state.hoverVertex = { vertexId };
+            this.highlightSystem.setVertexHighlightPosition(vertexId, worldX, worldZ);
         } else {
             this.state.hoverVertex = null;
-            this.highlightSystem.setVertexHighlightPosition(-1, -1);
+            this.highlightSystem.setVertexHighlightPosition(-1);
         }
     } else if (this.topologyMode === 'face' || this.topologyMode === 'edge') {
         this.state.hoverVertex = null;
@@ -832,7 +769,7 @@ export class TerrainEditorSystem {
     if (this.topologyMode === mode) return;
     this.topologyMode = mode;
     this.terrainModifier?.setTopologyMode?.(mode);
-    
+
     if (mode === 'vertex') {
         this.highlightSystem.setHighlightMode('vertex');
     } else if (mode === 'face') {
@@ -842,7 +779,7 @@ export class TerrainEditorSystem {
     } else {
         this.highlightSystem.setHighlightMode('none');
     }
-    
+
     this.callbacks.onTopologyModeChange?.(mode);
     this.highlightSystem.refresh();
   }

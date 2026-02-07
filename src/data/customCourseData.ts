@@ -1,5 +1,6 @@
 import { CourseData, ObstacleData } from './courseData';
 import { ScenarioDefinition } from './scenarioData';
+import { SerializedTopology, gridToTopology, serializeTopology, Vec3 } from '../core/mesh-topology';
 
 export interface PlacedAsset {
   assetId: string;
@@ -16,8 +17,7 @@ export interface CustomCourseData {
   height: number;
   createdAt: number;
   updatedAt: number;
-  layout: number[][];
-  vertexElevations: number[][];
+  topology: SerializedTopology;
   placedAssets: PlacedAsset[];
   obstacles: ObstacleData[];
 }
@@ -43,7 +43,10 @@ export function saveCustomCourse(course: CustomCourseData): void {
 
 export function loadCustomCourse(id: string): CustomCourseData | null {
   const raw = localStorage.getItem(`course_${id}`);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  if (!parsed.topology) return null;
+  return parsed;
 }
 
 export function listCustomCourses(): CustomCourseData[] {
@@ -69,8 +72,7 @@ export function customCourseToCourseData(course: CustomCourseData): CourseData {
     width: course.width,
     height: course.height,
     par: 3,
-    layout: course.layout,
-    vertexElevations: course.vertexElevations,
+    topology: course.topology,
     obstacles: course.obstacles,
     yardsPerGrid: 20,
   };
@@ -101,14 +103,17 @@ export function createBlankCourse(width: number, height: number, name: string): 
   const vertexWidth = width * MESH_RES + 1;
   const vertexHeight = height * MESH_RES + 1;
 
-  const layout: number[][] = [];
-  for (let y = 0; y < height; y++) {
-    layout.push(new Array(width).fill(1)); // 1 = Rough
+  const positions: Vec3[][] = [];
+  for (let vy = 0; vy < vertexHeight; vy++) {
+    positions[vy] = [];
+    for (let vx = 0; vx < vertexWidth; vx++) {
+      positions[vy][vx] = { x: vx / MESH_RES, y: 0, z: vy / MESH_RES };
+    }
   }
 
-  const vertexElevations: number[][] = [];
-  for (let vy = 0; vy < vertexHeight; vy++) {
-    vertexElevations.push(new Array(vertexWidth).fill(0));
+  const topology = gridToTopology(positions, width, height);
+  for (const [, tri] of topology.triangles) {
+    tri.terrainCode = 1;
   }
 
   return {
@@ -118,8 +123,7 @@ export function createBlankCourse(width: number, height: number, name: string): 
     height,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    layout,
-    vertexElevations,
+    topology: serializeTopology(topology),
     placedAssets: [],
     obstacles: [],
   };

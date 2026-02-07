@@ -2,21 +2,6 @@ export type TerrainType = "fairway" | "rough" | "green" | "bunker" | "water" | "
 export type ObstacleType = "none" | "tree" | "pine_tree" | "shrub" | "bush";
 export type OverlayMode = "normal" | "moisture" | "nutrients" | "height" | "irrigation";
 
-export interface CellState {
-  x: number;
-  y: number;
-  type: TerrainType;
-  height: number;
-  moisture: number;
-  nutrients: number;
-  health: number;
-  elevation: number;
-  obstacle: ObstacleType;
-  lastMowed: number;
-  lastWatered: number;
-  lastFertilized: number;
-}
-
 export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
 export const ELEVATION_HEIGHT = 4;
@@ -128,7 +113,7 @@ export function isGrassTerrain(type: TerrainType): boolean {
 }
 
 export function calculateHealth(
-  cell: Pick<CellState, "type" | "moisture" | "nutrients" | "height">
+  cell: { type: TerrainType; moisture: number; nutrients: number; height: number }
 ): number {
   if (!isGrassTerrain(cell.type)) {
     return 100;
@@ -142,7 +127,18 @@ export function calculateHealth(
   );
 }
 
-export function isWalkable(cell: CellState | null): boolean {
+export interface WalkableCell {
+  type: TerrainType;
+  obstacle: ObstacleType;
+}
+
+export interface MovableCell extends WalkableCell {
+  x: number;
+  y: number;
+  elevation: number;
+}
+
+export function isWalkable(cell: WalkableCell | null): boolean {
   if (!cell) return false;
   if (cell.type === "water") return false;
   if (cell.obstacle !== "none") return false;
@@ -150,8 +146,8 @@ export function isWalkable(cell: CellState | null): boolean {
 }
 
 export function canMoveFromTo(
-  fromCell: CellState | null,
-  toCell: CellState | null,
+  fromCell: MovableCell | null,
+  toCell: MovableCell | null,
   slopeChecker?: (x: number, y: number) => boolean
 ): boolean {
   if (!fromCell || !toCell) return false;
@@ -191,22 +187,6 @@ export function getRampDirection(
   }
 
   return null;
-}
-
-export function getCellsInRadius(
-  centerX: number,
-  centerY: number,
-  radius: number
-): Array<{ x: number; y: number }> {
-  const cells: Array<{ x: number; y: number }> = [];
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy <= radius * radius) {
-        cells.push({ x: centerX + dx, y: centerY + dy });
-      }
-    }
-  }
-  return cells;
 }
 
 export function getTerrainSpeedModifier(type: TerrainType): number {
@@ -286,7 +266,7 @@ export function getTerrainThresholds(type: TerrainType): TerrainThresholds {
   }
 }
 
-export function getGrassState(cell: CellState): "mown" | "growing" | "unmown" {
+export function getGrassState(cell: { type: TerrainType; height: number }): "mown" | "growing" | "unmown" {
   if (!isGrassTerrain(cell.type)) {
     return "mown";
   }

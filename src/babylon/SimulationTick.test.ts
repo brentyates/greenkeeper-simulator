@@ -285,7 +285,7 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
     lastTeeTimeUpdateHour: -1,
     accumulatedResearchTime: 0,
     scenarioManager: null,
-    currentCourse: { name: "Test Course", width: 20, height: 20, par: 72, layout: [] } as unknown as CourseData,
+    currentCourse: { name: "Test Course", width: 20, height: 20, par: 72 } as unknown as CourseData,
     currentScenario: null,
     gameOptions: {} as GameOptions,
     score: 0,

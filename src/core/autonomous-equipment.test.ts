@@ -14,7 +14,7 @@ import {
   RobotUnit,
 } from './autonomous-equipment';
 import { EquipmentStats, createInitialResearchState, ResearchState } from './research';
-import { CellState } from './terrain';
+import { GrassCell } from './grass-simulation';
 
 function createMockRobotStats(overrides: Partial<EquipmentStats> = {}): EquipmentStats {
   return {
@@ -32,29 +32,22 @@ function createMockRobotStats(overrides: Partial<EquipmentStats> = {}): Equipmen
   };
 }
 
-function createMockCell(x: number, y: number, health: number = 80): CellState {
+function createMockCell(health: number = 80): GrassCell {
   return {
-    x,
-    y,
     type: 'fairway',
     height: 0,
     moisture: 50,
     nutrients: 50,
     health,
-    elevation: 0,
-    obstacle: 'none',
-    lastMowed: 0,
-    lastWatered: 0,
-    lastFertilized: 0,
   };
 }
 
-function createMockCells(width: number, height: number, health: number = 80): CellState[][] {
-  const cells: CellState[][] = [];
+function createMockCells(width: number, height: number, health: number = 80): GrassCell[][] {
+  const cells: GrassCell[][] = [];
   for (let y = 0; y < height; y++) {
-    const row: CellState[] = [];
+    const row: GrassCell[] = [];
     for (let x = 0; x < width; x++) {
-      row.push(createMockCell(x, y, health));
+      row.push(createMockCell(health));
     }
     cells.push(row);
   }

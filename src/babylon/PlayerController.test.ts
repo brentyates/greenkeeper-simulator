@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { CellState } from "../core/terrain";
+import { MovableCell } from "../core/terrain";
 import { PLAYER_BASE_SPEED } from "../core/movable-entity";
 import { HEIGHT_UNIT } from "./engine/BabylonEngine";
 
@@ -48,22 +48,15 @@ import { disposeEntityMesh, createEntityMesh } from "./systems/EntityVisualSyste
 function makeCell(
   x: number,
   y: number,
-  type: CellState["type"] = "fairway",
+  type: MovableCell["type"] = "fairway",
   elevation = 0
-): CellState {
+): MovableCell {
   return {
     x,
     y,
     type,
-    height: 0.5,
-    moisture: 0.5,
-    nutrients: 0.5,
-    health: 1,
     elevation,
     obstacle: "none",
-    lastMowed: 0,
-    lastWatered: 0,
-    lastFertilized: 0,
   };
 }
 

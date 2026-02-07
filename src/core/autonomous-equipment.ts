@@ -1,5 +1,5 @@
 import { EquipmentStats, getUnlockedAutonomousEquipment, ResearchState } from './research';
-import { CellState, isWalkable } from './terrain';
+import { GrassCell } from './grass-simulation';
 
 export type RobotType = 'mower' | 'sprayer' | 'spreader';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
@@ -122,7 +122,7 @@ export function countBrokenRobots(state: AutonomousEquipmentState): number {
 }
 
 function findNeedsWork(
-  cells: CellState[][],
+  cells: GrassCell[][],
   type: RobotType,
   currentX: number,
   currentY: number,
@@ -133,7 +133,7 @@ function findNeedsWork(
   for (let y = 0; y < cells.length; y++) {
     for (let x = 0; x < cells[y].length; x++) {
       const cell = cells[y][x];
-      if (!isWalkable(cell)) continue;
+      if (cell.type === 'water') continue;
 
       const distance = Math.abs(x - currentX) + Math.abs(y - currentY);
       if (distance > maxDistance) continue;
@@ -196,7 +196,7 @@ function moveToward(
 
 function tickRobot(
   robot: RobotUnit,
-  cells: CellState[][],
+  cells: GrassCell[][],
   chargingX: number,
   chargingY: number,
   deltaMinutes: number,
@@ -381,7 +381,7 @@ function tickRobot(
 
 export function tickAutonomousEquipment(
   state: AutonomousEquipmentState,
-  cells: CellState[][],
+  cells: GrassCell[][],
   deltaMinutes: number,
   fleetAIActive: boolean = false
 ): RobotTickResult {

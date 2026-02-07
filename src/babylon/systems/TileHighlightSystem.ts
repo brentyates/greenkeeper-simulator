@@ -4,21 +4,20 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { gridTo3D } from "../engine/BabylonEngine";
-import { getVerticesInBrush, vertexKey } from "../../core/terrain-editor-logic";
 import { ShapeTemplate, StampShape } from "../../core/shape-templates";
+import { Vec3 } from "../../core/mesh-topology";
 
 export type HighlightMode = 'vertex' | 'face' | 'edge' | 'none';
 
 export interface VertexPositionProvider {
-  getVertexElevation(vx: number, vy: number): number;
-  vertexToWorld(vx: number, vy: number): { x: number; z: number };
-  getVertexDimensions(): { width: number; height: number };
-  getVerticesInWorldRadius?(worldX: number, worldZ: number, radius: number): Array<{ vx: number; vy: number }>;
+  getVertexPosition(vertexId: number): Vec3 | null;
+  getVertexElevation(vertexId: number): number;
+  getVertexWorldPosition(vertexId: number): { x: number; z: number } | null;
+  getVertexIdsInWorldRadius?(worldX: number, worldZ: number, radius: number): number[];
 }
 
 export interface SelectionProvider {
-  getSelectedVertices(): Set<string>;
-  getBoxSelectBounds(): { vx1: number; vy1: number; vx2: number; vy2: number } | null;
+  getSelectedVertices(): Set<number>;
 }
 
 export class TileHighlightSystem {
@@ -29,8 +28,7 @@ export class TileHighlightSystem {
   private selectedMaterial: StandardMaterial | null = null;
   private brushCircleMaterial: StandardMaterial | null = null;
   private brushCircleMesh: Mesh | null = null;
-  private currentVx: number = -1;
-  private currentVy: number = -1;
+  private currentVertexId: number = -1;
   private currentWorldX: number = 0;
   private currentWorldZ: number = 0;
   private isValid: boolean = true;
@@ -105,13 +103,12 @@ export class TileHighlightSystem {
     this.updateHighlight();
   }
 
-  public setVertexHighlightPosition(vx: number, vy: number, worldX?: number, worldZ?: number): void {
-    if (vx === this.currentVx && vy === this.currentVy && worldX === this.currentWorldX && worldZ === this.currentWorldZ) {
+  public setVertexHighlightPosition(vertexId: number, worldX?: number, worldZ?: number): void {
+    if (vertexId === this.currentVertexId && worldX === this.currentWorldX && worldZ === this.currentWorldZ) {
       return;
     }
 
-    this.currentVx = vx;
-    this.currentVy = vy;
+    this.currentVertexId = vertexId;
     if (worldX !== undefined) this.currentWorldX = worldX;
     if (worldZ !== undefined) this.currentWorldZ = worldZ;
     this.updateHighlight();
@@ -122,8 +119,7 @@ export class TileHighlightSystem {
   }
 
   public clearHighlight(): void {
-    this.currentVx = -1;
-    this.currentVy = -1;
+    this.currentVertexId = -1;
     this.disposeHighlightMeshes();
   }
 
@@ -239,8 +235,8 @@ export class TileHighlightSystem {
     this.disposeHighlightMeshes();
 
     if (this.brushSize > 0 && !this.stampPreviewTemplate && (this.currentWorldX !== 0 || this.currentWorldZ !== 0)) {
-      const elevation = this.vertexProvider
-        ? this.vertexProvider.getVertexElevation(Math.max(0, this.currentVx), Math.max(0, this.currentVy))
+      const elevation = this.vertexProvider && this.currentVertexId >= 0
+        ? this.vertexProvider.getVertexElevation(this.currentVertexId)
         : 0;
       this.brushCircleMesh = this.createBrushCircleMesh(
         this.currentWorldX, this.currentWorldZ, this.brushSize, elevation
@@ -248,8 +244,8 @@ export class TileHighlightSystem {
     }
 
     if (this.stampPreviewTemplate && (this.currentWorldX !== 0 || this.currentWorldZ !== 0)) {
-      const elevation = this.vertexProvider
-        ? this.vertexProvider.getVertexElevation(Math.max(0, this.currentVx), Math.max(0, this.currentVy))
+      const elevation = this.vertexProvider && this.currentVertexId >= 0
+        ? this.vertexProvider.getVertexElevation(this.currentVertexId)
         : 0;
       this.stampPreviewMesh = this.createStampPreviewMesh(
         this.currentWorldX, this.currentWorldZ, elevation
@@ -264,52 +260,36 @@ export class TileHighlightSystem {
   private updateVertexHighlight(): void {
     if (!this.vertexProvider) return;
 
-    const selectedVertices = this.selectionProvider?.getSelectedVertices() ?? new Set<string>();
-    const boxBounds = this.selectionProvider?.getBoxSelectBounds() ?? null;
+    const selectedVertices = this.selectionProvider?.getSelectedVertices() ?? new Set<number>();
 
     if (this.showSelectedVertices && selectedVertices.size > 0) {
-      for (const key of selectedVertices) {
-        const [vxStr, vyStr] = key.split(',');
-        const vx = parseInt(vxStr);
-        const vy = parseInt(vyStr);
-        const isHovered = vx === this.currentVx && vy === this.currentVy;
-        const mesh = this.createVertexHighlightMesh(vx, vy, isHovered, 'selected');
+      for (const vertexId of selectedVertices) {
+        const isHovered = vertexId === this.currentVertexId;
+        const mesh = this.createVertexHighlightMeshById(vertexId, isHovered, 'selected');
         if (mesh) {
           this.selectionMeshes.push(mesh);
         }
       }
     }
 
-    if (boxBounds) {
-      this.createBoxSelectVisualization(boxBounds);
-    }
+    if (this.currentVertexId < 0) return;
 
-    if (this.currentVx < 0 || this.currentVy < 0) return;
-
-    let vertices: Array<{ vx: number; vy: number }>;
-    if (this.brushSize > 0 && this.vertexProvider.getVerticesInWorldRadius) {
-      vertices = this.vertexProvider.getVerticesInWorldRadius(this.currentWorldX, this.currentWorldZ, this.brushSize);
+    let vertexIds: number[];
+    if (this.brushSize > 0 && this.vertexProvider.getVertexIdsInWorldRadius) {
+      vertexIds = this.vertexProvider.getVertexIdsInWorldRadius(this.currentWorldX, this.currentWorldZ, this.brushSize);
     } else {
-      const dims = this.vertexProvider.getVertexDimensions();
-      vertices = getVerticesInBrush(
-        this.currentVx,
-        this.currentVy,
-        this.brushSize,
-        dims.width,
-        dims.height
-      );
+      vertexIds = this.currentVertexId >= 0 ? [this.currentVertexId] : [];
     }
 
-    if (!vertices.some(v => v.vx === this.currentVx && v.vy === this.currentVy)) {
-      vertices.push({ vx: this.currentVx, vy: this.currentVy });
+    if (!vertexIds.includes(this.currentVertexId) && this.currentVertexId >= 0) {
+      vertexIds.push(this.currentVertexId);
     }
 
-    for (const v of vertices) {
-      const key = vertexKey(v.vx, v.vy);
-      if (selectedVertices.has(key)) continue;
+    for (const vertexId of vertexIds) {
+      if (selectedVertices.has(vertexId)) continue;
 
-      const isCenter = v.vx === this.currentVx && v.vy === this.currentVy;
-      const mesh = this.createVertexHighlightMesh(v.vx, v.vy, isCenter, 'hovered');
+      const isCenter = vertexId === this.currentVertexId;
+      const mesh = this.createVertexHighlightMeshById(vertexId, isCenter, 'hovered');
       if (mesh) {
         this.vertexMeshes.push(mesh);
       }
@@ -364,42 +344,17 @@ export class TileHighlightSystem {
     return mesh;
   }
 
-  private createBoxSelectVisualization(bounds: { vx1: number; vy1: number; vx2: number; vy2: number }): void {
-    if (!this.vertexProvider) return;
-
-    const minVx = Math.min(bounds.vx1, bounds.vx2);
-    const maxVx = Math.max(bounds.vx1, bounds.vx2);
-    const minVy = Math.min(bounds.vy1, bounds.vy2);
-    const maxVy = Math.max(bounds.vy1, bounds.vy2);
-
-    const dims = this.vertexProvider.getVertexDimensions();
-
-    for (let vy = minVy; vy <= maxVy && vy < dims.height; vy++) {
-      for (let vx = minVx; vx <= maxVx && vx < dims.width; vx++) {
-        const key = vertexKey(vx, vy);
-        const selectedVertices = this.selectionProvider?.getSelectedVertices() ?? new Set<string>();
-        if (selectedVertices.has(key)) continue;
-
-        const isHovered = vx === this.currentVx && vy === this.currentVy;
-        const mesh = this.createVertexHighlightMesh(vx, vy, isHovered, 'box_select');
-        if (mesh) {
-          this.vertexMeshes.push(mesh);
-        }
-      }
-    }
-  }
-
-  private createVertexHighlightMesh(
-    vx: number,
-    vy: number,
+  private createVertexHighlightMeshById(
+    vertexId: number,
     isCenter: boolean,
     state: 'hovered' | 'selected' | 'box_select' = 'hovered'
   ): Mesh | null {
     if (!this.vertexProvider) return null;
 
-    const worldPos = this.vertexProvider.vertexToWorld(vx, vy);
-    const elevation = this.vertexProvider.getVertexElevation(vx, vy);
-    const pos3D = gridTo3D(worldPos.x, worldPos.z, elevation);
+    const pos = this.vertexProvider.getVertexPosition(vertexId);
+    if (!pos) return null;
+
+    const pos3D = gridTo3D(pos.x, pos.z, pos.y);
 
     let size: number;
     let color: Color3;
@@ -450,7 +405,7 @@ export class TileHighlightSystem {
     vertexData.indices = indices;
     vertexData.colors = colors;
 
-    const mesh = new Mesh(`vertex_${state}_${vx}_${vy}`, this.scene);
+    const mesh = new Mesh(`vertex_${state}_${vertexId}`, this.scene);
     vertexData.applyToMesh(mesh);
     mesh.material = material;
     mesh.useVertexColors = true;

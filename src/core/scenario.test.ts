@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ScenarioManager, ScenarioObjective, ScenarioConditions } from './scenario';
-import { CellState } from './terrain';
+import { GrassCell } from './grass-simulation';
 
 describe('ScenarioManager', () => {
   describe('Economic Objectives', () => {
@@ -303,14 +303,14 @@ describe('ScenarioManager', () => {
 
       const manager = new ScenarioManager(objective, conditions);
 
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [
-          { x: 0, y: 0, type: 'fairway', height: 20, moisture: 70, nutrients: 80, health: 85, elevation: 0, obstacle: 'none', lastMowed: 0, lastWatered: 0, lastFertilized: 0 },
-          { x: 1, y: 0, type: 'fairway', height: 15, moisture: 65, nutrients: 75, health: 80, elevation: 0, obstacle: 'none', lastMowed: 0, lastWatered: 0, lastFertilized: 0 },
+          { type: 'fairway', height: 20, moisture: 70, nutrients: 80, health: 85 },
+          { type: 'fairway', height: 15, moisture: 65, nutrients: 75, health: 80 },
         ],
         [
-          { x: 0, y: 1, type: 'fairway', height: 25, moisture: 60, nutrients: 70, health: 75, elevation: 0, obstacle: 'none', lastMowed: 0, lastWatered: 0, lastFertilized: 0 },
-          { x: 1, y: 1, type: 'fairway', height: 18, moisture: 75, nutrients: 85, health: 90, elevation: 0, obstacle: 'none', lastMowed: 0, lastWatered: 0, lastFertilized: 0 },
+          { type: 'fairway', height: 25, moisture: 60, nutrients: 70, health: 75 },
+          { type: 'fairway', height: 18, moisture: 75, nutrients: 85, health: 90 },
         ],
       ];
 

@@ -37,22 +37,15 @@ import {
   awardPrestige,
   revokeAward,
 } from './prestige';
-import { CellState } from './terrain';
+import { GrassCell } from './grass-simulation';
 
-function makeCell(overrides: Partial<CellState> = {}): CellState {
+function makeCell(overrides: Partial<GrassCell> = {}): GrassCell {
   return {
-    x: 0,
-    y: 0,
     type: 'fairway',
     height: 30,
     moisture: 60,
     nutrients: 50,
     health: 75,
-    elevation: 0,
-    obstacle: 'none',
-    lastMowed: 0,
-    lastWatered: 0,
-    lastFertilized: 0,
     ...overrides,
   };
 }
@@ -182,7 +175,7 @@ describe('Prestige System', () => {
 
   describe('calculateCurrentConditions', () => {
     it('calculates average health from grass cells', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 80 })],
         [makeCell({ type: 'fairway', health: 60 })],
       ];
@@ -191,7 +184,7 @@ describe('Prestige System', () => {
     });
 
     it('calculates green-specific score', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'green', health: 90 })],
         [makeCell({ type: 'green', health: 80 })],
         [makeCell({ type: 'fairway', health: 50 })],
@@ -201,7 +194,7 @@ describe('Prestige System', () => {
     });
 
     it('calculates fairway-specific score', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 70 })],
         [makeCell({ type: 'fairway', health: 80 })],
         [makeCell({ type: 'green', health: 95 })],
@@ -211,7 +204,7 @@ describe('Prestige System', () => {
     });
 
     it('calculates tee box score', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'tee', health: 85 })],
         [makeCell({ type: 'tee', health: 75 })],
       ];
@@ -220,7 +213,7 @@ describe('Prestige System', () => {
     });
 
     it('returns 100 for empty terrain types', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 70 })],
       ];
       const result = calculateCurrentConditions(cells);
@@ -229,7 +222,7 @@ describe('Prestige System', () => {
     });
 
     it('excludes bunker and water from grass average', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 80 })],
         [makeCell({ type: 'bunker', health: 0 })],
         [makeCell({ type: 'water', health: 0 })],
@@ -239,7 +232,7 @@ describe('Prestige System', () => {
     });
 
     it('calculates composite score within 0-1000 range', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 100 })],
         [makeCell({ type: 'green', health: 100 })],
         [makeCell({ type: 'tee', health: 100 })],
@@ -250,7 +243,7 @@ describe('Prestige System', () => {
     });
 
     it('handles empty grid', () => {
-      const cells: CellState[][] = [];
+      const cells: GrassCell[][] = [];
       const result = calculateCurrentConditions(cells);
       expect(result.averageHealth).toBe(100);
       expect(result.composite).toBeGreaterThan(0);

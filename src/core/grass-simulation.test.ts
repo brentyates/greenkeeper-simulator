@@ -10,23 +10,17 @@ import {
   countCellsNeedingFertilizer,
   getOverallCondition,
   getWeatherMoistureEffect,
-  WeatherEffect
+  WeatherEffect,
+  GrassCell,
 } from './grass-simulation';
-import { CellState } from './terrain';
 
-function makeCell(overrides: Partial<CellState> = {}): CellState {
+function makeCell(overrides: Partial<GrassCell> = {}): GrassCell {
   return {
-    x: 0, y: 0,
     type: 'fairway',
     height: 50,
     moisture: 50,
     nutrients: 50,
     health: 50,
-    elevation: 0,
-    obstacle: 'none',
-    lastMowed: 0,
-    lastWatered: 0,
-    lastFertilized: 0,
     ...overrides
   };
 }
@@ -383,7 +377,7 @@ describe('Equipment Effects', () => {
 describe('Course Statistics', () => {
   describe('getAverageStats', () => {
     it('returns correct averages for uniform grid', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ health: 80, moisture: 60, nutrients: 70, height: 20 })],
         [makeCell({ health: 80, moisture: 60, nutrients: 70, height: 20 })]
       ];
@@ -395,7 +389,7 @@ describe('Course Statistics', () => {
     });
 
     it('calculates correct average for varied values', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ health: 60, moisture: 40, nutrients: 50, height: 10 })],
         [makeCell({ health: 80, moisture: 60, nutrients: 70, height: 30 })]
       ];
@@ -407,7 +401,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes bunker cells from averages', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 80, moisture: 60, nutrients: 70, height: 20 })],
         [makeCell({ type: 'bunker', health: 100, moisture: 20, nutrients: 0, height: 0 })]
       ];
@@ -419,7 +413,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes water cells from averages', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'fairway', health: 80 })],
         [makeCell({ type: 'water', health: 100 })]
       ];
@@ -428,7 +422,7 @@ describe('Course Statistics', () => {
     });
 
     it('returns defaults when all cells are non-grass', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'bunker' })],
         [makeCell({ type: 'water' })]
       ];
@@ -440,7 +434,7 @@ describe('Course Statistics', () => {
     });
 
     it('handles empty grid', () => {
-      const cells: CellState[][] = [];
+      const cells: GrassCell[][] = [];
       const stats = getAverageStats(cells);
       expect(stats.health).toBe(100);
     });
@@ -448,7 +442,7 @@ describe('Course Statistics', () => {
 
   describe('countCellsNeedingMowing', () => {
     it('counts cells with height > 60', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ height: 70 }), makeCell({ height: 50 })],
         [makeCell({ height: 80 }), makeCell({ height: 60 })]
       ];
@@ -456,7 +450,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes bunker cells', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'bunker', height: 70 })],
         [makeCell({ type: 'fairway', height: 70 })]
       ];
@@ -464,7 +458,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes water cells', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'water', height: 0 })],
         [makeCell({ type: 'fairway', height: 70 })]
       ];
@@ -472,7 +466,7 @@ describe('Course Statistics', () => {
     });
 
     it('returns 0 for well-maintained course', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ height: 20 }), makeCell({ height: 30 })],
         [makeCell({ height: 40 }), makeCell({ height: 50 })]
       ];
@@ -482,7 +476,7 @@ describe('Course Statistics', () => {
 
   describe('countCellsNeedingWater', () => {
     it('counts cells with moisture < 30', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ moisture: 20 }), makeCell({ moisture: 40 })],
         [makeCell({ moisture: 10 }), makeCell({ moisture: 30 })]
       ];
@@ -490,7 +484,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes bunker and water cells', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'bunker', moisture: 10 })],
         [makeCell({ type: 'water', moisture: 100 })],
         [makeCell({ type: 'fairway', moisture: 10 })]
@@ -501,7 +495,7 @@ describe('Course Statistics', () => {
 
   describe('countCellsNeedingFertilizer', () => {
     it('counts cells with nutrients < 30', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ nutrients: 20 }), makeCell({ nutrients: 40 })],
         [makeCell({ nutrients: 10 }), makeCell({ nutrients: 30 })]
       ];
@@ -509,7 +503,7 @@ describe('Course Statistics', () => {
     });
 
     it('excludes bunker and water cells', () => {
-      const cells: CellState[][] = [
+      const cells: GrassCell[][] = [
         [makeCell({ type: 'bunker', nutrients: 0 })],
         [makeCell({ type: 'water', nutrients: 0 })],
         [makeCell({ type: 'fairway', nutrients: 10 })]

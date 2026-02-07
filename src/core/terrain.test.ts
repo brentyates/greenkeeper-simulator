@@ -9,7 +9,6 @@ import {
   isWalkable,
   canMoveFromTo,
   getRampDirection,
-  getCellsInRadius,
   getTerrainSpeedModifier,
   getTerrainMowable,
   getTerrainWaterable,
@@ -24,7 +23,9 @@ import {
   getTerrainCode,
   getAdjacentPositions,
   isFaceWalkableBySlope,
-  CellState,
+  TerrainType,
+  WalkableCell,
+  MovableCell,
   TILE_WIDTH,
   ELEVATION_HEIGHT,
   TERRAIN_CODES,
@@ -193,19 +194,12 @@ describe('Coordinate Conversion', () => {
 });
 
 describe('Health Calculation', () => {
-  function makeCell(overrides: Partial<CellState>): CellState {
+  function makeCell(overrides: Partial<{ type: TerrainType; height: number; moisture: number; nutrients: number }> = {}) {
     return {
-      x: 0, y: 0,
-      type: 'fairway',
+      type: 'fairway' as TerrainType,
       height: 50,
       moisture: 50,
       nutrients: 50,
-      health: 100,
-      elevation: 0,
-      obstacle: 'none',
-      lastMowed: 0,
-      lastWatered: 0,
-      lastFertilized: 0,
       ...overrides
     };
   }
@@ -257,19 +251,21 @@ describe('Health Calculation', () => {
 });
 
 describe('Walkability', () => {
-  function makeCell(overrides: Partial<CellState>): CellState {
+  function makeWalkable(overrides: Partial<WalkableCell> = {}): WalkableCell {
     return {
-      x: 0, y: 0,
       type: 'fairway',
-      height: 50,
-      moisture: 50,
-      nutrients: 50,
-      health: 100,
-      elevation: 0,
       obstacle: 'none',
-      lastMowed: 0,
-      lastWatered: 0,
-      lastFertilized: 0,
+      ...overrides
+    };
+  }
+
+  function makeMovable(overrides: Partial<MovableCell> = {}): MovableCell {
+    return {
+      type: 'fairway',
+      obstacle: 'none',
+      x: 0,
+      y: 0,
+      elevation: 0,
       ...overrides
     };
   }
@@ -280,96 +276,73 @@ describe('Walkability', () => {
     });
 
     it('returns false for water terrain', () => {
-      const cell = makeCell({ type: 'water' });
-      expect(isWalkable(cell)).toBe(false);
+      expect(isWalkable(makeWalkable({ type: 'water' }))).toBe(false);
     });
 
     it('returns true for fairway terrain', () => {
-      const cell = makeCell({ type: 'fairway' });
-      expect(isWalkable(cell)).toBe(true);
+      expect(isWalkable(makeWalkable({ type: 'fairway' }))).toBe(true);
     });
 
     it('returns true for rough terrain', () => {
-      const cell = makeCell({ type: 'rough' });
-      expect(isWalkable(cell)).toBe(true);
+      expect(isWalkable(makeWalkable({ type: 'rough' }))).toBe(true);
     });
 
     it('returns true for bunker terrain', () => {
-      const cell = makeCell({ type: 'bunker' });
-      expect(isWalkable(cell)).toBe(true);
+      expect(isWalkable(makeWalkable({ type: 'bunker' }))).toBe(true);
     });
 
     it('returns true for green terrain', () => {
-      const cell = makeCell({ type: 'green' });
-      expect(isWalkable(cell)).toBe(true);
+      expect(isWalkable(makeWalkable({ type: 'green' }))).toBe(true);
     });
 
     it('returns false when obstacle is tree', () => {
-      const cell = makeCell({ obstacle: 'tree' });
-      expect(isWalkable(cell)).toBe(false);
+      expect(isWalkable(makeWalkable({ obstacle: 'tree' }))).toBe(false);
     });
 
     it('returns false when obstacle is pine_tree', () => {
-      const cell = makeCell({ obstacle: 'pine_tree' });
-      expect(isWalkable(cell)).toBe(false);
+      expect(isWalkable(makeWalkable({ obstacle: 'pine_tree' }))).toBe(false);
     });
 
     it('returns false when obstacle is shrub', () => {
-      const cell = makeCell({ obstacle: 'shrub' });
-      expect(isWalkable(cell)).toBe(false);
+      expect(isWalkable(makeWalkable({ obstacle: 'shrub' }))).toBe(false);
     });
 
     it('returns false when obstacle is bush', () => {
-      const cell = makeCell({ obstacle: 'bush' });
-      expect(isWalkable(cell)).toBe(false);
+      expect(isWalkable(makeWalkable({ obstacle: 'bush' }))).toBe(false);
     });
   });
 
   describe('canMoveFromTo', () => {
     it('returns false when target cell is null', () => {
-      const from = makeCell({});
-      expect(canMoveFromTo(from, null)).toBe(false);
+      expect(canMoveFromTo(makeMovable(), null)).toBe(false);
     });
 
     it('returns false when source cell is null', () => {
-      const to = makeCell({});
-      expect(canMoveFromTo(null, to)).toBe(false);
+      expect(canMoveFromTo(null, makeMovable())).toBe(false);
     });
 
     it('returns false when target is not walkable', () => {
-      const from = makeCell({});
-      const to = makeCell({ type: 'water' });
-      expect(canMoveFromTo(from, to)).toBe(false);
+      expect(canMoveFromTo(makeMovable(), makeMovable({ type: 'water' }))).toBe(false);
     });
 
     it('allows movement between same elevation', () => {
-      const from = makeCell({ elevation: 1 });
-      const to = makeCell({ elevation: 1 });
-      expect(canMoveFromTo(from, to)).toBe(true);
+      expect(canMoveFromTo(makeMovable({ elevation: 1 }), makeMovable({ elevation: 1 }))).toBe(true);
     });
 
     it('allows movement with elevation difference of 1', () => {
-      const from = makeCell({ elevation: 0 });
-      const to = makeCell({ elevation: 1 });
-      expect(canMoveFromTo(from, to)).toBe(true);
+      expect(canMoveFromTo(makeMovable({ elevation: 0 }), makeMovable({ elevation: 1 }))).toBe(true);
     });
 
     it('allows movement down with elevation difference of 1', () => {
-      const from = makeCell({ elevation: 2 });
-      const to = makeCell({ elevation: 1 });
-      expect(canMoveFromTo(from, to)).toBe(true);
+      expect(canMoveFromTo(makeMovable({ elevation: 2 }), makeMovable({ elevation: 1 }))).toBe(true);
     });
 
     it('blocks movement with elevation difference of 2 or more', () => {
-      const from = makeCell({ elevation: 0 });
-      const to = makeCell({ elevation: 2 });
-      expect(canMoveFromTo(from, to)).toBe(false);
+      expect(canMoveFromTo(makeMovable({ elevation: 0 }), makeMovable({ elevation: 2 }))).toBe(false);
     });
 
     it('blocks movement down with elevation difference of 2 or more', () => {
-      const from = makeCell({ elevation: 3 });
-      const to = makeCell({ elevation: 1 });
-      expect(canMoveFromTo(from, to)).toBe(false);
+      expect(canMoveFromTo(makeMovable({ elevation: 3 }), makeMovable({ elevation: 1 }))).toBe(false);
     });
   });
 });
@@ -421,38 +394,6 @@ describe('Ramp Direction Detection', () => {
   });
 });
 
-describe('Area Selection', () => {
-  it('returns single cell for radius 0', () => {
-    const cells = getCellsInRadius(5, 5, 0);
-    expect(cells).toEqual([{ x: 5, y: 5 }]);
-  });
-
-  it('returns 5 cells for radius 1 (diamond pattern)', () => {
-    const cells = getCellsInRadius(5, 5, 1);
-    expect(cells).toHaveLength(5);
-    expect(cells).toContainEqual({ x: 5, y: 5 });
-    expect(cells).toContainEqual({ x: 4, y: 5 });
-    expect(cells).toContainEqual({ x: 6, y: 5 });
-    expect(cells).toContainEqual({ x: 5, y: 4 });
-    expect(cells).toContainEqual({ x: 5, y: 6 });
-  });
-
-  it('returns 13 cells for radius 2', () => {
-    const cells = getCellsInRadius(5, 5, 2);
-    expect(cells).toHaveLength(13);
-  });
-
-  it('handles negative center coordinates', () => {
-    const cells = getCellsInRadius(-5, -5, 1);
-    expect(cells).toContainEqual({ x: -5, y: -5 });
-    expect(cells).toContainEqual({ x: -6, y: -5 });
-  });
-
-  it('returns empty array for negative radius', () => {
-    const cells = getCellsInRadius(5, 5, -1);
-    expect(cells).toEqual([]);
-  });
-});
 
 describe('Terrain Constants', () => {
   it('TERRAIN_CODES match getTerrainType mappings', () => {
@@ -702,19 +643,9 @@ describe('getTerrainThresholds', () => {
 });
 
 describe('getGrassState', () => {
-  const createCell = (type: 'fairway' | 'rough' | 'green' | 'bunker' | 'water', height: number): CellState => ({
-    x: 0,
-    y: 0,
+  const createCell = (type: 'fairway' | 'rough' | 'green' | 'bunker' | 'water', height: number) => ({
     type,
     height,
-    moisture: 50,
-    nutrients: 50,
-    health: 80,
-    elevation: 0,
-    obstacle: 'none',
-    lastMowed: 0,
-    lastWatered: 0,
-    lastFertilized: 0,
   });
 
   describe('fairway', () => {

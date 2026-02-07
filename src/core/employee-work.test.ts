@@ -78,8 +78,6 @@ function createMockTerrainSystem(opts?: {
     setElevationAt() {},
     getTerrainTypeAt() { return 'fairway'; },
     setTerrainTypeAt() {},
-    getLayoutGrid() { return []; },
-    getElevationGrid() { return []; },
     rebuildTileAndNeighbors() {},
     gridToWorld() { return { x: 0, y: 0, z: 0 } as any; },
     mowAt() { return false; },

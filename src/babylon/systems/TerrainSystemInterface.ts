@@ -1,8 +1,8 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CourseData } from "../../data/courseData";
-import { CellState, TerrainType, OverlayMode } from "../../core/terrain";
+import { TerrainType, OverlayMode, MovableCell } from "../../core/terrain";
 import { FaceState } from "../../core/face-state";
-import { WeatherEffect } from "../../core/grass-simulation";
+import { GrassCell, WeatherEffect } from "../../core/grass-simulation";
 
 export interface FaceStateSample {
   avgMoisture: number;
@@ -24,11 +24,6 @@ export interface TerrainSystem {
 
   update(deltaMs: number, gameTimeMinutes: number, weather?: WeatherEffect): void;
 
-  // Grid-coordinate cell access (compatibility shims backed by face state)
-  getCell(x: number, y: number): CellState | null;
-  getAllCells(): CellState[][];
-  restoreCells(savedCells: CellState[][]): void;
-
   // Face state access
   getFaceState(faceId: number): FaceState | undefined;
   getAllFaceStates(): Map<number, FaceState>;
@@ -36,7 +31,6 @@ export interface TerrainSystem {
   setFaceState(faceId: number, state: Partial<FaceState>): void;
   setAllFaceStates(state: Partial<Pick<FaceState, 'moisture' | 'nutrients' | 'grassHeight' | 'health'>>): void;
 
-  // Grid dimensions
   getGridDimensions(): { width: number; height: number };
 
   // Elevation
@@ -48,19 +42,18 @@ export interface TerrainSystem {
   getTerrainTypeAt(x: number, y: number): string | undefined;
   setTerrainTypeAt(x: number, y: number, type: TerrainType): void;
 
-  // Grid data
-  getLayoutGrid(): number[][];
-  getElevationGrid(): number[][];
-  rebuildTileAndNeighbors(x: number, y: number): void;
-
   // Coordinate conversion
   gridToWorld(gridX: number, gridY: number): Vector3;
 
+  rebuildTileAndNeighbors(x: number, y: number): void;
+
+  getAllCells(): GrassCell[][];
+
   // Maintenance actions
-  mowAt(gridX: number, gridY: number): boolean;
-  rakeAt(gridX: number, gridY: number): boolean;
-  waterArea(centerX: number, centerY: number, radius: number, amount: number): number;
-  fertilizeArea(centerX: number, centerY: number, radius: number, amount: number, effectiveness?: number): number;
+  mowAt(worldX: number, worldZ: number): boolean;
+  rakeAt(worldX: number, worldZ: number): boolean;
+  waterArea(centerX: number, centerZ: number, radius: number, amount: number): number;
+  fertilizeArea(centerX: number, centerZ: number, radius: number, amount: number, effectiveness?: number): number;
 
   // Overlay modes
   cycleOverlayMode(): OverlayMode;
@@ -70,9 +63,8 @@ export interface TerrainSystem {
   // Stats
   getCourseStats(): { health: number; moisture: number; nutrients: number; height: number };
 
-  // Cell state manipulation (grid-coordinate convenience, backed by face state)
-  setCellState(x: number, y: number, state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>): void;
-  setAllCellsState(state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>): void;
+  // Pathfinding cell access
+  getCell(x: number, y: number): MovableCell | null;
 
   // Position queries
   findFaceAtPosition(worldX: number, worldZ: number): number | null;
@@ -92,7 +84,6 @@ export interface TerrainSystem {
     gameTime: number
   ): number[];
 
-  // Testing/debugging
   getUpdateCount(): number;
   getResolution?(): number;
 }

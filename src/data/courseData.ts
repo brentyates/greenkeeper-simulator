@@ -1,6 +1,6 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
 import { HoleData } from '../core/golf-logic';
-import { Vec3, SerializedTopology } from '../core/mesh-topology';
+import { SerializedTopology } from '../core/mesh-topology';
 import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 
@@ -17,33 +17,18 @@ export interface CourseData {
   width: number;
   height: number;
   par: number;
-  layout: number[][];
-  elevation?: number[][];
-  vertexElevations?: number[][];
-  vertexPositions?: Vec3[][];
   obstacles?: ObstacleData[];
   holeData?: HoleData;
   yardsPerGrid?: number;
-  topology?: SerializedTopology;
+  topology: SerializedTopology;
 }
 
-const F = 0; // Fairway
-const R = 1; // Rough
-const G = 2; // Green
-const B = 3; // Bunker
-const W = 4; // Water
-const T = 5; // Tee
-
-function generateRow(width: number, pattern: Array<[number, number, number?]>): number[] {
-  const row: number[] = new Array(width).fill(R);
-  for (const [start, end, terrain] of pattern) {
-    const t = terrain ?? F;
-    for (let x = start; x <= end; x++) {
-      if (x >= 0 && x < width) row[x] = t;
-    }
-  }
-  return row;
-}
+const F = 0;
+const R = 1;
+const G = 2;
+const B = 3;
+const W = 4;
+const T = 5;
 
 // ============================================================================
 // POLYGON HELPERS
@@ -306,7 +291,6 @@ export const COURSE_3_HOLE: CourseData = {
   width: 100,
   height: 110,
   par: 10,
-  layout: Array.from({ length: 110 }, () => new Array(100).fill(R)),
   topology: course3Topology,
   obstacles: [
     { x: sc3(5), y: sc3(17), type: 2 },
@@ -381,35 +365,44 @@ export const COURSE_3_HOLE: CourseData = {
   },
 };
 
-// Simple test hole
 export const COURSE_HOLE_1: CourseData = {
   name: 'Test Hole',
   width: 12,
   height: 25,
   par: 4,
-  layout: (() => {
-    const W = 12, H = 25;
-    const layout: number[][] = [];
-    for (let y = 0; y < H; y++) {
-      if (y <= 1) layout.push(new Array(W).fill(R));
-      else if (y <= 4) layout.push(generateRow(W, [[4, 8, G]]));
-      else if (y <= 18) layout.push(generateRow(W, [[3, 9]]));
-      else if (y <= 20) layout.push(generateRow(W, [[4, 8], [5, 6, T]]));
-      else layout.push(new Array(W).fill(R));
-    }
-    return layout;
-  })(),
+  topology: buildDelaunayTopology({
+    worldWidth: 12,
+    worldHeight: 25,
+    regions: [
+      { terrainCode: G, boundary: makeEllipse(6, 3, 2, 1.5), elevationFn: () => 0 },
+      { terrainCode: F, boundary: makeRect(3, 2, 9, 19), elevationFn: () => 0 },
+      { terrainCode: T, boundary: makeRect(5, 19, 7, 21), elevationFn: () => 0 },
+    ],
+    backgroundTerrainCode: R,
+    backgroundElevationFn: () => 0,
+    boundaryPointSpacing: 1.0,
+    fillPointSpacing: 2.0,
+  }),
   obstacles: [],
   yardsPerGrid: 20,
 };
 
-// Tiny test course
 export const COURSE_TEST: CourseData = {
   name: 'Test Course',
   width: 15,
   height: 15,
   par: 3,
-  layout: Array(15).fill(null).map(() => Array(15).fill(F)),
+  topology: buildDelaunayTopology({
+    worldWidth: 15,
+    worldHeight: 15,
+    regions: [
+      { terrainCode: F, boundary: makeRect(1, 1, 14, 14), elevationFn: () => 0 },
+    ],
+    backgroundTerrainCode: R,
+    backgroundElevationFn: () => 0,
+    boundaryPointSpacing: 1.0,
+    fillPointSpacing: 2.0,
+  }),
   yardsPerGrid: 20,
 };
 

@@ -1,5 +1,4 @@
-import { CellState } from './terrain';
-import { getAverageStats, getOverallCondition } from './grass-simulation';
+import { getAverageStats, getOverallCondition, GrassCell } from './grass-simulation';
 import { FaceState, getAverageFaceStats } from './face-state';
 
 export type ScenarioType = 'economic' | 'attendance' | 'satisfaction' | 'restoration';
@@ -127,7 +126,7 @@ export class ScenarioManager {
     this.progress.totalRounds++;
   }
 
-  public updateCourseHealth(cells: CellState[][]): void {
+  public updateCourseHealth(cells: GrassCell[][]): void {
     const stats = getAverageStats(cells);
     this.progress.currentHealth = stats.health;
 

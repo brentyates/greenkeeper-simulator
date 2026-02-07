@@ -427,7 +427,7 @@ export class GameAPI {
   }
 
   public getPlayerPosition(): { x: number; y: number } {
-    return { x: this.systems.player.gridX, y: this.systems.player.gridY };
+    return { x: this.systems.player.worldX, y: this.systems.player.worldZ };
   }
 
   public selectEquipment(slot: 1 | 2 | 3): void {
@@ -557,35 +557,35 @@ export class GameAPI {
     }
   }
 
-  public editTerrainAt(gridX: number, gridY: number): void {
+  public editTerrainAt(worldX: number, worldZ: number): void {
     if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
-    const worldPos = new Vector3(gridX + 0.1, 0, gridY + 0.1);
-    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY, worldPos);
-    this.systems.terrainEditorSystem.handleClick(gridX, gridY);
+    const worldPos = new Vector3(worldX + 0.1, 0, worldZ + 0.1);
+    this.systems.terrainEditorSystem.handleMouseMove(worldX, worldZ, worldPos);
+    this.systems.terrainEditorSystem.handleClick(worldX, worldZ);
   }
 
   public dragTerrainStart(
-    gridX: number,
-    gridY: number
+    worldX: number,
+    worldZ: number
   ): void {
     if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
-    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.systems.terrainEditorSystem.handleDragStart(gridX, gridY);
+    this.systems.terrainEditorSystem.handleMouseMove(worldX, worldZ);
+    this.systems.terrainEditorSystem.handleDragStart(worldX, worldZ);
   }
 
-  public dragTerrainMove(gridX: number, gridY: number): void {
+  public dragTerrainMove(worldX: number, worldZ: number): void {
     if (!this.systems.terrainEditorSystem || !this.systems.terrainEditorSystem.isEnabled()) {
       return;
     }
 
-    this.systems.terrainEditorSystem.handleMouseMove(gridX, gridY);
-    this.systems.terrainEditorSystem.handleDrag(gridX, gridY);
+    this.systems.terrainEditorSystem.handleMouseMove(worldX, worldZ);
+    this.systems.terrainEditorSystem.handleDrag(worldX, worldZ);
   }
 
   public dragTerrainEnd(): void {
@@ -602,18 +602,15 @@ export class GameAPI {
     this.systems.terrainSystem.setElevationAt(x, y, elevation);
   }
 
-  public setCellState(
-    x: number,
-    y: number,
-    state: { height?: number; moisture?: number; nutrients?: number; health?: number }
-  ): void {
-    this.systems.terrainSystem.setCellState(x, y, state);
-  }
-
   public setAllCellsState(
     state: { height?: number; moisture?: number; nutrients?: number; health?: number }
   ): void {
-    this.systems.terrainSystem.setAllCellsState(state);
+    this.systems.terrainSystem.setAllFaceStates({
+      grassHeight: state.height,
+      moisture: state.moisture,
+      nutrients: state.nutrients,
+      health: state.health,
+    });
   }
 
   public setAllFaceStates(
@@ -744,11 +741,11 @@ export class GameAPI {
     terrain: { width: number; height: number };
     editorEnabled: boolean;
   } {
-    const layoutGrid = this.systems.terrainSystem.getLayoutGrid();
+    const dims = this.systems.terrainSystem.getGridDimensions();
     return {
       player: {
-        x: this.systems.player.gridX,
-        y: this.systems.player.gridY,
+        x: this.systems.player.worldX,
+        y: this.systems.player.worldZ,
         isMoving: this.systems.isPlayerMoving(),
       },
       equipment: this.getEquipmentState(),
@@ -759,8 +756,8 @@ export class GameAPI {
       },
       economy: this.getEconomyState(),
       terrain: {
-        width: layoutGrid[0]?.length ?? 0,
-        height: layoutGrid.length,
+        width: dims.width,
+        height: dims.height,
       },
       editorEnabled: this.isTerrainEditorEnabled(),
     };
@@ -919,18 +916,35 @@ export class GameAPI {
     lastWatered: number;
     lastFertilized: number;
   } | null {
-    const cell = this.systems.terrainSystem.getCell(x, y);
-    if (!cell) return null;
+    const terrainType = this.systems.terrainSystem.getTerrainTypeAt(x, y);
+    if (!terrainType) return null;
+    const faceId = this.systems.terrainSystem.findFaceAtPosition(x + 0.5, y + 0.5);
+    const face = faceId != null ? this.systems.terrainSystem.getFaceState(faceId) : undefined;
+    const elevation = this.systems.terrainSystem.getElevationAt(x, y);
+    if (face) {
+      return {
+        type: terrainType,
+        elevation,
+        height: face.grassHeight,
+        moisture: face.moisture,
+        nutrients: face.nutrients,
+        health: face.health,
+        lastMowed: face.lastMowed,
+        lastWatered: face.lastWatered,
+        lastFertilized: face.lastFertilized,
+      };
+    }
+    const sample = this.systems.terrainSystem.sampleFaceStatesInRadius(x + 0.5, y + 0.5, 0.5);
     return {
-      type: cell.type,
-      elevation: cell.elevation,
-      height: cell.height,
-      moisture: cell.moisture,
-      nutrients: cell.nutrients,
-      health: cell.health,
-      lastMowed: cell.lastMowed,
-      lastWatered: cell.lastWatered,
-      lastFertilized: cell.lastFertilized,
+      type: terrainType,
+      elevation,
+      height: sample.avgGrassHeight,
+      moisture: sample.avgMoisture,
+      nutrients: sample.avgNutrients,
+      health: sample.avgHealth,
+      lastMowed: 0,
+      lastWatered: 0,
+      lastFertilized: 0,
     };
   }
 
@@ -1326,25 +1340,27 @@ export class GameAPI {
     height: number;
     health: number;
   } | null {
-    const cell = this.systems.terrainSystem.getCell(x, y);
-    if (!cell) return null;
-
+    const terrainType = this.systems.terrainSystem.getTerrainTypeAt(x, y);
+    if (!terrainType) return null;
+    const elevation = this.systems.terrainSystem.getElevationAt(x, y);
+    const sample = this.systems.terrainSystem.sampleFaceStatesInRadius(x + 0.5, y + 0.5, 0.5);
     return {
-      type: cell.type,
-      elevation: cell.elevation,
-      moisture: cell.moisture,
-      nutrients: cell.nutrients,
-      height: cell.height,
-      health: cell.health,
+      type: terrainType,
+      elevation,
+      moisture: sample.avgMoisture,
+      nutrients: sample.avgNutrients,
+      height: sample.avgGrassHeight,
+      health: sample.avgHealth,
     };
   }
 
   public getTerrainTypes(): string[] {
     const types = new Set<string>();
-    const cells = this.systems.terrainSystem.getAllCells();
-    for (const row of cells) {
-      for (const cell of row) {
-        types.add(cell.type);
+    const dims = this.systems.terrainSystem.getGridDimensions();
+    for (let y = 0; y < dims.height; y++) {
+      for (let x = 0; x < dims.width; x++) {
+        const t = this.systems.terrainSystem.getTerrainTypeAt(x, y);
+        if (t) types.add(t);
       }
     }
     return Array.from(types);

@@ -1,13 +1,3 @@
-/**
- * GrassSystem - Primary terrain rendering system
- *
- * Handles all terrain tile rendering including:
- * - Isometric tile mesh creation with slope support (corner heights)
- * - Grid line rendering that follows terrain elevation
- * - Terrain type coloring (fairway, rough, green, bunker, water)
- * - Mowing stripe patterns on fairways
- * - Overlay modes (moisture, nutrients, height)
- */
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -18,12 +8,11 @@ import { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import {
-  CellState,
+  TerrainType,
+  MovableCell,
   getTerrainType,
-  getTerrainCode,
   getInitialValues,
   calculateHealth,
-  getCellsInRadius,
   TERRAIN_CODES,
   OverlayMode,
 } from "../../core/terrain";
@@ -36,6 +25,7 @@ import {
   applyWatering,
   applyFertilizing,
   getAverageStats,
+  GrassCell,
   WeatherEffect,
 } from "../../core/grass-simulation";
 
@@ -46,10 +36,20 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 export type { OverlayMode };
 
+interface InternalCell extends GrassCell {
+  x: number;
+  y: number;
+  elevation: number;
+  obstacle: "none" | "tree" | "pine_tree" | "shrub" | "bush";
+  lastMowed: number;
+  lastWatered: number;
+  lastFertilized: number;
+}
+
 export class GrassSystem {
   private scene: Scene;
   private courseData: CourseData;
-  private cells: CellState[][] = [];
+  private cells: InternalCell[][] = [];
   private tileMeshes: Map<string, Mesh> = new Map();
   private waterTiles: Set<string> = new Set();
   private gridLinesMesh: LinesMesh | null = null;
@@ -70,18 +70,16 @@ export class GrassSystem {
   }
 
   private initCells(): void {
-    const { width, height, layout, obstacles } = this.courseData;
+    const { width, height, obstacles } = this.courseData;
 
     this.cells = [];
     for (let y = 0; y < height; y++) {
       this.cells[y] = [];
       for (let x = 0; x < width; x++) {
-        const terrainCode = layout[y]?.[x] ?? TERRAIN_CODES.ROUGH;
-        const terrainType = getTerrainType(terrainCode);
-        const elev = 0;
+        const terrainType = getTerrainType(TERRAIN_CODES.ROUGH);
         const initialValues = getInitialValues(terrainType);
 
-        const cell: CellState = {
+        const cell: InternalCell = {
           x,
           y,
           type: terrainType,
@@ -89,7 +87,7 @@ export class GrassSystem {
           moisture: initialValues.moisture,
           nutrients: initialValues.nutrients,
           health: 100,
-          elevation: elev,
+          elevation: 0,
           obstacle: "none",
           lastMowed: 0,
           lastWatered: 0,
@@ -283,7 +281,7 @@ export class GrassSystem {
     return cell ? cell.type : null;
   }
 
-  private getCornerRounding(cell: CellState): {
+  private getCornerRounding(cell: InternalCell): {
     nw: number;
     ne: number;
     se: number;
@@ -316,7 +314,7 @@ export class GrassSystem {
   }
 
   private getCornerFillType(
-    cell: CellState,
+    cell: InternalCell,
     corner: "nw" | "ne" | "se" | "sw"
   ): string {
     const x = cell.x;
@@ -346,7 +344,7 @@ export class GrassSystem {
   }
 
   private createRoundedTileMesh(
-    cell: CellState,
+    cell: InternalCell,
     baseColor: Color3,
     corners: { nw: number; ne: number; se: number; sw: number },
     rounding: { nw: number; ne: number; se: number; sw: number },
@@ -402,13 +400,11 @@ export class GrassSystem {
 
     const alpha = isWater ? 0.7 : this.overlayMode === "irrigation" ? 0.2 : 1;
 
-    // In irrigation mode, use white for the schematic view
     const isIrrigation = this.overlayMode === "irrigation";
 
     for (let i = 0; i < 4; i++) {
       const variance = (this.cellHash(cell.x, cell.y, i) - 0.5) * 0.06;
       if (isIrrigation) {
-        // Very light sand color for maximum visibility
         colors.push(0.92, 0.9, 0.88, 0.2);
       } else {
         colors.push(
@@ -523,7 +519,7 @@ export class GrassSystem {
     return mesh;
   }
 
-  private createTileMesh(cell: CellState, existingMesh?: Mesh): Mesh {
+  private createTileMesh(cell: InternalCell, existingMesh?: Mesh): Mesh {
     const corners = this.getCornerHeights(cell.x, cell.y, cell.elevation);
     const color = this.getCellColor(cell);
     const rounding = this.getCornerRounding(cell);
@@ -607,7 +603,7 @@ export class GrassSystem {
   }
 
   private createWaterTile(
-    cell: CellState,
+    cell: InternalCell,
     baseColor: Color3,
     corners: { nw: number; ne: number; se: number; sw: number },
     existingMesh?: Mesh
@@ -672,7 +668,7 @@ export class GrassSystem {
   }
 
   private createStripedTile(
-    cell: CellState,
+    cell: InternalCell,
     baseColor: Color3,
     corners: { nw: number; ne: number; se: number; sw: number },
     existingMesh?: Mesh
@@ -767,14 +763,14 @@ export class GrassSystem {
     return mesh;
   }
 
-  private shouldShowStripes(cell: CellState): boolean {
+  private shouldShowStripes(cell: InternalCell): boolean {
     if (cell.type === "bunker" || cell.type === "water") return false;
     const mownThreshold =
       cell.type === "green" ? 10 : cell.type === "fairway" ? 20 : 30;
     return cell.height <= mownThreshold;
   }
 
-  private getCellColor(cell: CellState): Color3 {
+  private getCellColor(cell: InternalCell): Color3 {
     if (this.overlayMode !== "normal") {
       return this.getOverlayColor(cell);
     }
@@ -815,7 +811,7 @@ export class GrassSystem {
   }
 
   private getCornerColorVariations(
-    cell: CellState,
+    cell: InternalCell,
     baseColor: Color3
   ): Color3[] {
     if (cell.type === "water") {
@@ -855,7 +851,7 @@ export class GrassSystem {
 
     return variations;
   }
-  private getTerrainBaseColor(cell: CellState): Color3 {
+  private getTerrainBaseColor(cell: InternalCell): Color3 {
     switch (cell.type) {
       case "fairway":
         return new Color3(0.4, 0.7, 0.3);
@@ -872,7 +868,7 @@ export class GrassSystem {
     }
   }
 
-  private getOverlayColor(cell: CellState): Color3 {
+  private getOverlayColor(cell: InternalCell): Color3 {
     if (cell.type === "bunker" || cell.type === "water") {
       return this.getTerrainBaseColor(cell);
     }
@@ -1005,20 +1001,23 @@ export class GrassSystem {
   }
 
   public mowAt(gridX: number, gridY: number): boolean {
-    const cell = this.getCell(gridX, gridY);
+    const cell = this.cells[gridY]?.[gridX];
     if (!cell) return false;
 
     const result = applyMowing(cell);
     if (!result) return false;
 
-    this.cells[gridY][gridX] = result;
-    result.lastMowed = this.gameTime;
+    cell.height = result.height;
+    cell.moisture = result.moisture;
+    cell.nutrients = result.nutrients;
+    cell.health = result.health;
+    cell.lastMowed = this.gameTime;
     this.updateTileVisual(gridX, gridY);
     return true;
   }
 
   public rakeAt(gridX: number, gridY: number): boolean {
-    const cell = this.getCell(gridX, gridY);
+    const cell = this.cells[gridY]?.[gridX];
     if (!cell || cell.type !== "bunker") return false;
 
     cell.lastMowed = this.gameTime;
@@ -1031,19 +1030,26 @@ export class GrassSystem {
     radius: number,
     amount: number
   ): number {
-    const cellsToWater = getCellsInRadius(centerX, centerY, radius);
     let affectedCount = 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          const x = centerX + dx;
+          const y = centerY + dy;
+          const cell = this.cells[y]?.[x];
+          if (!cell) continue;
 
-    for (const { x, y } of cellsToWater) {
-      const cell = this.getCell(x, y);
-      if (!cell) continue;
-
-      const result = applyWatering(cell, amount);
-      if (result) {
-        this.cells[y][x] = result;
-        result.lastWatered = this.gameTime;
-        this.updateTileVisual(x, y);
-        affectedCount++;
+          const result = applyWatering(cell, amount);
+          if (result) {
+            cell.height = result.height;
+            cell.moisture = result.moisture;
+            cell.nutrients = result.nutrients;
+            cell.health = result.health;
+            cell.lastWatered = this.gameTime;
+            this.updateTileVisual(x, y);
+            affectedCount++;
+          }
+        }
       }
     }
 
@@ -1057,33 +1063,58 @@ export class GrassSystem {
     amount: number,
     effectiveness: number = 1.0
   ): number {
-    const cellsToFertilize = getCellsInRadius(centerX, centerY, radius);
     let affectedCount = 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          const x = centerX + dx;
+          const y = centerY + dy;
+          const cell = this.cells[y]?.[x];
+          if (!cell) continue;
 
-    for (const { x, y } of cellsToFertilize) {
-      const cell = this.getCell(x, y);
-      if (!cell) continue;
-
-      const result = applyFertilizing(cell, amount, effectiveness);
-      if (result) {
-        this.cells[y][x] = result;
-        result.lastFertilized = this.gameTime;
-        this.updateTileVisual(x, y);
-        affectedCount++;
+          const result = applyFertilizing(cell, amount, effectiveness);
+          if (result) {
+            cell.height = result.height;
+            cell.moisture = result.moisture;
+            cell.nutrients = result.nutrients;
+            cell.health = result.health;
+            cell.lastFertilized = this.gameTime;
+            this.updateTileVisual(x, y);
+            affectedCount++;
+          }
+        }
       }
     }
 
     return affectedCount;
   }
 
-  public getCell(x: number, y: number): CellState | null {
-    return this.cells[y]?.[x] ?? null;
+  public getCell(x: number, y: number): MovableCell | null {
+    const cell = this.cells[y]?.[x];
+    if (!cell) return null;
+    return cell;
+  }
+
+  public getAllCells(): GrassCell[][] {
+    return this.cells.map(row =>
+      row.map(cell => ({
+        type: cell.type,
+        height: cell.height,
+        moisture: cell.moisture,
+        nutrients: cell.nutrients,
+        health: cell.health,
+      }))
+    );
+  }
+
+  public getTerrainTypeAt(x: number, y: number): string | undefined {
+    return this.cells[y]?.[x]?.type;
   }
 
   public setCellState(
     x: number,
     y: number,
-    state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>
+    state: Partial<Pick<GrassCell, 'height' | 'moisture' | 'nutrients' | 'health'>>
   ): void {
     const cell = this.cells[y]?.[x];
     if (!cell) return;
@@ -1097,12 +1128,11 @@ export class GrassSystem {
   }
 
   public setAllCellsState(
-    state: Partial<Pick<CellState, 'height' | 'moisture' | 'nutrients' | 'health'>>
+    state: Partial<Pick<GrassCell, 'height' | 'moisture' | 'nutrients' | 'health'>>
   ): void {
     for (let y = 0; y < this.cells.length; y++) {
       for (let x = 0; x < this.cells[y].length; x++) {
         const cell = this.cells[y][x];
-        // Skip non-grass terrain
         if (cell.type === 'water' || cell.type === 'bunker') continue;
 
         if (state.height !== undefined) cell.height = state.height;
@@ -1114,15 +1144,7 @@ export class GrassSystem {
     this.updateAllTileVisuals();
   }
 
-  public getTerrainTypeAt(x: number, y: number): string | undefined {
-    return this.cells[y]?.[x]?.type;
-  }
-
-  public getAllCells(): CellState[][] {
-    return this.cells;
-  }
-
-  public restoreCells(savedCells: CellState[][]): void {
+  public restoreCells(savedCells: GrassCell[][]): void {
     for (let y = 0; y < savedCells.length && y < this.cells.length; y++) {
       for (
         let x = 0;
@@ -1130,7 +1152,7 @@ export class GrassSystem {
         x++
       ) {
         const saved = savedCells[y][x];
-        this.cells[y][x] = { ...saved };
+        this.cells[y][x] = { ...this.cells[y][x], ...saved };
       }
     }
     this.updateAllTileVisuals();
@@ -1184,7 +1206,7 @@ export class GrassSystem {
   }
 
   public gridToWorld(gridX: number, gridY: number): Vector3 {
-    const cell = this.getCell(gridX, gridY);
+    const cell = this.cells[gridY]?.[gridX];
     const avgElev = cell ? cell.elevation : 0;
     return gridTo3D(gridX + 0.5, gridY + 0.5, avgElev);
   }
@@ -1192,9 +1214,9 @@ export class GrassSystem {
   public setTerrainTypeAt(
     x: number,
     y: number,
-    type: import("../../core/terrain").TerrainType
+    type: TerrainType
   ): void {
-    const cell = this.getCell(x, y);
+    const cell = this.cells[y]?.[x];
     if (!cell) return;
 
     const initialValues = getInitialValues(type);
@@ -1229,15 +1251,6 @@ export class GrassSystem {
     this.createGridLines();
   }
 
-  public getLayoutGrid(): number[][] {
-    return this.cells.map((row) =>
-      row.map((cell) => getTerrainCode(cell.type))
-    );
-  }
-
-  public getElevationGrid(): number[][] {
-    return this.cells.map((row) => row.map((cell) => cell.elevation));
-  }
 
   public getUpdateCount(): number {
     return this.updateCount;

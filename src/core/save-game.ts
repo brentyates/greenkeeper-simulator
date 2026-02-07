@@ -8,7 +8,7 @@ import { TeeTimeSystemState } from './tee-times';
 import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
 import { MarketingState } from './marketing';
-import { CellState } from './terrain';
+import { GrassCell } from './grass-simulation';
 import { FaceState } from './face-state';
 import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
@@ -43,7 +43,7 @@ export interface SaveGameState {
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
 
-  cells: CellState[][];
+  cells: GrassCell[][];
   faceStates?: FaceState[];
 }
 
@@ -71,7 +71,7 @@ export function createSaveState(
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
   weatherState: WeatherState,
-  cells: CellState[][],
+  cells: GrassCell[][],
   irrigationSystem?: IrrigationSystem,
   faceStates?: Map<number, FaceState>
 ): SaveGameState {

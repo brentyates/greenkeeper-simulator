@@ -1,7 +1,7 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HEIGHT_UNIT } from "./engine/BabylonEngine";
-import { CellState, canMoveFromTo } from "../core/terrain";
+import { MovableCell, canMoveFromTo } from "../core/terrain";
 import {
   PlayerEntity,
   createPlayerEntity,
@@ -17,7 +17,7 @@ import {
 import { EquipmentType, EquipmentState } from "../core/equipment-logic";
 
 export interface TerrainProvider {
-  getCell(x: number, y: number): CellState | null;
+  getCell(x: number, y: number): MovableCell | null;
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
   getCourseStats(): { health: number; moisture: number; nutrients: number; height: number };
   getGridDimensions(): { width: number; height: number };

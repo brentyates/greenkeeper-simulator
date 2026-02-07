@@ -1,4 +1,5 @@
-import { CellState, TerrainType, getTerrainType } from './terrain';
+import { TerrainType, getTerrainType } from './terrain';
+import { GrassCell } from './grass-simulation';
 import { FaceState, isGrassFace } from './face-state';
 import { AmenityState, AmenityUpgrade, createInitialAmenityState, calculateAmenityScore, applyUpgrade as applyAmenityUpgrade } from './amenities';
 import { ReputationState, createInitialReputationState, calculateReputationScore } from './reputation';
@@ -210,7 +211,7 @@ export function getStarDisplay(rating: number): string {
   return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
 }
 
-function calculateTerrainTypeScore(cells: CellState[][], targetType: TerrainType): number {
+function calculateTerrainTypeScore(cells: GrassCell[][], targetType: TerrainType): number {
   let totalHealth = 0;
   let count = 0;
 
@@ -227,7 +228,7 @@ function calculateTerrainTypeScore(cells: CellState[][], targetType: TerrainType
   return totalHealth / count;
 }
 
-export function calculateCurrentConditions(cells: CellState[][]): CurrentConditionsScore {
+export function calculateCurrentConditions(cells: GrassCell[][]): CurrentConditionsScore {
   let totalHealth = 0;
   let grassCount = 0;
 

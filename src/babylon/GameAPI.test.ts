@@ -363,7 +363,7 @@ function createMockState(): GameState {
       pipes: [], sprinklerHeads: [], waterSources: [],
       totalWaterUsedToday: 0, lastTickTime: 0, pressureCache: new Map(),
     },
-    currentCourse: { name: "Test Course", width: 20, height: 20, par: 72, layout: [[0, 1]] } as any,
+    currentCourse: { name: "Test Course", width: 20, height: 20, par: 72 } as any,
     currentScenario: null,
     dailyStats: {
       revenue: { greenFees: 0, tips: 0, addOns: 0, other: 0 },
@@ -411,11 +411,17 @@ function createMockSystems(): GameSystems {
       getTerrainTypeAt: vi.fn(() => "fairway"),
       setTerrainTypeAt: vi.fn(),
       getCell: vi.fn(() => ({
-        type: "fairway", elevation: 1.0, height: 0.5, moisture: 60,
-        nutrients: 50, health: 80, lastMowed: 100, lastWatered: 200, lastFertilized: 300,
+        type: "fairway", elevation: 1.0, obstacle: "none", x: 0, y: 0,
       })),
-      getAllCells: vi.fn(() => [[{ type: "fairway" }, { type: "rough" }]]),
-      getLayoutGrid: vi.fn(() => [[0, 1], [1, 0]]),
+      findFaceAtPosition: vi.fn(() => 1),
+      getFaceState: vi.fn(() => ({
+        faceId: 1, terrainCode: 0, moisture: 60, nutrients: 50,
+        grassHeight: 0.5, health: 80, lastMowed: 100, lastWatered: 200,
+        lastFertilized: 300, lastRaked: 0,
+      })),
+      sampleFaceStatesInRadius: vi.fn(() => ({
+        avgMoisture: 60, avgNutrients: 50, avgGrassHeight: 0.5, avgHealth: 80, count: 1,
+      })),
       getCourseStats: vi.fn(() => ({ health: 75, moisture: 60, nutrients: 50, height: 0.5 })),
       getGridDimensions: vi.fn(() => ({ width: 10, height: 10 })),
       update: vi.fn(),
@@ -704,7 +710,7 @@ describe("GameAPI", () => {
   });
 
   describe("getPlayerPosition", () => {
-    it("returns grid position", () => { expect(api.getPlayerPosition()).toEqual({ x: 5, y: 5 }); });
+    it("returns world position", () => { expect(api.getPlayerPosition()).toEqual({ x: 5.5, y: 5.5 }); });
   });
 
   describe("selectEquipment", () => {
@@ -947,8 +953,7 @@ describe("GameAPI", () => {
   describe("terrain passthrough methods", () => {
     it("getElevationAt delegates", () => { expect(api.getElevationAt(1, 2)).toBe(1.5); });
     it("setElevationAt delegates", () => { api.setElevationAt(1, 2, 3.0); expect(sys.terrainSystem.setElevationAt).toHaveBeenCalledWith(1, 2, 3.0); });
-    it("setCellState delegates", () => { api.setCellState(1, 2, { height: 0.5 }); expect(sys.terrainSystem.setCellState).toHaveBeenCalledWith(1, 2, { height: 0.5 }); });
-    it("setAllCellsState delegates", () => { api.setAllCellsState({ moisture: 80 }); expect(sys.terrainSystem.setAllCellsState).toHaveBeenCalledWith({ moisture: 80 }); });
+    it("setAllCellsState delegates to setAllFaceStates", () => { api.setAllCellsState({ moisture: 80 }); expect(sys.terrainSystem.setAllFaceStates).toHaveBeenCalledWith({ moisture: 80, grassHeight: undefined, nutrients: undefined, health: undefined }); });
     it("setAllFaceStates delegates", () => { api.setAllFaceStates({ moisture: 80 }); expect(sys.terrainSystem.setAllFaceStates).toHaveBeenCalledWith({ moisture: 80 }); });
     it("getTerrainTypeAt delegates", () => { expect(api.getTerrainTypeAt(1, 2)).toBe("fairway"); });
     it("setTerrainTypeAt delegates", () => { api.setTerrainTypeAt(1, 2, "bunker"); expect(sys.terrainSystem.setTerrainTypeAt).toHaveBeenCalledWith(1, 2, "bunker"); });
@@ -1045,13 +1050,13 @@ describe("GameAPI", () => {
       (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
       (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       const result = api.getFullGameState();
-      expect(result.player).toEqual({ x: 5, y: 5, isMoving: false });
-      expect(result.terrain).toEqual({ width: 2, height: 2 });
+      expect(result.player).toEqual({ x: 5.5, y: 5.5, isMoving: false });
+      expect(result.terrain).toEqual({ width: 10, height: 10 });
       expect(result.editorEnabled).toBe(false);
     });
 
-    it("handles empty layout grid", () => {
-      (sys.terrainSystem.getLayoutGrid as Mock).mockReturnValue([]);
+    it("handles zero dimensions", () => {
+      (sys.terrainSystem.getGridDimensions as Mock).mockReturnValue({ width: 0, height: 0 });
       (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
       (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       expect(api.getFullGameState().terrain.width).toBe(0);
@@ -1179,12 +1184,12 @@ describe("GameAPI", () => {
 
   describe("getTerrainAt", () => {
     it("returns cell data", () => { expect(api.getTerrainAt(1, 2)!.type).toBe("fairway"); });
-    it("returns null for missing cell", () => { (sys.terrainSystem.getCell as Mock).mockReturnValueOnce(null); expect(api.getTerrainAt(99, 99)).toBeNull(); });
+    it("returns null for missing terrain type", () => { (sys.terrainSystem.getTerrainTypeAt as Mock).mockReturnValueOnce(null); expect(api.getTerrainAt(99, 99)).toBeNull(); });
   });
 
   describe("getTerrainCellData", () => {
     it("returns cell data", () => { expect(api.getTerrainCellData(1, 2)!.type).toBe("fairway"); });
-    it("returns null for missing cell", () => { (sys.terrainSystem.getCell as Mock).mockReturnValueOnce(null); expect(api.getTerrainCellData(99, 99)).toBeNull(); });
+    it("returns null for missing terrain type", () => { (sys.terrainSystem.getTerrainTypeAt as Mock).mockReturnValueOnce(null); expect(api.getTerrainCellData(99, 99)).toBeNull(); });
   });
 
   describe("advanceTimeByMinutes", () => {
@@ -1429,7 +1434,6 @@ describe("GameAPI", () => {
     it("returns unique types", () => {
       const result = api.getTerrainTypes();
       expect(result).toContain("fairway");
-      expect(result).toContain("rough");
     });
   });
 

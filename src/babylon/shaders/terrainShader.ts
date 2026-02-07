@@ -1,8 +1,5 @@
 /**
- * Terrain Shader - SDF-based smooth terrain rendering
- *
- * Uses signed distance fields for pixel-perfect smooth edges between terrain types.
- * Includes procedural details: grass noise, mowing stripes, water animation.
+ * Terrain Shader - per-vertex terrain type rendering with per-face state data.
  */
 
 export const terrainVertexShader = `
@@ -55,7 +52,6 @@ uniform vec2 faceDataDims;
 // Parameters
 uniform vec2 worldSize;
 uniform float time;
-uniform float edgeBlend;
 uniform float overlayMode;
 
 // Terrain colors
@@ -326,9 +322,7 @@ export const defaultTerrainColors = {
 export interface TerrainShaderUniforms {
   worldSize: [number, number];
   time: number;
-  edgeBlend: number;
-  maxSdfDistance: number;
-  overlayMode: number;  // 0=normal, 1=moisture, 2=nutrients, 3=height, 4=health
+  overlayMode: number;
   roughColor: [number, number, number];
   fairwayColor: [number, number, number];
   greenColor: [number, number, number];
@@ -356,8 +350,6 @@ export function getDefaultUniforms(
   return {
     worldSize: [worldWidth, worldHeight],
     time: 0,
-    edgeBlend: 0.3,
-    maxSdfDistance: 5,
     overlayMode: 0,
     roughColor: [defaultTerrainColors.rough.r, defaultTerrainColors.rough.g, defaultTerrainColors.rough.b],
     fairwayColor: [defaultTerrainColors.fairway.r, defaultTerrainColors.fairway.g, defaultTerrainColors.fairway.b],

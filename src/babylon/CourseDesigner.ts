@@ -19,6 +19,7 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { CourseData, getCourseById } from '../data/courseData';
 import { BUILT_IN_TEMPLATES } from '../data/shape-templates';
 import { EditorTool } from '../core/terrain-editor-logic';
+import { serializeTopology } from '../core/mesh-topology';
 import {
   CustomCourseData,
   PlacedAsset,
@@ -121,29 +122,10 @@ export class CourseDesigner {
     const templateCourse = getCourseById(courseId);
     if (!templateCourse) return;
 
-    const w = Math.min(this.courseData.width, templateCourse.width);
-    const h = Math.min(this.courseData.height, templateCourse.height);
-
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        this.courseData.layout[y][x] = templateCourse.layout[y][x];
-      }
-    }
-
-    if (templateCourse.vertexElevations) {
-      const meshRes = 2;
-      const tvw = templateCourse.width * meshRes + 1;
-      const tvh = templateCourse.height * meshRes + 1;
-      const cvw = this.courseData.width * meshRes + 1;
-      const cvh = this.courseData.height * meshRes + 1;
-      const mw = Math.min(cvw, tvw);
-      const mh = Math.min(cvh, tvh);
-
-      for (let vy = 0; vy < mh; vy++) {
-        for (let vx = 0; vx < mw; vx++) {
-          this.courseData.vertexElevations[vy][vx] = templateCourse.vertexElevations[vy][vx];
-        }
-      }
+    if (templateCourse.topology) {
+      this.courseData.topology = templateCourse.topology;
+      this.courseData.width = templateCourse.width;
+      this.courseData.height = templateCourse.height;
     }
 
     if (templateCourse.obstacles) {
@@ -670,9 +652,9 @@ export class CourseDesigner {
   }
 
   private getTerrainElevation(worldX: number, worldZ: number): number {
-    const vCoord = this.terrainMeshSystem.worldToVertex(worldX, worldZ);
-    const pos = this.terrainMeshSystem.getVertexPosition(vCoord.vx, vCoord.vy);
-    return pos ? pos.y : 0;
+    const vertexId = this.terrainMeshSystem.findNearestVertexId(worldX, worldZ);
+    if (vertexId === null) return 0;
+    return this.terrainMeshSystem.getVertexElevationById(vertexId) ?? 0;
   }
 
   private updateVertexPositionDisplay(): void {
@@ -708,10 +690,10 @@ export class CourseDesigner {
   }
 
   public save(): void {
-    const vts = this.terrainMeshSystem;
-
-    this.courseData.layout = vts.getLayoutGrid();
-    this.courseData.vertexElevations = vts.getVertexElevationsGrid();
+    const topology = this.terrainMeshSystem.getTopology();
+    if (topology) {
+      this.courseData.topology = serializeTopology(topology);
+    }
     this.courseData.placedAssets = this.assetPlacementSystem.getPlacedAssets();
 
     saveCustomCourse(this.courseData);

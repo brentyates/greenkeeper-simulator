@@ -1,4 +1,4 @@
-import { CellState, calculateHealth, getTerrainMowable, getTerrainWaterable, getTerrainFertilizable } from './terrain';
+import { TerrainType, calculateHealth, getTerrainMowable, getTerrainWaterable, getTerrainFertilizable } from './terrain';
 
 export interface WeatherEffect {
   readonly type: "sunny" | "cloudy" | "rainy" | "stormy";
@@ -6,6 +6,14 @@ export interface WeatherEffect {
 }
 
 export interface GrowthResult {
+  height: number;
+  moisture: number;
+  nutrients: number;
+  health: number;
+}
+
+export interface GrassCell {
+  type: TerrainType;
   height: number;
   moisture: number;
   nutrients: number;
@@ -45,7 +53,7 @@ export function getWeatherMoistureEffect(weather?: WeatherEffect): { gainRate: n
 }
 
 export function simulateGrowth(
-  cell: CellState,
+  cell: GrassCell,
   deltaMinutes: number,
   weather?: WeatherEffect
 ): GrowthResult {
@@ -70,13 +78,12 @@ export function simulateGrowth(
   const newMoisture = Math.min(100, Math.max(0, cell.moisture - moistureLoss + moistureGain));
   const newNutrients = Math.max(0, cell.nutrients - 0.003 * deltaMinutes);
 
-  const updatedCell = {
-    ...cell,
+  const newHealth = calculateHealth({
+    type: cell.type,
     height: newHeight,
     moisture: newMoisture,
-    nutrients: newNutrients
-  };
-  const newHealth = calculateHealth(updatedCell);
+    nutrients: newNutrients,
+  });
 
   return {
     height: newHeight,
@@ -86,7 +93,7 @@ export function simulateGrowth(
   };
 }
 
-export function applyMowing(cell: CellState): CellState | null {
+export function applyMowing(cell: GrassCell): GrassCell | null {
   if (!getTerrainMowable(cell.type)) {
     return null;
   }
@@ -99,7 +106,7 @@ export function applyMowing(cell: CellState): CellState | null {
   return newCell;
 }
 
-export function applyWatering(cell: CellState, amount: number): CellState | null {
+export function applyWatering(cell: GrassCell, amount: number): GrassCell | null {
   if (!getTerrainWaterable(cell.type) && cell.type !== 'bunker') {
     return null;
   }
@@ -117,7 +124,7 @@ export function applyWatering(cell: CellState, amount: number): CellState | null
   return newCell;
 }
 
-export function applyFertilizing(cell: CellState, amount: number, effectiveness: number = 1.0): CellState | null {
+export function applyFertilizing(cell: GrassCell, amount: number, effectiveness: number = 1.0): GrassCell | null {
   if (!getTerrainFertilizable(cell.type)) {
     return null;
   }
@@ -131,7 +138,7 @@ export function applyFertilizing(cell: CellState, amount: number, effectiveness:
   return newCell;
 }
 
-export function getAverageStats(cells: CellState[][]): {
+export function getAverageStats(cells: GrassCell[][]): {
   health: number;
   moisture: number;
   nutrients: number;
@@ -167,7 +174,7 @@ export function getAverageStats(cells: CellState[][]): {
   };
 }
 
-export function countCellsNeedingMowing(cells: CellState[][]): number {
+export function countCellsNeedingMowing(cells: GrassCell[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {
@@ -179,7 +186,7 @@ export function countCellsNeedingMowing(cells: CellState[][]): number {
   return count;
 }
 
-export function countCellsNeedingWater(cells: CellState[][]): number {
+export function countCellsNeedingWater(cells: GrassCell[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {
@@ -191,7 +198,7 @@ export function countCellsNeedingWater(cells: CellState[][]): number {
   return count;
 }
 
-export function countCellsNeedingFertilizer(cells: CellState[][]): number {
+export function countCellsNeedingFertilizer(cells: GrassCell[][]): number {
   let count = 0;
   for (const row of cells) {
     for (const cell of row) {

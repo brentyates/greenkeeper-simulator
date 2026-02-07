@@ -136,7 +136,7 @@ export class BabylonMain {
         isPositionWalkable: (wx, wz) => this.terrainSystem.isPositionWalkable(wx, wz),
         getTerrainSpeedAt: (wx, wz) => this.terrainSystem.getTerrainSpeedAt(wx, wz),
         findFaceAtPosition: (wx, wz) => this.terrainSystem.findFaceAtPosition(wx, wz),
-        mowAt: (gx, gy) => this.terrainSystem.mowAt(gx, gy),
+        mowAt: (wx, wz) => this.terrainSystem.mowAt(wx, wz),
         waterArea: (cx, cy, r, a) => this.terrainSystem.waterArea(cx, cy, r, a),
         fertilizeArea: (cx, cy, r, a, e) => this.terrainSystem.fertilizeArea(cx, cy, r, a, e),
         getResolution: () => this.terrainSystem.getResolution?.() ?? 1,
@@ -287,7 +287,6 @@ export class BabylonMain {
   public saveCurrentGame(): void {
     if (!this.state.currentScenario || !this.state.scenarioManager) return;
 
-    const cells = this.terrainSystem.getAllCells();
     const faceStates = this.terrainSystem.getAllFaceStates();
     const scenarioProgress = this.state.scenarioManager.getProgress();
     const savedState = createSaveState(
@@ -311,7 +310,7 @@ export class BabylonMain {
       scenarioProgress,
       this.state.autonomousState,
       this.state.weatherState,
-      cells,
+      [],
       this.state.irrigationSystem,
       faceStates
     );
@@ -378,7 +377,7 @@ export class BabylonMain {
     if (saved.faceStates && saved.faceStates.length > 0) {
       this.terrainSystem.restoreFaceStates(deserializeFaceStates(saved.faceStates));
     } else if (saved.cells && saved.cells.length > 0) {
-      this.terrainSystem.restoreCells(saved.cells);
+      (this.terrainSystem as any).restoreCells?.(saved.cells);
     }
 
     if (saved.irrigationSystem) {
