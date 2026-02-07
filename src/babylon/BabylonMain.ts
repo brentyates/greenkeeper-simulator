@@ -167,9 +167,9 @@ export class BabylonMain {
       getCourseWidth: () => this.state.currentCourse.width,
       getCourseHeight: () => this.state.currentCourse.height,
       getPlayerVisual: () => this.playerController.getPlayerVisual(),
-      getPlayerGridPosition: () => {
+      getPlayerWorldPosition: () => {
         const p = this.playerController.getPlayer();
-        return { gridX: p.gridX, gridY: p.gridY };
+        return { worldX: p.gridX, worldZ: p.gridY };
       },
       setPlayerVisualEnabled: (enabled) => {
         const pv = this.playerController.getPlayerVisual();
@@ -177,7 +177,7 @@ export class BabylonMain {
       },
       setEmployeeVisualSystemVisible: (visible) => this.employeeVisualSystem?.setVisible(visible),
       snapEmployeesToTerrain: () => this.employeeVisualSystem?.snapAllToTerrain(),
-      snapEntityToTerrain: (visual, gx, gy) => this.snapEntityToTerrain(visual, gx, gy),
+      snapEntityToTerrain: (visual, worldX, worldZ) => this.snapEntityToTerrain(visual, worldX, worldZ),
       snapAssetsToTerrain: () => this.snapAssetsToTerrain(),
     });
 
@@ -569,14 +569,14 @@ export class BabylonMain {
     }
   }
 
-  private snapEntityToTerrain(visual: EntityVisualState, gridX: number, gridY: number): void {
-    const elevation = this.terrainSystem.getElevationAt(gridX, gridY, 0);
-    const worldPos = gridTo3D(gridX + 0.5, gridY + 0.5, elevation);
+  private snapEntityToTerrain(visual: EntityVisualState, worldX: number, worldZ: number): void {
+    const elevation = this.terrainSystem.getElevationAt(worldX, worldZ, 0);
+    const worldPos = gridTo3D(worldX + 0.5, worldZ + 0.5, elevation);
     visual.container.position.copyFrom(worldPos);
-    visual.lastGridX = gridX;
-    visual.lastGridY = gridY;
-    visual.targetGridX = gridX;
-    visual.targetGridY = gridY;
+    visual.lastGridX = worldX;
+    visual.lastGridY = worldZ;
+    visual.targetGridX = worldX;
+    visual.targetGridY = worldZ;
     visual.visualProgress = 1;
   }
 

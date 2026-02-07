@@ -405,8 +405,6 @@ function createMockSystems(): GameSystems {
       setOverlayMode: vi.fn(),
       getElevationAt: vi.fn(() => 1.5),
       setElevationAt: vi.fn(),
-      setCellState: vi.fn(),
-      setAllCellsState: vi.fn(),
       setAllFaceStates: vi.fn(),
       getTerrainTypeAt: vi.fn(() => "fairway"),
       setTerrainTypeAt: vi.fn(),

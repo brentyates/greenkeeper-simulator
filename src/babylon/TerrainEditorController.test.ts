@@ -165,7 +165,7 @@ function createMockContext(overrides?: {
     getCourseWidth: vi.fn(() => 20),
     getCourseHeight: vi.fn(() => 20),
     getPlayerVisual: vi.fn(() => playerVisual) as any,
-    getPlayerGridPosition: vi.fn(() => ({ gridX: 5, gridY: 5 })),
+    getPlayerWorldPosition: vi.fn(() => ({ worldX: 5, worldZ: 5 })),
     setPlayerVisualEnabled: vi.fn(),
     setEmployeeVisualSystemVisible: vi.fn(),
     snapEmployeesToTerrain: vi.fn(),

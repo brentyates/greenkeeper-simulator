@@ -22,11 +22,11 @@ export interface TerrainEditorContext {
   getCourseWidth(): number;
   getCourseHeight(): number;
   getPlayerVisual(): EntityVisualState | null;
-  getPlayerGridPosition(): { gridX: number; gridY: number };
+  getPlayerWorldPosition(): { worldX: number; worldZ: number };
   setPlayerVisualEnabled(enabled: boolean): void;
   setEmployeeVisualSystemVisible(visible: boolean): void;
   snapEmployeesToTerrain(): void;
-  snapEntityToTerrain(visual: EntityVisualState, gridX: number, gridY: number): void;
+  snapEntityToTerrain(visual: EntityVisualState, worldX: number, worldZ: number): void;
   snapAssetsToTerrain(): void;
 }
 
@@ -156,8 +156,8 @@ export class TerrainEditorController {
         const playerVisual = this.ctx.getPlayerVisual();
         if (playerVisual) {
           this.ctx.setPlayerVisualEnabled(true);
-          const pos = this.ctx.getPlayerGridPosition();
-          this.ctx.snapEntityToTerrain(playerVisual, pos.gridX, pos.gridY);
+          const pos = this.ctx.getPlayerWorldPosition();
+          this.ctx.snapEntityToTerrain(playerVisual, pos.worldX, pos.worldZ);
           this.ctx.setCameraTarget(playerVisual.container.position);
         }
         this.ctx.setEmployeeVisualSystemVisible(true);
