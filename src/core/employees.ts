@@ -2,12 +2,12 @@
  * Employee System - Staff management for the golf course
  *
  * Similar to RollerCoaster Tycoon's staff system:
- * - Different employee types (groundskeepers, mechanics, managers)
+ * - Groundskeepers maintain the course (mowing, watering, fertilizing)
+ * - Mechanics keep equipment running and repair infrastructure
+ * - Every employee is visually present on the course doing work
  * - Hire/fire employees
  * - Wages and payroll
  * - Employee skills and experience
- * - Work assignments and productivity
- * - Work assignments and productivity
  */
 
 // ============================================================================
@@ -16,10 +16,7 @@
 
 export type EmployeeRole =
   | "groundskeeper"
-  | "mechanic"
-  | "pro_shop_staff"
-  | "manager"
-  | "caddy";
+  | "mechanic";
 
 export type SkillLevel = "novice" | "trained" | "experienced" | "expert";
 
@@ -66,54 +63,6 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
       "Reduces equipment repair costs",
       "Faster equipment turnaround",
       "Extends equipment lifespan"
-    ]
-  },
-  pro_shop_staff: {
-    id: "pro_shop_staff",
-    name: "Pro Shop Staff",
-    icon: "🏌️",
-    description: "The face of your golf course. Pro shop staff handle check-ins, sell merchandise, and provide customer service to golfers.",
-    duties: [
-      "Check in golfers",
-      "Sell merchandise and rentals",
-      "Answer customer inquiries"
-    ],
-    benefits: [
-      "Increased merchandise revenue",
-      "Better customer satisfaction",
-      "Faster check-in times"
-    ]
-  },
-  manager: {
-    id: "manager",
-    name: "Manager",
-    icon: "📋",
-    description: "Leadership that makes a difference. Managers boost the efficiency of all other employees and help coordinate daily operations.",
-    duties: [
-      "Supervise other employees",
-      "Coordinate work schedules",
-      "Handle administrative tasks"
-    ],
-    benefits: [
-      "+15% efficiency for all staff",
-      "Reduced employee fatigue",
-      "Better crew coordination"
-    ]
-  },
-  caddy: {
-    id: "caddy",
-    name: "Caddy",
-    icon: "🎒",
-    description: "Personal assistance for golfers. Caddies carry bags, offer course advice, and enhance the overall golfing experience.",
-    duties: [
-      "Carry golfer equipment",
-      "Provide course knowledge",
-      "Assist with club selection"
-    ],
-    benefits: [
-      "Higher golfer satisfaction",
-      "Increased tips revenue",
-      "Premium service offering"
     ]
   }
 };
@@ -217,33 +166,6 @@ export const EMPLOYEE_CONFIGS: Record<EmployeeRole, EmployeeConfig> = {
     breakThreshold: 75,
     fatigueRecoveryRate: 1.5,
     fatigueAccrualRate: 0.4
-  },
-  pro_shop_staff: {
-    baseWage: 10,
-    wageMultipliers: { novice: 1.0, trained: 1.2, experienced: 1.4, expert: 1.7 },
-    baseEfficiency: 1.0,
-    experienceToLevel: 800,
-    breakThreshold: 70,
-    fatigueRecoveryRate: 2.5,
-    fatigueAccrualRate: 0.3
-  },
-  manager: {
-    baseWage: 25,
-    wageMultipliers: { novice: 1.0, trained: 1.4, experienced: 1.8, expert: 2.5 },
-    baseEfficiency: 1.2,
-    experienceToLevel: 2000,
-    breakThreshold: 90,
-    fatigueRecoveryRate: 1.0,
-    fatigueAccrualRate: 0.25
-  },
-  caddy: {
-    baseWage: 8,
-    wageMultipliers: { novice: 1.0, trained: 1.15, experienced: 1.35, expert: 1.6 },
-    baseEfficiency: 1.0,
-    experienceToLevel: 600,
-    breakThreshold: 65,
-    fatigueRecoveryRate: 3.0,
-    fatigueAccrualRate: 0.6
   }
 };
 
@@ -406,8 +328,7 @@ export function generateHiringPool(
 ): HiringPool {
   const candidates: Employee[] = [];
   const roles: EmployeeRole[] = [
-    "groundskeeper", "groundskeeper", "mechanic",
-    "pro_shop_staff", "caddy", "manager"
+    "groundskeeper", "groundskeeper", "groundskeeper", "mechanic", "mechanic"
   ];
 
   const skillLevels: SkillLevel[] = ["novice", "novice", "novice", "trained", "experienced"];
@@ -549,25 +470,6 @@ export function awardExperience(
   };
 }
 
-export function getManagerBonus(roster: EmployeeRoster): number {
-  const managers = getEmployeesByRole(roster, "manager");
-  if (managers.length === 0) return 1.0;
-
-  // Each working manager provides a bonus, diminishing returns
-  const workingManagers = managers.filter(m => m.status === "working");
-  if (workingManagers.length === 0) return 1.0;
-
-  let totalBonus = 0;
-  for (let i = 0; i < workingManagers.length; i++) {
-    const manager = workingManagers[i];
-    const managerEfficiency = calculateEffectiveEfficiency(manager);
-    // First manager: full bonus, subsequent managers: diminishing
-    const diminishingFactor = 1 / (i + 1);
-    totalBonus += 0.1 * managerEfficiency * diminishingFactor;
-  }
-
-  return 1 + totalBonus;
-}
 
 // ============================================================================
 // State Transformation Functions
@@ -847,9 +749,6 @@ export function getRoleName(role: EmployeeRole): string {
   const names: Record<EmployeeRole, string> = {
     groundskeeper: "Groundskeeper",
     mechanic: "Mechanic",
-    pro_shop_staff: "Pro Shop Staff",
-    manager: "Manager",
-    caddy: "Caddy"
   };
   return names[role];
 }
@@ -920,9 +819,7 @@ function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
   // Default weighted role distribution
   const roles: EmployeeRole[] = [
     'groundskeeper', 'groundskeeper', 'groundskeeper',  // Most common
-    'mechanic',
-    'pro_shop_staff', 'caddy',
-    'manager'  // Least common
+    'mechanic', 'mechanic',
   ];
 
   // If there's a job posting, boost chance of that role

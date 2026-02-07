@@ -87,7 +87,6 @@ Time to Complete (game time) = Research Points / Points per Minute
 - Commercial Riding Mower
 - Automated Sprinkler System
 - Premium Fertilizer
-- Basic Staff Training
 
 ### Tier 4: Advanced ($1,500-2,500 points)
 - Fairway Mower
@@ -95,7 +94,6 @@ Time to Complete (game time) = Research Points / Points per Minute
 - Smart Irrigation System
 - Slow-Release Fertilizer
 - Bunker Rake Machine
-- Advanced Staff Training
 
 ### Tier 5: Elite ($3,000-8,000 points)
 - Precision Greens Complex

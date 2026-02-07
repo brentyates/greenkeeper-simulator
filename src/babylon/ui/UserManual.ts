@@ -291,7 +291,7 @@ export class UserManual {
     sectionContainer.addControl(sectionHeader);
 
     const roleOrder: EmployeeRole[] = [
-      'groundskeeper', 'mechanic', 'pro_shop_staff', 'manager', 'caddy'
+      'groundskeeper', 'mechanic'
     ];
 
     for (const roleId of roleOrder) {

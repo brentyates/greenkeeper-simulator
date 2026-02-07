@@ -25,9 +25,6 @@ Employees exist to serve **course condition**. They let the player maintain a pr
 |------|------------------|-----------|--------------|
 | Groundskeeper | Mowing, general maintenance | $12/hr | Start |
 | Mechanic | Equipment repair, maintenance | $18/hr | 3 equipment |
-| Pro Shop Staff | Customer service, sales | $10/hr | Pro shop built |
-| Caddy | Golfer assistance | $8/hr | 4-star prestige |
-| Manager | Staff efficiency boost | $25/hr | 5+ employees |
 
 ### Role Details
 
@@ -72,60 +69,6 @@ interface MechanicCapabilities {
 - Without mechanic: Equipment breaks more often, longer repair times
 - With mechanic: Preventive maintenance, faster repairs, breakdown prevention
 
-#### Pro Shop Staff
-Customer-facing revenue generation.
-
-```typescript
-interface ProShopCapabilities {
-  canProcessGreenFees: true;
-  canSellMerchandise: true;
-  canBookTeeTimes: true;
-  canHandleComplaints: true;
-}
-```
-
-**Revenue impact:**
-- Increases merchandise sales
-- Improves golfer satisfaction
-- Enables tee time booking system
-- Handles customer issues (prevents satisfaction drops)
-
-#### Caddy
-Enhances golfer experience.
-
-```typescript
-interface CaddyCapabilities {
-  canAssistGolfers: true;
-  canProvideTips: true;
-  canCarryBags: true;
-  canCleanBalls: true;
-}
-```
-
-**Benefits:**
-- +15% golfer satisfaction when assigned
-- Generates tips (additional revenue)
-- Premium service for VIP golfers
-- Required for certain tournament tiers
-
-#### Manager
-Force multiplier for other staff.
-
-```typescript
-interface ManagerCapabilities {
-  canSuperviseStaff: true;
-  canOptimizeRoutes: true;
-  canHandleScheduling: true;
-  canTrainEmployees: true;
-}
-```
-
-**Manager bonus:**
-- First manager: +15% efficiency to all supervised staff
-- Additional managers: Diminishing returns (+8%, +4%, +2%)
-- Training speed bonus: +25% experience gain for staff
-- Fatigue reduction: -15% accrual (diminishing with additional managers)
-
 ---
 
 ## Skill System
@@ -165,10 +108,7 @@ interface ExperienceConfig {
 
 const EXPERIENCE_REQUIREMENTS = {
   groundskeeper: 1000,  // Points to level up
-  mechanic: 1500,
-  pro_shop_staff: 800,
-  manager: 2000,
-  caddy: 600
+  mechanic: 1500
 };
 ```
 
@@ -375,8 +315,8 @@ const FATIGUE_BY_ROLE: Record<EmployeeRole, FatigueConfig> = {
     recoveryRate: 1.5,
     breakThreshold: 75,
     returnThreshold: 20
-  },
-  // ... etc
+  }
+  // Only groundskeeper and mechanic roles exist
 };
 ```
 
@@ -470,9 +410,6 @@ function calculateHourlyWage(
 |------|--------|---------|-------------|--------|
 | Groundskeeper | $12/hr | $15/hr | $18/hr | $24/hr |
 | Mechanic | $18/hr | $23/hr | $29/hr | $40/hr |
-| Pro Shop | $10/hr | $12/hr | $14/hr | $17/hr |
-| Caddy | $8/hr | $9/hr | $11/hr | $13/hr |
-| Manager | $25/hr | $35/hr | $45/hr | $63/hr |
 
 ### Payroll Processing
 
@@ -522,9 +459,8 @@ function gainExperience(
 
   const baseRate = 1; // Experience per minute
   const efficiencyBonus = employee.skills.efficiency;
-  const managerBonus = hasManager ? 1.25 : 1.0;
 
-  const experience = baseRate * efficiencyBonus * managerBonus * deltaMinutes;
+  const experience = baseRate * efficiencyBonus * deltaMinutes;
 
   return {
     ...employee,
@@ -556,22 +492,6 @@ function checkPromotion(employee: Employee): Employee | null {
   return null;
 }
 ```
-
----
-
-## Manager System
-
-### Manager Bonuses
-
-Managers provide passive bonuses to all other employees (see `employee-roles.ts: calculateManagerBonuses()`):
-
-| Bonus | First Manager | Additional Managers |
-|-------|--------------|-------------------|
-| Employee efficiency | +15% | +8%, +4%, +2% (diminishing) |
-| Experience gain rate | +25% | +12%, +6% (diminishing) |
-| Fatigue reduction | -15% accrual | -8%, -4% (diminishing) |
-
-Managers are not field workers -- their value is entirely passive through team-wide multipliers.
 
 ---
 
@@ -704,9 +624,6 @@ interface EmployeeVisualState {
 |------|-------------|-------------------|
 | Groundskeeper | character.employee | Push mower, rake, spreader meshes |
 | Mechanic | character.employee | Toolbox mesh |
-| Pro Shop Staff | character.employee | None |
-| Caddy | character.employee | Golf bag mesh |
-| Manager | character.employee | Clipboard mesh |
 
 ### Visual Behavior
 
@@ -804,10 +721,7 @@ interface EmployeeMovement {
 
 const EMPLOYEE_MOVE_SPEEDS: Record<EmployeeRole, number> = {
   groundskeeper: 3.0,  // 3 tiles per minute
-  mechanic: 2.0,
-  pro_shop_staff: 2.0,
-  manager: 2.5,
-  caddy: 4.0  // Faster for keeping up with golfers
+  mechanic: 2.0
 };
 ```
 
@@ -909,9 +823,8 @@ interface CourseArea {
 4. Training facility
 
 ### Phase 5: Advanced Features
-1. Manager bonuses
-2. Role-specific work effects (pro shop revenue, caddy tips, mechanic savings)
-3. Robot-employee dependency (mechanics repair robots)
+1. Additional visual roles when needed
+2. Robot-employee dependency (mechanics repair robots)
 
 ---
 
@@ -921,7 +834,7 @@ The Employee System enables the core gameplay progression:
 
 1. **Solo Start**: Player does everything, learns every job
 2. **First Hires**: Multiply capability, accept lower efficiency
-3. **Team Building**: Specialize roles, optimize coverage
+3. **Team Building**: Hire groundskeepers and mechanics, optimize coverage
 4. **Automation**: Robots supplement employees, mechanics become critical
 5. **Delegation**: Systems run themselves, player focuses on course design
 

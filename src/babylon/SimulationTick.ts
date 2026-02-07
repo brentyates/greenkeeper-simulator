@@ -21,7 +21,6 @@ import {
   tickEmployees as coreTickEmployees,
   awardExperience,
   tickApplications,
-  getManagerBonus,
 } from "../core/employees";
 import {
   tickEmployeeWork,
@@ -63,11 +62,7 @@ import {
 } from "../core/tee-revenue";
 import {
   tickAutonomousEquipment as coreTickAutonomousEquipment,
-  countBrokenRobots,
 } from "../core/autonomous-equipment";
-import {
-  calculateAllRoleWork,
-} from "../core/employee-roles";
 import {
   tickWeather as coreTickWeather,
   getWeatherDescription,
@@ -220,33 +215,6 @@ function processEndOfDay(state: GameState, systems: SimulationSystems, timestamp
     state.dailyStats.expenses.utilities += dailyUtilitiesCost;
   }
 
-  // Calculate role-specific work effects (daily)
-  if (state.dailyStats.golfersServed > 0) {
-    const roleWork = calculateAllRoleWork(state.employeeRoster, {
-      brokenEquipmentCount: 0,
-      leakingPipeCount: state.irrigationSystem.pipes.filter(p => p.isLeaking).length,
-      brokenRobotCount: countBrokenRobots(state.autonomousState),
-      dailyGolferCount: state.dailyStats.golfersServed,
-      dailyGolferGroups: Math.ceil(state.dailyStats.golfersServed / 4),
-      avgGreenFee: state.greenFees.weekday18Holes,
-    });
-
-    const roleRevenue =
-      roleWork.proShop.merchRevenue +
-      roleWork.caddy.tipRevenue +
-      roleWork.mechanic.maintenanceSavings;
-    if (roleRevenue > 0) {
-      state.economyState = addIncome(
-        state.economyState,
-        roleRevenue,
-        "other_income",
-        "Employee role work",
-        timestamp
-      );
-      state.dailyStats.revenue.other += roleRevenue;
-    }
-  }
-
   const dailySnapshot = takeDailySnapshot(
     state.prestigeState.currentConditions,
     state.gameDay
@@ -364,7 +332,7 @@ function tickGolferSimulation(
   timestamp: number
 ): void {
   const courseStats = systems.terrainSystem.getCourseStats();
-  const staffQuality = getManagerBonus(state.employeeRoster) * 10 + 50;
+  const staffQuality = 60; // Base service quality (no manager role currently)
   const tickResult = coreTickGolfers(
     state.golferPool,
     gameMinutes,

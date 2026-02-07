@@ -31,7 +31,6 @@ vi.mock("../core/employees", () => ({
   tickEmployees: vi.fn((roster: EmployeeRoster) => ({ roster, promotions: [], breaksTaken: [] })),
   awardExperience: vi.fn((roster: EmployeeRoster) => roster),
   tickApplications: vi.fn((state: ApplicationState) => ({ state, newApplicant: null, expiredPostings: [] })),
-  getManagerBonus: vi.fn(() => 1.0),
 }));
 
 vi.mock("../core/employee-work", () => ({
@@ -102,7 +101,6 @@ import {
   tickEmployees as coreTickEmployees,
   awardExperience,
   tickApplications,
-  getManagerBonus,
 } from "../core/employees";
 import {
   tickEmployeeWork,
@@ -793,7 +791,6 @@ describe("SimulationTick", () => {
       const { state, systems } = createMockContext();
       runSimulationTick(state, systems, 16);
       expect(coreTickGolfers).toHaveBeenCalled();
-      expect(getManagerBonus).toHaveBeenCalled();
     });
 
     it("processes departures with tips", () => {
