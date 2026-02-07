@@ -99,7 +99,6 @@ export class TerrainMeshSystem {
   private faceDataTexture: RawTexture | null = null;
   private overlayTexture: RawTexture | null = null;
   private defaultOverlayTexture: RawTexture | null = null;
-  private cliffMeshes: Mesh[] = [];
   private gridLinesMesh: Mesh | null = null;
 
   private faceStates: Map<number, FaceState> = new Map();
@@ -110,7 +109,6 @@ export class TerrainMeshSystem {
 
   private shapesDirty: boolean = false;
   private meshDirty: boolean = false;
-  private cliffMaterial: StandardMaterial | null = null;
   private faceHighlightMaterial: StandardMaterial | null = null;
 
   private overlayMode: OverlayMode = "normal";
@@ -1426,7 +1424,6 @@ export class TerrainMeshSystem {
     this.rebuildFaceSpatialIndex();
     this.syncFaceStatesWithTopology();
     this.createTerrainMeshFromTopology();
-    this.createCliffFaces();
     if (this.options.enableGridLines) {
       this.createGridLines();
     }
@@ -1503,114 +1500,6 @@ export class TerrainMeshSystem {
         });
       }
     }
-  }
-
-  // ============================================
-  // Mesh Creation
-  // ============================================
-
-  private createCliffFaces(): void {
-    for (const mesh of this.cliffMeshes) {
-      mesh.dispose();
-    }
-    this.cliffMeshes = [];
-
-    const cliffDepth = 1.5;
-
-    if (!this.cliffMaterial) {
-      this.cliffMaterial = new StandardMaterial("cliffMaterial", this.scene);
-      this.cliffMaterial.diffuseColor = new Color3(0.6, 0.5, 0.35);
-      this.cliffMaterial.specularColor = new Color3(0.1, 0.1, 0.1);
-      this.cliffMaterial.backFaceCulling = false;
-    }
-
-    const rightCliff = this.createEdgeCliff("right", cliffDepth);
-    rightCliff.material = this.cliffMaterial;
-    this.cliffMeshes.push(rightCliff);
-
-    const bottomCliff = this.createEdgeCliff("bottom", cliffDepth);
-    bottomCliff.material = this.cliffMaterial;
-    this.cliffMeshes.push(bottomCliff);
-  }
-
-  private createEdgeCliff(side: "right" | "bottom", cliffDepth: number): Mesh {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const normals: number[] = [];
-    const colors: number[] = [];
-
-    const topColor = side === "right"
-      ? new Color4(0.72, 0.58, 0.42, 1)
-      : new Color4(0.58, 0.48, 0.35, 1);
-    const bottomColor = side === "right"
-      ? new Color4(0.52, 0.42, 0.3, 1)
-      : new Color4(0.42, 0.35, 0.25, 1);
-
-    const segments = 20;
-
-    if (side === "right") {
-      const x = this.worldWidth;
-      for (let i = 0; i < segments; i++) {
-        const y1 = (i / segments) * this.worldHeight;
-        const y2 = ((i + 1) / segments) * this.worldHeight;
-
-        const elev1 = this.getInterpolatedElevation(x - 0.01, y1) * HEIGHT_UNIT;
-        const elev2 = this.getInterpolatedElevation(x - 0.01, y2) * HEIGHT_UNIT;
-
-        const baseIdx = positions.length / 3;
-
-        positions.push(x, elev1, y1);
-        positions.push(x, elev2, y2);
-        positions.push(x, elev2 - cliffDepth, y2);
-        positions.push(x, elev1 - cliffDepth, y1);
-
-        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-
-        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-      }
-    } else {
-      const y = this.worldHeight;
-      for (let i = 0; i < segments; i++) {
-        const x1 = (i / segments) * this.worldWidth;
-        const x2 = ((i + 1) / segments) * this.worldWidth;
-
-        const elev1 = this.getInterpolatedElevation(x1, y - 0.01) * HEIGHT_UNIT;
-        const elev2 = this.getInterpolatedElevation(x2, y - 0.01) * HEIGHT_UNIT;
-
-        const baseIdx = positions.length / 3;
-
-        positions.push(x1, elev1, y);
-        positions.push(x2, elev2, y);
-        positions.push(x2, elev2 - cliffDepth, y);
-        positions.push(x1, elev1 - cliffDepth, y);
-
-        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-        colors.push(topColor.r, topColor.g, topColor.b, topColor.a);
-        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-        colors.push(bottomColor.r, bottomColor.g, bottomColor.b, bottomColor.a);
-
-        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-      }
-    }
-
-    VertexData.ComputeNormals(positions, indices, normals);
-
-    const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.indices = indices;
-    vertexData.normals = normals;
-    vertexData.colors = colors;
-
-    const mesh = new Mesh(`edgeCliff_${side}`, this.scene);
-    vertexData.applyToMesh(mesh);
-    mesh.useVertexColors = true;
-
-    return mesh;
   }
 
   private createGridLines(): void {
@@ -2726,11 +2615,6 @@ export class TerrainMeshSystem {
       this.defaultOverlayTexture.dispose();
       this.defaultOverlayTexture = null;
     }
-
-    for (const mesh of this.cliffMeshes) {
-      mesh.dispose();
-    }
-    this.cliffMeshes = [];
 
     if (this.gridLinesMesh) {
       this.gridLinesMesh.dispose();

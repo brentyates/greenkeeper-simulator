@@ -4,7 +4,6 @@
  * Handles all terrain tile rendering including:
  * - Isometric tile mesh creation with slope support (corner heights)
  * - Grid line rendering that follows terrain elevation
- * - Cliff face rendering for elevation changes
  * - Terrain type coloring (fairway, rough, green, bunker, water)
  * - Mowing stripe patterns on fairways
  * - Overlay modes (moisture, nutrients, height)
@@ -52,7 +51,6 @@ export class GrassSystem {
   private courseData: CourseData;
   private cells: CellState[][] = [];
   private tileMeshes: Map<string, Mesh> = new Map();
-  private cliffMeshes: Map<string, Mesh> = new Map();
   private waterTiles: Set<string> = new Set();
   private gridLinesMesh: LinesMesh | null = null;
   private overlayMode: OverlayMode = "normal";
@@ -152,217 +150,6 @@ export class GrassSystem {
       }
     }
     this.createGridLines();
-    this.createAllCliffFaces();
-  }
-
-  private createAllCliffFaces(): void {
-    const { width, height } = this.courseData;
-
-    this.createEdgeCliffStrip("right", width, height);
-    this.createEdgeCliffStrip("bottom", width, height);
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        this.createCliffFacesForCell(x, y);
-      }
-    }
-  }
-
-  private createEdgeCliffStrip(
-    side: "right" | "bottom",
-    width: number,
-    height: number
-  ): void {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const colors: number[] = [];
-    const cliffDepth = 1.5;
-
-    const topColor =
-      side === "right"
-        ? new Color3(0.72, 0.58, 0.42)
-        : new Color3(0.58, 0.48, 0.35);
-    const bottomColor =
-      side === "right"
-        ? new Color3(0.52, 0.42, 0.3)
-        : new Color3(0.42, 0.35, 0.26);
-
-    if (side === "right") {
-      for (let y = 0; y < height; y++) {
-        const x = width - 1;
-        const cell = this.cells[y][x];
-        const corners = this.getCornerHeights(x, y, cell.elevation);
-        const ne = gridTo3D(x + 1, y, corners.ne);
-        const se = gridTo3D(x + 1, y + 1, corners.se);
-
-        const baseIdx = positions.length / 3;
-        positions.push(ne.x, ne.y, ne.z);
-        positions.push(se.x, se.y, se.z);
-        positions.push(se.x, se.y - cliffDepth, se.z);
-        positions.push(ne.x, ne.y - cliffDepth, ne.z);
-
-        for (let i = 0; i < 2; i++)
-          colors.push(topColor.r, topColor.g, topColor.b, 1);
-        for (let i = 0; i < 2; i++)
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
-
-        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-      }
-    } else {
-      for (let x = 0; x < width; x++) {
-        const y = height - 1;
-        const cell = this.cells[y][x];
-        const corners = this.getCornerHeights(x, y, cell.elevation);
-        const sw = gridTo3D(x, y + 1, corners.sw);
-        const se = gridTo3D(x + 1, y + 1, corners.se);
-
-        const baseIdx = positions.length / 3;
-        positions.push(sw.x, sw.y, sw.z);
-        positions.push(se.x, se.y, se.z);
-        positions.push(se.x, se.y - cliffDepth, se.z);
-        positions.push(sw.x, sw.y - cliffDepth, sw.z);
-
-        for (let i = 0; i < 2; i++)
-          colors.push(topColor.r, topColor.g, topColor.b, 1);
-        for (let i = 0; i < 2; i++)
-          colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
-
-        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
-      }
-    }
-
-    const normals: number[] = [];
-    VertexData.ComputeNormals(positions, indices, normals);
-
-    const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.indices = indices;
-    vertexData.normals = normals;
-    vertexData.colors = colors;
-
-    const mesh = new Mesh(`edgeCliff_${side}`, this.scene);
-    vertexData.applyToMesh(mesh);
-    mesh.material = this.tileMaterial;
-    mesh.useVertexColors = true;
-
-    this.cliffMeshes.set(`edge_${side}`, mesh);
-  }
-
-  private createCliffFacesForCell(x: number, y: number): void {
-    const cell = this.cells[y][x];
-    const corners = this.getCornerHeights(x, y, cell.elevation);
-
-    const ne = gridTo3D(x + 1, y, corners.ne);
-    const se = gridTo3D(x + 1, y + 1, corners.se);
-    const sw = gridTo3D(x, y + 1, corners.sw);
-
-    const rightNeighbor = this.cells[y]?.[x + 1];
-    const bottomNeighbor = this.cells[y + 1]?.[x];
-
-    if (rightNeighbor) {
-      const neighborCorners = this.getCornerHeights(
-        x + 1,
-        y,
-        rightNeighbor.elevation
-      );
-      const neighborNw = gridTo3D(x + 1, y, neighborCorners.nw);
-      const neighborSw = gridTo3D(x + 1, y + 1, neighborCorners.sw);
-
-      const heightDiff1 = ne.y - neighborNw.y;
-      const heightDiff2 = se.y - neighborSw.y;
-
-      if (Math.abs(heightDiff1) > 0.01 || Math.abs(heightDiff2) > 0.01) {
-        const mesh = this.createCliffFace3D(
-          ne,
-          se,
-          neighborNw,
-          neighborSw,
-          `cliff_${x}_${y}_e`,
-          "right"
-        );
-        this.cliffMeshes.set(`cliff_${x}_${y}_e`, mesh);
-      }
-    }
-
-    if (bottomNeighbor) {
-      const neighborCorners = this.getCornerHeights(
-        x,
-        y + 1,
-        bottomNeighbor.elevation
-      );
-      const neighborNe = gridTo3D(x + 1, y + 1, neighborCorners.ne);
-      const neighborNw = gridTo3D(x, y + 1, neighborCorners.nw);
-
-      const heightDiff1 = se.y - neighborNe.y;
-      const heightDiff2 = sw.y - neighborNw.y;
-
-      if (Math.abs(heightDiff1) > 0.01 || Math.abs(heightDiff2) > 0.01) {
-        const mesh = this.createCliffFace3D(
-          se,
-          sw,
-          neighborNe,
-          neighborNw,
-          `cliff_${x}_${y}_s`,
-          "bottom"
-        );
-        this.cliffMeshes.set(`cliff_${x}_${y}_s`, mesh);
-      }
-    }
-  }
-
-  private createCliffFace3D(
-    top1: Vector3,
-    top2: Vector3,
-    bot1: Vector3,
-    bot2: Vector3,
-    name: string,
-    side: "right" | "bottom"
-  ): Mesh {
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const normals: number[] = [];
-    const colors: number[] = [];
-
-    const topColor =
-      side === "right"
-        ? new Color3(0.72, 0.58, 0.42)
-        : new Color3(0.58, 0.48, 0.35);
-    const bottomColor =
-      side === "right"
-        ? new Color3(0.52, 0.42, 0.3)
-        : new Color3(0.42, 0.35, 0.26);
-
-    positions.push(top1.x, top1.y, top1.z);
-    positions.push(top2.x, top2.y, top2.z);
-    positions.push(bot2.x, bot2.y, bot2.z);
-    positions.push(bot1.x, bot1.y, bot1.z);
-
-    indices.push(0, 1, 2);
-    indices.push(0, 2, 3);
-
-    colors.push(topColor.r, topColor.g, topColor.b, 1);
-    colors.push(topColor.r, topColor.g, topColor.b, 1);
-    colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
-    colors.push(bottomColor.r, bottomColor.g, bottomColor.b, 1);
-
-    VertexData.ComputeNormals(positions, indices, normals);
-
-    const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.indices = indices;
-    vertexData.normals = normals;
-    vertexData.colors = colors;
-
-    const mesh = new Mesh(name, this.scene);
-    vertexData.applyToMesh(mesh);
-    mesh.material = this.tileMaterial;
-    mesh.useVertexColors = true;
-    mesh.alwaysSelectAsActiveMesh = true;
-    mesh.freezeWorldMatrix();
-
-    return mesh;
   }
 
   private createGridLines(): void {
@@ -1435,26 +1222,11 @@ export class GrassSystem {
         const ny = y + dy;
         if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
           this.updateTileVisual(nx, ny);
-          this.rebuildCliffFacesForCell(nx, ny);
         }
       }
     }
 
     this.createGridLines();
-  }
-
-  private rebuildCliffFacesForCell(x: number, y: number): void {
-    const directions = ["n", "e", "s", "w"];
-    for (const dir of directions) {
-      const key = `cliff_${x}_${y}_${dir}`;
-      const oldMesh = this.cliffMeshes.get(key);
-      if (oldMesh) {
-        oldMesh.dispose();
-        this.cliffMeshes.delete(key);
-      }
-    }
-
-    this.createCliffFacesForCell(x, y);
   }
 
   public getLayoutGrid(): number[][] {
@@ -1525,10 +1297,6 @@ export class GrassSystem {
       mesh.dispose();
     }
     this.tileMeshes.clear();
-    for (const mesh of this.cliffMeshes.values()) {
-      mesh.dispose();
-    }
-    this.cliffMeshes.clear();
     this.dirtyTiles.clear();
     if (this.gridLinesMesh) {
       this.gridLinesMesh.dispose();
