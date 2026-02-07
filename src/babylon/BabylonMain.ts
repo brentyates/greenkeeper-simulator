@@ -505,14 +505,11 @@ export class BabylonMain {
     const { obstacles } = this.state.currentCourse;
     if (!obstacles) return;
 
-    const res = this.terrainMeshSystem.getMeshResolution();
     for (const obs of obstacles) {
-      const worldX = obs.x / res;
-      const worldZ = obs.y / res;
-      const elevation = this.terrainSystem.getElevationAt(worldX, worldZ);
+      const elevation = this.terrainSystem.getElevationAt(obs.x, obs.y);
 
       if (obs.type === 1 || obs.type === 2) {
-        this.createTree(worldX, elevation * HEIGHT_UNIT, worldZ, obs.type === 2);
+        this.createTree(obs.x, elevation * HEIGHT_UNIT, obs.y, obs.type === 2);
       }
     }
   }
@@ -538,15 +535,12 @@ export class BabylonMain {
 
     for (let i = 0; i < REFILL_STATIONS.length; i++) {
       const station = REFILL_STATIONS[i];
-      const sRes = this.terrainMeshSystem.getMeshResolution();
-      const sWorldX = station.x / sRes;
-      const sWorldZ = station.y / sRes;
-      const sElevation = this.terrainSystem.getElevationAt(sWorldX, sWorldZ);
+      const elevation = this.terrainSystem.getElevationAt(station.x, station.y);
 
       loadAsset(scene, "building.refill.station")
         .then((loadedAsset) => {
           const instance = createInstance(scene, loadedAsset, `refill_${i}`);
-          instance.root.position = new Vector3(sWorldX, sElevation * HEIGHT_UNIT, sWorldZ);
+          instance.root.position = new Vector3(station.x, elevation * HEIGHT_UNIT, station.y);
           this.refillStationInstances.push(instance);
         })
         .catch((error) => {

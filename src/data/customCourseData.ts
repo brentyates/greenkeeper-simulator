@@ -1,6 +1,6 @@
 import { CourseData, ObstacleData } from './courseData';
 import { ScenarioDefinition } from './scenarioData';
-import { SerializedTopology, gridToTopology, serializeTopology, Vec3 } from '../core/mesh-topology';
+import { SerializedTopology, SerializedVertex, SerializedTriangle } from '../core/mesh-topology';
 
 export interface PlacedAsset {
   assetId: string;
@@ -74,7 +74,6 @@ export function customCourseToCourseData(course: CustomCourseData): CourseData {
     par: 3,
     topology: course.topology,
     obstacles: course.obstacles,
-    yardsPerGrid: 20,
   };
 }
 
@@ -100,20 +99,30 @@ export function createSandboxScenario(course: CustomCourseData): ScenarioDefinit
 
 export function createBlankCourse(width: number, height: number, name: string): CustomCourseData {
   const MESH_RES = 2;
-  const vertexWidth = width * MESH_RES + 1;
-  const vertexHeight = height * MESH_RES + 1;
+  const vw = width * MESH_RES + 1;
+  const vh = height * MESH_RES + 1;
 
-  const positions: Vec3[][] = [];
-  for (let vy = 0; vy < vertexHeight; vy++) {
-    positions[vy] = [];
-    for (let vx = 0; vx < vertexWidth; vx++) {
-      positions[vy][vx] = { x: vx / MESH_RES, y: 0, z: vy / MESH_RES };
+  const vertices: SerializedVertex[] = [];
+  let nextId = 0;
+  const idAt = (vx: number, vy: number) => vy * vw + vx;
+
+  for (let vy = 0; vy < vh; vy++) {
+    for (let vx = 0; vx < vw; vx++) {
+      vertices.push({ id: nextId++, position: { x: vx / MESH_RES, y: 0, z: vy / MESH_RES } });
     }
   }
 
-  const topology = gridToTopology(positions, width, height);
-  for (const [, tri] of topology.triangles) {
-    tri.terrainCode = 1;
+  const triangles: SerializedTriangle[] = [];
+  let triId = 0;
+  for (let gy = 0; gy < vh - 1; gy++) {
+    for (let gx = 0; gx < vw - 1; gx++) {
+      const tl = idAt(gx, gy);
+      const tr = idAt(gx + 1, gy);
+      const bl = idAt(gx, gy + 1);
+      const br = idAt(gx + 1, gy + 1);
+      triangles.push({ id: triId++, vertices: [tl, bl, tr], terrainCode: 1 });
+      triangles.push({ id: triId++, vertices: [tr, bl, br], terrainCode: 1 });
+    }
   }
 
   return {
@@ -123,7 +132,7 @@ export function createBlankCourse(width: number, height: number, name: string): 
     height,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    topology: serializeTopology(topology),
+    topology: { vertices, triangles, worldWidth: width, worldHeight: height },
     placedAssets: [],
     obstacles: [],
   };

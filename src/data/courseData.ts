@@ -1,5 +1,4 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
-import { HoleData } from '../core/golf-logic';
 import { SerializedTopology } from '../core/mesh-topology';
 import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
@@ -18,8 +17,6 @@ export interface CourseData {
   height: number;
   par: number;
   obstacles?: ObstacleData[];
-  holeData?: HoleData;
-  yardsPerGrid?: number;
   topology: SerializedTopology;
 }
 
@@ -132,7 +129,6 @@ function calcRidge(
 function course3Elevation(x: number, z: number): number {
   const WW = 100, HH = 110;
 
-  // Water depression
   let depression = 0;
   const waterDx = x - 62;
   const waterDz = z - 60;
@@ -142,22 +138,18 @@ function course3Elevation(x: number, z: number): number {
     depression = -2.4 * (1 - t);
   }
 
-  // Mound layer (overlapping mounds take max)
   let moundElev = 0;
   moundElev = Math.max(moundElev, calcMound(x, z, 6, 6, 6, 16, 4.0));
   moundElev = Math.max(moundElev, calcMound(x, z, 92, 6, 6, 16, 4.0));
   moundElev = Math.max(moundElev, calcMound(x, z, 92, 104, 6, 16, 3.5));
   moundElev = Math.max(moundElev, calcMound(x, z, 48, 66, 8, 20, 3.0));
-  // Green mounds
   moundElev = Math.max(moundElev, calcMound(x, z, 24, 38, 6.8, 15.2, 2.6));
   moundElev = Math.max(moundElev, calcMound(x, z, 70, 42, 8.4, 17.2, 2.6));
   moundElev = Math.max(moundElev, calcMound(x, z, 24, 90, 8.4, 17.6, 2.6));
 
-  // Ridges (additive)
   moundElev += calcRidge(x, z, 36, 60, 56, 76, 8, 1.6);
   moundElev += calcRidge(x, z, 52, 36, 76, 52, 6, 1.2);
 
-  // Rolling terrain
   const edgeFalloffX = Math.min(1, Math.min(x, WW - x) / 12);
   const edgeFalloffZ = Math.min(1, Math.min(z, HH - z) / 12);
   const edgeFalloff = Math.min(edgeFalloffX, edgeFalloffZ);
@@ -284,8 +276,6 @@ function generate3HoleTopology(): SerializedTopology {
 
 const course3Topology = generate3HoleTopology();
 
-const sc3 = (v: number) => Math.round(v * 2);
-
 export const COURSE_3_HOLE: CourseData = {
   name: 'Sunrise Valley - 3 Hole',
   width: 100,
@@ -293,76 +283,38 @@ export const COURSE_3_HOLE: CourseData = {
   par: 10,
   topology: course3Topology,
   obstacles: [
-    { x: sc3(5), y: sc3(17), type: 2 },
-    { x: sc3(4), y: sc3(21), type: 1 },
-    { x: sc3(19), y: sc3(17), type: 2 },
-    { x: sc3(20), y: sc3(21), type: 1 },
-    { x: sc3(7), y: sc3(25), type: 1 },
-    { x: sc3(17), y: sc3(26), type: 2 },
+    { x: 5, y: 17, type: 2 },
+    { x: 4, y: 21, type: 1 },
+    { x: 19, y: 17, type: 2 },
+    { x: 20, y: 21, type: 1 },
+    { x: 7, y: 25, type: 1 },
+    { x: 17, y: 26, type: 2 },
 
-    { x: sc3(28), y: sc3(20), type: 2 },
-    { x: sc3(41), y: sc3(19), type: 1 },
-    { x: sc3(42), y: sc3(23), type: 2 },
-    { x: sc3(27), y: sc3(28), type: 1 },
-    { x: sc3(28), y: sc3(33), type: 2 },
-    { x: sc3(41), y: sc3(35), type: 1 },
-    { x: sc3(40), y: sc3(38), type: 2 },
+    { x: 28, y: 20, type: 2 },
+    { x: 41, y: 19, type: 1 },
+    { x: 42, y: 23, type: 2 },
+    { x: 27, y: 28, type: 1 },
+    { x: 28, y: 33, type: 2 },
+    { x: 41, y: 35, type: 1 },
+    { x: 40, y: 38, type: 2 },
 
-    { x: sc3(6), y: sc3(43), type: 2 },
-    { x: sc3(5), y: sc3(47), type: 1 },
-    { x: sc3(17), y: sc3(41), type: 1 },
-    { x: sc3(18), y: sc3(49), type: 2 },
-    { x: sc3(36), y: sc3(42), type: 2 },
-    { x: sc3(35), y: sc3(48), type: 1 },
+    { x: 6, y: 43, type: 2 },
+    { x: 5, y: 47, type: 1 },
+    { x: 17, y: 41, type: 1 },
+    { x: 18, y: 49, type: 2 },
+    { x: 36, y: 42, type: 2 },
+    { x: 35, y: 48, type: 1 },
 
-    { x: sc3(3), y: sc3(5), type: 1 },
-    { x: sc3(8), y: sc3(3), type: 2 },
-    { x: sc3(22), y: sc3(4), type: 1 },
-    { x: sc3(28), y: sc3(6), type: 2 },
-    { x: sc3(44), y: sc3(4), type: 1 },
-    { x: sc3(47), y: sc3(8), type: 2 },
-    { x: sc3(2), y: sc3(33), type: 2 },
-    { x: sc3(46), y: sc3(50), type: 1 },
-    { x: sc3(47), y: sc3(52), type: 2 },
+    { x: 3, y: 5, type: 1 },
+    { x: 8, y: 3, type: 2 },
+    { x: 22, y: 4, type: 1 },
+    { x: 28, y: 6, type: 2 },
+    { x: 44, y: 4, type: 1 },
+    { x: 47, y: 8, type: 2 },
+    { x: 2, y: 33, type: 2 },
+    { x: 46, y: 50, type: 1 },
+    { x: 47, y: 52, type: 2 },
   ],
-  yardsPerGrid: 10,
-  holeData: {
-    holeNumber: 1,
-    par: 3,
-    teeBoxes: [
-      { name: 'Championship', x: sc3(12), y: sc3(29), elevation: course3Elevation(sc3(12), sc3(29)), yardage: 160, par: 3 },
-      { name: 'Forward', x: sc3(12), y: sc3(28), elevation: course3Elevation(sc3(12), sc3(28)), yardage: 140, par: 3 },
-    ],
-    pinPosition: { x: sc3(12), y: sc3(19), elevation: course3Elevation(sc3(12), sc3(19)) },
-    green: {
-      frontEdge: { x: sc3(12), y: sc3(22) },
-      center: { x: sc3(12), y: sc3(19) },
-      backEdge: { x: sc3(12), y: sc3(16) },
-    },
-    idealPath: [
-      { x: sc3(12), y: sc3(29), description: 'Tee shot' },
-      { x: sc3(12), y: sc3(19), description: 'Green' },
-    ],
-    hazards: [
-      {
-        type: 'bunker',
-        name: 'Left greenside',
-        positions: [
-          { x: sc3(7), y: sc3(17) },
-          { x: sc3(7), y: sc3(19) },
-          { x: sc3(7), y: sc3(21) },
-        ],
-      },
-      {
-        type: 'bunker',
-        name: 'Pot bunker right',
-        positions: [
-          { x: sc3(17), y: sc3(18) },
-          { x: sc3(18), y: sc3(19) },
-        ],
-      },
-    ],
-  },
 };
 
 export const COURSE_HOLE_1: CourseData = {
@@ -384,7 +336,6 @@ export const COURSE_HOLE_1: CourseData = {
     fillPointSpacing: 2.0,
   }),
   obstacles: [],
-  yardsPerGrid: 20,
 };
 
 export const COURSE_TEST: CourseData = {
@@ -403,7 +354,6 @@ export const COURSE_TEST: CourseData = {
     boundaryPointSpacing: 1.0,
     fillPointSpacing: 2.0,
   }),
-  yardsPerGrid: 20,
 };
 
 // Refill stations
@@ -414,7 +364,7 @@ export interface RefillStation {
 }
 
 export const REFILL_STATIONS: RefillStation[] = [
-  { x: sc3(8), y: sc3(50), name: 'Maintenance Shed' },
+  { x: 8, y: 50, name: 'Maintenance Shed' },
 ];
 
 // Course registry

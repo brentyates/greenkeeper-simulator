@@ -1360,7 +1360,7 @@ describe("GameAPI", () => {
     it("returns failure when not at station", () => { expect(api.refillAtCurrentPosition()).toEqual({ success: false, cost: 0 }); });
 
     it("returns success at station", () => {
-      sys.player = { ...sys.player, gridX: 16, gridY: 100 } as any;
+      sys.player = { ...sys.player, gridX: 8, gridY: 50 } as any;
       const result = api.refillAtCurrentPosition();
       expect(result.success).toBe(true);
       expect(result.cost).toBe(25);
@@ -1368,14 +1368,14 @@ describe("GameAPI", () => {
 
     it("handles addExpense null at station", () => {
       mockAddExpense.mockReturnValueOnce(null);
-      sys.player = { ...sys.player, gridX: 16, gridY: 100 } as any;
+      sys.player = { ...sys.player, gridX: 8, gridY: 50 } as any;
       expect(api.refillAtCurrentPosition().success).toBe(true);
     });
   });
 
   describe("isAtRefillStation", () => {
     it("returns false when not at station", () => { expect(api.isAtRefillStation()).toBe(false); });
-    it("returns true at station", () => { sys.player = { ...sys.player, gridX: 16, gridY: 100 } as any; expect(api.isAtRefillStation()).toBe(true); });
+    it("returns true at station", () => { sys.player = { ...sys.player, gridX: 8, gridY: 50 } as any; expect(api.isAtRefillStation()).toBe(true); });
   });
 
   describe("getRefillStations", () => {
