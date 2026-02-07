@@ -48,50 +48,27 @@ Employees should feel like **RollerCoaster Tycoon's handymen**: hire them, pay t
 
 ---
 
-## Part 2: Role-Specific Work (Kept)
+## Part 2: Visual Field Workers Only
 
-**File:** `src/core/employee-roles.ts`
+**Design principle:** Everything must be visually represented or it shouldn't exist in the game.
 
-Every role produces tangible value. This is the core of the employee system -- each role has a clear economic purpose that the player can reason about.
+The file `employee-roles.ts` was deleted because it contained passive role calculations for roles (pro shop staff, caddies, managers) that had no visual presence on the course. Only two roles remain: **groundskeeper** and **mechanic**. Both are visual field workers with 3D pathfinding, visible on the course at all times.
 
-### Mechanic Work
+### Groundskeeper
 
-`calculateMechanicWork()` computes daily repair capacity:
+- Mow, water, fertilize, rake bunkers, patrol
+- A* pathfinding to assigned zones
+- Direct visual impact: you can see them working and the course improving behind them
+
+### Mechanic
 
 - Each mechanic has ~2 repair actions per day (scaled by efficiency)
 - Priority: robots > equipment > irrigation leaks
 - Preventive maintenance savings: ~$15/day per effective mechanic
 - `getMechanicBreakdownReduction()`: each mechanic reduces breakdown rate
 - `getNoMechanicBreakdownPenalty()`: 1.5x breakdown rate without mechanics
-- Mechanics are field workers (A* pathfinding) and rake bunkers / patrol when idle
-
-### Pro Shop Staff
-
-`calculateProShopWork()` computes daily revenue:
-
-- Merchandise revenue: $8-13 per golfer
-- Staff count scaling with diminishing returns (1x, 1.5x, 1.8x, 2.0x)
-- Booking rate bonus: 5% per staff (capped at 20%)
-- Check-in speed and complaint mitigation
-
-### Caddy Work
-
-`calculateCaddyWork()` computes daily satisfaction and tips:
-
-- Each caddy serves ~3 groups per day
-- Satisfaction bonus: +12 to +20 per group
-- Tip revenue: $8-25 per group
-- Prestige bonus: +0.5 per active caddy (capped at 5)
-
-### Manager Work
-
-`calculateManagerBonuses()` computes team-wide multipliers:
-
-| Bonus | First Manager | Additional Managers |
-|-------|--------------|-------------------|
-| Employee efficiency | +15% | +8%, +4%, +2% (diminishing) |
-| Experience gain rate | +25% | +12%, +6% (diminishing) |
-| Fatigue reduction | -15% accrual | -8%, -4% (diminishing) |
+- A* pathfinding -- rake bunkers and patrol when idle
+- Direct visual impact: you can see them moving between equipment and robots on the course
 
 ---
 
@@ -145,9 +122,9 @@ PHASE 3: Growing Team (Day 90-180)
 +-- First promotion: novice becomes trained, works noticeably faster
 
 PHASE 4: Full Staff (Day 180-365)
-+-- 5-8 employees, mixed roles
-+-- Manager multiplies team efficiency
-+-- Pro shop staff generating passive revenue
++-- 5-8 employees across groundskeepers and mechanics
++-- Employees reaching trained/experienced levels, working noticeably faster
++-- Experienced mechanics keeping equipment and robots running smoothly
 +-- You focus on course design, not mowing
 
 PHASE 5: Automation (Day 365+)
@@ -166,12 +143,12 @@ PHASE 6: Endgame (Year 2+)
 
 Robots are NOT a replacement for employees. They shift the employee mix:
 
-| Phase | Groundskeepers | Mechanics | Pro Shop | Caddies | Managers |
-|-------|---------------|-----------|----------|---------|----------|
-| Early | 2-3 | 0 | 0 | 0 | 0 |
-| Mid | 4-6 | 1 | 1 | 0 | 1 |
-| Late | 3-4 + robots | 2 (robot repair) | 1-2 | 1-2 | 1 |
-| Endgame | 1-2 + full robots | 2-3 (critical) | 2 | 2-3 | 1 |
+| Phase | Groundskeepers | Mechanics |
+|-------|---------------|-----------|
+| Early | 2-3 | 0 |
+| Mid | 4-6 | 1 |
+| Late | 3-4 + robots | 2 (robot repair) |
+| Endgame | 1-2 + full robots | 2-3 (critical) |
 
 **Mechanics become MORE important as you automate, not less.**
 
@@ -185,12 +162,9 @@ Robots are NOT a replacement for employees. They shift the employee mix:
 |------|-----------------|--------------|---------------|
 | Groundskeeper | Course > 200 tiles | $1,920-3,840 | Prevents $3,000+ in degradation |
 | Mechanic | 3+ equipment OR robots | $2,880-6,400 | Saves $2,000+ in repairs |
-| Pro Shop Staff | 15+ golfers/day | $1,600-2,720 | $2,000-4,000 in merch revenue |
-| Caddy | 4-star prestige | $1,280-2,080 | +$1,500-3,000 in retention |
-| Manager | 5+ other employees | $4,000-10,080 | 15% efficiency x team size |
 
 ### Integration Points
 
-- **Daily tick (10 PM):** Role-specific work calculations, revenue/savings applied
-- **Revenue:** Pro shop merch and caddy tips as `other_income` at end of day
+- **Daily tick (10 PM):** Field worker effects applied (mowing/watering/fertilizing results, repair actions)
 - **Maintenance:** Mechanic savings as `other_income` at end of day
+- **Visual presence:** Both roles are visual field workers with A* pathfinding and direct, observable effects on the course

@@ -335,7 +335,7 @@ function tickGolferSimulation(
   timestamp: number
 ): void {
   const courseStats = systems.terrainSystem.getCourseStats();
-  const staffQuality = 50;
+  const staffQuality = 60; // Base service quality (no manager role currently)
   const tickResult = coreTickGolfers(
     state.golferPool,
     gameMinutes,

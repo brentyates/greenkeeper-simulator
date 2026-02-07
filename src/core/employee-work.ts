@@ -197,8 +197,6 @@ function getTaskPriorityForRole(role: EmployeeRole): EmployeeTask[] {
   switch (role) {
     case 'mechanic':
       // Mechanics prioritize bunker raking (equipment-adjacent) and patrol
-      // Their main value comes from passive effects in employee-roles.ts
-      // but they can help with rake and patrol when idle
       return ['rake_bunker', 'patrol'];
     case 'groundskeeper':
     default:
