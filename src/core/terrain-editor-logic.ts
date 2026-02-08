@@ -213,32 +213,6 @@ export function getEdgesInBrush(
   return edgeIds;
 }
 
-export function getFacesInBrush(
-  worldX: number,
-  worldZ: number,
-  radius: number,
-  topology: { triangles: Map<number, { vertices: [number, number, number] }>, vertices: Map<number, { position: Vec3 }> }
-): number[] {
-  const faceIds: number[] = [];
-  const radiusSq = radius * radius;
-
-  for (const [id, tri] of topology.triangles) {
-    const v1 = topology.vertices.get(tri.vertices[0]);
-    const v2 = topology.vertices.get(tri.vertices[1]);
-    const v3 = topology.vertices.get(tri.vertices[2]);
-    if (!v1 || !v2 || !v3) continue;
-
-    const cx = (v1.position.x + v2.position.x + v3.position.x) / 3;
-    const cz = (v1.position.z + v2.position.z + v3.position.z) / 3;
-
-    const dx = cx - worldX;
-    const dz = cz - worldZ;
-    if (dx * dx + dz * dz <= radiusSq) {
-      faceIds.push(id);
-    }
-  }
-  return faceIds;
-}
 
 export function applyRaiseVertex(
   vertexId: number,

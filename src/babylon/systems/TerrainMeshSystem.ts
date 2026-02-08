@@ -49,6 +49,7 @@ import {
   deserializeTopology,
   serializeTopology,
   barycentricInterpolateY,
+  getTriangleCentroid,
   SerializedTopology,
 } from "../../core/mesh-topology";
 import { rotateAroundPivot } from "../../core/transform-ops";
@@ -227,19 +228,11 @@ export class TerrainMeshSystem {
           if (visited.has(triId)) continue;
           visited.add(triId);
 
-          const tri = this.topology.triangles.get(triId);
-          if (!tri) continue;
+          const centroid = getTriangleCentroid(this.topology, triId);
+          if (!centroid) continue;
 
-          const v0 = this.topology.vertices.get(tri.vertices[0]);
-          const v1 = this.topology.vertices.get(tri.vertices[1]);
-          const v2 = this.topology.vertices.get(tri.vertices[2]);
-          if (!v0 || !v1 || !v2) continue;
-
-          const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
-          const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
-
-          const dx = cx - worldX;
-          const dz = cz - worldZ;
+          const dx = centroid.x - worldX;
+          const dz = centroid.z - worldZ;
           if (dx * dx + dz * dz <= radiusSq) {
             faceIds.push(triId);
           }
@@ -1038,15 +1031,27 @@ export class TerrainMeshSystem {
     this.applyMaterial();
   }
 
+  private applyTerrainCodeToFace(faceId: number, terrainCode: number, type: TerrainType): void {
+    if (!this.topology) return;
+    const tri = this.topology.triangles.get(faceId);
+    if (tri) {
+      tri.terrainCode = terrainCode;
+    }
+    const fs = this.faceStates.get(faceId);
+    if (fs) {
+      const initialValues = getInitialValues(type);
+      fs.terrainCode = terrainCode;
+      fs.grassHeight = initialValues.height;
+      fs.moisture = initialValues.moisture;
+      fs.nutrients = initialValues.nutrients;
+      fs.health = calculateHealth({
+        type, moisture: fs.moisture, nutrients: fs.nutrients, height: fs.grassHeight,
+      });
+    }
+  }
+
   public setFaceTerrain(faceId: number, type: TerrainType): void {
-      if (!this.topology) return;
-      const tri = this.topology.triangles.get(faceId);
-      if (!tri) return;
-
-      const code = getTerrainCode(type);
-      if (tri.terrainCode === code) return;
-
-      tri.terrainCode = code;
+    this.applyTerrainCodeToFace(faceId, getTerrainCode(type), type);
   }
 
   private updateEdgeHighlight(): void {
@@ -1119,13 +1124,9 @@ export class TerrainMeshSystem {
     for (const [id, tri] of this.topology.triangles) {
       if (!this.faceStates.has(id)) {
         let inheritedState: FaceState | undefined;
-        const v0 = this.topology.vertices.get(tri.vertices[0]);
-        const v1 = this.topology.vertices.get(tri.vertices[1]);
-        const v2 = this.topology.vertices.get(tri.vertices[2]);
-        if (v0 && v1 && v2) {
-          const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
-          const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
-          const nearestFaceId = this.findFaceAtPosition(cx, cz);
+        const centroid = getTriangleCentroid(this.topology, id);
+        if (centroid) {
+          const nearestFaceId = this.findFaceAtPosition(centroid.x, centroid.z);
           if (nearestFaceId !== null && nearestFaceId !== id) {
             inheritedState = this.faceStates.get(nearestFaceId);
           }
@@ -1468,27 +1469,10 @@ export class TerrainMeshSystem {
   }
 
   public setTerrainTypeAt(worldX: number, worldZ: number, type: TerrainType): void {
-    const terrainCode = getTerrainCode(type);
-
     const faceId = this.findFaceAtPosition(worldX, worldZ);
-    if (faceId !== null && this.topology) {
-      const tri = this.topology.triangles.get(faceId);
-      if (tri) {
-        tri.terrainCode = terrainCode;
-      }
-      const fs = this.faceStates.get(faceId);
-      if (fs) {
-        const initialValues = getInitialValues(type);
-        fs.terrainCode = terrainCode;
-        fs.grassHeight = initialValues.height;
-        fs.moisture = initialValues.moisture;
-        fs.nutrients = initialValues.nutrients;
-        fs.health = calculateHealth({
-          type, moisture: fs.moisture, nutrients: fs.nutrients, height: fs.grassHeight,
-        });
-      }
+    if (faceId !== null) {
+      this.applyTerrainCodeToFace(faceId, getTerrainCode(type), type);
     }
-
   }
 
   public getTerrainTypeAt(worldX: number, worldZ: number): TerrainType {
@@ -1503,25 +1487,8 @@ export class TerrainMeshSystem {
 
   public paintTerrainType(faceIds: number[], type: TerrainType): void {
     const terrainCode = getTerrainCode(type);
-
     for (const faceId of faceIds) {
-      if (this.topology) {
-        const tri = this.topology.triangles.get(faceId);
-        if (tri) {
-          tri.terrainCode = terrainCode;
-        }
-        const fs = this.faceStates.get(faceId);
-        if (fs) {
-          const initialValues = getInitialValues(type);
-          fs.terrainCode = terrainCode;
-          fs.grassHeight = initialValues.height;
-          fs.moisture = initialValues.moisture;
-          fs.nutrients = initialValues.nutrients;
-          fs.health = calculateHealth({
-            type, moisture: fs.moisture, nutrients: fs.nutrients, height: fs.grassHeight,
-          });
-        }
-      }
+      this.applyTerrainCodeToFace(faceId, terrainCode, type);
     }
     this.topologyDirty = true;
   }
@@ -1625,16 +1592,11 @@ export class TerrainMeshSystem {
     }>();
 
     for (const [faceId, state] of this.faceStates) {
-      const tri = this.topology.triangles.get(faceId);
-      if (!tri) continue;
+      const centroid = getTriangleCentroid(this.topology, faceId);
+      if (!centroid) continue;
 
-      const v0 = this.topology.vertices.get(tri.vertices[0]);
-      const v1 = this.topology.vertices.get(tri.vertices[1]);
-      const v2 = this.topology.vertices.get(tri.vertices[2]);
-      if (!v0 || !v1 || !v2) continue;
-
-      const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
-      const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
+      const cx = centroid.x;
+      const cz = centroid.z;
 
       if (Math.abs(cx - centerX) > maxRadius || Math.abs(cz - centerZ) > maxRadius) continue;
 

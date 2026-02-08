@@ -980,6 +980,22 @@ function computeNormals(positions: number[], indices: number[], normals: number[
   }
 }
 
+export function getTriangleCentroid(
+  topology: TerrainMeshTopology,
+  triId: number
+): { x: number; z: number } | null {
+  const tri = topology.triangles.get(triId);
+  if (!tri) return null;
+  const v0 = topology.vertices.get(tri.vertices[0]);
+  const v1 = topology.vertices.get(tri.vertices[1]);
+  const v2 = topology.vertices.get(tri.vertices[2]);
+  if (!v0 || !v1 || !v2) return null;
+  return {
+    x: (v0.position.x + v1.position.x + v2.position.x) / 3,
+    z: (v0.position.z + v1.position.z + v2.position.z) / 3,
+  };
+}
+
 export function findNearestTopologyVertex(
   topology: TerrainMeshTopology,
   worldX: number,
