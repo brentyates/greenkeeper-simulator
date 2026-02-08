@@ -123,7 +123,7 @@ export class TerrainEditorController {
       onEnable: () => {
         this.terrainEditorUI?.show();
         this.terrainEditorUI?.setActiveTool(
-          this.terrainEditorSystem!.getTool()
+          this.terrainEditorSystem!.getActiveTool()
         );
         this.terrainEditorUI?.setActiveMode(
           this.terrainEditorSystem!.getMode()

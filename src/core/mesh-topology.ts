@@ -478,7 +478,6 @@ export interface DeleteVertexResult {
   removedTriangleIds: number[];
   removedEdgeIds: number[];
   newTriangleIds: number[];
-  newEdgeIds: number[];
 }
 
 export function deleteVertex(
@@ -533,7 +532,7 @@ export function deleteVertex(
 
   topology.vertices.delete(vertexId);
 
-  const { newTriangleIds, newEdgeIds } = retriangulateHole(topology, holeVertices);
+  const { newTriangleIds } = retriangulateHole(topology, holeVertices);
 
   if (import.meta.env.DEV) validateTopology(topology);
 
@@ -541,7 +540,6 @@ export function deleteVertex(
     removedTriangleIds,
     removedEdgeIds,
     newTriangleIds,
-    newEdgeIds,
   };
 }
 
@@ -719,19 +717,18 @@ export function pointInTriangle(
 export function retriangulateHole(
   topology: TerrainMeshTopology,
   holeVertices: number[]
-): { newTriangleIds: number[]; newEdgeIds: number[] } {
+): { newTriangleIds: number[] } {
   const newTriangleIds: number[] = [];
-  const newEdgeIds: number[] = [];
 
   if (holeVertices.length < 3) {
-    return { newTriangleIds, newEdgeIds };
+    return { newTriangleIds };
   }
 
   if (holeVertices.length === 3) {
     const triId = createTriangle(topology, holeVertices[0], holeVertices[1], holeVertices[2]);
     if (triId !== null) newTriangleIds.push(triId);
     if (import.meta.env.DEV) validateTopology(topology);
-    return { newTriangleIds, newEdgeIds };
+    return { newTriangleIds };
   }
 
   const remaining = [...holeVertices];
@@ -784,7 +781,7 @@ export function retriangulateHole(
   }
 
   if (import.meta.env.DEV) validateTopology(topology);
-  return { newTriangleIds, newEdgeIds };
+  return { newTriangleIds };
 }
 
 export function createTriangle(
@@ -1020,114 +1017,6 @@ export function findNearestTopologyVertex(
   return { vertexId: nearestId, dist: Math.sqrt(minDistSq) };
 }
 
-export interface TopologyModification {
-  type: string;
-  vertexId?: number;
-  edgeId?: number;
-  subdivideT?: number;
-  beforeState: {
-    vertices: Array<{ id: number; vertex: TerrainVertex }>;
-    edges: Array<{ id: number; edge: TerrainEdge }>;
-    triangles: Array<{ id: number; triangle: TerrainTriangle }>;
-    nextVertexId: number;
-    nextEdgeId: number;
-    nextTriangleId: number;
-  };
-}
-
-export function captureTopologyState(topology: TerrainMeshTopology): TopologyModification['beforeState'] {
-  const vertices: Array<{ id: number; vertex: TerrainVertex }> = [];
-  const edges: Array<{ id: number; edge: TerrainEdge }> = [];
-  const triangles: Array<{ id: number; triangle: TerrainTriangle }> = [];
-
-  for (const [id, vertex] of topology.vertices) {
-    vertices.push({
-      id,
-      vertex: {
-        id: vertex.id,
-        position: { ...vertex.position },
-      },
-    });
-  }
-
-  for (const [id, edge] of topology.edges) {
-    edges.push({
-      id,
-      edge: {
-        id: edge.id,
-        v1: edge.v1,
-        v2: edge.v2,
-        triangles: [...edge.triangles],
-      },
-    });
-  }
-
-  for (const [id, triangle] of topology.triangles) {
-    triangles.push({
-      id,
-      triangle: {
-        id: triangle.id,
-        vertices: [...triangle.vertices] as [number, number, number],
-        edges: [...triangle.edges] as [number, number, number],
-        terrainCode: triangle.terrainCode,
-      },
-    });
-  }
-
-  return {
-    vertices,
-    edges,
-    triangles,
-    nextVertexId: topology.nextVertexId,
-    nextEdgeId: topology.nextEdgeId,
-    nextTriangleId: topology.nextTriangleId,
-  };
-}
-
-export function restoreTopologyState(
-  topology: TerrainMeshTopology,
-  state: TopologyModification['beforeState']
-): void {
-  topology.vertices.clear();
-  topology.edges.clear();
-  topology.triangles.clear();
-  topology.edgeIndex.clear();
-  topology.vertexEdges.clear();
-
-  for (const { id, vertex } of state.vertices) {
-    topology.vertices.set(id, {
-      id: vertex.id,
-      position: { ...vertex.position },
-    });
-  }
-
-  for (const { id, edge } of state.edges) {
-    topology.edges.set(id, {
-      id: edge.id,
-      v1: edge.v1,
-      v2: edge.v2,
-      triangles: [...edge.triangles],
-    });
-    topology.edgeIndex.set(edgeKey(edge.v1, edge.v2), id);
-    addVertexEdge(topology, edge.v1, id);
-    addVertexEdge(topology, edge.v2, id);
-  }
-
-  for (const { id, triangle } of state.triangles) {
-    topology.triangles.set(id, {
-      id: triangle.id,
-      vertices: [...triangle.vertices] as [number, number, number],
-      edges: [...triangle.edges] as [number, number, number],
-      terrainCode: triangle.terrainCode,
-    });
-  }
-
-
-  topology.nextVertexId = state.nextVertexId;
-  topology.nextEdgeId = state.nextEdgeId;
-  topology.nextTriangleId = state.nextTriangleId;
-}
-
 export function flipEdge(
   topology: TerrainMeshTopology,
   edgeId: number
@@ -1355,7 +1244,7 @@ export function deserializeTopology(data: SerializedTopology): TerrainMeshTopolo
 
   let maxTriId = -1;
   for (const st of data.triangles) {
-    const triId = createTriangleFromSerialized(topology, st.vertices[0], st.vertices[1], st.vertices[2]);
+    const triId = createTriangle(topology, st.vertices[0], st.vertices[1], st.vertices[2]);
     if (triId !== null) {
       const tri = topology.triangles.get(triId);
       if (tri) tri.terrainCode = st.terrainCode;
@@ -1367,36 +1256,6 @@ export function deserializeTopology(data: SerializedTopology): TerrainMeshTopolo
   }
 
   return topology;
-}
-
-function createTriangleFromSerialized(
-  topology: TerrainMeshTopology,
-  v0: number,
-  v1: number,
-  v2: number
-): number | null {
-  const vert0 = topology.vertices.get(v0);
-  const vert1 = topology.vertices.get(v1);
-  const vert2 = topology.vertices.get(v2);
-  if (!vert0 || !vert1 || !vert2) return null;
-
-  const triId = topology.nextTriangleId++;
-  const edges: [number, number, number] = [
-    getOrCreateEdgeForTriangle(topology, v0, v1, triId),
-    getOrCreateEdgeForTriangle(topology, v1, v2, triId),
-    getOrCreateEdgeForTriangle(topology, v2, v0, triId),
-  ];
-
-  const tri: TerrainTriangle = {
-    id: triId,
-    vertices: [v0, v1, v2],
-    edges,
-    terrainCode: 0,
-  };
-
-  topology.triangles.set(triId, tri);
-
-  return triId;
 }
 
 export function barycentricInterpolateY(

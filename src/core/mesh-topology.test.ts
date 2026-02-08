@@ -9,8 +9,6 @@ import {
   isBoundaryVertex,
   findNearestTopologyVertex,
   buildMeshArrays,
-  captureTopologyState,
-  restoreTopologyState,
   computeFaceSlopeAngle,
   MAX_WALKABLE_SLOPE_DEGREES,
   Vec3,
@@ -340,50 +338,6 @@ describe('mesh-topology', () => {
         yValues.push(result.positions[i]);
       }
       expect(yValues.every(y => y === 10)).toBe(true);
-    });
-  });
-
-  describe('captureTopologyState and restoreTopologyState', () => {
-    it('captures and restores topology state', () => {
-      const grid: Vec3[][] = [
-        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
-        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-      ];
-      const topology = gridToTopology(grid, 1, 1);
-      const originalVertexCount = topology.vertices.size;
-      const originalTriangleCount = topology.triangles.size;
-
-      const state = captureTopologyState(topology);
-
-      const edgeId = Array.from(topology.edges.keys())[0];
-      subdivideEdge(topology, edgeId);
-
-      expect(topology.vertices.size).toBeGreaterThan(originalVertexCount);
-
-      restoreTopologyState(topology, state);
-
-      expect(topology.vertices.size).toBe(originalVertexCount);
-      expect(topology.triangles.size).toBe(originalTriangleCount);
-    });
-
-    it('restores vertex positions correctly', () => {
-      const grid: Vec3[][] = [
-        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
-        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-      ];
-      const topology = gridToTopology(grid, 1, 1);
-
-      const state = captureTopologyState(topology);
-
-      const vertex = topology.vertices.get(0);
-      if (vertex) {
-        vertex.position.x = 99;
-      }
-
-      restoreTopologyState(topology, state);
-
-      const restoredVertex = topology.vertices.get(0);
-      expect(restoredVertex?.position.x).toBe(0);
     });
   });
 

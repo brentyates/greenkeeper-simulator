@@ -111,7 +111,6 @@ export class TerrainEditorSystem {
 
   private topologyMode: TopologyMode = 'vertex';
   private hoveredEdgeId: number | null = null;
-  private hoveredTopologyVertexId: number | null = null;
   private selectedTopologyVertices: Set<number> = new Set();
   private hoveredFaceId: number | null = null;
   private selectedFaces: Set<number> = new Set();
@@ -161,7 +160,7 @@ export class TerrainEditorSystem {
     this.state.enabled = true;
     this.highlightSystem.setBrushSize(this.getBrushRadius());
     this.setMode(this.state.mode);
-    this.syncHighlightMode();
+    this.highlightSystem.setHighlightMode(this.topologyMode);
 
     this.callbacks.onEnable?.();
   }
@@ -249,14 +248,6 @@ export class TerrainEditorSystem {
     }
 
     this.callbacks.onToolChange?.(tool);
-  }
-
-  public getTool(): EditorTool {
-    return this.state.activeTool;
-  }
-
-  public getCurrentTool(): EditorTool {
-    return this.state.activeTool;
   }
 
   public getActiveTool(): EditorTool {
@@ -364,12 +355,6 @@ export class TerrainEditorSystem {
     this.highlightSystem.refresh();
   }
 
-  public deselectVertices(): void {
-    this.state.selectedVertices.clear();
-    this.notifySelectionChange();
-    this.highlightSystem.refresh();
-  }
-
   public getSelectedVertexIds(): number[] {
     return Array.from(this.state.selectedVertices);
   }
@@ -388,7 +373,9 @@ export class TerrainEditorSystem {
   }
 
   public deselectAllVertices(): void {
-    this.deselectVertices();
+    this.state.selectedVertices.clear();
+    this.notifySelectionChange();
+    this.highlightSystem.refresh();
   }
 
   public setAxisConstraint(constraint: 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz'): void {
@@ -785,23 +772,8 @@ export class TerrainEditorSystem {
     this.highlightSystem.refresh();
   }
 
-  private syncHighlightMode(): void {
-    const mode = this.topologyMode === 'none' ? 'none'
-      : this.topologyMode === 'vertex' ? 'vertex'
-      : this.topologyMode === 'face' ? 'face'
-      : this.topologyMode === 'edge' ? 'edge'
-      : 'none' as const;
-    this.highlightSystem.setHighlightMode(mode);
-  }
-
   public getTopologyMode(): TopologyMode {
     return this.topologyMode;
-  }
-
-  public deleteVertex(): void {
-    if (this.hoveredTopologyVertexId === null || !this.terrainModifier?.deleteTopologyVertex) return;
-    this.terrainModifier.deleteTopologyVertex(this.hoveredTopologyVertexId);
-    this.highlightSystem.refresh();
   }
 
   public selectFace(faceId: number, additive: boolean = false): void {

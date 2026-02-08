@@ -1243,7 +1243,7 @@ export class GameAPI {
 
     return {
       enabled: this.systems.terrainEditorSystem.isEnabled(),
-      tool: this.systems.terrainEditorSystem.getCurrentTool(),
+      tool: this.systems.terrainEditorSystem.getActiveTool(),
       brushSize: this.systems.terrainEditorSystem.getBrushSize(),
     };
   }

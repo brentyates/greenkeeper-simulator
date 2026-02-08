@@ -36,7 +36,6 @@ function createMockEditorSystem() {
     disable: vi.fn(),
     isEnabled: vi.fn((): boolean => true),
     setTool: vi.fn(),
-    getTool: vi.fn((): string => "raise"),
     getMode: vi.fn((): string => "sculpt"),
     setMode: vi.fn(),
     getActiveTool: vi.fn((): string => "raise"),

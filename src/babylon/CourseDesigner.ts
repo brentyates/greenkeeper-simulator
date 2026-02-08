@@ -215,7 +215,7 @@ export class CourseDesigner {
         if (this.mode === 'terrain') {
           this.terrainEditorUI?.show();
         }
-        this.terrainEditorUI?.setActiveTool(this.terrainEditorSystem.getTool());
+        this.terrainEditorUI?.setActiveTool(this.terrainEditorSystem.getActiveTool());
         this.terrainEditorUI?.setActiveMode(this.terrainEditorSystem.getMode());
         this.terrainEditorUI?.setActiveAxis(this.terrainEditorSystem.getAxisConstraint());
         this.terrainEditorUI?.setStampSize(this.terrainEditorSystem.getStampScale());

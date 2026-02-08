@@ -1390,7 +1390,7 @@ describe("GameAPI", () => {
     it("returns defaults when null", () => { expect(api.getTerrainEditorState()).toEqual({ enabled: false, tool: null, brushSize: 1 }); });
 
     it("returns editor state", () => {
-      sys.terrainEditorSystem = { isEnabled: vi.fn(() => true), getCurrentTool: vi.fn(() => "raise"), getBrushSize: vi.fn(() => 3) } as any;
+      sys.terrainEditorSystem = { isEnabled: vi.fn(() => true), getActiveTool: vi.fn(() => "raise"), getBrushSize: vi.fn(() => 3) } as any;
       expect(api.getTerrainEditorState()).toEqual({ enabled: true, tool: "raise", brushSize: 3 });
     });
   });

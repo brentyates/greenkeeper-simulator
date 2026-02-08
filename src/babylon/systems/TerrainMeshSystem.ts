@@ -7,7 +7,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
 import { Effect } from "@babylonjs/core/Materials/effect";
-import { Vector2 } from "@babylonjs/core/Maths/math.vector";
+import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 
 import {
@@ -18,7 +18,6 @@ import {
 
 import { HEIGHT_UNIT } from "../engine/BabylonEngine";
 import { CourseData } from "../../data/courseData";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TerrainType, getTerrainType, getTerrainCode, getInitialValues, calculateHealth, TERRAIN_CODES, OverlayMode, getTerrainSpeedModifier, isFaceWalkableBySlope } from "../../core/terrain";
 import { TopologyMode, getEdgesInBrush } from "../../core/terrain-editor-logic";
 import { WeatherEffect } from "../../core/grass-simulation";
@@ -63,6 +62,18 @@ export interface TerrainMeshOptions {
   enableGridLines: boolean;
 }
 
+function findDominantTerrainCode(terrainCounts: Map<number, number>): number {
+  let maxCount = 0;
+  let dominant: number = TERRAIN_CODES.FAIRWAY;
+  for (const [code, cnt] of terrainCounts) {
+    if (cnt > maxCount) {
+      maxCount = cnt;
+      dominant = code;
+    }
+  }
+  return dominant;
+}
+
 const DEFAULT_OPTIONS: TerrainMeshOptions = {
   enableStripes: true,
   enableNoise: true,
@@ -103,12 +114,9 @@ export class TerrainMeshSystem {
 
   private topology: TerrainMeshTopology | null = null;
   private hoveredEdgeId: number | null = null;
-  private hoveredTopologyVertexId: number | null = null;
   private selectedEdgeId: number | null = null;
   private selectedEdgeIds: Set<number> = new Set();
   private brushHoveredEdgeIds: Set<number> = new Set();
-  private edgeHighlightMesh: Mesh | null = null;
-  private selectedEdgeHighlightMesh: Mesh | null = null;
   private allEdgesMesh: Mesh | null = null;
   private activeTopologyMode: TopologyMode = 'vertex';
   private selectedTopologyVertices: Set<number> = new Set();
@@ -362,7 +370,6 @@ export class TerrainMeshSystem {
 
   private rebuildAllEdgesMeshWithHighlights(): void {
     this.clearAllEdgesMesh();
-    this.clearEdgeHighlight();
 
     if (!this.topology || this.activeTopologyMode !== 'edge') return;
 
@@ -535,16 +542,6 @@ export class TerrainMeshSystem {
       }
     }
     return result;
-  }
-
-  public setHoveredTopologyVertex(vertexId: number | null): void {
-    if (this.hoveredTopologyVertexId === vertexId) return;
-    this.hoveredTopologyVertexId = vertexId;
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public getHoveredTopologyVertex(): number | null {
-    return this.hoveredTopologyVertexId;
   }
 
   public collapseEdge(edgeId: number): void {
@@ -998,17 +995,6 @@ export class TerrainMeshSystem {
     this.applyTerrainCodeToFace(faceId, getTerrainCode(type), type);
   }
 
-  private clearEdgeHighlight(): void {
-    if (this.edgeHighlightMesh) {
-      this.edgeHighlightMesh.dispose();
-      this.edgeHighlightMesh = null;
-    }
-    if (this.selectedEdgeHighlightMesh) {
-      this.selectedEdgeHighlightMesh.dispose();
-      this.selectedEdgeHighlightMesh = null;
-    }
-  }
-
   public rebuildMesh(): void {
     this.rebuildFaceSpatialIndex();
     this.syncFaceStatesWithTopology();
@@ -1137,12 +1123,14 @@ export class TerrainMeshSystem {
   public setGridLinesEnabled(enabled: boolean): void {
     this.options.enableGridLines = enabled;
 
-    if (enabled && !this.gridLinesMesh) {
-      this.createGridLines();
-    } else if (!enabled && this.gridLinesMesh) {
+    if (enabled) {
+      if (!this.gridLinesMesh) {
+        this.createGridLines();
+      } else {
+        this.gridLinesMesh.setEnabled(true);
+      }
+    } else if (this.gridLinesMesh) {
       this.gridLinesMesh.setEnabled(false);
-    } else if (enabled && this.gridLinesMesh) {
-      this.gridLinesMesh.setEnabled(true);
     }
   }
 
@@ -1504,14 +1492,7 @@ export class TerrainMeshSystem {
     }
 
     const count = faces.length;
-    let dominantTerrainCode: number = TERRAIN_CODES.FAIRWAY;
-    let maxCount = 0;
-    for (const [code, cnt] of terrainCounts) {
-      if (cnt > maxCount) {
-        maxCount = cnt;
-        dominantTerrainCode = code;
-      }
-    }
+    const dominantTerrainCode = findDominantTerrainCode(terrainCounts);
 
     return {
       avgMoisture: totalMoisture / count,
@@ -1567,11 +1548,7 @@ export class TerrainMeshSystem {
     const candidates: { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] = [];
     for (const group of groups.values()) {
       const n = group.count;
-      let dominantTerrainCode: number = TERRAIN_CODES.FAIRWAY;
-      let maxCount = 0;
-      for (const [code, cnt] of group.terrainCounts) {
-        if (cnt > maxCount) { maxCount = cnt; dominantTerrainCode = code; }
-      }
+      const dominantTerrainCode = findDominantTerrainCode(group.terrainCounts);
 
       candidates.push({
         worldX: group.sumX / n,
@@ -1862,7 +1839,6 @@ export class TerrainMeshSystem {
       this.axisIndicatorMesh = null;
     }
 
-    this.clearEdgeHighlight();
     this.clearAllEdgesMesh();
     this.clearFaceHighlight();
     this.topology = null;
