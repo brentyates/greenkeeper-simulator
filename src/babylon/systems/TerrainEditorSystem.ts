@@ -44,12 +44,8 @@ export interface TerrainModifier {
   getTopology?(): TerrainMeshTopology | null;
   findNearestEdgeAt?(worldX: number, worldZ: number, maxDist?: number): { edgeId: number; t: number; dist: number } | null;
   setHoveredEdge?(edgeId: number | null): void;
-  getHoveredEdge?(): number | null;
   selectEdge?(edgeId: number | null, additive?: boolean): void;
-  getSelectedEdge?(): number | null;
   toggleEdgeSelection?(edgeId: number): void;
-  selectAllEdges?(): void;
-  deselectAllEdges?(): void;
   getSelectedEdgeIds?(): Set<number>;
   subdivideSelectedEdge?(): void;
   flipSelectedEdge?(): void;
@@ -57,7 +53,6 @@ export interface TerrainModifier {
   setTopologyMode?(mode: TopologyMode): void;
   getTopologyMode?(): TopologyMode;
   setHoveredFace?(faceId: number | null): void;
-  getHoveredFace?(): number | null;
   selectFace?(faceId: number, additive?: boolean): void;
   deselectFace?(faceId: number): void;
   toggleFaceSelection?(faceId: number): void;
@@ -68,14 +63,11 @@ export interface TerrainModifier {
   rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;
   stampTemplate?(template: any, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
   getSelectedFaceVertexIds?(): Set<number>;
-  getSelectedEdgeVertexIds?(): Set<number>;
   collapseEdge?(edgeId: number): void;
   getFacesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredFaces?(faceIds: number[]): void;
   getEdgesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredEdges?(edgeIds: number[]): void;
-  subdivideEdgeAt?(edgeId: number, t?: number): void;
-  canDeleteTopologyVertex?(vertexId: number): boolean;
   deleteTopologyVertex?(vertexId: number): void;
   findNearestTopologyVertexAt?(worldX: number, worldZ: number): { vertexId: number; dist: number } | null;
 }
@@ -83,7 +75,6 @@ export interface TerrainModifier {
 export interface TerrainEditorCallbacks {
   onEnable?: () => void;
   onDisable?: () => void;
-  onToolSelect?: (tool: EditorTool) => void;
   onToolChange?: (tool: EditorTool) => void;
   onModeChange?: (mode: EditorMode) => void;
   onBrushSizeChange?: (size: number) => void;
@@ -743,10 +734,6 @@ export class TerrainEditorSystem {
             this.highlightSystem.setWorldPosition(worldPos.x, worldPos.z);
         }
     }
-  }
-
-  public onSelectionChange(callback: (count: number) => void): void {
-    this.callbacks.onSelectionChange = callback;
   }
 
   public setTopologyMode(mode: TopologyMode): void {

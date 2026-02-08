@@ -258,24 +258,17 @@ function computeSubdividedTriangleWinding(
   const idx1 = originalVerts.indexOf(edgeV1);
   const idx2 = originalVerts.indexOf(edgeV2);
 
-  if (idx1 === -1 || idx2 === -1) {
-    return [
-      [edgeV1, midpointId, oppositeId],
-      [midpointId, edgeV2, oppositeId],
-    ];
-  }
-
-  if ((idx1 + 1) % 3 === idx2) {
-    return [
-      [edgeV1, midpointId, oppositeId],
-      [midpointId, edgeV2, oppositeId],
-    ];
-  } else {
+  if (idx1 !== -1 && idx2 !== -1 && (idx1 + 1) % 3 !== idx2) {
     return [
       [midpointId, edgeV1, oppositeId],
       [edgeV2, midpointId, oppositeId],
     ];
   }
+
+  return [
+    [edgeV1, midpointId, oppositeId],
+    [midpointId, edgeV2, oppositeId],
+  ];
 }
 
 export function subdivideEdge(
@@ -661,6 +654,7 @@ function findOrderedHoleVertices(
   if (neighborEdges.length === 0) return null;
 
   const ordered: number[] = [neighborEdges[0].v1, neighborEdges[0].v2];
+  const orderedSet = new Set<number>(ordered);
   const usedEdges = new Set<number>([0]);
 
   while (usedEdges.size < neighborEdges.length) {
@@ -671,13 +665,15 @@ function findOrderedHoleVertices(
       const edge = neighborEdges[i];
       const lastVertex = ordered[ordered.length - 1];
 
-      if (edge.v1 === lastVertex && !ordered.includes(edge.v2)) {
+      if (edge.v1 === lastVertex && !orderedSet.has(edge.v2)) {
         ordered.push(edge.v2);
+        orderedSet.add(edge.v2);
         usedEdges.add(i);
         found = true;
         break;
-      } else if (edge.v2 === lastVertex && !ordered.includes(edge.v1)) {
+      } else if (edge.v2 === lastVertex && !orderedSet.has(edge.v1)) {
         ordered.push(edge.v1);
+        orderedSet.add(edge.v1);
         usedEdges.add(i);
         found = true;
         break;
@@ -1084,37 +1080,17 @@ export function flipEdge(
   // --- Proceed with Flip ---
 
   // 1. Identify Boundary Edges
-  // Find edge connecting v2 and o1 (in T1)
-  const e_v2_o1_id = t1.edges.find(eid => {
+  const findBoundary = (tri: TerrainTriangle, a: number, b: number) =>
+    tri.edges.find(eid => {
       if (eid === edgeId) return false;
       const e = topology.edges.get(eid);
-      if (!e) return false;
-      return (e.v1 === v2 && e.v2 === o1) || (e.v1 === o1 && e.v2 === v2);
-  });
+      return e ? (e.v1 === a && e.v2 === b) || (e.v1 === b && e.v2 === a) : false;
+    });
 
-  // Find edge connecting o1 and v1 (in T1)
-  const e_o1_v1_id = t1.edges.find(eid => {
-      if (eid === edgeId) return false;
-      const e = topology.edges.get(eid);
-      if (!e) return false;
-      return (e.v1 === o1 && e.v2 === v1) || (e.v1 === v1 && e.v2 === o1);
-  });
-
-  // Find edge connecting v1 and o2 (in T2)
-  const e_v1_o2_id = t2.edges.find(eid => {
-      if (eid === edgeId) return false;
-      const e = topology.edges.get(eid);
-      if (!e) return false;
-      return (e.v1 === v1 && e.v2 === o2) || (e.v1 === o2 && e.v2 === v1);
-  });
-
-  // Find edge connecting o2 and v2 (in T2)
-  const e_o2_v2_id = t2.edges.find(eid => {
-      if (eid === edgeId) return false;
-      const e = topology.edges.get(eid);
-      if (!e) return false;
-      return (e.v1 === o2 && e.v2 === v2) || (e.v1 === v2 && e.v2 === o2);
-  });
+  const e_v2_o1_id = findBoundary(t1, v2, o1);
+  const e_o1_v1_id = findBoundary(t1, o1, v1);
+  const e_v1_o2_id = findBoundary(t2, v1, o2);
+  const e_o2_v2_id = findBoundary(t2, o2, v2);
 
   if (e_v2_o1_id === undefined || e_o1_v1_id === undefined || e_v1_o2_id === undefined || e_o2_v2_id === undefined) {
       console.warn("FlipEdge: Could not find all boundary edges", {e_v2_o1_id, e_o1_v1_id, e_v1_o2_id, e_o2_v2_id});

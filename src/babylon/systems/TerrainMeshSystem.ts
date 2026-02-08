@@ -44,11 +44,9 @@ import {
   collapseEdge,
   flipEdge,
   deserializeTopology,
-  serializeTopology,
   barycentricInterpolateY,
   getTriangleCentroid,
   pointInTriangle,
-  SerializedTopology,
 } from "../../core/mesh-topology";
 import { rotateAroundPivot } from "../../core/transform-ops";
 import { ShapeTemplate, generateStampTopology, stampIntoTopology } from "../../core/shape-templates";
@@ -261,11 +259,6 @@ export class TerrainMeshSystem {
     return this.topology;
   }
 
-  public getSerializedTopology(): SerializedTopology | null {
-    if (!this.topology) return null;
-    return serializeTopology(this.topology);
-  }
-
   public findNearestEdgeAt(worldX: number, worldZ: number, maxDist: number = 0.5): {
     edgeId: number;
     t: number;
@@ -307,32 +300,12 @@ export class TerrainMeshSystem {
     return this.selectedEdgeId;
   }
 
-  public deselectEdge(edgeId: number): void {
-    this.selectedEdgeIds.delete(edgeId);
-    if (this.selectedEdgeId === edgeId) {
-      this.selectedEdgeId = null;
-    }
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
   public toggleEdgeSelection(edgeId: number): void {
     if (this.selectedEdgeIds.has(edgeId)) {
       this.selectedEdgeIds.delete(edgeId);
     } else {
       this.selectedEdgeIds.add(edgeId);
       this.selectedEdgeId = edgeId;
-    }
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public selectAllEdges(): void {
-    if (!this.topology) return;
-    this.selectedEdgeIds.clear();
-    for (const [edgeId] of this.topology.edges) {
-      this.selectedEdgeIds.add(edgeId);
-    }
-    if (this.selectedEdgeIds.size > 0) {
-      this.selectedEdgeId = Array.from(this.selectedEdgeIds)[0];
     }
     this.rebuildAllEdgesMeshWithHighlights();
   }
@@ -418,15 +391,6 @@ export class TerrainMeshSystem {
       this.allEdgesMesh.dispose();
       this.allEdgesMesh = null;
     }
-  }
-
-  public subdivideEdgeAt(edgeId: number, t: number = 0.5): void {
-    if (!this.topology) return;
-
-    const result = subdivideEdge(this.topology, edgeId, t);
-    if (!result) return;
-
-    this.rebuildMesh();
   }
 
   public canDeleteTopologyVertex(vertexId: number): boolean {
@@ -1762,6 +1726,10 @@ export class TerrainMeshSystem {
 
     this.clearAllEdgesMesh();
     this.clearFaceHighlight();
+    if (this.faceHighlightMaterial) {
+      this.faceHighlightMaterial.dispose();
+      this.faceHighlightMaterial = null;
+    }
     this.topology = null;
   }
 
