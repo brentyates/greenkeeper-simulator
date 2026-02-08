@@ -274,10 +274,6 @@ export class TerrainMeshSystem {
     this.rebuildAllEdgesMeshWithHighlights();
   }
 
-  public getHoveredEdge(): number | null {
-    return this.hoveredEdgeId;
-  }
-
   public setBrushHoveredEdges(edgeIds: number[]): void {
     this.brushHoveredEdgeIds = new Set(edgeIds);
     this.rebuildAllEdgesMeshWithHighlights();
@@ -294,10 +290,6 @@ export class TerrainMeshSystem {
       this.selectedEdgeId = null;
     }
     this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public getSelectedEdge(): number | null {
-    return this.selectedEdgeId;
   }
 
   public toggleEdgeSelection(edgeId: number): void {
@@ -391,11 +383,6 @@ export class TerrainMeshSystem {
       this.allEdgesMesh.dispose();
       this.allEdgesMesh = null;
     }
-  }
-
-  public canDeleteTopologyVertex(vertexId: number): boolean {
-    if (!this.topology) return false;
-    return canDeleteVertex(this.topology, vertexId);
   }
 
   public deleteTopologyVertex(vertexId: number): void {
@@ -533,10 +520,6 @@ export class TerrainMeshSystem {
     this.rebuildFaceHighlightMesh();
   }
 
-  public getHoveredFace(): number | null {
-    return this.hoveredFaceId;
-  }
-
   public setBrushHoveredFaces(faceIds: number[]): void {
     this.brushHoveredFaceIds = new Set(faceIds);
     this.rebuildFaceHighlightMesh();
@@ -568,7 +551,7 @@ export class TerrainMeshSystem {
     return this.activeTopologyMode;
   }
 
-  public clearFaceSelection(): void {
+  public clearSelectedFaces(): void {
     this.selectedFaceIds.clear();
     this.rebuildFaceHighlightMesh();
   }
@@ -724,20 +707,6 @@ export class TerrainMeshSystem {
       if (!tri) continue;
       for (const vid of tri.vertices) {
         uniqueVertexIds.add(vid);
-      }
-    }
-    return uniqueVertexIds;
-  }
-
-  public getSelectedEdgeVertexIds(): Set<number> {
-    if (!this.topology) return new Set();
-
-    const uniqueVertexIds = new Set<number>();
-    for (const edgeId of this.selectedEdgeIds) {
-      const edge = this.topology.edges.get(edgeId);
-      if (edge) {
-        uniqueVertexIds.add(edge.v1);
-        uniqueVertexIds.add(edge.v2);
       }
     }
     return uniqueVertexIds;

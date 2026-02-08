@@ -537,13 +537,13 @@ export class TerrainEditorSystem {
     this.handleMouseUp();
   }
 
-  public handleMouseDown(_gridX: number, _gridY: number): void {
+  public handleMouseDown(gridX: number, gridY: number): void {
     if (!this.state.enabled) return;
 
     if (this.state.mode === 'stamp') {
       if (!this.lastWorldPos) {
         const res = this.meshResolution || 1;
-        this.lastWorldPos = { x: _gridX / res, z: _gridY / res };
+        this.lastWorldPos = { x: gridX / res, z: gridY / res };
       }
       this.handleStampClick();
       return;
@@ -593,9 +593,9 @@ export class TerrainEditorSystem {
     this.isMovingVertices = false;
   }
 
-  public handleClick(_gridX: number, _gridY: number): void {
+  public handleClick(gridX: number, gridY: number): void {
     if (!this.state.enabled) return;
-    this.handleMouseDown(_gridX, _gridY);
+    this.handleMouseDown(gridX, gridY);
     this.handleMouseUp();
   }
 
