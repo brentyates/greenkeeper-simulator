@@ -124,7 +124,7 @@ function createMockScene(canvas: ReturnType<typeof createMockCanvas>) {
 
 function createMockVts() {
   return {
-    getMeshResolution: vi.fn(() => 4),
+    getResolution: vi.fn(() => 4),
     setWireframeEnabled: vi.fn(),
     setAxisIndicatorEnabled: vi.fn(),
     setGridLinesEnabled: vi.fn(),

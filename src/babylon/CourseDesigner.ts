@@ -146,7 +146,7 @@ export class CourseDesigner {
       setTerrainTypeAt: () => {},
       ...createTerrainMeshModifier(vts),
     });
-    editor.setMeshResolution(vts.getMeshResolution());
+    editor.setMeshResolution(vts.getResolution());
 
     return editor;
   }

@@ -40,7 +40,6 @@ import {
   subdivideEdge,
   deleteVertex,
   canDeleteVertex,
-  isBoundaryVertex,
   findNearestTopologyVertex,
   collapseEdge,
   flipEdge,
@@ -119,7 +118,6 @@ export class TerrainMeshSystem {
   private brushHoveredEdgeIds: Set<number> = new Set();
   private allEdgesMesh: Mesh | null = null;
   private activeTopologyMode: TopologyMode = 'vertex';
-  private selectedTopologyVertices: Set<number> = new Set();
   private hoveredFaceId: number | null = null;
   private selectedFaceIds: Set<number> = new Set();
   private brushHoveredFaceIds: Set<number> = new Set();
@@ -211,7 +209,7 @@ export class TerrainMeshSystem {
     return { width: this.worldWidth, height: this.worldHeight };
   }
 
-  public getMeshResolution(): number {
+  public getResolution(): number {
     return this.options.meshResolution;
   }
 
@@ -436,11 +434,6 @@ export class TerrainMeshSystem {
     return canDeleteVertex(this.topology, vertexId);
   }
 
-  public isTopologyBoundaryVertex(vertexId: number): boolean {
-    if (!this.topology) return true;
-    return isBoundaryVertex(this.topology, vertexId);
-  }
-
   public deleteTopologyVertex(vertexId: number): void {
     if (!this.topology) return;
     if (!canDeleteVertex(this.topology, vertexId)) return;
@@ -465,28 +458,10 @@ export class TerrainMeshSystem {
     return vertex ? { ...vertex.position } : null;
   }
 
-  public setVertexPositionById(vertexId: number, pos: Vec3): void {
-    if (!this.topology) return;
-    const vertex = this.topology.vertices.get(vertexId);
-    if (vertex) {
-      vertex.position = { ...pos };
-      this.meshDirty = true;
-    }
-  }
-
   public getVertexElevationById(vertexId: number): number | null {
     if (!this.topology) return null;
     const vertex = this.topology.vertices.get(vertexId);
     return vertex ? vertex.position.y : null;
-  }
-
-  public setVertexElevationById(vertexId: number, y: number): void {
-    if (!this.topology) return;
-    const vertex = this.topology.vertices.get(vertexId);
-    if (vertex) {
-      vertex.position.y = y;
-      this.meshDirty = true;
-    }
   }
 
   public setVertexElevationsById(changes: Array<{ vertexId: number; y: number }>): void {
@@ -554,37 +529,6 @@ export class TerrainMeshSystem {
     this.rebuildMesh();
   }
 
-  public selectTopologyVertexById(vertexId: number, additive: boolean = false): void {
-    if (!additive) {
-      this.selectedTopologyVertices.clear();
-    }
-    this.selectedTopologyVertices.add(vertexId);
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public deselectTopologyVertexById(vertexId: number): void {
-    this.selectedTopologyVertices.delete(vertexId);
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public toggleTopologyVertexSelectionById(vertexId: number): void {
-    if (this.selectedTopologyVertices.has(vertexId)) {
-      this.selectedTopologyVertices.delete(vertexId);
-    } else {
-      this.selectedTopologyVertices.add(vertexId);
-    }
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public clearSelectedTopologyVertices(): void {
-    this.selectedTopologyVertices.clear();
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  public getSelectedTopologyVertexIds(): Set<number> {
-    return new Set(this.selectedTopologyVertices);
-  }
-
   // ============================================
   // Face Mode (Triangle Selection)
   // ============================================
@@ -617,10 +561,6 @@ export class TerrainMeshSystem {
     } else if (this.wireframeMesh) {
       this.wireframeMesh.setEnabled(false);
     }
-  }
-
-  public isFaceModeActive(): boolean {
-    return this.activeTopologyMode === 'face';
   }
 
   public setHoveredFace(faceId: number | null): void {
@@ -747,9 +687,6 @@ export class TerrainMeshSystem {
         uniqueVertexIds.add(edge.v1);
         uniqueVertexIds.add(edge.v2);
       }
-    }
-    for (const vid of this.selectedTopologyVertices) {
-      uniqueVertexIds.add(vid);
     }
 
     if (uniqueVertexIds.size === 0) return;
@@ -1132,10 +1069,6 @@ export class TerrainMeshSystem {
     } else if (this.gridLinesMesh) {
       this.gridLinesMesh.setEnabled(false);
     }
-  }
-
-  public getResolution(): number {
-    return this.options.meshResolution;
   }
 
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
@@ -1651,38 +1584,26 @@ export class TerrainMeshSystem {
   }
 
   public waterArea(centerX: number, centerY: number, radius: number, amount: number): number {
-    if (radius <= 0) {
-      const faceId = this.findFaceAtPosition(centerX, centerY);
-      if (faceId === null) return 0;
-      const face = this.faceStates.get(faceId);
-      if (face && applyFaceWatering(face, amount)) {
-        face.lastWatered = this.gameTime;
-        this.faceDataDirty = true;
-        return 1;
-      }
-      return 0;
-    }
-
-    const faceIds = this.getFacesInBrush(centerX, centerY, radius);
-    let affectedCount = 0;
-    for (const fid of faceIds) {
-      const face = this.faceStates.get(fid);
-      if (face && applyFaceWatering(face, amount)) {
-        face.lastWatered = this.gameTime;
-        affectedCount++;
-      }
-    }
-    if (affectedCount > 0) this.faceDataDirty = true;
-    return affectedCount;
+    return this.applyAreaEffect(centerX, centerY, radius,
+      (face) => applyFaceWatering(face, amount), 'lastWatered');
   }
 
   public fertilizeArea(centerX: number, centerY: number, radius: number, amount: number, effectiveness: number = 1.0): number {
+    return this.applyAreaEffect(centerX, centerY, radius,
+      (face) => applyFaceFertilizing(face, amount, effectiveness), 'lastFertilized');
+  }
+
+  private applyAreaEffect(
+    centerX: number, centerY: number, radius: number,
+    applyFn: (face: FaceState) => boolean,
+    timestampField: 'lastWatered' | 'lastFertilized'
+  ): number {
     if (radius <= 0) {
       const faceId = this.findFaceAtPosition(centerX, centerY);
       if (faceId === null) return 0;
       const face = this.faceStates.get(faceId);
-      if (face && applyFaceFertilizing(face, amount, effectiveness)) {
-        face.lastFertilized = this.gameTime;
+      if (face && applyFn(face)) {
+        face[timestampField] = this.gameTime;
         this.faceDataDirty = true;
         return 1;
       }
@@ -1693,8 +1614,8 @@ export class TerrainMeshSystem {
     let affectedCount = 0;
     for (const fid of faceIds) {
       const face = this.faceStates.get(fid);
-      if (face && applyFaceFertilizing(face, amount, effectiveness)) {
-        face.lastFertilized = this.gameTime;
+      if (face && applyFn(face)) {
+        face[timestampField] = this.gameTime;
         affectedCount++;
       }
     }

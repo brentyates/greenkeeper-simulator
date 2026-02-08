@@ -60,7 +60,7 @@ export class TerrainEditorController {
         ...baseModifier,
         ...createTerrainMeshModifier(vts),
       });
-      this.terrainEditorSystem.setMeshResolution(vts.getMeshResolution());
+      this.terrainEditorSystem.setMeshResolution(vts.getResolution());
     } else {
       this.terrainEditorSystem.setTerrainModifier(baseModifier);
     }

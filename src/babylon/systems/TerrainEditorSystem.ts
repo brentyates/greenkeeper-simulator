@@ -78,9 +78,6 @@ export interface TerrainModifier {
   canDeleteTopologyVertex?(vertexId: number): boolean;
   deleteTopologyVertex?(vertexId: number): void;
   findNearestTopologyVertexAt?(worldX: number, worldZ: number): { vertexId: number; dist: number } | null;
-  setTopologyVertexPosition?(vertexId: number, pos: Vec3): void;
-  setHoveredTopologyVertex?(vertexId: number | null): void;
-  getHoveredTopologyVertex?(): number | null;
 }
 
 export interface TerrainEditorCallbacks {
@@ -111,7 +108,6 @@ export class TerrainEditorSystem {
 
   private topologyMode: TopologyMode = 'vertex';
   private hoveredEdgeId: number | null = null;
-  private selectedTopologyVertices: Set<number> = new Set();
   private hoveredFaceId: number | null = null;
   private selectedFaces: Set<number> = new Set();
   private meshResolution: number = 2.0;
@@ -360,7 +356,7 @@ export class TerrainEditorSystem {
   }
 
   private notifySelectionChange(): void {
-    const count = this.state.selectedVertices.size + this.selectedTopologyVertices.size + this.selectedFaces.size;
+    const count = this.state.selectedVertices.size + this.selectedFaces.size;
     this.callbacks.onSelectionChange?.(count);
   }
 
