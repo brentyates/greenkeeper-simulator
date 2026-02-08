@@ -373,7 +373,7 @@ export function subdivideEdge(
     );
 
     const tri1Id = topology.nextTriangleId++;
-    const tri1Edges = findTriangleEdges(topology, tri1Verts, newEdge1Id, newConnectingEdgeId);
+    const tri1Edges = findTriangleEdges(topology, tri1Verts);
     const tri1: TerrainTriangle = {
       id: tri1Id,
       vertices: tri1Verts,
@@ -389,7 +389,7 @@ export function subdivideEdge(
     }
 
     const tri2Id = topology.nextTriangleId++;
-    const tri2Edges = findTriangleEdges(topology, tri2Verts, newEdge2Id, newConnectingEdgeId);
+    const tri2Edges = findTriangleEdges(topology, tri2Verts);
     const tri2: TerrainTriangle = {
       id: tri2Id,
       vertices: tri2Verts,
@@ -424,9 +424,7 @@ export function subdivideEdge(
 
 function findTriangleEdges(
   topology: TerrainMeshTopology,
-  vertices: [number, number, number],
-  _knownEdge1: number,
-  _knownEdge2: number
+  vertices: [number, number, number]
 ): [number, number, number] {
   const edges: number[] = [];
   const pairs: Array<[number, number]> = [
@@ -586,12 +584,18 @@ export function collapseEdge(
   }
 
   const edgesToRemove: number[] = [edgeId];
+  const affectedTriangles = new Set<number>();
+  const removedTriSet = new Set(trianglesToRemove);
   const removedVertexEdgeIds = topology.vertexEdges.get(removedId);
   if (removedVertexEdgeIds) {
     for (const eid of removedVertexEdgeIds) {
       if (eid === edgeId) continue;
       const e = topology.edges.get(eid);
       if (!e) continue;
+
+      for (const tid of e.triangles) {
+        if (!removedTriSet.has(tid)) affectedTriangles.add(tid);
+      }
 
       const otherV = e.v1 === removedId ? e.v2 : e.v1;
       if (otherV === survivingId) {
@@ -609,10 +613,13 @@ export function collapseEdge(
     }
   }
 
-  for (const [, tri] of topology.triangles) {
-    for (let i = 0; i < tri.vertices.length; i++) {
-      if (tri.vertices[i] === removedId) {
-        tri.vertices[i] = survivingId;
+  for (const tid of affectedTriangles) {
+    const tri = topology.triangles.get(tid);
+    if (tri) {
+      for (let i = 0; i < tri.vertices.length; i++) {
+        if (tri.vertices[i] === removedId) {
+          tri.vertices[i] = survivingId;
+        }
       }
     }
   }
@@ -1115,9 +1122,6 @@ export function flipEdge(
       return false;
   }
 
-  // Defensive: Clean up any ghost triangles before checking
-  edge.triangles = edge.triangles.filter(tid => topology.triangles.has(tid));
-  
   if (edge.triangles.length !== 2) {
       console.warn(`FlipEdge: Edge ${edgeId} is not an interior edge (triangles: ${edge.triangles.length})`, {triIds: edge.triangles});
       return false;
@@ -1533,13 +1537,3 @@ export function validateTopology(topology: TerrainMeshTopology): void {
   }
 }
 
-export function sanitizeTopology(topology: TerrainMeshTopology): void {
-  for (const [eid, edge] of topology.edges) {
-    // Remove ghost triangles
-    const beforeCount = edge.triangles.length;
-    edge.triangles = edge.triangles.filter(tid => topology.triangles.has(tid));
-    if (edge.triangles.length !== beforeCount) {
-        console.log(`Sanitize: Removed ghost triangles from edge ${eid}`);
-    }
-  }
-}
