@@ -85,6 +85,8 @@ export class TerrainMeshSystem {
 
   private worldWidth: number;
   private worldHeight: number;
+  private gridWidth: number;
+  private gridHeight: number;
 
   private terrainMesh: Mesh | null = null;
   private shaderMaterial: ShaderMaterial | null = null;
@@ -133,6 +135,8 @@ export class TerrainMeshSystem {
     this.options = { ...DEFAULT_OPTIONS, ...options };
     this.worldWidth = courseData.width;
     this.worldHeight = courseData.height;
+    this.gridWidth = Math.ceil(this.worldWidth);
+    this.gridHeight = Math.ceil(this.worldHeight);
 
     this.registerShader();
   }
@@ -158,10 +162,8 @@ export class TerrainMeshSystem {
 
   private rebuildFaceSpatialIndex(): void {
     if (!this.topology) return;
-    
-    const gridWidth = Math.ceil(this.worldWidth);
-    const gridHeight = Math.ceil(this.worldHeight);
-    this.faceSpatialIndex = new Array(gridWidth * gridHeight);
+
+    this.faceSpatialIndex = new Array(this.gridWidth * this.gridHeight);
     for (let i = 0; i < this.faceSpatialIndex.length; i++) {
       this.faceSpatialIndex[i] = new Set();
     }
@@ -183,12 +185,9 @@ export class TerrainMeshSystem {
     const minZ = Math.floor(Math.min(v0.position.z, v1.position.z, v2.position.z));
     const maxZ = Math.floor(Math.max(v0.position.z, v1.position.z, v2.position.z));
 
-    const gridWidth = Math.ceil(this.worldWidth);
-    const gridHeight = Math.ceil(this.worldHeight);
-
-    for (let gz = Math.max(0, minZ); gz <= Math.min(gridHeight - 1, maxZ); gz++) {
-      for (let gx = Math.max(0, minX); gx <= Math.min(gridWidth - 1, maxX); gx++) {
-        this.faceSpatialIndex[gz * gridWidth + gx].add(triId);
+    for (let gz = Math.max(0, minZ); gz <= Math.min(this.gridHeight - 1, maxZ); gz++) {
+      for (let gx = Math.max(0, minX); gx <= Math.min(this.gridWidth - 1, maxX); gx++) {
+        this.faceSpatialIndex[gz * this.gridWidth + gx].add(triId);
       }
     }
   }
@@ -214,20 +213,18 @@ export class TerrainMeshSystem {
     if (!this.topology || !this.faceSpatialIndex || this.faceSpatialIndex.length === 0) return [];
 
     const radiusSq = radius * radius;
-    const gridWidth = Math.ceil(this.worldWidth);
-    const gridHeight = Math.ceil(this.worldHeight);
 
     const minGX = Math.max(0, Math.floor(worldX - radius));
-    const maxGX = Math.min(gridWidth - 1, Math.ceil(worldX + radius));
+    const maxGX = Math.min(this.gridWidth - 1, Math.ceil(worldX + radius));
     const minGZ = Math.max(0, Math.floor(worldZ - radius));
-    const maxGZ = Math.min(gridHeight - 1, Math.ceil(worldZ + radius));
+    const maxGZ = Math.min(this.gridHeight - 1, Math.ceil(worldZ + radius));
 
     const faceIds: number[] = [];
     const visited = new Set<number>();
 
     for (let gz = minGZ; gz <= maxGZ; gz++) {
       for (let gx = minGX; gx <= maxGX; gx++) {
-        const cellSet = this.faceSpatialIndex[gz * gridWidth + gx];
+        const cellSet = this.faceSpatialIndex[gz * this.gridWidth + gx];
         if (!cellSet) continue;
 
         for (const triId of cellSet) {
@@ -561,13 +558,10 @@ export class TerrainMeshSystem {
 
     const gx = Math.floor(worldX);
     const gz = Math.floor(worldZ);
-    const gridWidth = Math.ceil(this.worldWidth);
-    const gridHeight = Math.ceil(this.worldHeight);
 
-    if (gx < 0 || gx >= gridWidth || gz < 0 || gz >= gridHeight) return null;
+    if (gx < 0 || gx >= this.gridWidth || gz < 0 || gz >= this.gridHeight) return null;
 
-    const cellTriangles = this.faceSpatialIndex[gz * gridWidth + gx];
-    if (!cellTriangles) return null;
+    const cellTriangles = this.faceSpatialIndex[gz * this.gridWidth + gx];
 
     for (const triId of cellTriangles) {
       const tri = this.topology.triangles.get(triId);
@@ -1578,9 +1572,6 @@ export class TerrainMeshSystem {
     }
   }
 
-  public getUpdateCount(): number {
-    return 0;
-  }
 
   // ============================================
   // Image Overlay

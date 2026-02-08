@@ -484,13 +484,21 @@ export function deleteVertex(
 
   const removedTriangleIds: number[] = [];
   const removedEdgeIds: number[] = [];
-  const trianglesToRemove: number[] = [];
 
-  for (const [triId, tri] of topology.triangles) {
-    if (tri.vertices.includes(vertexId)) {
-      trianglesToRemove.push(triId);
+  // Collect adjacent triangles via vertexEdges index (O(degree) vs O(all triangles))
+  const triSet = new Set<number>();
+  const vertexEdgeSet = topology.vertexEdges.get(vertexId);
+  if (vertexEdgeSet) {
+    for (const eid of vertexEdgeSet) {
+      const edge = topology.edges.get(eid);
+      if (edge) {
+        for (const tid of edge.triangles) {
+          triSet.add(tid);
+        }
+      }
     }
   }
+  const trianglesToRemove = Array.from(triSet);
 
   const holeVertices = findOrderedHoleVertices(topology, vertexId, trianglesToRemove);
   if (!holeVertices || holeVertices.length < 3) return null;

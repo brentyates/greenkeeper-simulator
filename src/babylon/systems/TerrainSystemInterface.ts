@@ -65,6 +65,5 @@ export interface TerrainSystem {
     gameTime: number
   ): number[];
 
-  getUpdateCount(): number;
   getResolution?(): number;
 }

@@ -1058,21 +1058,14 @@ describe("TerrainEditorController", () => {
   });
 
   describe("isPausedByEditor", () => {
-    it("returns false initially", () => {
+    it("returns false when editor is disabled", () => {
+      mockSystem.isEnabled.mockReturnValue(false);
       expect(controller.isPausedByEditor()).toBe(false);
     });
 
-    it("returns true after onEnable callback", () => {
-      const cbs = getSystemCallbacks();
-      cbs.onEnable();
+    it("returns true when editor is enabled", () => {
+      mockSystem.isEnabled.mockReturnValue(true);
       expect(controller.isPausedByEditor()).toBe(true);
-    });
-
-    it("returns false after onDisable callback", () => {
-      const cbs = getSystemCallbacks();
-      cbs.onEnable();
-      cbs.onDisable();
-      expect(controller.isPausedByEditor()).toBe(false);
     });
   });
 

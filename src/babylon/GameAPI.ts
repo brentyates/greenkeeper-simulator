@@ -1161,10 +1161,6 @@ export class GameAPI {
     return this.systems.equipmentManager.hasParticles();
   }
 
-  public getGrassRenderUpdateCount(): number {
-    return this.systems.terrainSystem.getUpdateCount();
-  }
-
   public getUIState(): {
     isPaused: boolean;
     overlayMode: string;

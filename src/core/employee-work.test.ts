@@ -85,7 +85,6 @@ function createMockTerrainSystem(opts?: {
     getCourseStats() { return { health: 100, moisture: 100, nutrients: 100, height: 0 }; },
     findFaceAtPosition() { return null; },
     getTerrainSpeedAt() { return 1; },
-    getUpdateCount() { return 0; },
   } as TerrainSystem;
 }
 

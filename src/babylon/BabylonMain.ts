@@ -783,12 +783,9 @@ export class BabylonMain {
         return;
       }
 
-      if (this.terrainEditorController.isPausedByEditor()) {
+      if (this.terrainEditorController.isEnabled()) {
         this.terrainSystem.update(0, this.state.gameDay * 1440 + this.state.gameTime, this.state.weather);
-
-        if (this.terrainEditorController.isEnabled()) {
-          this.playerController.updateEditorCamera(deltaMs);
-        }
+        this.playerController.updateEditorCamera(deltaMs);
         return;
       }
 

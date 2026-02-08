@@ -420,7 +420,6 @@ function createMockSystems(): GameSystems {
       getCourseStats: vi.fn(() => ({ health: 75, moisture: 60, nutrients: 50, height: 0.5 })),
       getWorldDimensions: vi.fn(() => ({ width: 10, height: 10 })),
       update: vi.fn(),
-      getUpdateCount: vi.fn(() => 42),
       getAllFaceStates: vi.fn(() => new Map([[0, { terrainCode: 0, moisture: 50, nutrients: 50, grassHeight: 0.5, health: 80, lastMowed: 0, lastWatered: 0, lastFertilized: 0, lastRaked: 0 }]])),
     } as any,
     terrainEditorSystem: null,
@@ -1013,7 +1012,6 @@ describe("GameAPI", () => {
     it("refillEquipment", () => { api.refillEquipment(); expect(sys.handleRefill).toHaveBeenCalled(); });
     it("toggleMute", () => { api.toggleMute(); expect(sys.handleMute).toHaveBeenCalled(); });
     it("hasActiveParticles", () => { expect(api.hasActiveParticles()).toBe(false); });
-    it("getGrassRenderUpdateCount", () => { expect(api.getGrassRenderUpdateCount()).toBe(42); });
     it("setEquipmentResource", () => { api.setEquipmentResource("mower", 50); expect(sys.equipmentManager.setResource).toHaveBeenCalledWith("mower", 50); });
     it("getResearchState", () => { expect(api.getResearchState()).toBe(state.researchState); });
     it("getIrrigationSystem", () => { expect(api.getIrrigationSystem()).toBe(state.irrigationSystem); });

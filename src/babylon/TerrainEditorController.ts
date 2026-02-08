@@ -34,7 +34,6 @@ export class TerrainEditorController {
   private terrainEditorSystem: TerrainEditorSystem | null = null;
   private terrainEditorUI: TerrainEditorUI | null = null;
   private editorUITexture: AdvancedDynamicTexture | null = null;
-  private terrainEditorPausedGame: boolean = false;
   private ctx: TerrainEditorContext;
 
   constructor(ctx: TerrainEditorContext) {
@@ -140,7 +139,6 @@ export class TerrainEditorController {
           vts.setAxisIndicatorEnabled(true);
         }
 
-        this.terrainEditorPausedGame = true;
         this.ctx.setPlayerVisualEnabled(false);
         this.ctx.setEmployeeVisualSystemVisible(false);
       },
@@ -152,7 +150,6 @@ export class TerrainEditorController {
           vts.setAxisIndicatorEnabled(false);
         }
 
-        this.terrainEditorPausedGame = false;
         const playerVisual = this.ctx.getPlayerVisual();
         if (playerVisual) {
           this.ctx.setPlayerVisualEnabled(true);
@@ -433,7 +430,7 @@ export class TerrainEditorController {
   }
 
   isPausedByEditor(): boolean {
-    return this.terrainEditorPausedGame;
+    return this.isEnabled();
   }
 
   getSystem(): TerrainEditorSystem | null {

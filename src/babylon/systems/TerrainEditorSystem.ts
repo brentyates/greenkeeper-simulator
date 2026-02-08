@@ -46,10 +46,8 @@ export interface TerrainModifier {
   setHoveredEdge?(edgeId: number | null): void;
   selectEdge?(edgeId: number | null, additive?: boolean): void;
   toggleEdgeSelection?(edgeId: number): void;
-  getSelectedEdgeIds?(): Set<number>;
   subdivideSelectedEdge?(): void;
   flipSelectedEdge?(): void;
-  setFaceTerrain?(faceId: number, type: TerrainType): void;
   setTopologyMode?(mode: TopologyMode): void;
   getTopologyMode?(): TopologyMode;
   setHoveredFace?(faceId: number | null): void;
@@ -62,7 +60,6 @@ export interface TerrainModifier {
   moveSelectedFaces?(dx: number, dy: number, dz: number): void;
   rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;
   stampTemplate?(template: any, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
-  getSelectedFaceVertexIds?(): Set<number>;
   collapseEdge?(edgeId: number): void;
   getFacesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredFaces?(faceIds: number[]): void;
@@ -331,10 +328,8 @@ export class TerrainEditorSystem {
     return this.state.brushStrength;
   }
 
-  public selectVerticesById(vertexIds: number[], additive: boolean = false): void {
-    if (!additive) {
-      this.state.selectedVertices.clear();
-    }
+  public selectVerticesById(vertexIds: number[]): void {
+    this.state.selectedVertices.clear();
     for (const id of vertexIds) {
       this.state.selectedVertices.add(id);
     }
@@ -355,7 +350,7 @@ export class TerrainEditorSystem {
     const topology = this.terrainModifier?.getTopology?.();
     if (topology) {
       const ids = Array.from(topology.vertices.keys());
-      this.selectVerticesById(ids, false);
+      this.selectVerticesById(ids);
     }
   }
 
