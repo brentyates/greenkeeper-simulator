@@ -457,7 +457,7 @@ export class TerrainEditorSystem {
         const y = this.state.hoverTile.y;
         const nearestId = this.terrainModifier?.findNearestVertexId?.(x / this.meshResolution, y / this.meshResolution);
         const elev = nearestId != null ? (this.terrainModifier?.getVertexElevationById?.(nearestId) ?? 0) : 0;
-        const res = this.meshResolution || 1;
+        const res = this.meshResolution;
         const faceId = this.terrainModifier?.findFaceAtPosition?.(x / res, y / res);
         const tri = faceId != null ? this.terrainModifier?.getTopology?.()?.triangles.get(faceId) : null;
         const typeCode = tri?.terrainCode ?? 0;
@@ -537,7 +537,7 @@ export class TerrainEditorSystem {
 
     if (this.state.mode === 'stamp') {
       if (!this.lastWorldPos) {
-        const res = this.meshResolution || 1;
+        const res = this.meshResolution;
         this.lastWorldPos = { x: gridX / res, z: gridY / res };
       }
       this.handleStampClick();

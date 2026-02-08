@@ -299,10 +299,6 @@ export class TerrainMeshSystem {
     this.rebuildAllEdgesMeshWithHighlights();
   }
 
-  public getSelectedEdgeIds(): Set<number> {
-    return new Set(this.selectedEdgeIds);
-  }
-
   public subdivideSelectedEdge(): void {
     if (this.selectedEdgeIds.size === 0 || !this.topology) return;
 
@@ -995,19 +991,16 @@ export class TerrainMeshSystem {
   }
 
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
+    if (!this.topology) return 0;
     const faceId = this.findFaceAtPosition(worldX, worldZ);
-    if (faceId !== null) {
-      const tri = this.topology!.triangles.get(faceId);
-      if (tri) {
-        const v0 = this.topology!.vertices.get(tri.vertices[0]);
-        const v1 = this.topology!.vertices.get(tri.vertices[1]);
-        const v2 = this.topology!.vertices.get(tri.vertices[2]);
-        if (v0 && v1 && v2) {
-          return barycentricInterpolateY(worldX, worldZ, v0.position, v1.position, v2.position);
-        }
-      }
-    }
-    return 0;
+    if (faceId === null) return 0;
+    const tri = this.topology.triangles.get(faceId);
+    if (!tri) return 0;
+    const v0 = this.topology.vertices.get(tri.vertices[0]);
+    const v1 = this.topology.vertices.get(tri.vertices[1]);
+    const v2 = this.topology.vertices.get(tri.vertices[2]);
+    if (!v0 || !v1 || !v2) return 0;
+    return barycentricInterpolateY(worldX, worldZ, v0.position, v1.position, v2.position);
   }
 
   private static readonly FACE_DATA_TEX_WIDTH = 256;
@@ -1623,8 +1616,7 @@ export class TerrainMeshSystem {
 
   public isPositionWalkable(worldX: number, worldZ: number): boolean {
     const faceId = this.findFaceAtPosition(worldX, worldZ);
-    if (faceId === null) return false;
-    if (!this.topology) return false;
+    if (faceId === null || !this.topology) return false;
     return isFaceWalkableBySlope(this.topology, faceId, HEIGHT_UNIT);
   }
 

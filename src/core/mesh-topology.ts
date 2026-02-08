@@ -378,7 +378,7 @@ export function subdivideEdge(
 
     for (const eid of tri1Edges) {
       const e = topology.edges.get(eid);
-      if (e) e.triangles.push(tri1Id);
+      if (e && !e.triangles.includes(tri1Id)) e.triangles.push(tri1Id);
     }
 
     const tri2Id = topology.nextTriangleId++;
@@ -564,10 +564,7 @@ export function collapseEdge(
     y: (v1.position.y + v2.position.y) / 2,
     z: (v1.position.z + v2.position.z) / 2,
   };
-  const trianglesToRemove: number[] = [];
-  for (const triId of edge.triangles) {
-    trianglesToRemove.push(triId);
-  }
+  const trianglesToRemove = [...edge.triangles];
 
   for (const triId of trianglesToRemove) {
     const tri = topology.triangles.get(triId);
