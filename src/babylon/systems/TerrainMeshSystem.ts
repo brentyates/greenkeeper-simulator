@@ -684,20 +684,6 @@ export class TerrainMeshSystem {
     return { faceIds: newFaceIds, vertexIds: newVertexIds };
   }
 
-  public getSelectedFaceVertexIds(): Set<number> {
-    if (!this.topology) return new Set();
-
-    const uniqueVertexIds = new Set<number>();
-    for (const faceId of this.selectedFaceIds) {
-      const tri = this.topology.triangles.get(faceId);
-      if (!tri) continue;
-      for (const vid of tri.vertices) {
-        uniqueVertexIds.add(vid);
-      }
-    }
-    return uniqueVertexIds;
-  }
-
   private rebuildFaceHighlightMesh(): void {
     this.clearFaceHighlight();
 

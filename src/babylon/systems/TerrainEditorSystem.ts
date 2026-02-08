@@ -49,13 +49,11 @@ export interface TerrainModifier {
   subdivideSelectedEdge?(): void;
   flipSelectedEdge?(): void;
   setTopologyMode?(mode: TopologyMode): void;
-  getTopologyMode?(): TopologyMode;
   setHoveredFace?(faceId: number | null): void;
   selectFace?(faceId: number, additive?: boolean): void;
   deselectFace?(faceId: number): void;
   toggleFaceSelection?(faceId: number): void;
   clearSelectedFaces?(): void;
-  getSelectedFaceIds?(): Set<number>;
   findFaceAtPosition?(worldX: number, worldZ: number): number | null;
   moveSelectedFaces?(dx: number, dy: number, dz: number): void;
   rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;
@@ -549,7 +547,7 @@ export class TerrainEditorSystem {
     this.state.isDragging = true;
 
     if (this.state.mode === 'sculpt') {
-      this.handleSculptClick();
+      this.applySculpt();
     } else if (this.state.mode === 'paint') {
       if (this.lastWorldPos) {
         this.handleFacePaint(this.lastWorldPos.x, this.lastWorldPos.z);
@@ -617,10 +615,6 @@ export class TerrainEditorSystem {
     if (vertexIds.length === 0) return null;
 
     return { vertexIds, worldX, worldZ };
-  }
-
-  private handleSculptClick(): void {
-    this.applySculpt();
   }
 
   public handleDrag(_gridX: number, _gridY: number): void {
@@ -795,9 +789,5 @@ export class TerrainEditorSystem {
     // will batch-rebuild the mesh once instead of per mouse event.
     this.terrainModifier.paintTerrainType?.(facesInBrush, terrainType);
     this.highlightSystem.refresh();
-  }
-
-  public dispose(): void {
-    this.highlightSystem.clearHighlight();
   }
 }

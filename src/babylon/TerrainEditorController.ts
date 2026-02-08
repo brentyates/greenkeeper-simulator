@@ -416,21 +416,8 @@ export class TerrainEditorController {
     this.terrainEditorSystem.handleDragEnd();
   }
 
-  setEnabled(enabled: boolean): void {
-    if (!this.terrainEditorSystem) return;
-    if (enabled) {
-      this.terrainEditorSystem.enable();
-    } else {
-      this.terrainEditorSystem.disable();
-    }
-  }
-
   isEnabled(): boolean {
     return this.terrainEditorSystem?.isEnabled() ?? false;
-  }
-
-  isPausedByEditor(): boolean {
-    return this.isEnabled();
   }
 
   getSystem(): TerrainEditorSystem | null {

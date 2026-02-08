@@ -1023,23 +1023,6 @@ describe("TerrainEditorController", () => {
     });
   });
 
-  describe("setEnabled", () => {
-    it("enables the system", () => {
-      controller.setEnabled(true);
-      expect(mockSystem.enable).toHaveBeenCalled();
-    });
-
-    it("disables the system", () => {
-      controller.setEnabled(false);
-      expect(mockSystem.disable).toHaveBeenCalled();
-    });
-
-    it("does nothing when system is null", () => {
-      const ctrl = new TerrainEditorController(mocks.ctx);
-      ctrl.setEnabled(true);
-    });
-  });
-
   describe("isEnabled", () => {
     it("returns true when system is enabled", () => {
       mockSystem.isEnabled.mockReturnValue(true);
@@ -1057,17 +1040,6 @@ describe("TerrainEditorController", () => {
     });
   });
 
-  describe("isPausedByEditor", () => {
-    it("returns false when editor is disabled", () => {
-      mockSystem.isEnabled.mockReturnValue(false);
-      expect(controller.isPausedByEditor()).toBe(false);
-    });
-
-    it("returns true when editor is enabled", () => {
-      mockSystem.isEnabled.mockReturnValue(true);
-      expect(controller.isPausedByEditor()).toBe(true);
-    });
-  });
 
   describe("getSystem", () => {
     it("returns the editor system", () => {
