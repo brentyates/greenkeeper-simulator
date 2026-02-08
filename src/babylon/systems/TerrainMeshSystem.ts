@@ -3,7 +3,6 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
-import { Ray } from "@babylonjs/core/Culling/ray";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
@@ -50,6 +49,7 @@ import {
   serializeTopology,
   barycentricInterpolateY,
   getTriangleCentroid,
+  pointInTriangle,
   SerializedTopology,
 } from "../../core/mesh-topology";
 import { rotateAroundPivot } from "../../core/transform-ops";
@@ -117,6 +117,9 @@ export class TerrainMeshSystem {
   private brushHoveredFaceIds: Set<number> = new Set();
   private faceHighlightMesh: Mesh | null = null;
   private faceSpatialIndex: Array<Set<number>> = [];
+  private wireframeMesh: Mesh | null = null;
+  private wireframeEnabled: boolean = false;
+  private axisIndicatorMesh: Mesh | null = null;
 
   constructor(
     scene: Scene,
@@ -248,22 +251,6 @@ export class TerrainMeshSystem {
     return getEdgesInBrush(worldX, worldZ, radius, this.topology);
   }
 
-  public pick(ray: Ray): { gridX: number; gridY: number; worldPos: { x: number; z: number }; faceId: number | null } | null {
-    if (!this.terrainMesh) return null;
-    const pickResult = ray.intersectsMesh(this.terrainMesh);
-    if (!pickResult || !pickResult.hit || !pickResult.pickedPoint) return null;
-
-    const worldPos = { x: pickResult.pickedPoint.x, z: pickResult.pickedPoint.z };
-    const res = this.options.meshResolution;
-
-    return {
-      gridX: Math.floor(worldPos.x * res),
-      gridY: Math.floor(worldPos.z * res),
-      worldPos,
-      faceId: pickResult.faceId
-    };
-  }
-
   public getTopology(): TerrainMeshTopology | null {
     return this.topology;
   }
@@ -285,7 +272,7 @@ export class TerrainMeshSystem {
   public setHoveredEdge(edgeId: number | null): void {
     if (this.hoveredEdgeId === edgeId) return;
     this.hoveredEdgeId = edgeId;
-    this.updateEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public getHoveredEdge(): number | null {
@@ -294,7 +281,7 @@ export class TerrainMeshSystem {
 
   public setBrushHoveredEdges(edgeIds: number[]): void {
     this.brushHoveredEdgeIds = new Set(edgeIds);
-    this.updateEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public selectEdge(edgeId: number | null, additive: boolean = false): void {
@@ -307,7 +294,7 @@ export class TerrainMeshSystem {
     } else {
       this.selectedEdgeId = null;
     }
-    this.updateSelectedEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public getSelectedEdge(): number | null {
@@ -319,7 +306,7 @@ export class TerrainMeshSystem {
     if (this.selectedEdgeId === edgeId) {
       this.selectedEdgeId = null;
     }
-    this.updateSelectedEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public toggleEdgeSelection(edgeId: number): void {
@@ -329,7 +316,7 @@ export class TerrainMeshSystem {
       this.selectedEdgeIds.add(edgeId);
       this.selectedEdgeId = edgeId;
     }
-    this.updateSelectedEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public selectAllEdges(): void {
@@ -341,13 +328,13 @@ export class TerrainMeshSystem {
     if (this.selectedEdgeIds.size > 0) {
       this.selectedEdgeId = Array.from(this.selectedEdgeIds)[0];
     }
-    this.updateSelectedEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public deselectAllEdges(): void {
     this.selectedEdgeIds.clear();
     this.selectedEdgeId = null;
-    this.updateSelectedEdgeHighlight();
+    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public getSelectedEdgeIds(): Set<number> {
@@ -371,20 +358,6 @@ export class TerrainMeshSystem {
     if (!result) return;
 
     this.rebuildMesh();
-  }
-
-  private updateSelectedEdgeHighlight(): void {
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-  private clearSelectedEdgeHighlight(): void {
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
-
-
-  private createAllEdgesMesh(): void {
-    this.rebuildAllEdgesMeshWithHighlights();
   }
 
   private rebuildAllEdgesMeshWithHighlights(): void {
@@ -625,7 +598,7 @@ export class TerrainMeshSystem {
 
     // Handle Edge Mode Logic
     if (mode === 'edge') {
-      this.createAllEdgesMesh();
+      this.rebuildAllEdgesMeshWithHighlights();
     } else {
       this.brushHoveredEdgeIds.clear();
       this.deselectAllEdges();
@@ -726,7 +699,7 @@ export class TerrainMeshSystem {
 
       if (!v0 || !v1 || !v2) continue;
 
-      if (this.pointInTriangle2D(
+      if (pointInTriangle(
         worldX, worldZ,
         v0.position.x, v0.position.z,
         v1.position.x, v1.position.z,
@@ -736,35 +709,6 @@ export class TerrainMeshSystem {
       }
     }
     return null;
-  }
-
-  private pointInTriangle2D(
-    px: number, pz: number,
-    ax: number, az: number,
-    bx: number, bz: number,
-    cx: number, cz: number
-  ): boolean {
-    const v0x = cx - ax;
-    const v0z = cz - az;
-    const v1x = bx - ax;
-    const v1z = bz - az;
-    const v2x = px - ax;
-    const v2z = pz - az;
-
-    const dot00 = v0x * v0x + v0z * v0z;
-    const dot01 = v0x * v1x + v0z * v1z;
-    const dot02 = v0x * v2x + v0z * v2z;
-    const dot11 = v1x * v1x + v1z * v1z;
-    const dot12 = v1x * v2x + v1z * v2z;
-
-    const denom = dot00 * dot11 - dot01 * dot01;
-    if (Math.abs(denom) < 0.0001) return false;
-
-    const invDenom = 1 / denom;
-    const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-    const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-
-    return (u >= 0) && (v >= 0) && (u + v <= 1);
   }
 
   public moveSelectedFaces(dx: number, dy: number, dz: number): void {
@@ -1054,10 +998,6 @@ export class TerrainMeshSystem {
     this.applyTerrainCodeToFace(faceId, getTerrainCode(type), type);
   }
 
-  private updateEdgeHighlight(): void {
-    this.rebuildAllEdgesMeshWithHighlights();
-  }
-
   private clearEdgeHighlight(): void {
     if (this.edgeHighlightMesh) {
       this.edgeHighlightMesh.dispose();
@@ -1080,7 +1020,7 @@ export class TerrainMeshSystem {
       this.createWireframeMesh();
     }
     if (this.activeTopologyMode === 'edge') {
-      this.createAllEdgesMesh();
+      this.rebuildAllEdgesMeshWithHighlights();
     }
     if (this.activeTopologyMode === 'face') {
       this.rebuildFaceHighlightMesh();
@@ -1918,15 +1858,10 @@ export class TerrainMeshSystem {
     }
 
     this.clearEdgeHighlight();
-    this.clearSelectedEdgeHighlight();
     this.clearAllEdgesMesh();
     this.clearFaceHighlight();
     this.topology = null;
   }
-
-  private wireframeMesh: Mesh | null = null;
-  private wireframeEnabled: boolean = false;
-  private axisIndicatorMesh: Mesh | null = null;
 
   public setWireframeEnabled(enabled: boolean): void {
     this.wireframeEnabled = enabled;

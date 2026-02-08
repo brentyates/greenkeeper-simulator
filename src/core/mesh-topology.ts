@@ -702,7 +702,7 @@ function signedPolygonArea(topology: TerrainMeshTopology, vids: number[]): numbe
   return area / 2;
 }
 
-function pointInTriangle(
+export function pointInTriangle(
   px: number, pz: number,
   ax: number, az: number,
   bx: number, bz: number,
