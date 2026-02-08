@@ -587,7 +587,6 @@ export class TerrainEditorSystem {
   }
 
   public handleClick(gridX: number, gridY: number): void {
-    if (!this.state.enabled) return;
     this.handleMouseDown(gridX, gridY);
     this.handleMouseUp();
   }
@@ -696,9 +695,7 @@ export class TerrainEditorSystem {
             this.hoveredFaceId = faceId;
             this.terrainModifier?.setHoveredFace?.(faceId);
 
-            if (this.state.mode === 'stamp') {
-                this.terrainModifier?.setBrushHoveredFaces?.([]);
-            } else if (this.state.interactionMode === 'brush') {
+            if (this.state.interactionMode === 'brush' && this.state.mode !== 'stamp') {
                 const facesInBrush = this.terrainModifier?.getFacesInBrush?.(worldPos.x, worldPos.z, this.getBrushRadius()) ?? [];
                 this.terrainModifier?.setBrushHoveredFaces?.(facesInBrush);
             } else {

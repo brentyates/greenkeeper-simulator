@@ -111,6 +111,21 @@ export class TerrainMeshSystem {
   private faceDataDirty: boolean = false;
   private static readonly FACE_DATA_UPDATE_INTERVAL: number = 10;
 
+  // Edge highlight colors
+  private static readonly EDGE_NORMAL_COLOR = new Color4(0.5, 0.75, 0.5, 0.8);
+  private static readonly EDGE_HOVERED_COLOR = new Color4(0, 1, 1, 1);
+  private static readonly EDGE_BRUSH_COLOR = new Color4(0.4, 0.9, 0.9, 0.9);
+  private static readonly EDGE_SELECTED_COLOR = new Color4(1, 0.5, 0, 1);
+
+  // Face highlight colors
+  private static readonly FACE_HOVERED_COLOR = new Color4(1, 1, 0, 0.4);
+  private static readonly FACE_BRUSH_COLOR = new Color4(0.8, 0.9, 0.3, 0.3);
+  private static readonly FACE_SELECTED_COLOR = new Color4(0, 1, 1, 0.5);
+
+  // Wireframe colors per topology mode
+  private static readonly WIREFRAME_VERTEX_COLOR = new Color4(0.8, 0.8, 0.2, 0.7);
+  private static readonly WIREFRAME_FACE_COLOR = new Color4(0.4, 0.7, 0.4, 0.5);
+
   private topology: TerrainMeshTopology | null = null;
   private hoveredEdgeId: number | null = null;
   private selectedEdgeIds: Set<number> = new Set();
@@ -329,11 +344,6 @@ export class TerrainMeshSystem {
     const colors: Color4[][] = [];
     const lineOffset = 0.02;
 
-    const normalColor = new Color4(0.5, 0.75, 0.5, 0.8);
-    const hoveredColor = new Color4(0, 1, 1, 1);
-    const brushHoveredColor = new Color4(0.4, 0.9, 0.9, 0.9);
-    const selectedColor = new Color4(1, 0.5, 0, 1);
-
     for (const [edgeId, edge] of this.topology.edges) {
       const v1 = this.topology.vertices.get(edge.v1);
       const v2 = this.topology.vertices.get(edge.v2);
@@ -344,13 +354,13 @@ export class TerrainMeshSystem {
         new Vector3(v2.position.x, v2.position.y * HEIGHT_UNIT + lineOffset, v2.position.z),
       ]);
 
-      let color = normalColor;
+      let color = TerrainMeshSystem.EDGE_NORMAL_COLOR;
       if (this.selectedEdgeIds.has(edgeId)) {
-        color = selectedColor;
+        color = TerrainMeshSystem.EDGE_SELECTED_COLOR;
       } else if (edgeId === this.hoveredEdgeId) {
-        color = hoveredColor;
+        color = TerrainMeshSystem.EDGE_HOVERED_COLOR;
       } else if (this.brushHoveredEdgeIds.has(edgeId)) {
-        color = brushHoveredColor;
+        color = TerrainMeshSystem.EDGE_BRUSH_COLOR;
       }
 
       colors.push([color, color]);
@@ -494,8 +504,8 @@ export class TerrainMeshSystem {
 
     if (mode === 'vertex' || mode === 'face') {
       const color = mode === 'vertex'
-        ? new Color4(0.8, 0.8, 0.2, 0.7)
-        : new Color4(0.4, 0.7, 0.4, 0.5);
+        ? TerrainMeshSystem.WIREFRAME_VERTEX_COLOR
+        : TerrainMeshSystem.WIREFRAME_FACE_COLOR;
       this.createWireframeMesh(color);
       if (this.wireframeMesh) this.wireframeMesh.setEnabled(true);
     } else if (this.wireframeMesh) {
@@ -694,9 +704,9 @@ export class TerrainMeshSystem {
     const colors: number[] = [];
     const lineOffset = 0.03;
 
-    const hoveredColor = new Color4(1, 1, 0, 0.4);
-    const brushHoveredColor = new Color4(0.8, 0.9, 0.3, 0.3);
-    const selectedColor = new Color4(0, 1, 1, 0.5);
+    const hoveredColor = TerrainMeshSystem.FACE_HOVERED_COLOR;
+    const brushHoveredColor = TerrainMeshSystem.FACE_BRUSH_COLOR;
+    const selectedColor = TerrainMeshSystem.FACE_SELECTED_COLOR;
 
     const facesToRender = new Set<number>(this.selectedFaceIds);
     if (this.hoveredFaceId !== null && !this.selectedFaceIds.has(this.hoveredFaceId)) {
@@ -910,11 +920,11 @@ export class TerrainMeshSystem {
         } else {
           this.faceStates.set(id, createFaceState(id, tri.terrainCode));
         }
-      }
-
-      const state = this.faceStates.get(id);
-      if (state && state.terrainCode !== tri.terrainCode) {
-        state.terrainCode = tri.terrainCode;
+      } else {
+        const state = this.faceStates.get(id)!;
+        if (state.terrainCode !== tri.terrainCode) {
+          state.terrainCode = tri.terrainCode;
+        }
       }
     }
   }
@@ -933,20 +943,20 @@ export class TerrainMeshSystem {
     const res = this.options.meshResolution;
     const step = 1 / res;
 
-    for (let y = 0; y <= this.worldHeight; y += step) {
+    for (let z = 0; z <= this.worldHeight; z += step) {
       const line: Vector3[] = [];
       for (let x = 0; x <= this.worldWidth; x += step) {
-        const elev = this.getInterpolatedElevation(x, y);
-        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, y));
+        const elev = this.getInterpolatedElevation(x, z);
+        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, z));
       }
       lines.push(line);
     }
 
     for (let x = 0; x <= this.worldWidth; x += step) {
       const line: Vector3[] = [];
-      for (let y = 0; y <= this.worldHeight; y += step) {
-        const elev = this.getInterpolatedElevation(x, y);
-        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, y));
+      for (let z = 0; z <= this.worldHeight; z += step) {
+        const elev = this.getInterpolatedElevation(x, z);
+        line.push(new Vector3(x, elev * HEIGHT_UNIT + lineOffset, z));
       }
       lines.push(line);
     }
