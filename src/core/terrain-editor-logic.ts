@@ -26,8 +26,6 @@ export interface EditorState {
   hoverTile: { x: number; y: number } | null;
   hoverVertex: { vertexId: number } | null;
   selectedVertices: Set<number>;
-  dragStartScreenY: number | null;
-  dragLastScreenY: number | null;
 }
 
 export interface VertexModification {
@@ -52,8 +50,6 @@ export function createInitialEditorState(): EditorState {
     hoverTile: null,
     hoverVertex: null,
     selectedVertices: new Set(),
-    dragStartScreenY: null,
-    dragLastScreenY: null,
   };
 }
 

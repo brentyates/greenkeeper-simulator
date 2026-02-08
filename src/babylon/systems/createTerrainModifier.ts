@@ -19,7 +19,6 @@ export function createTerrainMeshModifier(vts: TerrainMeshSystem): Partial<Terra
     selectFace: (faceId, additive) => vts.selectFace(faceId, additive),
     deselectFace: (faceId) => vts.deselectFace(faceId),
     toggleFaceSelection: (faceId) => vts.toggleFaceSelection(faceId),
-    clearSelectedFaces: () => vts.clearSelectedFaces(),
     findFaceAtPosition: (worldX, worldZ) => vts.findFaceAtPosition(worldX, worldZ),
     moveSelectedFaces: (dx, dy, dz) => vts.moveSelectedFaces(dx, dy, dz),
     rotateSelectedVertices: (ax, ay, az) => vts.rotateSelectedVertices(ax, ay, az),

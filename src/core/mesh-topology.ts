@@ -532,6 +532,7 @@ export function deleteVertex(
   }
 
   topology.vertices.delete(vertexId);
+  topology.vertexEdges.delete(vertexId);
 
   const { newTriangleIds } = retriangulateHole(topology, holeVertices);
 
@@ -631,6 +632,7 @@ export function collapseEdge(
   }
 
   topology.vertices.delete(removedId);
+  topology.vertexEdges.delete(removedId);
 
   if (import.meta.env.DEV) validateTopology(topology);
 
@@ -1342,6 +1344,9 @@ export function validateTopology(topology: TerrainMeshTopology): void {
   }
 
   for (const [vid, edgeSet] of topology.vertexEdges) {
+    if (!topology.vertices.has(vid)) {
+      throw new Error(`vertexEdges contains orphaned entry for non-existent vertex ${vid}`);
+    }
     for (const eid of edgeSet) {
       const edge = topology.edges.get(eid);
       if (!edge) {

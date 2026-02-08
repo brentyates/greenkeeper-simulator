@@ -53,7 +53,6 @@ export interface TerrainModifier {
   selectFace?(faceId: number, additive?: boolean): void;
   deselectFace?(faceId: number): void;
   toggleFaceSelection?(faceId: number): void;
-  clearSelectedFaces?(): void;
   findFaceAtPosition?(worldX: number, worldZ: number): number | null;
   moveSelectedFaces?(dx: number, dy: number, dz: number): void;
   rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;

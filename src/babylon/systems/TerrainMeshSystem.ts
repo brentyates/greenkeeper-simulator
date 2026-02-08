@@ -550,11 +550,6 @@ export class TerrainMeshSystem {
     return this.activeTopologyMode;
   }
 
-  public clearSelectedFaces(): void {
-    this.selectedFaceIds.clear();
-    this.rebuildFaceHighlightMesh();
-  }
-
   public findFaceAtPosition(worldX: number, worldZ: number): number | null {
     if (!this.topology || !this.faceSpatialIndex || this.faceSpatialIndex.length === 0) return null;
 
@@ -1635,6 +1630,8 @@ export class TerrainMeshSystem {
       this.faceHighlightMaterial.dispose();
       this.faceHighlightMaterial = null;
     }
+    this.faceStates.clear();
+    this.faceIdToTexIndex.clear();
     this.topology = null;
   }
 
