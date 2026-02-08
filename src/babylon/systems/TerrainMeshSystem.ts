@@ -46,7 +46,6 @@ import {
   findNearestTopologyVertex,
   collapseEdge,
   flipEdge,
-  sanitizeTopology,
   deserializeTopology,
   serializeTopology,
   barycentricInterpolateY,
@@ -86,11 +85,13 @@ export class TerrainMeshSystem {
   private gridLinesMesh: Mesh | null = null;
 
   private faceStates: Map<number, FaceState> = new Map();
+  private faceIdToTexIndex: Map<number, number> = new Map();
 
   private time: number = 0;
   private gameTime: number = 0;
 
   private meshDirty: boolean = false;
+  private topologyDirty: boolean = false;
   private faceHighlightMaterial: StandardMaterial | null = null;
 
   private overlayMode: OverlayMode = "normal";
@@ -485,21 +486,6 @@ export class TerrainMeshSystem {
     return findNearestTopologyVertex(this.topology, worldX, worldZ);
   }
 
-  public getTopologyVertexPosition(vertexId: number): Vec3 | null {
-    if (!this.topology) return null;
-    const vertex = this.topology.vertices.get(vertexId);
-    return vertex ? { ...vertex.position } : null;
-  }
-
-  public setTopologyVertexPosition(vertexId: number, pos: Vec3): void {
-    if (!this.topology) return;
-    const vertex = this.topology.vertices.get(vertexId);
-    if (vertex) {
-      vertex.position = { ...pos };
-      this.meshDirty = true;
-    }
-  }
-
   public getVertexPositionById(vertexId: number): Vec3 | null {
     if (!this.topology) return null;
     const vertex = this.topology.vertices.get(vertexId);
@@ -569,12 +555,6 @@ export class TerrainMeshSystem {
     if (!this.topology) return null;
     const result = findNearestTopologyVertex(this.topology, worldX, worldZ);
     return result ? result.vertexId : null;
-  }
-
-  public getVertexWorldPosition(vertexId: number): { x: number; z: number } | null {
-    if (!this.topology) return null;
-    const vertex = this.topology.vertices.get(vertexId);
-    return vertex ? { x: vertex.position.x, z: vertex.position.z } : null;
   }
 
   public getVertexIdsInWorldRadius(worldX: number, worldZ: number, radius: number): number[] {
@@ -896,7 +876,7 @@ export class TerrainMeshSystem {
 
     this.rebuildFaceSpatialIndex();
     this.updateFaceTerrainVisuals();
-    this.meshDirty = true;
+    this.topologyDirty = true;
     return { faceIds: newFaceIds, vertexIds: newVertexIds };
   }
 
@@ -1014,13 +994,29 @@ export class TerrainMeshSystem {
     }
   }
 
+  private buildFaceIdMapping(): void {
+    this.faceIdToTexIndex = new Map();
+    if (!this.topology) return;
+    let index = 0;
+    for (const faceId of this.topology.triangles.keys()) {
+      this.faceIdToTexIndex.set(faceId, index++);
+    }
+  }
+
   private createTerrainMeshFromTopology(): void {
     if (!this.topology) return;
+
+    this.buildFaceIdMapping();
 
     const { positions, indices, normals, terrainTypes, faceIds } = buildMeshArrays(
       this.topology,
       HEIGHT_UNIT
     );
+
+    const remappedFaceIds = new Float32Array(faceIds.length);
+    for (let i = 0; i < faceIds.length; i++) {
+      remappedFaceIds[i] = this.faceIdToTexIndex.get(faceIds[i]) ?? 0;
+    }
 
     const vertexData = new VertexData();
     vertexData.positions = positions;
@@ -1035,7 +1031,7 @@ export class TerrainMeshSystem {
     vertexData.applyToMesh(this.terrainMesh, true);
 
     this.terrainMesh.setVerticesData("terrainType", terrainTypes, false, 1);
-    this.terrainMesh.setVerticesData("faceId", new Float32Array(faceIds), false, 1);
+    this.terrainMesh.setVerticesData("faceId", remappedFaceIds, false, 1);
 
     this.terrainMesh.isPickable = true;
     this.terrainMesh.freezeWorldMatrix();
@@ -1069,7 +1065,6 @@ export class TerrainMeshSystem {
   }
 
   public rebuildMesh(): void {
-    sanitizeTopology(this.topology!);
     this.rebuildFaceSpatialIndex();
     this.syncFaceStatesWithTopology();
     this.createTerrainMeshFromTopology();
@@ -1093,6 +1088,16 @@ export class TerrainMeshSystem {
       }
     }
     this.meshDirty = false;
+    this.topologyDirty = false;
+  }
+
+  private updateMeshPositionsOnly(): void {
+    if (!this.topology || !this.terrainMesh) return;
+
+    const { positions, normals } = buildMeshArrays(this.topology, HEIGHT_UNIT);
+
+    this.terrainMesh.updateVerticesData("position", positions, false);
+    this.terrainMesh.updateVerticesData("normal", normals, false);
   }
 
   public updateFaceTerrainVisuals(): void {
@@ -1226,8 +1231,9 @@ export class TerrainMeshSystem {
     const data = new Uint8Array(w * h * 4);
     const totalPixels = w * h;
     for (const [faceId, state] of this.faceStates) {
-      if (faceId >= totalPixels) continue;
-      const idx = faceId * 4;
+      const texIdx = this.faceIdToTexIndex.get(faceId);
+      if (texIdx === undefined || texIdx >= totalPixels) continue;
+      const idx = texIdx * 4;
       data[idx + 0] = Math.min(255, Math.max(0, Math.round((state.moisture / 100) * 255)));
       data[idx + 1] = Math.min(255, Math.max(0, Math.round((state.nutrients / 100) * 255)));
       data[idx + 2] = Math.min(255, Math.max(0, Math.round((state.grassHeight / 100) * 255)));
@@ -1237,11 +1243,7 @@ export class TerrainMeshSystem {
   }
 
   private createFaceDataTexture(): void {
-    let maxFaceId = 0;
-    for (const faceId of this.faceStates.keys()) {
-      if (faceId > maxFaceId) maxFaceId = faceId;
-    }
-    const totalPixels = Math.max(1, maxFaceId + 1);
+    const totalPixels = Math.max(1, this.faceIdToTexIndex.size);
     const w = TerrainMeshSystem.FACE_DATA_TEX_WIDTH;
     const h = Math.max(1, Math.ceil(totalPixels / w));
 
@@ -1395,8 +1397,11 @@ export class TerrainMeshSystem {
       this.faceDataDirty = false;
     }
 
-    if (this.meshDirty) {
+    if (this.topologyDirty) {
       this.rebuildMesh();
+    } else if (this.meshDirty) {
+      this.updateMeshPositionsOnly();
+      this.meshDirty = false;
     }
   }
 
@@ -1518,7 +1523,7 @@ export class TerrainMeshSystem {
         }
       }
     }
-    this.meshDirty = true;
+    this.topologyDirty = true;
   }
 
   public getCourseStats(): { health: number; moisture: number; nutrients: number; height: number } {

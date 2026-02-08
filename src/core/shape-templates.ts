@@ -3,6 +3,7 @@ import {
   TerrainMeshTopology,
   TerrainVertex,
   createTriangle,
+  edgeKey,
 } from './mesh-topology';
 import { pointInPolygon } from './delaunay-topology';
 
@@ -265,6 +266,11 @@ export function stampIntoTopology(
       if (edge) {
         edge.triangles = edge.triangles.filter(t => t !== triId);
         if (edge.triangles.length === 0) {
+          topology.edgeIndex.delete(edgeKey(edge.v1, edge.v2));
+          const ve1 = topology.vertexEdges.get(edge.v1);
+          if (ve1) { ve1.delete(eid); if (ve1.size === 0) topology.vertexEdges.delete(edge.v1); }
+          const ve2 = topology.vertexEdges.get(edge.v2);
+          if (ve2) { ve2.delete(eid); if (ve2.size === 0) topology.vertexEdges.delete(edge.v2); }
           topology.edges.delete(eid);
         }
       }
@@ -284,12 +290,7 @@ export function stampIntoTopology(
     }
   }
   for (const vid of orphanedVertexIds) {
-    const v = topology.vertices.get(vid);
-    if (v) {
-      for (const nid of v.neighbors) {
-        topology.vertices.get(nid)?.neighbors.delete(vid);
-      }
-    }
+    topology.vertexEdges.delete(vid);
     topology.vertices.delete(vid);
   }
 
@@ -301,7 +302,6 @@ export function stampIntoTopology(
     const vertex: TerrainVertex = {
       id: vid,
       position: { x: sv.x, y: sv.y, z: sv.z },
-      neighbors: new Set(),
     };
     topology.vertices.set(vid, vertex);
     stampVertexIdMap.set(i, vid);

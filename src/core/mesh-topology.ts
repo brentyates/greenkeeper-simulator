@@ -1,5 +1,3 @@
-import Delaunator from 'delaunator';
-
 export interface Vec3 {
   x: number;
   y: number;
@@ -9,7 +7,6 @@ export interface Vec3 {
 export interface TerrainVertex {
   id: number;
   position: Vec3;
-  neighbors: Set<number>;
 }
 
 export interface TerrainEdge {
@@ -30,6 +27,8 @@ export interface TerrainMeshTopology {
   vertices: Map<number, TerrainVertex>;
   edges: Map<number, TerrainEdge>;
   triangles: Map<number, TerrainTriangle>;
+  edgeIndex: Map<string, number>;
+  vertexEdges: Map<number, Set<number>>;
   nextVertexId: number;
   nextEdgeId: number;
   nextTriangleId: number;
@@ -42,6 +41,8 @@ export function createEmptyTopology(worldWidth: number, worldHeight: number): Te
     vertices: new Map(),
     edges: new Map(),
     triangles: new Map(),
+    edgeIndex: new Map(),
+    vertexEdges: new Map(),
     nextVertexId: 0,
     nextEdgeId: 0,
     nextTriangleId: 0,
@@ -54,6 +55,36 @@ export function edgeKey(v1: number, v2: number): string {
   const minV = Math.min(v1, v2);
   const maxV = Math.max(v1, v2);
   return `${minV},${maxV}`;
+}
+
+function addVertexEdge(topology: TerrainMeshTopology, vertexId: number, edgeId: number): void {
+  let set = topology.vertexEdges.get(vertexId);
+  if (!set) {
+    set = new Set();
+    topology.vertexEdges.set(vertexId, set);
+  }
+  set.add(edgeId);
+}
+
+function removeVertexEdge(topology: TerrainMeshTopology, vertexId: number, edgeId: number): void {
+  const set = topology.vertexEdges.get(vertexId);
+  if (set) {
+    set.delete(edgeId);
+    if (set.size === 0) topology.vertexEdges.delete(vertexId);
+  }
+}
+
+export function getVertexNeighbors(topology: TerrainMeshTopology, vertexId: number): Set<number> {
+  const neighbors = new Set<number>();
+  const edgeIds = topology.vertexEdges.get(vertexId);
+  if (!edgeIds) return neighbors;
+  for (const eid of edgeIds) {
+    const edge = topology.edges.get(eid);
+    if (edge) {
+      neighbors.add(edge.v1 === vertexId ? edge.v2 : edge.v1);
+    }
+  }
+  return neighbors;
 }
 
 export function gridToTopology(
@@ -75,7 +106,6 @@ export function gridToTopology(
       const vertex: TerrainVertex = {
         id: vertexId,
         position: { ...pos },
-        neighbors: new Set(),
       };
 
       topology.vertices.set(vertexId, vertex);
@@ -83,11 +113,9 @@ export function gridToTopology(
     }
   }
 
-  const edgeIdMap = new Map<string, number>();
-
   function getOrCreateEdge(v1: number, v2: number): number {
     const key = edgeKey(v1, v2);
-    let eid = edgeIdMap.get(key);
+    let eid = topology.edgeIndex.get(key);
     if (eid === undefined) {
       eid = topology.nextEdgeId++;
       const edge: TerrainEdge = {
@@ -97,12 +125,9 @@ export function gridToTopology(
         triangles: [],
       };
       topology.edges.set(eid, edge);
-      edgeIdMap.set(key, eid);
-
-      const vert1 = topology.vertices.get(v1);
-      const vert2 = topology.vertices.get(v2);
-      if (vert1) vert1.neighbors.add(v2);
-      if (vert2) vert2.neighbors.add(v1);
+      topology.edgeIndex.set(key, eid);
+      addVertexEdge(topology, v1, eid);
+      addVertexEdge(topology, v2, eid);
     }
     return eid;
   }
@@ -275,14 +300,8 @@ export function subdivideEdge(
   const newVertex: TerrainVertex = {
     id: newVertexId,
     position: newPos,
-    neighbors: new Set([edge.v1, edge.v2]),
   };
   topology.vertices.set(newVertexId, newVertex);
-
-  v1.neighbors.delete(edge.v2);
-  v1.neighbors.add(newVertexId);
-  v2.neighbors.delete(edge.v1);
-  v2.neighbors.add(newVertexId);
 
   const newEdge1Id = topology.nextEdgeId++;
   const newEdge1: TerrainEdge = {
@@ -292,6 +311,9 @@ export function subdivideEdge(
     triangles: [],
   };
   topology.edges.set(newEdge1Id, newEdge1);
+  topology.edgeIndex.set(edgeKey(edge.v1, newVertexId), newEdge1Id);
+  addVertexEdge(topology, edge.v1, newEdge1Id);
+  addVertexEdge(topology, newVertexId, newEdge1Id);
 
   const newEdge2Id = topology.nextEdgeId++;
   const newEdge2: TerrainEdge = {
@@ -301,6 +323,9 @@ export function subdivideEdge(
     triangles: [],
   };
   topology.edges.set(newEdge2Id, newEdge2);
+  topology.edgeIndex.set(edgeKey(edge.v2, newVertexId), newEdge2Id);
+  addVertexEdge(topology, edge.v2, newEdge2Id);
+  addVertexEdge(topology, newVertexId, newEdge2Id);
 
   const removedTriangleIds: number[] = [];
   const newTriangleIds: number[] = [];
@@ -325,11 +350,7 @@ export function subdivideEdge(
     );
     if (oppositeVertexId === undefined) continue;
 
-    const oppositeVertex = topology.vertices.get(oppositeVertexId);
-    if (!oppositeVertex) continue;
-
-    newVertex.neighbors.add(oppositeVertexId);
-    oppositeVertex.neighbors.add(newVertexId);
+    if (!topology.vertices.get(oppositeVertexId)) continue;
 
     const newConnectingEdgeId = topology.nextEdgeId++;
     const newConnectingEdge: TerrainEdge = {
@@ -339,6 +360,9 @@ export function subdivideEdge(
       triangles: [],
     };
     topology.edges.set(newConnectingEdgeId, newConnectingEdge);
+    topology.edgeIndex.set(edgeKey(newVertexId, oppositeVertexId), newConnectingEdgeId);
+    addVertexEdge(topology, newVertexId, newConnectingEdgeId);
+    addVertexEdge(topology, oppositeVertexId, newConnectingEdgeId);
 
     const [tri1Verts, tri2Verts] = computeSubdividedTriangleWinding(
       tri.vertices,
@@ -383,7 +407,12 @@ export function subdivideEdge(
     topology.triangles.delete(triId);
   }
 
+  removeVertexEdge(topology, edge.v1, edgeId);
+  removeVertexEdge(topology, edge.v2, edgeId);
+  topology.edgeIndex.delete(edgeKey(edge.v1, edge.v2));
   topology.edges.delete(edgeId);
+
+  if (import.meta.env.DEV) validateTopology(topology);
 
   return {
     newVertexId,
@@ -407,18 +436,9 @@ function findTriangleEdges(
   ];
 
   for (const [va, vb] of pairs) {
-    const key = edgeKey(va, vb);
-    let foundEdge: number | null = null;
-
-    for (const [eid, e] of topology.edges) {
-      if (edgeKey(e.v1, e.v2) === key) {
-        foundEdge = eid;
-        break;
-      }
-    }
-
-    if (foundEdge !== null) {
-      edges.push(foundEdge);
+    const eid = topology.edgeIndex.get(edgeKey(va, vb));
+    if (eid !== undefined) {
+      edges.push(eid);
     }
   }
 
@@ -429,8 +449,12 @@ export function isBoundaryVertex(topology: TerrainMeshTopology, vertexId: number
   const vertex = topology.vertices.get(vertexId);
   if (!vertex) return true;
 
-  for (const [, edge] of topology.edges) {
-    if ((edge.v1 === vertexId || edge.v2 === vertexId) && edge.triangles.length < 2) {
+  const edgeIds = topology.vertexEdges.get(vertexId);
+  if (!edgeIds) return true;
+
+  for (const eid of edgeIds) {
+    const edge = topology.edges.get(eid);
+    if (edge && edge.triangles.length < 2) {
       return true;
     }
   }
@@ -444,7 +468,8 @@ export function canDeleteVertex(topology: TerrainMeshTopology, vertexId: number)
   const vertex = topology.vertices.get(vertexId);
   if (!vertex) return false;
 
-  if (isBoundaryVertex(topology, vertexId) && vertex.neighbors.size < 3) {
+  const neighborCount = getVertexNeighbors(topology, vertexId).size;
+  if (isBoundaryVertex(topology, vertexId) && neighborCount < 3) {
     return false;
   }
 
@@ -494,28 +519,25 @@ export function deleteVertex(
     }
   }
 
-  const edgesToRemove: number[] = [];
-  for (const [eid, edge] of topology.edges) {
-    if (edge.v1 === vertexId || edge.v2 === vertexId) {
-      edgesToRemove.push(eid);
-    }
-  }
+  const vertexEdgeIds = topology.vertexEdges.get(vertexId);
+  const edgesToRemove: number[] = vertexEdgeIds ? [...vertexEdgeIds] : [];
 
   for (const eid of edgesToRemove) {
+    const e = topology.edges.get(eid);
+    if (e) {
+      topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
+      removeVertexEdge(topology, e.v1, eid);
+      removeVertexEdge(topology, e.v2, eid);
+    }
     topology.edges.delete(eid);
     removedEdgeIds.push(eid);
-  }
-
-  for (const neighborId of vertex.neighbors) {
-    const neighbor = topology.vertices.get(neighborId);
-    if (neighbor) {
-      neighbor.neighbors.delete(vertexId);
-    }
   }
 
   topology.vertices.delete(vertexId);
 
   const { newTriangleIds, newEdgeIds } = retriangulateHole(topology, holeVertices);
+
+  if (import.meta.env.DEV) validateTopology(topology);
 
   return {
     removedTriangleIds,
@@ -564,34 +586,25 @@ export function collapseEdge(
   }
 
   const edgesToRemove: number[] = [edgeId];
-  for (const [eid, e] of topology.edges) {
-    if (eid === edgeId) continue;
+  const removedVertexEdgeIds = topology.vertexEdges.get(removedId);
+  if (removedVertexEdgeIds) {
+    for (const eid of removedVertexEdgeIds) {
+      if (eid === edgeId) continue;
+      const e = topology.edges.get(eid);
+      if (!e) continue;
 
-    if (e.v1 === removedId) {
-      const otherV = e.v2;
+      const otherV = e.v1 === removedId ? e.v2 : e.v1;
       if (otherV === survivingId) {
         edgesToRemove.push(eid);
       } else {
-        e.v1 = survivingId;
-        survivingVertex.neighbors.add(otherV);
-        const otherVertex = topology.vertices.get(otherV);
-        if (otherVertex) {
-          otherVertex.neighbors.delete(removedId);
-          otherVertex.neighbors.add(survivingId);
+        topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
+        if (e.v1 === removedId) {
+          e.v1 = survivingId;
+        } else {
+          e.v2 = survivingId;
         }
-      }
-    } else if (e.v2 === removedId) {
-      const otherV = e.v1;
-      if (otherV === survivingId) {
-        edgesToRemove.push(eid);
-      } else {
-        e.v2 = survivingId;
-        survivingVertex.neighbors.add(otherV);
-        const otherVertex = topology.vertices.get(otherV);
-        if (otherVertex) {
-          otherVertex.neighbors.delete(removedId);
-          otherVertex.neighbors.add(survivingId);
-        }
+        topology.edgeIndex.set(edgeKey(e.v1, e.v2), eid);
+        addVertexEdge(topology, survivingId, eid);
       }
     }
   }
@@ -605,11 +618,18 @@ export function collapseEdge(
   }
 
   for (const eid of edgesToRemove) {
+    const e = topology.edges.get(eid);
+    if (e) {
+      topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
+      removeVertexEdge(topology, e.v1, eid);
+      removeVertexEdge(topology, e.v2, eid);
+    }
     topology.edges.delete(eid);
   }
 
-  survivingVertex.neighbors.delete(removedId);
   topology.vertices.delete(removedId);
+
+  if (import.meta.env.DEV) validateTopology(topology);
 
   return { survivingVertexId: survivingId };
 }
@@ -665,6 +685,30 @@ function findOrderedHoleVertices(
   return ordered;
 }
 
+function signedPolygonArea(topology: TerrainMeshTopology, vids: number[]): number {
+  let area = 0;
+  for (let i = 0; i < vids.length; i++) {
+    const a = topology.vertices.get(vids[i])!;
+    const b = topology.vertices.get(vids[(i + 1) % vids.length])!;
+    area += (a.position.x * b.position.z - b.position.x * a.position.z);
+  }
+  return area / 2;
+}
+
+function pointInTriangle(
+  px: number, pz: number,
+  ax: number, az: number,
+  bx: number, bz: number,
+  cx: number, cz: number
+): boolean {
+  const d1 = (px - bx) * (az - bz) - (ax - bx) * (pz - bz);
+  const d2 = (px - cx) * (bz - cz) - (bx - cx) * (pz - cz);
+  const d3 = (px - ax) * (cz - az) - (cx - ax) * (pz - az);
+  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+  return !(hasNeg && hasPos);
+}
+
 export function retriangulateHole(
   topology: TerrainMeshTopology,
   holeVertices: number[]
@@ -679,32 +723,60 @@ export function retriangulateHole(
   if (holeVertices.length === 3) {
     const triId = createTriangle(topology, holeVertices[0], holeVertices[1], holeVertices[2]);
     if (triId !== null) newTriangleIds.push(triId);
+    if (import.meta.env.DEV) validateTopology(topology);
     return { newTriangleIds, newEdgeIds };
   }
 
-  const coords: number[] = [];
-  for (const vid of holeVertices) {
-    const v = topology.vertices.get(vid);
-    if (v) {
-      coords.push(v.position.x, v.position.z);
+  const remaining = [...holeVertices];
+
+  const polyArea = signedPolygonArea(topology, remaining);
+  const expectCCW = polyArea > 0;
+
+  while (remaining.length > 3) {
+    let earFound = false;
+    for (let i = 0; i < remaining.length; i++) {
+      const prev = remaining[(i - 1 + remaining.length) % remaining.length];
+      const curr = remaining[i];
+      const next = remaining[(i + 1) % remaining.length];
+
+      const pv = topology.vertices.get(prev)!;
+      const cv = topology.vertices.get(curr)!;
+      const nv = topology.vertices.get(next)!;
+
+      const cross = (cv.position.x - pv.position.x) * (nv.position.z - pv.position.z) -
+                    (cv.position.z - pv.position.z) * (nv.position.x - pv.position.x);
+      const isConvex = expectCCW ? cross > 0 : cross < 0;
+      if (!isConvex) continue;
+
+      let containsOther = false;
+      for (let j = 0; j < remaining.length; j++) {
+        if (j === ((i - 1 + remaining.length) % remaining.length) || j === i || j === ((i + 1) % remaining.length)) continue;
+        const tv = topology.vertices.get(remaining[j])!;
+        if (pointInTriangle(tv.position.x, tv.position.z,
+            pv.position.x, pv.position.z,
+            cv.position.x, cv.position.z,
+            nv.position.x, nv.position.z)) {
+          containsOther = true;
+          break;
+        }
+      }
+      if (containsOther) continue;
+
+      const triId = createTriangle(topology, prev, curr, next);
+      if (triId !== null) newTriangleIds.push(triId);
+      remaining.splice(i, 1);
+      earFound = true;
+      break;
     }
+    if (!earFound) break;
   }
 
-  const delaunay = new Delaunator(coords);
-
-  for (let i = 0; i < delaunay.triangles.length; i += 3) {
-    const i0 = delaunay.triangles[i];
-    const i1 = delaunay.triangles[i + 1];
-    const i2 = delaunay.triangles[i + 2];
-
-    const v0 = holeVertices[i0];
-    const v1 = holeVertices[i1];
-    const v2 = holeVertices[i2];
-
-    const triId = createTriangle(topology, v0, v1, v2);
+  if (remaining.length === 3) {
+    const triId = createTriangle(topology, remaining[0], remaining[1], remaining[2]);
     if (triId !== null) newTriangleIds.push(triId);
   }
 
+  if (import.meta.env.DEV) validateTopology(topology);
   return { newTriangleIds, newEdgeIds };
 }
 
@@ -736,13 +808,6 @@ export function createTriangle(
 
   topology.triangles.set(triId, tri);
 
-  vert0.neighbors.add(v1);
-  vert0.neighbors.add(v2);
-  vert1.neighbors.add(v0);
-  vert1.neighbors.add(v2);
-  vert2.neighbors.add(v0);
-  vert2.neighbors.add(v1);
-
   return triId;
 }
 
@@ -753,14 +818,14 @@ function getOrCreateEdgeForTriangle(
   triId: number
 ): number {
   const key = edgeKey(v1, v2);
+  const existingId = topology.edgeIndex.get(key);
 
-  for (const [eid, edge] of topology.edges) {
-    if (edgeKey(edge.v1, edge.v2) === key) {
-      if (!edge.triangles.includes(triId)) {
-        edge.triangles.push(triId);
-      }
-      return eid;
+  if (existingId !== undefined) {
+    const edge = topology.edges.get(existingId);
+    if (edge && !edge.triangles.includes(triId)) {
+      edge.triangles.push(triId);
     }
+    return existingId;
   }
 
   const newEdgeId = topology.nextEdgeId++;
@@ -771,6 +836,9 @@ function getOrCreateEdgeForTriangle(
     triangles: [triId],
   };
   topology.edges.set(newEdgeId, newEdge);
+  topology.edgeIndex.set(key, newEdgeId);
+  addVertexEdge(topology, v1, newEdgeId);
+  addVertexEdge(topology, v2, newEdgeId);
 
   return newEdgeId;
 }
@@ -955,7 +1023,6 @@ export function captureTopologyState(topology: TerrainMeshTopology): TopologyMod
       vertex: {
         id: vertex.id,
         position: { ...vertex.position },
-        neighbors: new Set(vertex.neighbors),
       },
     });
   }
@@ -1001,12 +1068,13 @@ export function restoreTopologyState(
   topology.vertices.clear();
   topology.edges.clear();
   topology.triangles.clear();
+  topology.edgeIndex.clear();
+  topology.vertexEdges.clear();
 
   for (const { id, vertex } of state.vertices) {
     topology.vertices.set(id, {
       id: vertex.id,
       position: { ...vertex.position },
-      neighbors: new Set(vertex.neighbors),
     });
   }
 
@@ -1017,6 +1085,9 @@ export function restoreTopologyState(
       v2: edge.v2,
       triangles: [...edge.triangles],
     });
+    topology.edgeIndex.set(edgeKey(edge.v1, edge.v2), id);
+    addVertexEdge(topology, edge.v1, id);
+    addVertexEdge(topology, edge.v2, id);
   }
 
   for (const { id, triangle } of state.triangles) {
@@ -1073,12 +1144,10 @@ export function flipEdge(
       return false;
   }
 
-  // Check if o1 and o2 are already connected to avoid duplicate edges
-  for (const [, otherEdge] of topology.edges) {
-      if ((otherEdge.v1 === o1 && otherEdge.v2 === o2) || (otherEdge.v1 === o2 && otherEdge.v2 === o1)) {
-          console.warn(`FlipEdge: Opposite vertices ${o1} and ${o2} are already connected by edge ${otherEdge.id}`);
-          return false;
-      }
+  const existingEdgeId = topology.edgeIndex.get(edgeKey(o1, o2));
+  if (existingEdgeId !== undefined) {
+      console.warn(`FlipEdge: Opposite vertices ${o1} and ${o2} are already connected by edge ${existingEdgeId}`);
+      return false;
   }
 
   // Retrieve vertex objects for position check
@@ -1143,17 +1212,14 @@ export function flipEdge(
       return false;
   }
 
-  // 2. Update Vertex Neighbors
-  // Remove v1-v2 connection
-  vert1.neighbors.delete(v2);
-  vert2.neighbors.delete(v1);
-  // Add o1-o2 connection
-  vertO1.neighbors.add(o2);
-  vertO2.neighbors.add(o1);
-
-  // 3. Update shared edge to be o1-o2
+  topology.edgeIndex.delete(edgeKey(v1, v2));
+  removeVertexEdge(topology, v1, edgeId);
+  removeVertexEdge(topology, v2, edgeId);
   edge.v1 = Math.min(o1, o2);
   edge.v2 = Math.max(o1, o2);
+  topology.edgeIndex.set(edgeKey(o1, o2), edgeId);
+  addVertexEdge(topology, o1, edgeId);
+  addVertexEdge(topology, o2, edgeId);
 
   // 4. Update Triangles and Winding
   // New T1 vertices should be (v1, o1, o2) or (v1, o2, o1) depending on CCW
@@ -1178,6 +1244,8 @@ export function flipEdge(
   // e_v1_o2 and e_v2_o1 might have changed triangle membership
   moveEdgeToTriangle(topology, e_v1_o2_id, t2Id, t1Id);
   moveEdgeToTriangle(topology, e_v2_o1_id, t1Id, t2Id);
+
+  if (import.meta.env.DEV) validateTopology(topology);
 
   return true;
 }
@@ -1260,7 +1328,6 @@ export function deserializeTopology(data: SerializedTopology): TerrainMeshTopolo
     topology.vertices.set(sv.id, {
       id: sv.id,
       position: { ...sv.position },
-      neighbors: new Set(),
     });
     if (sv.id > maxVertexId) maxVertexId = sv.id;
   }
@@ -1308,10 +1375,6 @@ function createTriangleFromSerialized(
   };
 
   topology.triangles.set(triId, tri);
-
-  vert0.neighbors.add(v1); vert0.neighbors.add(v2);
-  vert1.neighbors.add(v0); vert1.neighbors.add(v2);
-  vert2.neighbors.add(v0); vert2.neighbors.add(v1);
 
   return triId;
 }
@@ -1371,6 +1434,103 @@ export function computeFaceSlopeAngle(
 
   const normalY = ny / len;
   return Math.acos(Math.min(1, Math.max(-1, normalY))) * (180 / Math.PI);
+}
+
+export function validateTopology(topology: TerrainMeshTopology): void {
+  for (const [eid, edge] of topology.edges) {
+    if (!topology.vertices.has(edge.v1)) {
+      throw new Error(`Edge ${eid} references non-existent vertex ${edge.v1}`);
+    }
+    if (!topology.vertices.has(edge.v2)) {
+      throw new Error(`Edge ${eid} references non-existent vertex ${edge.v2}`);
+    }
+
+    for (const tid of edge.triangles) {
+      if (!topology.triangles.has(tid)) {
+        throw new Error(`Edge ${eid} references non-existent triangle ${tid}`);
+      }
+    }
+
+    if (edge.triangles.length === 0 || edge.triangles.length > 2) {
+      throw new Error(`Edge ${eid} has ${edge.triangles.length} triangles (expected 1 or 2)`);
+    }
+
+    const key = edgeKey(edge.v1, edge.v2);
+    const indexed = topology.edgeIndex.get(key);
+    if (indexed !== eid) {
+      throw new Error(`Edge ${eid} (${edge.v1},${edge.v2}) not found in edgeIndex (got ${indexed})`);
+    }
+
+    const v1Edges = topology.vertexEdges.get(edge.v1);
+    if (!v1Edges || !v1Edges.has(eid)) {
+      throw new Error(`Edge ${eid} missing from vertexEdges of vertex ${edge.v1}`);
+    }
+    const v2Edges = topology.vertexEdges.get(edge.v2);
+    if (!v2Edges || !v2Edges.has(eid)) {
+      throw new Error(`Edge ${eid} missing from vertexEdges of vertex ${edge.v2}`);
+    }
+  }
+
+  if (topology.edgeIndex.size !== topology.edges.size) {
+    throw new Error(`edgeIndex size (${topology.edgeIndex.size}) !== edges size (${topology.edges.size})`);
+  }
+
+  for (const [key, eid] of topology.edgeIndex) {
+    if (!topology.edges.has(eid)) {
+      throw new Error(`edgeIndex key ${key} references non-existent edge ${eid}`);
+    }
+  }
+
+  for (const [vid, edgeSet] of topology.vertexEdges) {
+    for (const eid of edgeSet) {
+      const edge = topology.edges.get(eid);
+      if (!edge) {
+        throw new Error(`vertexEdges[${vid}] references non-existent edge ${eid}`);
+      }
+      if (edge.v1 !== vid && edge.v2 !== vid) {
+        throw new Error(`vertexEdges[${vid}] contains edge ${eid} which does not reference vertex ${vid}`);
+      }
+    }
+  }
+
+  for (const [tid, tri] of topology.triangles) {
+    for (const vid of tri.vertices) {
+      if (!topology.vertices.has(vid)) {
+        throw new Error(`Triangle ${tid} references non-existent vertex ${vid}`);
+      }
+    }
+
+    for (const eid of tri.edges) {
+      if (!topology.edges.has(eid)) {
+        throw new Error(`Triangle ${tid} references non-existent edge ${eid}`);
+      }
+    }
+
+    const pairs: Array<[number, number]> = [
+      [tri.vertices[0], tri.vertices[1]],
+      [tri.vertices[1], tri.vertices[2]],
+      [tri.vertices[2], tri.vertices[0]],
+    ];
+    for (const [va, vb] of pairs) {
+      const key = edgeKey(va, vb);
+      const eid = topology.edgeIndex.get(key);
+      if (eid === undefined) {
+        throw new Error(`Triangle ${tid} vertex pair (${va},${vb}) has no edge in edgeIndex`);
+      }
+      if (!tri.edges.includes(eid)) {
+        throw new Error(`Triangle ${tid} vertex pair (${va},${vb}) edge ${eid} not in triangle's edges`);
+      }
+    }
+  }
+
+  const seenPairs = new Set<string>();
+  for (const [eid, edge] of topology.edges) {
+    const key = edgeKey(edge.v1, edge.v2);
+    if (seenPairs.has(key)) {
+      throw new Error(`Duplicate edge vertex pair ${key} at edge ${eid}`);
+    }
+    seenPairs.add(key);
+  }
 }
 
 export function sanitizeTopology(topology: TerrainMeshTopology): void {

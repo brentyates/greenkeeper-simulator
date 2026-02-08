@@ -9,7 +9,6 @@ export function createTerrainMeshModifier(vts: TerrainMeshSystem): Partial<Terra
     findNearestVertexId: (worldX, worldZ) => vts.findNearestVertexId(worldX, worldZ),
     getVertexPositionById: (vertexId) => vts.getVertexPositionById(vertexId),
     getVertexElevationById: (vertexId) => vts.getVertexElevationById(vertexId) ?? 0,
-    getVertexWorldPosition: (vertexId) => vts.getVertexWorldPosition(vertexId),
     getVertexIdsInWorldRadius: (worldX, worldZ, radius) => vts.getVertexIdsInWorldRadius(worldX, worldZ, radius),
     getWorldDimensions: () => vts.getWorldDimensions(),
     rebuildMesh: () => vts.rebuildMesh(),

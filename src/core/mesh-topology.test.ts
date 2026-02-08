@@ -14,6 +14,8 @@ import {
   computeFaceSlopeAngle,
   MAX_WALKABLE_SLOPE_DEGREES,
   Vec3,
+  getVertexNeighbors,
+  validateTopology,
 } from './mesh-topology';
 
 describe('mesh-topology', () => {
@@ -60,8 +62,9 @@ describe('mesh-topology', () => {
       const topology = gridToTopology(grid, 2, 2);
 
       for (const vertex of topology.vertices.values()) {
-        expect(vertex.neighbors.size).toBeGreaterThan(0);
-        expect(vertex.neighbors.size).toBeLessThanOrEqual(8);
+        const neighbors = getVertexNeighbors(topology, vertex.id);
+        expect(neighbors.size).toBeGreaterThan(0);
+        expect(neighbors.size).toBeLessThanOrEqual(8);
       }
     });
   });
@@ -139,11 +142,12 @@ describe('mesh-topology', () => {
       subdivideEdge(topology, edgeId, 0.5);
 
       for (const vertex of topology.vertices.values()) {
-        expect(vertex.neighbors.size).toBeGreaterThan(0);
-        for (const neighborId of vertex.neighbors) {
+        const neighbors = getVertexNeighbors(topology, vertex.id);
+        expect(neighbors.size).toBeGreaterThan(0);
+        for (const neighborId of neighbors) {
           const neighbor = topology.vertices.get(neighborId);
           expect(neighbor).toBeDefined();
-          expect(neighbor!.neighbors.has(vertex.id)).toBe(true);
+          expect(getVertexNeighbors(topology, neighborId).has(vertex.id)).toBe(true);
         }
       }
     });
@@ -234,7 +238,7 @@ describe('mesh-topology', () => {
 
       const newVertex = topology.vertices.get(result!.newVertexId);
       expect(newVertex).toBeDefined();
-      expect(newVertex!.neighbors.size).toBeGreaterThanOrEqual(3);
+      expect(getVertexNeighbors(topology, result!.newVertexId).size).toBeGreaterThanOrEqual(3);
 
       expect(isBoundaryVertex(topology, result!.newVertexId)).toBe(true);
       expect(canDeleteVertex(topology, result!.newVertexId)).toBe(true);
@@ -413,17 +417,14 @@ describe('mesh-topology', () => {
       const v0Id = topology.nextVertexId++;
       topology.vertices.set(v0Id, {
         id: v0Id, position: { x: 0, y: 0, z: 0 },
-        neighbors: new Set(),
       });
       const v1Id = topology.nextVertexId++;
       topology.vertices.set(v1Id, {
         id: v1Id, position: { x: 0, y: 1, z: 0 },
-        neighbors: new Set(),
       });
       const v2Id = topology.nextVertexId++;
       topology.vertices.set(v2Id, {
         id: v2Id, position: { x: 0, y: 0.5, z: 0 },
-        neighbors: new Set(),
       });
 
       const triId = topology.nextTriangleId++;
@@ -443,17 +444,14 @@ describe('mesh-topology', () => {
       const v0Id = topology.nextVertexId++;
       topology.vertices.set(v0Id, {
         id: v0Id, position: { x: 0, y: 0, z: 0 },
-        neighbors: new Set(),
       });
       const v1Id = topology.nextVertexId++;
       topology.vertices.set(v1Id, {
         id: v1Id, position: { x: 1, y: 0, z: 0 },
-        neighbors: new Set(),
       });
       const v2Id = topology.nextVertexId++;
       topology.vertices.set(v2Id, {
         id: v2Id, position: { x: 2, y: 0, z: 0 },
-        neighbors: new Set(),
       });
 
       const triId = topology.nextTriangleId++;
@@ -472,6 +470,95 @@ describe('mesh-topology', () => {
   describe('MAX_WALKABLE_SLOPE_DEGREES', () => {
     it('is 45', () => {
       expect(MAX_WALKABLE_SLOPE_DEGREES).toBe(45);
+    });
+  });
+
+  describe('validateTopology', () => {
+    function createValidTopology() {
+      const grid: Vec3[][] = [
+        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+      ];
+      return gridToTopology(grid, 1, 1);
+    }
+
+    it('passes for a valid grid topology', () => {
+      const topology = createValidTopology();
+      expect(() => validateTopology(topology)).not.toThrow();
+    });
+
+    it('passes for a valid 3x3 grid topology', () => {
+      const grid: Vec3[][] = [
+        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
+        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
+        [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
+      ];
+      const topology = gridToTopology(grid, 2, 2);
+      expect(() => validateTopology(topology)).not.toThrow();
+    });
+
+    it('passes after subdivideEdge', () => {
+      const topology = createValidTopology();
+      const edgeId = Array.from(topology.edges.keys())[0];
+      subdivideEdge(topology, edgeId, 0.5);
+      expect(() => validateTopology(topology)).not.toThrow();
+    });
+
+    it('catches ghost triangle reference on edge', () => {
+      const topology = createValidTopology();
+      const edge = Array.from(topology.edges.values())[0];
+      edge.triangles.push(9999);
+      expect(() => validateTopology(topology)).toThrow(/non-existent triangle/);
+    });
+
+    it('catches missing edge referenced by triangle', () => {
+      const topology = createValidTopology();
+      const tri = Array.from(topology.triangles.values())[0];
+      tri.edges[0] = 9999;
+      expect(() => validateTopology(topology)).toThrow(/non-existent edge/);
+    });
+
+    it('catches edge with 0 triangles', () => {
+      const topology = createValidTopology();
+      const edge = Array.from(topology.edges.values())[0];
+      edge.triangles = [];
+      expect(() => validateTopology(topology)).toThrow(/0 triangles/);
+    });
+
+    it('catches edge with 3+ triangles', () => {
+      const topology = createValidTopology();
+      const edge = Array.from(topology.edges.values()).find(e => e.triangles.length === 2)!;
+      const triIds = Array.from(topology.triangles.keys());
+      edge.triangles.push(triIds[0]);
+      expect(() => validateTopology(topology)).toThrow(/3 triangles/);
+    });
+
+    it('catches edgeIndex/edges size mismatch', () => {
+      const topology = createValidTopology();
+      topology.edgeIndex.set('999,998', 9999);
+      expect(() => validateTopology(topology)).toThrow(/edgeIndex size/);
+    });
+
+    it('catches missing vertex referenced by triangle', () => {
+      const topology = createValidTopology();
+      const tri = Array.from(topology.triangles.values())[0];
+      tri.vertices[0] = 9999;
+      expect(() => validateTopology(topology)).toThrow(/non-existent vertex/);
+    });
+
+    it('catches vertexEdges referencing non-existent edge', () => {
+      const topology = createValidTopology();
+      const vid = Array.from(topology.vertexEdges.keys())[0];
+      topology.vertexEdges.get(vid)!.add(9999);
+      expect(() => validateTopology(topology)).toThrow(/non-existent edge/);
+    });
+
+    it('catches edge missing from vertexEdges', () => {
+      const topology = createValidTopology();
+      const edge = Array.from(topology.edges.values())[0];
+      const v1Edges = topology.vertexEdges.get(edge.v1)!;
+      v1Edges.delete(edge.id);
+      expect(() => validateTopology(topology)).toThrow(/missing from vertexEdges/);
     });
   });
 });

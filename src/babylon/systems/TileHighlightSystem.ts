@@ -12,7 +12,6 @@ export type HighlightMode = 'vertex' | 'face' | 'edge' | 'none';
 export interface VertexPositionProvider {
   getVertexPosition(vertexId: number): Vec3 | null;
   getVertexElevation(vertexId: number): number;
-  getVertexWorldPosition(vertexId: number): { x: number; z: number } | null;
   getVertexIdsInWorldRadius?(worldX: number, worldZ: number, radius: number): number[];
 }
 

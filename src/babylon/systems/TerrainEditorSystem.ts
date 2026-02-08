@@ -37,7 +37,6 @@ export interface TerrainModifier {
   findNearestVertexId?(worldX: number, worldZ: number): number | null;
   getVertexPositionById?(vertexId: number): Vec3 | null;
   getVertexElevationById?(vertexId: number): number | null;
-  getVertexWorldPosition?(vertexId: number): { x: number; z: number } | null;
   getVertexIdsInWorldRadius?(worldX: number, worldZ: number, radius: number): number[];
   getWorldDimensions?(): { width: number; height: number };
   rebuildMesh?(): void;
@@ -79,7 +78,6 @@ export interface TerrainModifier {
   canDeleteTopologyVertex?(vertexId: number): boolean;
   deleteTopologyVertex?(vertexId: number): void;
   findNearestTopologyVertexAt?(worldX: number, worldZ: number): { vertexId: number; dist: number } | null;
-  getTopologyVertexPosition?(vertexId: number): Vec3 | null;
   setTopologyVertexPosition?(vertexId: number, pos: Vec3): void;
   setHoveredTopologyVertex?(vertexId: number | null): void;
   getHoveredTopologyVertex?(): number | null;
@@ -137,7 +135,6 @@ export class TerrainEditorSystem {
     const vertexProvider: VertexPositionProvider = {
       getVertexPosition: (vertexId) => modifier.getVertexPositionById?.(vertexId) ?? null,
       getVertexElevation: (vertexId) => modifier.getVertexElevationById?.(vertexId) ?? 0,
-      getVertexWorldPosition: (vertexId) => modifier.getVertexWorldPosition?.(vertexId) ?? null,
       getVertexIdsInWorldRadius: modifier.getVertexIdsInWorldRadius
         ? (worldX, worldZ, radius) => modifier.getVertexIdsInWorldRadius!(worldX, worldZ, radius)
         : undefined,
@@ -418,9 +415,10 @@ export class TerrainEditorSystem {
   public handleDeleteSelectedTopologyVertices(): void {
     if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
         const vertexId = this.state.hoverVertex.vertexId;
+        const pos = this.terrainModifier?.getVertexPositionById?.(vertexId);
         const nearest = this.terrainModifier?.findNearestTopologyVertexAt?.(
-          this.terrainModifier.getVertexWorldPosition?.(vertexId)?.x ?? 0,
-          this.terrainModifier.getVertexWorldPosition?.(vertexId)?.z ?? 0
+          pos?.x ?? 0,
+          pos?.z ?? 0
         );
         if (nearest && nearest.dist < 0.1) {
             this.terrainModifier?.deleteTopologyVertex?.(nearest.vertexId);
@@ -478,10 +476,9 @@ export class TerrainEditorSystem {
     if (this.state.hoverVertex) {
         const vertexId = this.state.hoverVertex.vertexId;
         const pos = this.terrainModifier?.getVertexPositionById?.(vertexId);
-        const worldPos = this.terrainModifier?.getVertexWorldPosition?.(vertexId);
         return {
-            x: Math.round(worldPos?.x ?? 0),
-            y: Math.round(worldPos?.z ?? 0),
+            x: Math.round(pos?.x ?? 0),
+            y: Math.round(pos?.z ?? 0),
             elevation: pos?.y ?? 0,
             type: 'rough'
         };
@@ -632,7 +629,7 @@ export class TerrainEditorSystem {
     let worldZ: number;
 
     if (this.topologyMode === 'vertex' && this.state.hoverVertex) {
-      const wp = this.terrainModifier.getVertexWorldPosition?.(this.state.hoverVertex.vertexId);
+      const wp = this.terrainModifier.getVertexPositionById?.(this.state.hoverVertex.vertexId);
       worldX = wp?.x ?? 0;
       worldZ = wp?.z ?? 0;
     } else if (this.lastWorldPos) {
