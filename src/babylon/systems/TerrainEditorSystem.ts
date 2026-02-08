@@ -542,14 +542,17 @@ export class TerrainEditorSystem {
         changes.push({ vertexId, pos: newPos });
       }
     }
+    // setVertexPositionsById sets meshDirty, so the next update() frame
+    // will call updateMeshPositionsOnly() instead of a full rebuild.
     this.terrainModifier?.setVertexPositionsById?.(changes);
-    this.terrainModifier?.rebuildMesh?.();
     this.highlightSystem.refresh();
   }
 
   public handleVertexMoveEnd(): void {
     if (!this.isMovingVertices) return;
     this.isMovingVertices = false;
+    // Full rebuild on drag end to fix spatial index (XZ positions changed)
+    this.terrainModifier?.rebuildMesh?.();
   }
 
   public handleDragStart(gridX: number, gridY: number): void {
@@ -838,10 +841,9 @@ export class TerrainEditorSystem {
     if (!facesInBrush || facesInBrush.length === 0) return;
 
     const terrainType = getTerrainTypeFromBrush(this.state.activeTool);
-    for (const faceId of facesInBrush) {
-      this.terrainModifier.setFaceTerrain?.(faceId, terrainType);
-    }
-    this.terrainModifier.rebuildMesh?.();
+    // paintTerrainType sets topologyDirty, so the next update() frame
+    // will batch-rebuild the mesh once instead of per mouse event.
+    this.terrainModifier.paintTerrainType?.(facesInBrush, terrainType);
     this.highlightSystem.refresh();
   }
 
