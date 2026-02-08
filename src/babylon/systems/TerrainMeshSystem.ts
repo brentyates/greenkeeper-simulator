@@ -1043,6 +1043,11 @@ export class TerrainMeshSystem {
 
     this.terrainMesh.updateVerticesData("position", positions, false);
     this.terrainMesh.updateVerticesData("normal", normals, false);
+
+    // Keep wireframe in sync with updated vertex positions
+    if (this.wireframeMesh) {
+      this.createWireframeMesh();
+    }
   }
 
   public updateFaceTerrainVisuals(): void {

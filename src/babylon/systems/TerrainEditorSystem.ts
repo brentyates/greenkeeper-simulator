@@ -687,7 +687,9 @@ export class TerrainEditorSystem {
       this.terrainModifier.setVertexElevationsById?.(
         modifications.map(m => ({ vertexId: m.vertexId, y: m.newY }))
       );
-      this.terrainModifier.rebuildMesh?.();
+      // Don't call rebuildMesh() here - setVertexElevationsById sets meshDirty,
+      // and the next update() frame will call updateMeshPositionsOnly() which is
+      // much cheaper (no mesh dispose/recreate, no texture rebuild).
       this.callbacks.onModification?.(modifications.map(m => ({ x: m.vertexId, y: 0 })));
       this.highlightSystem.refresh();
     }
