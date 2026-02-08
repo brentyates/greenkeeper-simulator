@@ -178,6 +178,9 @@ export class TerrainEditorController {
       onBrushSizeChange: (size: number) => {
         this.terrainEditorUI?.setBrushSize(size);
       },
+      onBrushStrengthChange: (strength: number) => {
+        this.terrainEditorUI?.setBrushStrength(strength);
+      },
       onSelectionChange: (count: number) => {
         this.terrainEditorUI?.setSelectionCount(count);
         this.updateVertexPositionDisplay();
@@ -212,9 +215,6 @@ export class TerrainEditorController {
   handleEditorToolSelect(tool: EditorTool): void {
     this.terrainEditorSystem?.setTool(tool);
     this.updateEditorCursor();
-  }
-
-  handleEditorToolNumber(_toolNumber: number): void {
   }
 
   handleEditorBrushSelect(brush: string): void {
@@ -252,19 +252,16 @@ export class TerrainEditorController {
   handleEditorBrushSize(size: number): void {
     if (!this.terrainEditorSystem) return;
     this.terrainEditorSystem.setBrushSize(size);
-    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
   }
 
   handleEditorBrushSizeDelta(delta: number): void {
     if (!this.terrainEditorSystem) return;
     this.terrainEditorSystem.changeBrushSize(delta);
-    this.terrainEditorUI?.setBrushSize(this.terrainEditorSystem.getBrushSize());
   }
 
   handleEditorBrushStrength(strength: number): void {
     if (!this.terrainEditorSystem) return;
     this.terrainEditorSystem.setBrushStrength(strength);
-    this.terrainEditorUI?.setBrushStrength(this.terrainEditorSystem.getBrushStrength());
   }
 
   handleEditorBrushStrengthDelta(delta: number): void {

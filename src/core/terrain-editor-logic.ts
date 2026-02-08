@@ -68,10 +68,6 @@ export function selectVertex(
   state.selectedVertices.add(vertexId);
 }
 
-export function deselectVertex(state: EditorState, vertexId: number): void {
-  state.selectedVertices.delete(vertexId);
-}
-
 export function toggleVertex(state: EditorState, vertexId: number): void {
   if (state.selectedVertices.has(vertexId)) {
     state.selectedVertices.delete(vertexId);

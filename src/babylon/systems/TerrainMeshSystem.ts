@@ -111,7 +111,6 @@ export class TerrainMeshSystem {
 
   private topology: TerrainMeshTopology | null = null;
   private hoveredEdgeId: number | null = null;
-  private selectedEdgeId: number | null = null;
   private selectedEdgeIds: Set<number> = new Set();
   private brushHoveredEdgeIds: Set<number> = new Set();
   private allEdgesMesh: Mesh | null = null;
@@ -285,9 +284,6 @@ export class TerrainMeshSystem {
     }
     if (edgeId !== null) {
       this.selectedEdgeIds.add(edgeId);
-      this.selectedEdgeId = edgeId;
-    } else {
-      this.selectedEdgeId = null;
     }
     this.rebuildAllEdgesMeshWithHighlights();
   }
@@ -297,14 +293,12 @@ export class TerrainMeshSystem {
       this.selectedEdgeIds.delete(edgeId);
     } else {
       this.selectedEdgeIds.add(edgeId);
-      this.selectedEdgeId = edgeId;
     }
     this.rebuildAllEdgesMeshWithHighlights();
   }
 
   public deselectAllEdges(): void {
     this.selectedEdgeIds.clear();
-    this.selectedEdgeId = null;
     this.rebuildAllEdgesMeshWithHighlights();
   }
 
@@ -313,9 +307,10 @@ export class TerrainMeshSystem {
   }
 
   public subdivideSelectedEdge(): void {
-    if (this.selectedEdgeId === null || !this.topology) return;
+    if (this.selectedEdgeIds.size === 0 || !this.topology) return;
 
-    const result = subdivideEdge(this.topology, this.selectedEdgeId, 0.5);
+    const edgeId = this.selectedEdgeIds.values().next().value!;
+    const result = subdivideEdge(this.topology, edgeId, 0.5);
     if (!result) return;
 
     this.deselectAllEdges();
@@ -323,9 +318,10 @@ export class TerrainMeshSystem {
   }
 
   public flipSelectedEdge(): void {
-    if (this.selectedEdgeId === null || !this.topology) return;
+    if (this.selectedEdgeIds.size === 0 || !this.topology) return;
 
-    const result = flipEdge(this.topology, this.selectedEdgeId);
+    const edgeId = this.selectedEdgeIds.values().next().value!;
+    const result = flipEdge(this.topology, edgeId);
     if (!result) return;
 
     this.rebuildMesh();

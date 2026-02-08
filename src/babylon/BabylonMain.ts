@@ -425,7 +425,6 @@ export class BabylonMain {
         this.setTerrainEditor(!this.isTerrainEditorEnabled());
       },
 
-      onEditorToolSelect: (tool: number) => this.terrainEditorController.handleEditorToolNumber(tool),
       onEditorBrushSelect: (brush: string) =>
         this.terrainEditorController.handleEditorBrushSelect(brush),
       onEditorBrushSizeChange: (delta: number) =>

@@ -529,12 +529,6 @@ describe("TerrainEditorController", () => {
     });
   });
 
-  describe("handleEditorToolNumber", () => {
-    it("is a no-op", () => {
-      controller.handleEditorToolNumber(1);
-    });
-  });
-
   describe("handleEditorBrushSelect", () => {
     it("sets tool when brush starts with terrain_", () => {
       controller.handleEditorBrushSelect("terrain_fairway");
@@ -612,10 +606,9 @@ describe("TerrainEditorController", () => {
   });
 
   describe("handleEditorBrushSize", () => {
-    it("sets brush size and updates UI", () => {
+    it("delegates to system setBrushSize", () => {
       controller.handleEditorBrushSize(5);
       expect(mockSystem.setBrushSize).toHaveBeenCalledWith(5);
-      expect(mockUI.setBrushSize).toHaveBeenCalledWith(3);
     });
 
     it("does nothing when system is null", () => {
@@ -625,10 +618,9 @@ describe("TerrainEditorController", () => {
   });
 
   describe("handleEditorBrushSizeDelta", () => {
-    it("changes brush size by delta and updates UI", () => {
+    it("delegates to system changeBrushSize", () => {
       controller.handleEditorBrushSizeDelta(2);
       expect(mockSystem.changeBrushSize).toHaveBeenCalledWith(2);
-      expect(mockUI.setBrushSize).toHaveBeenCalledWith(3);
     });
 
     it("does nothing when system is null", () => {
@@ -638,10 +630,9 @@ describe("TerrainEditorController", () => {
   });
 
   describe("handleEditorBrushStrength", () => {
-    it("sets brush strength and updates UI", () => {
+    it("delegates to system setBrushStrength", () => {
       controller.handleEditorBrushStrength(0.8);
       expect(mockSystem.setBrushStrength).toHaveBeenCalledWith(0.8);
-      expect(mockUI.setBrushStrength).toHaveBeenCalledWith(0.5);
     });
 
     it("does nothing when system is null", () => {

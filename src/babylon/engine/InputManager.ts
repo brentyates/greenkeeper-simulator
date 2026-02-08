@@ -25,7 +25,6 @@ export interface InputCallbacks {
   onDebugScreenshot?: () => void;
   onClick?: (screenX: number, screenY: number, shiftKey?: boolean) => void;
   onEditorToggle?: () => void;
-  onEditorToolSelect?: (tool: number) => void;
   onEditorBrushSelect?: (brush: string) => void;
   onEditorBrushSizeChange?: (delta: number) => void;
   onEditorBrushStrengthChange?: (delta: number) => void;
