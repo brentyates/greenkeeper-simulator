@@ -26,13 +26,11 @@ export interface TerrainSystem {
   getFaceState(faceId: number): FaceState | undefined;
   getAllFaceStates(): Map<number, FaceState>;
   restoreFaceStates(saved: Map<number, FaceState>): void;
-  setFaceState(faceId: number, state: Partial<FaceState>): void;
   setAllFaceStates(state: Partial<Pick<FaceState, 'moisture' | 'nutrients' | 'grassHeight' | 'health'>>): void;
 
   getWorldDimensions(): { width: number; height: number };
 
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
-  getMeshElevationAt(meshX: number, meshY: number, defaultForOutOfBounds?: number): number;
   setElevationAt(x: number, y: number, elev: number): void;
 
   getTerrainTypeAt(worldX: number, worldZ: number): string | undefined;

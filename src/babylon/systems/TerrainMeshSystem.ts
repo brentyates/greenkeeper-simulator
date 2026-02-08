@@ -555,10 +555,6 @@ export class TerrainMeshSystem {
     this.rebuildFaceHighlightMesh();
   }
 
-  public getSelectedFaceIds(): Set<number> {
-    return new Set(this.selectedFaceIds);
-  }
-
   public findFaceAtPosition(worldX: number, worldZ: number): number | null {
     if (!this.topology || !this.faceSpatialIndex || this.faceSpatialIndex.length === 0) return null;
 
@@ -1188,44 +1184,11 @@ export class TerrainMeshSystem {
   // Visual settings
   // ============================================
 
-  public setStripesEnabled(enabled: boolean): void {
-    this.options.enableStripes = enabled;
-    if (this.shaderMaterial) {
-      this.shaderMaterial.setFloat("enableStripes", enabled ? 1 : 0);
-    }
-  }
-
-  public setNoiseEnabled(enabled: boolean): void {
-    this.options.enableNoise = enabled;
-    if (this.shaderMaterial) {
-      this.shaderMaterial.setFloat("enableNoise", enabled ? 1 : 0);
-    }
-  }
-
-  public setWaterAnimEnabled(enabled: boolean): void {
-    this.options.enableWaterAnim = enabled;
-    if (this.shaderMaterial) {
-      this.shaderMaterial.setFloat("enableWaterAnim", enabled ? 1 : 0);
-    }
-  }
-
-  public setTerrainColor(type: 'green' | 'fairway' | 'bunker' | 'water' | 'tee' | 'rough' | 'waterDeep', color: Color3): void {
-    if (!this.shaderMaterial) return;
-
-    const uniformName = `${type}Color`;
-    this.shaderMaterial.setColor3(uniformName, color);
-  }
-
   public getElevationAt(worldX: number, worldY: number, defaultForOutOfBounds?: number): number {
     if (worldX < 0 || worldX >= this.worldWidth || worldY < 0 || worldY >= this.worldHeight) {
       return defaultForOutOfBounds ?? 0;
     }
     return this.getInterpolatedElevation(worldX, worldY);
-  }
-
-  public getMeshElevationAt(meshX: number, meshY: number, defaultForOutOfBounds?: number): number {
-    const res = this.getResolution();
-    return this.getElevationAt(meshX / res, meshY / res, defaultForOutOfBounds);
   }
 
   public setElevationAt(meshX: number, meshY: number, elev: number): void {
@@ -1289,12 +1252,6 @@ export class TerrainMeshSystem {
         this.faceStates.set(id, { ...state });
       }
     }
-  }
-
-  public setFaceState(faceId: number, state: Partial<FaceState>): void {
-    const face = this.faceStates.get(faceId);
-    if (!face) return;
-    Object.assign(face, state);
   }
 
   public setAllFaceStates(state: Partial<Pick<FaceState, 'moisture' | 'nutrients' | 'grassHeight' | 'health'>>): void {
@@ -1419,6 +1376,8 @@ export class TerrainMeshSystem {
     gameTime: number
   ): number[] {
     const facesInBrush = this.getFacesInBrush(worldX, worldZ, equipmentRadius);
+    if (facesInBrush.length === 0) return [];
+
     const modifiedFaces: number[] = [];
 
     for (const faceId of facesInBrush) {
@@ -1523,6 +1482,8 @@ export class TerrainMeshSystem {
     }
 
     const faceIds = this.getFacesInBrush(centerX, centerY, radius);
+    if (faceIds.length === 0) return 0;
+
     let affectedCount = 0;
     for (const fid of faceIds) {
       const face = this.faceStates.get(fid);

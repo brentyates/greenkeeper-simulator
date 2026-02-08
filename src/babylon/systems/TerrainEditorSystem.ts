@@ -763,12 +763,6 @@ export class TerrainEditorSystem {
     this.notifySelectionChange();
   }
 
-  public clearFaceSelection(): void {
-    this.selectedFaces.clear();
-    this.terrainModifier?.clearSelectedFaces?.();
-    this.notifySelectionChange();
-  }
-
   public moveSelectedFaces(dx: number, dy: number, dz: number): void {
     if (this.selectedFaces.size === 0) return;
     this.terrainModifier?.moveSelectedFaces?.(dx, dy, dz);
