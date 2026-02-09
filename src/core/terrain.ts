@@ -27,61 +27,26 @@ export function isNonRough(type: TerrainType): boolean {
   return type !== 'rough';
 }
 
+const TERRAIN_TYPES: TerrainType[] = ["fairway", "rough", "green", "bunker", "water", "tee"];
+const OBSTACLE_TYPES: ObstacleType[] = ["none", "tree", "pine_tree", "shrub", "bush"];
+
 export function getTerrainType(code: number): TerrainType {
-  switch (code) {
-    case 0:
-      return "fairway";
-    case 1:
-      return "rough";
-    case 2:
-      return "green";
-    case 3:
-      return "bunker";
-    case 4:
-      return "water";
-    case 5:
-      return "tee";
-    default:
-      return "rough";
-  }
+  return TERRAIN_TYPES[code] || "rough";
 }
 
 export function getObstacleType(code: number): ObstacleType {
-  switch (code) {
-    case 0:
-      return "none";
-    case 1:
-      return "tree";
-    case 2:
-      return "pine_tree";
-    case 3:
-      return "shrub";
-    case 4:
-      return "bush";
-    default:
-      return "none";
-  }
+  return OBSTACLE_TYPES[code] || "none";
 }
 
-export function getInitialValues(type: TerrainType): {
-  height: number;
-  moisture: number;
-  nutrients: number;
-} {
-  switch (type) {
-    case "fairway":
-      return { height: 30, moisture: 60, nutrients: 70 };
-    case "rough":
-      return { height: 70, moisture: 50, nutrients: 50 };
-    case "green":
-      return { height: 10, moisture: 70, nutrients: 80 };
-    case "bunker":
-      return { height: 0, moisture: 20, nutrients: 0 };
-    case "water":
-      return { height: 0, moisture: 100, nutrients: 0 };
-    case "tee":
-      return { height: 15, moisture: 65, nutrients: 75 };
-  }
+export function getInitialValues(type: TerrainType) {
+  return {
+    fairway: { height: 30, moisture: 60, nutrients: 70 },
+    rough: { height: 70, moisture: 50, nutrients: 50 },
+    green: { height: 10, moisture: 70, nutrients: 80 },
+    bunker: { height: 0, moisture: 20, nutrients: 0 },
+    water: { height: 0, moisture: 100, nutrients: 0 },
+    tee: { height: 15, moisture: 65, nutrients: 75 }
+  }[type];
 }
 
 export function gridToScreen(
@@ -168,20 +133,7 @@ export function getRampDirection(
 }
 
 export function getTerrainSpeedModifier(type: TerrainType): number {
-  switch (type) {
-    case "fairway":
-      return 1.0;
-    case "green":
-      return 1.0;
-    case "rough":
-      return 0.7;
-    case "bunker":
-      return 0.5;
-    case "water":
-      return 0.0;
-    case "tee":
-      return 1.0;
-  }
+  return { fairway: 1.0, green: 1.0, rough: 0.7, bunker: 0.5, water: 0.0, tee: 1.0 }[type] ?? 0.7;
 }
 
 export const getTerrainMowable = isGrassTerrain;
@@ -192,37 +144,14 @@ export function clampToGrid(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max - 1, Math.floor(value)));
 }
 
-export function getTerrainDisplayName(type: TerrainType): string {
-  switch (type) {
-    case "fairway":
-      return "Fairway";
-    case "rough":
-      return "Rough";
-    case "green":
-      return "Green";
-    case "bunker":
-      return "Bunker";
-    case "water":
-      return "Water";
-    case "tee":
-      return "Tee Box";
-  }
-}
+const TERRAIN_NAMES: Record<TerrainType, string> = { fairway: "Fairway", rough: "Rough", green: "Green", bunker: "Bunker", water: "Water", tee: "Tee Box" };
 
-export function getObstacleDisplayName(type: ObstacleType): string {
-  switch (type) {
-    case "none":
-      return "None";
-    case "tree":
-      return "Tree";
-    case "pine_tree":
-      return "Pine Tree";
-    case "shrub":
-      return "Shrub";
-    case "bush":
-      return "Bush";
-  }
-}
+export function getTerrainDisplayName(type: TerrainType): string { return TERRAIN_NAMES[type]; }
+
+const OBSTACLE_NAMES: Record<ObstacleType, string> = { none: "None", tree: "Tree", pine_tree: "Pine Tree", shrub: "Shrub", bush: "Bush" };
+const TERRAIN_CODE_MAP: Record<TerrainType, number> = { fairway: 0, rough: 1, green: 2, bunker: 3, water: 4, tee: 5 };
+
+export function getObstacleDisplayName(type: ObstacleType): string { return OBSTACLE_NAMES[type]; }
 
 export interface TerrainThresholds {
   mownHeight: number;
@@ -230,18 +159,14 @@ export interface TerrainThresholds {
 }
 
 export function getTerrainThresholds(type: TerrainType): TerrainThresholds {
-  switch (type) {
-    case "fairway":
-      return { mownHeight: 20, growingHeight: 45 };
-    case "rough":
-      return { mownHeight: 30, growingHeight: 60 };
-    case "green":
-      return { mownHeight: 10, growingHeight: 22 };
-    case "tee":
-      return { mownHeight: 12, growingHeight: 25 };
-    default:
-      return { mownHeight: 30, growingHeight: 60 };
-  }
+  return {
+    fairway: { mownHeight: 20, growingHeight: 45 },
+    rough: { mownHeight: 30, growingHeight: 60 },
+    green: { mownHeight: 10, growingHeight: 22 },
+    tee: { mownHeight: 12, growingHeight: 25 },
+    bunker: { mownHeight: 0, growingHeight: 0 },
+    water: { mownHeight: 0, growingHeight: 0 },
+  }[type] || { mownHeight: 30, growingHeight: 60 };
 }
 
 export function getGrassState(cell: { type: TerrainType; height: number }): "mown" | "growing" | "unmown" {
@@ -254,45 +179,11 @@ export function getGrassState(cell: { type: TerrainType; height: number }): "mow
   return "unmown";
 }
 
-export function getTerrainCode(type: TerrainType): number {
-  switch (type) {
-    case "fairway":
-      return TERRAIN_CODES.FAIRWAY;
-    case "rough":
-      return TERRAIN_CODES.ROUGH;
-    case "green":
-      return TERRAIN_CODES.GREEN;
-    case "bunker":
-      return TERRAIN_CODES.BUNKER;
-    case "water":
-      return TERRAIN_CODES.WATER;
-    case "tee":
-      return TERRAIN_CODES.TEE;
-  }
-}
+export function getTerrainCode(type: TerrainType): number { return TERRAIN_CODE_MAP[type]; }
 
-export function getAdjacentPositions(
-  x: number,
-  y: number,
-  includeDiagonals: boolean = false
-): Array<{ x: number; y: number }> {
-  const positions: Array<{ x: number; y: number }> = [
-    { x: x, y: y - 1 },
-    { x: x + 1, y: y },
-    { x: x, y: y + 1 },
-    { x: x - 1, y: y },
-  ];
-
-  if (includeDiagonals) {
-    positions.push(
-      { x: x - 1, y: y - 1 },
-      { x: x + 1, y: y - 1 },
-      { x: x + 1, y: y + 1 },
-      { x: x - 1, y: y + 1 }
-    );
-  }
-
-  return positions;
+export function getAdjacentPositions(x: number, y: number, diag: boolean = false): { x: number; y: number }[] {
+  const p = [{ x, y: y-1 }, { x: x+1, y }, { x, y: y+1 }, { x: x-1, y }];
+  return diag ? [...p, { x: x-1, y: y-1 }, { x: x+1, y: y-1 }, { x: x+1, y: y+1 }, { x: x-1, y: y+1 }] : p;
 }
 
 import { TerrainMeshTopology, computeFaceSlopeAngle, MAX_WALKABLE_SLOPE_DEGREES } from './mesh-topology';

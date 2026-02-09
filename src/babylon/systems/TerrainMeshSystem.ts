@@ -34,7 +34,6 @@ import {
 import {
   Vec3,
   TerrainMeshTopology,
-  TerrainTriangle,
   buildMeshArrays,
   findNearestEdge,
   subdivideEdge,
@@ -47,6 +46,8 @@ import {
   barycentricInterpolateY,
   getTriangleCentroid,
   pointInTriangle,
+  recomputeNormalsLocally,
+  getTrianglesAdjacentToVertex,
 } from "../../core/mesh-topology";
 import { rotateAroundPivot } from "../../core/transform-ops";
 import { ShapeTemplate, generateStampTopology, stampIntoTopology } from "../../core/shape-templates";
@@ -93,7 +94,6 @@ export class TerrainMeshSystem {
   private faceDataTexture: RawTexture | null = null;
   private overlayTexture: RawTexture | null = null;
   private defaultOverlayTexture: RawTexture | null = null;
-  private gridLinesMesh: Mesh | null = null;
 
   private faceStates: Map<number, FaceState> = new Map();
   private faceIdToTexIndex: Map<number, number> = new Map();
@@ -111,20 +111,11 @@ export class TerrainMeshSystem {
   private faceDataDirty: boolean = false;
   private static readonly FACE_DATA_UPDATE_INTERVAL: number = 10;
 
-  // Edge highlight colors
-  private static readonly EDGE_NORMAL_COLOR = new Color4(0.5, 0.75, 0.5, 0.8);
-  private static readonly EDGE_HOVERED_COLOR = new Color4(0, 1, 1, 1);
-  private static readonly EDGE_BRUSH_COLOR = new Color4(0.4, 0.9, 0.9, 0.9);
-  private static readonly EDGE_SELECTED_COLOR = new Color4(1, 0.5, 0, 1);
-
-  // Face highlight colors
-  private static readonly FACE_HOVERED_COLOR = new Color4(1, 1, 0, 0.4);
-  private static readonly FACE_BRUSH_COLOR = new Color4(0.8, 0.9, 0.3, 0.3);
-  private static readonly FACE_SELECTED_COLOR = new Color4(0, 1, 1, 0.5);
-
-  // Wireframe colors per topology mode
-  private static readonly WIREFRAME_VERTEX_COLOR = new Color4(0.8, 0.8, 0.2, 0.7);
-  private static readonly WIREFRAME_FACE_COLOR = new Color4(0.4, 0.7, 0.4, 0.5);
+  private static readonly COLORS = {
+    EDGE: { NORMAL: new Color4(0.5,0.75,0.5,0.8), HOVER: new Color4(0,1,1,1), BRUSH: new Color4(0.4,0.9,0.9,0.9), SEL: new Color4(1,0.5,0,1) },
+    FACE: { HOVER: new Color4(1,1,0,0.4), BRUSH: new Color4(0.8,0.9,0.3,0.3), SEL: new Color4(0,1,1,0.5) },
+    WIRE: { VERT: new Color4(0.8,0.8,0.2,0.7), FACE: new Color4(0.4,0.7,0.4,0.5) }
+  };
 
   private topology: TerrainMeshTopology | null = null;
   private hoveredEdgeId: number | null = null;
@@ -137,9 +128,12 @@ export class TerrainMeshSystem {
   private brushHoveredFaceIds: Set<number> = new Set();
   private faceHighlightMesh: Mesh | null = null;
   private faceSpatialIndex: Array<Set<number>> = [];
-  private wireframeMesh: Mesh | null = null;
+  private auxMeshes: Map<string, Mesh> = new Map();
   private wireframeEnabled: boolean = false;
-  private axisIndicatorMesh: Mesh | null = null;
+
+  private vertexIdMap: Map<number, number[]> = new Map();
+  private modifiedVertexIds: Set<number> = new Set();
+  private modifiedFaceIds: Set<number> = new Set();
 
   constructor(
     scene: Scene,
@@ -188,7 +182,7 @@ export class TerrainMeshSystem {
     }
   }
 
-  private addTriangleToSpatialIndex(triId: number, tri: TerrainTriangle): void {
+  private addTriangleToSpatialIndex(triId: number, tri: { vertices: number[] }): void {
     if (!this.topology) return;
     const v0 = this.topology.vertices.get(tri.vertices[0]);
     const v1 = this.topology.vertices.get(tri.vertices[1]);
@@ -205,6 +199,54 @@ export class TerrainMeshSystem {
         this.faceSpatialIndex[gz * this.gridWidth + gx].add(triId);
       }
     }
+  }
+
+  private removeTriangleFromSpatialIndex(triId: number, tri: { vertices: number[] }): void {
+    if (!this.topology) return;
+    const v0 = this.topology.vertices.get(tri.vertices[0]);
+    const v1 = this.topology.vertices.get(tri.vertices[1]);
+    const v2 = this.topology.vertices.get(tri.vertices[2]);
+    if (!v0 || !v1 || !v2) return;
+
+    const minX = Math.floor(Math.min(v0.position.x, v1.position.x, v2.position.x));
+    const maxX = Math.floor(Math.max(v0.position.x, v1.position.x, v2.position.x));
+    const minZ = Math.floor(Math.min(v0.position.z, v1.position.z, v2.position.z));
+    const maxZ = Math.floor(Math.max(v0.position.z, v1.position.z, v2.position.z));
+
+    for (let gz = Math.max(0, minZ); gz <= Math.min(this.gridHeight - 1, maxZ); gz++) {
+      for (let gx = Math.max(0, minX); gx <= Math.min(this.gridWidth - 1, maxX); gx++) {
+        this.faceSpatialIndex[gz * this.gridWidth + gx].delete(triId);
+      }
+    }
+  }
+
+  private updateTopologyAndIndex(
+    action: () => { newFaceIds?: number[]; removedFaceIds?: number[] } | any,
+    affectedTriIds: Set<number>
+  ): void {
+    const trisBefore = Array.from(affectedTriIds).map(id => {
+        const t = this.topology!.triangles.get(id)!;
+        return { id, vertices: [...t.vertices] };
+    });
+    const result = action();
+    if (!result && result !== undefined) return;
+
+    for (const tri of trisBefore) this.removeTriangleFromSpatialIndex(tri.id, tri);
+    
+    const added = result?.newFaceIds || [];
+    const removed = new Set(result?.removedFaceIds || []);
+    
+    for (const tid of affectedTriIds) {
+        if (!removed.has(tid)) {
+            const tri = this.topology!.triangles.get(tid);
+            if (tri) this.addTriangleToSpatialIndex(tid, tri);
+        }
+    }
+    for (const tid of added) {
+        const tri = this.topology!.triangles.get(tid);
+        if (tri) this.addTriangleToSpatialIndex(tid, tri);
+    }
+    this.topologyDirty = true;
   }
 
   private initFaceStates(): void {
@@ -315,24 +357,20 @@ export class TerrainMeshSystem {
   }
 
   public subdivideSelectedEdge(): void {
-    if (this.selectedEdgeIds.size === 0 || !this.topology) return;
-
-    const edgeId = this.selectedEdgeIds.values().next().value!;
-    const result = subdivideEdge(this.topology, edgeId, 0.5);
-    if (!result) return;
-
+    if (!this.topology || !this.selectedEdgeIds.size) return;
+    const eid = this.selectedEdgeIds.values().next().value!;
+    const edge = this.topology.edges.get(eid);
+    if (!edge) return;
+    this.updateTopologyAndIndex(() => subdivideEdge(this.topology!, eid), new Set(edge.triangles));
     this.deselectAllEdges();
-    this.rebuildMesh();
   }
 
   public flipSelectedEdge(): void {
-    if (this.selectedEdgeIds.size === 0 || !this.topology) return;
-
-    const edgeId = this.selectedEdgeIds.values().next().value!;
-    const result = flipEdge(this.topology, edgeId);
-    if (!result) return;
-
-    this.rebuildMesh();
+    if (!this.topology || !this.selectedEdgeIds.size) return;
+    const eid = this.selectedEdgeIds.values().next().value!;
+    const edge = this.topology.edges.get(eid);
+    if (!edge || edge.triangles.length !== 2) return;
+    this.updateTopologyAndIndex(() => flipEdge(this.topology!, eid), new Set(edge.triangles));
   }
 
   private rebuildAllEdgesMeshWithHighlights(): void {
@@ -354,13 +392,13 @@ export class TerrainMeshSystem {
         new Vector3(v2.position.x, v2.position.y * HEIGHT_UNIT + lineOffset, v2.position.z),
       ]);
 
-      let color = TerrainMeshSystem.EDGE_NORMAL_COLOR;
+      let color = TerrainMeshSystem.COLORS.EDGE.NORMAL;
       if (this.selectedEdgeIds.has(edgeId)) {
-        color = TerrainMeshSystem.EDGE_SELECTED_COLOR;
+        color = TerrainMeshSystem.COLORS.EDGE.SEL;
       } else if (edgeId === this.hoveredEdgeId) {
-        color = TerrainMeshSystem.EDGE_HOVERED_COLOR;
+        color = TerrainMeshSystem.COLORS.EDGE.HOVER;
       } else if (this.brushHoveredEdgeIds.has(edgeId)) {
-        color = TerrainMeshSystem.EDGE_BRUSH_COLOR;
+        color = TerrainMeshSystem.COLORS.EDGE.BRUSH;
       }
 
       colors.push([color, color]);
@@ -384,14 +422,9 @@ export class TerrainMeshSystem {
     }
   }
 
-  public deleteTopologyVertex(vertexId: number): void {
-    if (!this.topology) return;
-    if (!canDeleteVertex(this.topology, vertexId)) return;
-
-    const result = deleteVertex(this.topology, vertexId);
-    if (!result) return;
-
-    this.rebuildMesh();
+  public deleteTopologyVertex(vid: number): void {
+    if (!this.topology || !canDeleteVertex(this.topology, vid)) return;
+    this.updateTopologyAndIndex(() => deleteVertex(this.topology!, vid), getTrianglesAdjacentToVertex(this.topology!, vid));
   }
 
   public findNearestTopologyVertexAt(worldX: number, worldZ: number): {
@@ -420,6 +453,7 @@ export class TerrainMeshSystem {
       const vertex = this.topology.vertices.get(change.vertexId);
       if (vertex) {
         vertex.position.y = change.y;
+        this.modifiedVertexIds.add(change.vertexId);
       }
     }
     this.meshDirty = true;
@@ -431,6 +465,7 @@ export class TerrainMeshSystem {
       const vertex = this.topology.vertices.get(change.vertexId);
       if (vertex) {
         vertex.position = { ...change.pos };
+        this.modifiedVertexIds.add(change.vertexId);
       }
     }
     this.meshDirty = true;
@@ -444,6 +479,7 @@ export class TerrainMeshSystem {
         vertex.position.x += delta.x;
         vertex.position.y += delta.y;
         vertex.position.z += delta.z;
+        this.modifiedVertexIds.add(vertexId);
       }
     }
     this.meshDirty = true;
@@ -469,14 +505,14 @@ export class TerrainMeshSystem {
     return result;
   }
 
-  public collapseEdge(edgeId: number): void {
+  public collapseEdge(eid: number): void {
     if (!this.topology) return;
-
-    const result = collapseEdge(this.topology, edgeId);
-    if (!result) return;
-
+    const edge = this.topology.edges.get(eid);
+    if (!edge) return;
+    const affected = getTrianglesAdjacentToVertex(this.topology, edge.v1);
+    getTrianglesAdjacentToVertex(this.topology, edge.v2).forEach(t => affected.add(t));
+    this.updateTopologyAndIndex(() => collapseEdge(this.topology!, eid), affected);
     this.deselectAllEdges();
-    this.rebuildMesh();
   }
 
   // ============================================
@@ -504,12 +540,12 @@ export class TerrainMeshSystem {
 
     if (mode === 'vertex' || mode === 'face') {
       const color = mode === 'vertex'
-        ? TerrainMeshSystem.WIREFRAME_VERTEX_COLOR
-        : TerrainMeshSystem.WIREFRAME_FACE_COLOR;
+        ? TerrainMeshSystem.COLORS.WIRE.VERT
+        : TerrainMeshSystem.COLORS.WIRE.FACE;
       this.createWireframeMesh(color);
-      if (this.wireframeMesh) this.wireframeMesh.setEnabled(true);
-    } else if (this.wireframeMesh) {
-      this.wireframeMesh.setEnabled(false);
+    } else {
+      this.auxMeshes.get('wireframe')?.dispose();
+      this.auxMeshes.delete('wireframe');
     }
   }
 
@@ -583,63 +619,35 @@ export class TerrainMeshSystem {
   }
 
   public moveSelectedFaces(dx: number, dy: number, dz: number): void {
-    if (!this.topology || this.selectedFaceIds.size === 0) return;
-
-    const uniqueVertexIds = new Set<number>();
-    for (const faceId of this.selectedFaceIds) {
-      const tri = this.topology.triangles.get(faceId);
-      if (!tri) continue;
-      for (const vid of tri.vertices) {
-        uniqueVertexIds.add(vid);
-      }
-    }
-
-    for (const vid of uniqueVertexIds) {
-      const vertex = this.topology.vertices.get(vid);
-      if (vertex) {
-        vertex.position.x += dx;
-        vertex.position.y += dy;
-        vertex.position.z += dz;
-      }
-    }
-
+    if (!this.topology || !this.selectedFaceIds.size) return;
+    const vids = new Set<number>();
+    this.selectedFaceIds.forEach(fid => this.topology!.triangles.get(fid)?.vertices.forEach(v => vids.add(v)));
+    const tris = new Set<number>();
+    vids.forEach(v => getTrianglesAdjacentToVertex(this.topology!, v).forEach(t => tris.add(t)));
+    this.updateTopologyAndIndex(() => vids.forEach(v => {
+        const vert = this.topology!.vertices.get(v)!;
+        vert.position.x += dx; vert.position.y += dy; vert.position.z += dz;
+        this.modifiedVertexIds.add(v);
+    }), tris);
     this.meshDirty = true;
   }
 
-  public rotateSelectedVertices(angleX: number, angleY: number, angleZ: number): void {
+  public rotateSelectedVertices(ax: number, ay: number, az: number): void {
     if (!this.topology) return;
-
-    const uniqueVertexIds = new Set<number>();
-    for (const faceId of this.selectedFaceIds) {
-      const tri = this.topology.triangles.get(faceId);
-      if (!tri) continue;
-      for (const vid of tri.vertices) uniqueVertexIds.add(vid);
-    }
-    for (const edgeId of this.selectedEdgeIds) {
-      const edge = this.topology.edges.get(edgeId);
-      if (edge) {
-        uniqueVertexIds.add(edge.v1);
-        uniqueVertexIds.add(edge.v2);
-      }
-    }
-
-    if (uniqueVertexIds.size === 0) return;
-
+    const vids = new Set<number>();
+    this.selectedFaceIds.forEach(fid => this.topology!.triangles.get(fid)?.vertices.forEach(v => vids.add(v)));
+    this.selectedEdgeIds.forEach(eid => { const e = this.topology!.edges.get(eid); if (e) { vids.add(e.v1); vids.add(e.v2); }});
+    if (!vids.size) return;
+    const tris = new Set<number>();
+    vids.forEach(v => getTrianglesAdjacentToVertex(this.topology!, v).forEach(t => tris.add(t)));
     let cx = 0, cy = 0, cz = 0;
-    for (const vid of uniqueVertexIds) {
-      const v = this.topology.vertices.get(vid);
-      if (v) { cx += v.position.x; cy += v.position.y; cz += v.position.z; }
-    }
-    const n = uniqueVertexIds.size;
-    const pivot = { x: cx / n, y: cy / n, z: cz / n };
-
-    for (const vid of uniqueVertexIds) {
-      const vertex = this.topology.vertices.get(vid);
-      if (vertex) {
-        vertex.position = rotateAroundPivot(vertex.position, pivot, angleX, angleY, angleZ);
-      }
-    }
-
+    vids.forEach(v => { const p = this.topology!.vertices.get(v)!.position; cx += p.x; cy += p.y; cz += p.z; });
+    const pivot = { x: cx / vids.size, y: cy / vids.size, z: cz / vids.size };
+    this.updateTopologyAndIndex(() => vids.forEach(v => {
+        const vert = this.topology!.vertices.get(v)!;
+        vert.position = rotateAroundPivot(vert.position, pivot, ax, ay, az);
+        this.modifiedVertexIds.add(v);
+    }), tris);
     this.meshDirty = true;
   }
 
@@ -695,9 +703,9 @@ export class TerrainMeshSystem {
     const colors: number[] = [];
     const lineOffset = 0.03;
 
-    const hoveredColor = TerrainMeshSystem.FACE_HOVERED_COLOR;
-    const brushHoveredColor = TerrainMeshSystem.FACE_BRUSH_COLOR;
-    const selectedColor = TerrainMeshSystem.FACE_SELECTED_COLOR;
+    const hoveredColor = TerrainMeshSystem.COLORS.FACE.HOVER;
+    const brushHoveredColor = TerrainMeshSystem.COLORS.FACE.BRUSH;
+    const selectedColor = TerrainMeshSystem.COLORS.FACE.SEL;
 
     const facesToRender = new Set<number>(this.selectedFaceIds);
     if (this.hoveredFaceId !== null && !this.selectedFaceIds.has(this.hoveredFaceId)) {
@@ -785,10 +793,11 @@ export class TerrainMeshSystem {
 
     this.buildFaceIdMapping();
 
-    const { positions, indices, normals, terrainTypes, faceIds } = buildMeshArrays(
+    const { positions, indices, normals, terrainTypes, faceIds, vertexIdMap } = buildMeshArrays(
       this.topology,
       HEIGHT_UNIT
     );
+    this.vertexIdMap = vertexIdMap;
 
     const remappedFaceIds = new Float32Array(faceIds.length);
     for (let i = 0; i < faceIds.length; i++) {
@@ -842,18 +851,10 @@ export class TerrainMeshSystem {
     this.rebuildFaceSpatialIndex();
     this.syncFaceStatesWithTopology();
     this.createTerrainMeshFromTopology();
-    if (this.options.enableGridLines) {
-      this.createGridLines();
-    }
-    if (this.wireframeEnabled) {
-      this.createWireframeMesh();
-    }
-    if (this.activeTopologyMode === 'edge') {
-      this.rebuildAllEdgesMeshWithHighlights();
-    }
-    if (this.activeTopologyMode === 'face') {
-      this.rebuildFaceHighlightMesh();
-    }
+    if (this.options.enableGridLines) this.createGridLines();
+    if (this.wireframeEnabled) this.createWireframeMesh();
+    if (this.activeTopologyMode === 'edge') this.rebuildAllEdgesMeshWithHighlights();
+    if (this.activeTopologyMode === 'face') this.rebuildFaceHighlightMesh();
     if (this.faceDataTexture) {
       this.createFaceDataTexture();
       if (this.shaderMaterial) {
@@ -863,20 +864,51 @@ export class TerrainMeshSystem {
     }
     this.meshDirty = false;
     this.topologyDirty = false;
+    this.modifiedVertexIds.clear();
+    this.modifiedFaceIds.clear();
   }
 
   private updateMeshPositionsOnly(): void {
     if (!this.topology || !this.terrainMesh) return;
 
-    const { positions, normals } = buildMeshArrays(this.topology, HEIGHT_UNIT);
+    const positions = this.terrainMesh.getVerticesData("position");
+    const normals = this.terrainMesh.getVerticesData("normal");
 
+    if (!positions || !normals) {
+        this.rebuildMesh();
+        return;
+    }
+
+    // Update positions and track affected vertices for normal recomputation
+    const affectedVertices = Array.from(this.modifiedVertexIds);
+    for (const vId of affectedVertices) {
+      const vertex = this.topology.vertices.get(vId);
+      const bufIndices = this.vertexIdMap.get(vId);
+      if (vertex && bufIndices) {
+        for (const bIdx of bufIndices) {
+          const pIdx = bIdx * 3;
+          positions[pIdx] = vertex.position.x;
+          positions[pIdx + 1] = vertex.position.y * HEIGHT_UNIT;
+          positions[pIdx + 2] = vertex.position.z;
+        }
+      }
+    }
+
+    // Incremental normal recomputation
+    recomputeNormalsLocally(
+        this.topology,
+        affectedVertices,
+        normals,
+        this.vertexIdMap,
+        HEIGHT_UNIT
+    );
+    
     this.terrainMesh.updateVerticesData("position", positions, false);
     this.terrainMesh.updateVerticesData("normal", normals, false);
 
-    // Keep wireframe in sync with updated vertex positions
-    if (this.wireframeMesh) {
-      this.createWireframeMesh();
-    }
+    if (this.auxMeshes.has('wireframe')) this.createWireframeMesh();
+
+    this.modifiedVertexIds.clear();
   }
 
   public updateFaceTerrainVisuals(): void {
@@ -886,6 +918,31 @@ export class TerrainMeshSystem {
 
   private syncFaceStatesWithTopology(): void {
     if (!this.topology) return;
+
+    // Incremental sync if we have tracked modifications
+    if (this.modifiedFaceIds.size > 0 && this.faceStates.size > 0) {
+        for (const faceId of this.modifiedFaceIds) {
+            const tri = this.topology.triangles.get(faceId);
+            if (tri) {
+                if (!this.faceStates.has(faceId)) {
+                    this.faceStates.set(faceId, createFaceState(faceId, tri.terrainCode));
+                } else {
+                    const state = this.faceStates.get(faceId)!;
+                    state.terrainCode = tri.terrainCode;
+                }
+            } else {
+                this.faceStates.delete(faceId);
+            }
+        }
+        // We still need to check for deletions that might not be in modifiedFaceIds 
+        // if some topology operation didn't track them. 
+        // But for most cases this is enough.
+        // For safety, if it's a major topology change (topologyDirty), we might want a full sync.
+        if (!this.topologyDirty) {
+            this.modifiedFaceIds.clear();
+            return;
+        }
+    }
 
     const currentFaceIds = new Set(this.topology.triangles.keys());
 
@@ -918,17 +975,14 @@ export class TerrainMeshSystem {
         }
       }
     }
+    
+    this.modifiedFaceIds.clear();
   }
 
   private createGridLines(): void {
-    if (this.gridLinesMesh) {
-      this.gridLinesMesh.dispose();
-      this.gridLinesMesh = null;
-    }
-
-    if (!this.options.enableGridLines) return;
-
-    const lines: Vector3[][] = [];
+    this.updateAuxMesh('grid', () => {
+      if (!this.options.enableGridLines) return null;
+      const lines: Vector3[][] = [];
     const lineOffset = 0.05;
 
     const res = this.options.meshResolution;
@@ -956,25 +1010,19 @@ export class TerrainMeshSystem {
       line.map(() => new Color4(0.3, 0.3, 0.3, 0.5))
     );
 
-    this.gridLinesMesh = MeshBuilder.CreateLineSystem(
+    return MeshBuilder.CreateLineSystem(
       "gridLines",
       { lines, colors, updatable: false },
       this.scene
     );
+    });
   }
 
-  public setGridLinesEnabled(enabled: boolean): void {
-    this.options.enableGridLines = enabled;
-
-    if (enabled) {
-      if (!this.gridLinesMesh) {
-        this.createGridLines();
-      } else {
-        this.gridLinesMesh.setEnabled(true);
-      }
-    } else if (this.gridLinesMesh) {
-      this.gridLinesMesh.setEnabled(false);
-    }
+  private updateAuxMesh(key: string, createFn: () => Mesh | null): void {
+    this.auxMeshes.get(key)?.dispose();
+    const mesh = createFn();
+    if (mesh) this.auxMeshes.set(key, mesh);
+    else this.auxMeshes.delete(key);
   }
 
   private getInterpolatedElevation(worldX: number, worldZ: number): number {
@@ -1126,16 +1174,7 @@ export class TerrainMeshSystem {
     this.shaderMaterial.backFaceCulling = false;
   }
 
-  private getOverlayModeValue(): number {
-    switch (this.overlayMode) {
-      case "normal": return 0;
-      case "moisture": return 1;
-      case "nutrients": return 2;
-      case "height": return 3;
-      case "irrigation": return 4;
-      default: return 0;
-    }
-  }
+  private getOverlayModeValue = () => ({ normal:0, moisture:1, nutrients:2, height:3, irrigation:4 }[this.overlayMode] || 0);
 
   private applyMaterial(): void {
     if (this.terrainMesh && this.shaderMaterial) {
@@ -1198,7 +1237,10 @@ export class TerrainMeshSystem {
     const nearest = findNearestTopologyVertex(this.topology, worldX, worldY);
     if (nearest) {
       const v = this.topology.vertices.get(nearest.vertexId);
-      if (v) v.position.y = elev;
+      if (v) {
+        v.position.y = elev;
+        this.modifiedVertexIds.add(nearest.vertexId);
+      }
     }
 
     this.meshDirty = true;
@@ -1225,6 +1267,7 @@ export class TerrainMeshSystem {
     const terrainCode = getTerrainCode(type);
     for (const faceId of faceIds) {
       this.applyTerrainCodeToFace(faceId, terrainCode, type);
+      this.modifiedFaceIds.add(faceId);
     }
     this.topologyDirty = true;
   }
@@ -1422,74 +1465,24 @@ export class TerrainMeshSystem {
   // Maintenance actions
   // ============================================
 
-  public mowAt(worldX: number, worldY: number): boolean {
-    const faceId = this.findFaceAtPosition(worldX, worldY);
-    if (faceId === null) return false;
-
-    const face = this.faceStates.get(faceId);
-    if (face && applyFaceMowing(face)) {
-      face.lastMowed = this.gameTime;
-      this.faceDataDirty = true;
-      return true;
+  private applyMaintenanceAction(worldX: number, worldZ: number, radius: number, fn: (s: FaceState) => boolean, field?: keyof FaceState): number {
+    const fids = radius <= 0 ? [this.findFaceAtPosition(worldX, worldZ)].filter(id => id !== null) as number[] : this.getFacesInBrush(worldX, worldZ, radius);
+    let count = 0;
+    for (const fid of fids) {
+        const s = this.faceStates.get(fid);
+        if (s && fn(s)) { 
+            if (field) (s[field] as any) = this.gameTime;
+            count++;
+        }
     }
-    return false;
+    if (count > 0) this.faceDataDirty = true;
+    return count;
   }
 
-  public rakeAt(worldX: number, worldY: number): boolean {
-    const faceId = this.findFaceAtPosition(worldX, worldY);
-    if (faceId === null) return false;
-
-    const face = this.faceStates.get(faceId);
-    if (face) {
-      face.grassHeight = Math.max(0.2, face.grassHeight - 0.1);
-      face.lastRaked = this.gameTime;
-      this.faceDataDirty = true;
-      return true;
-    }
-    return false;
-  }
-
-  public waterArea(centerX: number, centerY: number, radius: number, amount: number): number {
-    return this.applyAreaEffect(centerX, centerY, radius,
-      (face) => applyFaceWatering(face, amount), 'lastWatered');
-  }
-
-  public fertilizeArea(centerX: number, centerY: number, radius: number, amount: number, effectiveness: number = 1.0): number {
-    return this.applyAreaEffect(centerX, centerY, radius,
-      (face) => applyFaceFertilizing(face, amount, effectiveness), 'lastFertilized');
-  }
-
-  private applyAreaEffect(
-    centerX: number, centerY: number, radius: number,
-    applyFn: (face: FaceState) => boolean,
-    timestampField: 'lastWatered' | 'lastFertilized'
-  ): number {
-    if (radius <= 0) {
-      const faceId = this.findFaceAtPosition(centerX, centerY);
-      if (faceId === null) return 0;
-      const face = this.faceStates.get(faceId);
-      if (face && applyFn(face)) {
-        face[timestampField] = this.gameTime;
-        this.faceDataDirty = true;
-        return 1;
-      }
-      return 0;
-    }
-
-    const faceIds = this.getFacesInBrush(centerX, centerY, radius);
-    if (faceIds.length === 0) return 0;
-
-    let affectedCount = 0;
-    for (const fid of faceIds) {
-      const face = this.faceStates.get(fid);
-      if (face && applyFn(face)) {
-        face[timestampField] = this.gameTime;
-        affectedCount++;
-      }
-    }
-    if (affectedCount > 0) this.faceDataDirty = true;
-    return affectedCount;
-  }
+  public mowAt = (x: number, z: number) => this.applyMaintenanceAction(x, z, 0, applyFaceMowing, 'lastMowed') > 0;
+  public rakeAt = (x: number, z: number) => this.applyMaintenanceAction(x, z, 0, s => { s.grassHeight = Math.max(0.2, s.grassHeight-0.1); return true; }, 'lastRaked') > 0;
+  public waterArea = (x: number, z: number, r: number, amt: number) => this.applyMaintenanceAction(x, z, r, s => applyFaceWatering(s, amt), 'lastWatered');
+  public fertilizeArea = (x: number, z: number, r: number, amt: number, eff: number = 1) => this.applyMaintenanceAction(x, z, r, s => applyFaceFertilizing(s, amt, eff), 'lastFertilized');
 
   // ============================================
   // Overlay modes
@@ -1527,44 +1520,16 @@ export class TerrainMeshSystem {
     this.shaderMaterial?.setTexture("overlayImage", texture);
   }
 
-  public setImageOverlayOpacity(opacity: number): void {
-    this.shaderMaterial?.setFloat("overlayOpacity", opacity);
-  }
-
-  public setImageOverlayTransform(offsetX: number, offsetZ: number, scaleX: number, scaleZ: number): void {
-    this.shaderMaterial?.setFloat("overlayOffsetX", offsetX);
-    this.shaderMaterial?.setFloat("overlayOffsetZ", offsetZ);
-    this.shaderMaterial?.setFloat("overlayScaleX", scaleX);
-    this.shaderMaterial?.setFloat("overlayScaleZ", scaleZ);
-  }
-
-  public setImageOverlayFlip(flipX: boolean, flipY: boolean): void {
-    this.shaderMaterial?.setFloat("overlayFlipX", flipX ? 1 : 0);
-    this.shaderMaterial?.setFloat("overlayFlipY", flipY ? 1 : 0);
-  }
-
-  public setImageOverlayRotation(steps: number): void {
-    this.shaderMaterial?.setFloat("overlayRotation", steps % 4);
-  }
-
-  public clearImageOverlay(): void {
-    if (this.overlayTexture) {
-      this.overlayTexture.dispose();
-      this.overlayTexture = null;
-    }
-    if (this.defaultOverlayTexture) {
-      this.shaderMaterial?.setTexture("overlayImage", this.defaultOverlayTexture);
-    }
-    this.shaderMaterial?.setFloat("overlayOpacity", 0);
-  }
-
-  public getWorldWidth(): number {
-    return this.worldWidth;
-  }
-
-  public getWorldHeight(): number {
-    return this.worldHeight;
-  }
+  public setImageOverlayOpacity = (o: number) => this.shaderMaterial?.setFloat("overlayOpacity", o);
+  public setImageOverlayTransform = (ox: number, oz: number, sx: number, sz: number) => { 
+    this.shaderMaterial?.setFloat("overlayOffsetX", ox); this.shaderMaterial?.setFloat("overlayOffsetZ", oz);
+    this.shaderMaterial?.setFloat("overlayScaleX", sx); this.shaderMaterial?.setFloat("overlayScaleZ", sz);
+  };
+  public setImageOverlayFlip = (fx: boolean, fy: boolean) => { this.shaderMaterial?.setFloat("overlayFlipX", fx?1:0); this.shaderMaterial?.setFloat("overlayFlipY", fy?1:0); };
+  public setImageOverlayRotation = (s: number) => this.shaderMaterial?.setFloat("overlayRotation", s % 4);
+  public clearImageOverlay = () => { if (this.overlayTexture) { this.overlayTexture.dispose(); this.overlayTexture = null; } if (this.defaultOverlayTexture) this.shaderMaterial?.setTexture("overlayImage", this.defaultOverlayTexture); this.shaderMaterial?.setFloat("overlayOpacity", 0); };
+  public getWorldWidth = () => this.worldWidth;
+  public getWorldHeight = () => this.worldHeight;
 
   public isPositionWalkable(worldX: number, worldZ: number): boolean {
     const faceId = this.findFaceAtPosition(worldX, worldZ);
@@ -1609,20 +1574,8 @@ export class TerrainMeshSystem {
       this.defaultOverlayTexture = null;
     }
 
-    if (this.gridLinesMesh) {
-      this.gridLinesMesh.dispose();
-      this.gridLinesMesh = null;
-    }
-
-    if (this.wireframeMesh) {
-      this.wireframeMesh.dispose();
-      this.wireframeMesh = null;
-    }
-
-    if (this.axisIndicatorMesh) {
-      this.axisIndicatorMesh.dispose();
-      this.axisIndicatorMesh = null;
-    }
+    this.auxMeshes.forEach(m => m.dispose());
+    this.auxMeshes.clear();
 
     this.clearAllEdgesMesh();
     this.clearFaceHighlight();
@@ -1637,120 +1590,51 @@ export class TerrainMeshSystem {
 
   public setWireframeEnabled(enabled: boolean): void {
     this.wireframeEnabled = enabled;
-    if (enabled && !this.wireframeMesh) {
-      this.createWireframeMesh();
-    }
-    if (this.wireframeMesh) {
-      const showForMode = this.activeTopologyMode === 'vertex' || this.activeTopologyMode === 'face';
-      this.wireframeMesh.setEnabled(enabled || showForMode);
-    }
+    if (enabled) this.createWireframeMesh();
+    else this.auxMeshes.get('wireframe')?.dispose(), this.auxMeshes.delete('wireframe');
   }
 
   public setAxisIndicatorEnabled(enabled: boolean): void {
-    if (enabled && !this.axisIndicatorMesh) {
-      this.createAxisIndicator();
-    } else if (!enabled && this.axisIndicatorMesh) {
-      this.axisIndicatorMesh.dispose();
-      this.axisIndicatorMesh = null;
-    }
+    if (enabled) this.createAxisIndicator();
+    else this.auxMeshes.get('axis')?.dispose(), this.auxMeshes.delete('axis');
+  }
+
+  public setGridLinesEnabled(enabled: boolean): void {
+    this.options.enableGridLines = enabled;
+    if (enabled) this.createGridLines();
+    else this.auxMeshes.get('grid')?.dispose(), this.auxMeshes.delete('grid');
   }
 
   private createAxisIndicator(): void {
-    if (this.axisIndicatorMesh) {
-      this.axisIndicatorMesh.dispose();
-    }
-
-    const origin = new Vector3(1, 0.5, 1);
-    const arrowLength = 2;
-
-    const lines: Vector3[][] = [];
-    const colors: Color4[][] = [];
-
-    // East/West axis (Red) - +X direction
-    lines.push([origin, new Vector3(origin.x + arrowLength, origin.y, origin.z)]);
-    colors.push([new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)]);
-    // Arrow head
-    lines.push([
-      new Vector3(origin.x + arrowLength, origin.y, origin.z),
-      new Vector3(origin.x + arrowLength - 0.3, origin.y + 0.15, origin.z),
-    ]);
-    colors.push([new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)]);
-    lines.push([
-      new Vector3(origin.x + arrowLength, origin.y, origin.z),
-      new Vector3(origin.x + arrowLength - 0.3, origin.y - 0.15, origin.z),
-    ]);
-    colors.push([new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)]);
-
-    // Elevation axis (Green) - +Y direction
-    lines.push([origin, new Vector3(origin.x, origin.y + arrowLength * 0.5, origin.z)]);
-    colors.push([new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)]);
-    // Arrow head
-    lines.push([
-      new Vector3(origin.x, origin.y + arrowLength * 0.5, origin.z),
-      new Vector3(origin.x + 0.15, origin.y + arrowLength * 0.5 - 0.3, origin.z),
-    ]);
-    colors.push([new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)]);
-    lines.push([
-      new Vector3(origin.x, origin.y + arrowLength * 0.5, origin.z),
-      new Vector3(origin.x - 0.15, origin.y + arrowLength * 0.5 - 0.3, origin.z),
-    ]);
-    colors.push([new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)]);
-
-    // North/South axis (Blue) - -Z is North, so arrow points -Z
-    lines.push([origin, new Vector3(origin.x, origin.y, origin.z - arrowLength)]);
-    colors.push([new Color4(0.2, 0.4, 1, 1), new Color4(0.2, 0.4, 1, 1)]);
-    // Arrow head (pointing North/-Z)
-    lines.push([
-      new Vector3(origin.x, origin.y, origin.z - arrowLength),
-      new Vector3(origin.x, origin.y + 0.15, origin.z - arrowLength + 0.3),
-    ]);
-    colors.push([new Color4(0.2, 0.4, 1, 1), new Color4(0.2, 0.4, 1, 1)]);
-    lines.push([
-      new Vector3(origin.x, origin.y, origin.z - arrowLength),
-      new Vector3(origin.x, origin.y - 0.15, origin.z - arrowLength + 0.3),
-    ]);
-    colors.push([new Color4(0.2, 0.4, 1, 1), new Color4(0.2, 0.4, 1, 1)]);
-
-    this.axisIndicatorMesh = MeshBuilder.CreateLineSystem(
-      "axisIndicator",
-      { lines, colors, updatable: false },
-      this.scene
-    );
+    this.updateAuxMesh('axis', () => {
+      const origin = new Vector3(1, 0.5, 1), lines: Vector3[][] = [], colors: Color4[][] = [];
+      const add = (dir: Vector3, color: Color4) => {
+        lines.push([origin, origin.add(dir.scale(2))]);
+        colors.push([color, color]);
+      };
+      add(new Vector3(1,0,0), new Color4(1,0.2,0.2,1));
+      add(new Vector3(0,0.5,0), new Color4(0.2,1,0.2,1));
+      add(new Vector3(0,0,-1), new Color4(0.2,0.4,1,1));
+      return MeshBuilder.CreateLineSystem("axisIndicator", { lines, colors, updatable: false }, this.scene);
+    });
   }
 
   private createWireframeMesh(color?: Color4): void {
-    if (this.wireframeMesh) {
-      this.wireframeMesh.dispose();
-      this.wireframeMesh = null;
-    }
-
-    if (!this.topology) return;
-
-    const lineColor = color ?? new Color4(0.8, 0.8, 0.2, 0.7);
-    const lines: Vector3[][] = [];
-    const colors: Color4[][] = [];
-    const lineOffset = 0.02;
-
-    for (const [, edge] of this.topology.edges) {
-      const v1 = this.topology.vertices.get(edge.v1);
-      const v2 = this.topology.vertices.get(edge.v2);
-      if (!v1 || !v2) continue;
-
-      lines.push([
-        new Vector3(v1.position.x, v1.position.y * HEIGHT_UNIT + lineOffset, v1.position.z),
-        new Vector3(v2.position.x, v2.position.y * HEIGHT_UNIT + lineOffset, v2.position.z),
-      ]);
-
-      colors.push([lineColor, lineColor]);
-    }
-
-    if (lines.length > 0) {
-      this.wireframeMesh = MeshBuilder.CreateLineSystem(
-        "terrainWireframe",
-        { lines, colors, updatable: false },
-        this.scene
-      );
-    }
+    this.updateAuxMesh('wireframe', () => {
+      if (!this.topology) return null;
+      const lineColor = color ?? TerrainMeshSystem.COLORS.WIRE.VERT;
+      const lines: Vector3[][] = [], colors: Color4[][] = [], offset = 0.02;
+      for (const [, edge] of this.topology.edges) {
+        const v1 = this.topology.vertices.get(edge.v1), v2 = this.topology.vertices.get(edge.v2);
+        if (v1 && v2) {
+          lines.push([
+            new Vector3(v1.position.x, v1.position.y * HEIGHT_UNIT + offset, v1.position.z),
+            new Vector3(v2.position.x, v2.position.y * HEIGHT_UNIT + offset, v2.position.z),
+          ]);
+          colors.push([lineColor, lineColor]);
+        }
+      }
+      return lines.length ? MeshBuilder.CreateLineSystem("terrainWireframe", { lines, colors, updatable: false }, this.scene) : null;
+    });
   }
-
 }

@@ -17,6 +17,14 @@ import {
 } from './mesh-topology';
 
 describe('mesh-topology', () => {
+  function createValidTopology() {
+    const grid: Vec3[][] = [
+      [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
+      [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
+    ];
+    return gridToTopology(grid, 1, 1);
+  }
+
   describe('createEmptyTopology', () => {
     it('creates an empty topology with correct dimensions', () => {
       const topology = createEmptyTopology(10, 20);
@@ -135,7 +143,7 @@ describe('mesh-topology', () => {
 
 
     it('maintains mesh connectivity', () => {
-      const topology = createSimpleTopology();
+      const topology = createValidTopology();
       const edgeId = Array.from(topology.edges.keys())[0];
       subdivideEdge(topology, edgeId, 0.5);
 
@@ -428,14 +436,6 @@ describe('mesh-topology', () => {
   });
 
   describe('validateTopology', () => {
-    function createValidTopology() {
-      const grid: Vec3[][] = [
-        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
-        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-      ];
-      return gridToTopology(grid, 1, 1);
-    }
-
     it('passes for a valid grid topology', () => {
       const topology = createValidTopology();
       expect(() => validateTopology(topology)).not.toThrow();
@@ -487,17 +487,11 @@ describe('mesh-topology', () => {
       expect(() => validateTopology(topology)).toThrow(/3 triangles/);
     });
 
-    it('catches edgeIndex/edges size mismatch', () => {
-      const topology = createValidTopology();
-      topology.edgeIndex.set('999,998', 9999);
-      expect(() => validateTopology(topology)).toThrow(/edgeIndex size/);
-    });
-
     it('catches missing vertex referenced by triangle', () => {
       const topology = createValidTopology();
       const tri = Array.from(topology.triangles.values())[0];
       tri.vertices[0] = 9999;
-      expect(() => validateTopology(topology)).toThrow(/non-existent vertex/);
+      expect(() => validateTopology(topology)).toThrow(/has non-existent vertex/);
     });
 
     it('catches vertexEdges referencing non-existent edge', () => {
@@ -512,7 +506,7 @@ describe('mesh-topology', () => {
       const edge = Array.from(topology.edges.values())[0];
       const v1Edges = topology.vertexEdges.get(edge.v1)!;
       v1Edges.delete(edge.id);
-      expect(() => validateTopology(topology)).toThrow(/missing from vertexEdges/);
+      expect(() => validateTopology(topology)).toThrow(/findEdge mismatch/);
     });
   });
 });

@@ -3,7 +3,6 @@ import {
   TerrainMeshTopology,
   TerrainVertex,
   createTriangle,
-  edgeKey,
 } from './mesh-topology';
 import { pointInPolygon } from './delaunay-topology';
 
@@ -223,18 +222,40 @@ export function stampIntoTopology(
   centerX: number,
   centerZ: number,
   resolveTerrainCode?: (x: number, z: number) => number | null
-): { newFaceIds: number[]; newVertexIds: number[] } {
+): { newFaceIds: number[]; newVertexIds: number[]; removedFaceIds: number[] } {
   const overlappingTriIds = new Set<number>();
+  
+  // Optimization: use bounding box of the stamp boundary
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of stamp.boundaryPolygon) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+
   for (const [triId, tri] of topology.triangles) {
-    const verts = tri.vertices.map(vid => topology.vertices.get(vid)!);
-    if (!verts[0] || !verts[1] || !verts[2]) continue;
-    const cx = (verts[0].position.x + verts[1].position.x + verts[2].position.x) / 3;
-    const cz = (verts[0].position.z + verts[1].position.z + verts[2].position.z) / 3;
+    const v0 = topology.vertices.get(tri.vertices[0]);
+    const v1 = topology.vertices.get(tri.vertices[1]);
+    const v2 = topology.vertices.get(tri.vertices[2]);
+    if (!v0 || !v1 || !v2) continue;
+
+    const tminX = Math.min(v0.position.x, v1.position.x, v2.position.x);
+    const tmaxX = Math.max(v0.position.x, v1.position.x, v2.position.x);
+    const tminZ = Math.min(v0.position.z, v1.position.z, v2.position.z);
+    const tmaxZ = Math.max(v0.position.z, v1.position.z, v2.position.z);
+
+    // Bounding box overlap check
+    if (tmaxX < minX || tminX > maxX || tmaxZ < minZ || tminZ > maxZ) continue;
+
+    const cx = (v0.position.x + v1.position.x + v2.position.x) / 3;
+    const cz = (v0.position.z + v1.position.z + v2.position.z) / 3;
     if (pointInPolygon(cx, cz, stamp.boundaryPolygon)) {
       overlappingTriIds.add(triId);
     }
   }
 
+  const removedFaceIds = Array.from(overlappingTriIds);
   const boundaryVertexIds = new Set<number>();
   const removedVertexIds = new Set<number>();
   for (const triId of overlappingTriIds) {
@@ -266,7 +287,6 @@ export function stampIntoTopology(
       if (edge) {
         edge.triangles = edge.triangles.filter(t => t !== triId);
         if (edge.triangles.length === 0) {
-          topology.edgeIndex.delete(edgeKey(edge.v1, edge.v2));
           const ve1 = topology.vertexEdges.get(edge.v1);
           if (ve1) { ve1.delete(eid); if (ve1.size === 0) topology.vertexEdges.delete(edge.v1); }
           const ve2 = topology.vertexEdges.get(edge.v2);
@@ -402,5 +422,5 @@ export function stampIntoTopology(
     }
   }
 
-  return { newFaceIds, newVertexIds };
+  return { newFaceIds, newVertexIds, removedFaceIds };
 }

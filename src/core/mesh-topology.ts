@@ -27,7 +27,6 @@ export interface TerrainMeshTopology {
   vertices: Map<number, TerrainVertex>;
   edges: Map<number, TerrainEdge>;
   triangles: Map<number, TerrainTriangle>;
-  edgeIndex: Map<string, number>;
   vertexEdges: Map<number, Set<number>>;
   nextVertexId: number;
   nextEdgeId: number;
@@ -41,7 +40,6 @@ export function createEmptyTopology(worldWidth: number, worldHeight: number): Te
     vertices: new Map(),
     edges: new Map(),
     triangles: new Map(),
-    edgeIndex: new Map(),
     vertexEdges: new Map(),
     nextVertexId: 0,
     nextEdgeId: 0,
@@ -51,40 +49,123 @@ export function createEmptyTopology(worldWidth: number, worldHeight: number): Te
   };
 }
 
-export function edgeKey(v1: number, v2: number): string {
-  const minV = Math.min(v1, v2);
-  const maxV = Math.max(v1, v2);
-  return `${minV},${maxV}`;
-}
-
-function addVertexEdge(topology: TerrainMeshTopology, vertexId: number, edgeId: number): void {
-  let set = topology.vertexEdges.get(vertexId);
-  if (!set) {
-    set = new Set();
-    topology.vertexEdges.set(vertexId, set);
+export function findEdge(topology: TerrainMeshTopology, v1: number, v2: number): number | undefined {
+  const eids = topology.vertexEdges.get(v1);
+  if (eids) for (const eid of eids) {
+    const e = topology.edges.get(eid);
+    if (e && (e.v1 === v2 || e.v2 === v2)) return eid;
   }
-  set.add(edgeId);
+  return undefined;
 }
 
-function removeVertexEdge(topology: TerrainMeshTopology, vertexId: number, edgeId: number): void {
-  const set = topology.vertexEdges.get(vertexId);
-  if (set) {
-    set.delete(edgeId);
-    if (set.size === 0) topology.vertexEdges.delete(vertexId);
-  }
+export function edgeKey(v1: number, v2: number): string { return `${Math.min(v1, v2)},${Math.max(v1, v2)}`; }
+
+function addVertexEdge(topology: TerrainMeshTopology, vid: number, eid: number): void {
+  let set = topology.vertexEdges.get(vid);
+  if (!set) topology.vertexEdges.set(vid, set = new Set());
+  set.add(eid);
 }
 
-export function getVertexNeighbors(topology: TerrainMeshTopology, vertexId: number): Set<number> {
-  const neighbors = new Set<number>();
-  const edgeIds = topology.vertexEdges.get(vertexId);
-  if (!edgeIds) return neighbors;
-  for (const eid of edgeIds) {
-    const edge = topology.edges.get(eid);
-    if (edge) {
-      neighbors.add(edge.v1 === vertexId ? edge.v2 : edge.v1);
+function removeVertexEdge(topology: TerrainMeshTopology, vid: number, eid: number): void {
+  const set = topology.vertexEdges.get(vid);
+  if (set) { set.delete(eid); if (set.size === 0) topology.vertexEdges.delete(vid); }
+}
+
+export function getVertexNeighbors(topology: TerrainMeshTopology, vid: number): Set<number> {
+  const n = new Set<number>(), eids = topology.vertexEdges.get(vid);
+  if (eids) for (const eid of eids) { const e = topology.edges.get(eid); if (e) n.add(e.v1 === vid ? e.v2 : e.v1); }
+  return n;
+}
+
+export function getTrianglesAdjacentToVertex(topology: TerrainMeshTopology, vid: number): Set<number> {
+  const tids = new Set<number>(), eids = topology.vertexEdges.get(vid);
+  if (eids) for (const eid of eids) { const e = topology.edges.get(eid); if (e) for (const tid of e.triangles) tids.add(tid); }
+  return tids;
+}
+
+export function recomputeNormalsLocally(
+  topology: TerrainMeshTopology,
+  vertexIds: number[],
+  bufferNormals: Float32Array | number[],
+  vertexIdMap: Map<number, number[]>,
+  heightUnit: number
+): void {
+  const affectedBufferIndices = new Set<number>();
+  const affectedTriangles = new Set<number>();
+
+  for (const vId of vertexIds) {
+    const triangles = getTrianglesAdjacentToVertex(topology, vId);
+    for (const triId of triangles) {
+      affectedTriangles.add(triId);
+      const tri = topology.triangles.get(triId);
+      if (tri) {
+        for (const vid of tri.vertices) {
+          const bufIndices = vertexIdMap.get(vid);
+          if (bufIndices) {
+            for (const bIdx of bufIndices) affectedBufferIndices.add(bIdx);
+          }
+        }
+      }
     }
   }
-  return neighbors;
+
+  // Reset normals for affected buffer indices
+  for (const bIdx of affectedBufferIndices) {
+    const nIdx = bIdx * 3;
+    bufferNormals[nIdx] = 0;
+    bufferNormals[nIdx + 1] = 0;
+    bufferNormals[nIdx + 2] = 0;
+  }
+
+  // Compute face normals and add to vertex normals
+  for (const triId of affectedTriangles) {
+    const tri = topology.triangles.get(triId);
+    if (!tri) continue;
+
+    const v0 = topology.vertices.get(tri.vertices[0]);
+    const v1 = topology.vertices.get(tri.vertices[1]);
+    const v2 = topology.vertices.get(tri.vertices[2]);
+    if (!v0 || !v1 || !v2) continue;
+
+    const ax = v1.position.x - v0.position.x;
+    const ay = (v1.position.y - v0.position.y) * heightUnit;
+    const az = v1.position.z - v0.position.z;
+
+    const bx = v2.position.x - v0.position.x;
+    const by = (v2.position.y - v0.position.y) * heightUnit;
+    const bz = v2.position.z - v0.position.z;
+
+    let nx = ay * bz - az * by;
+    let ny = az * bx - ax * bz;
+    let nz = ax * by - ay * bx;
+
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+
+    for (const vId of tri.vertices) {
+      const bufIndices = vertexIdMap.get(vId);
+      if (bufIndices) {
+        for (const bIdx of bufIndices) {
+          const nIdx = bIdx * 3;
+          bufferNormals[nIdx] += nx;
+          bufferNormals[nIdx + 1] += ny;
+          bufferNormals[nIdx + 2] += nz;
+        }
+      }
+    }
+  }
+
+  // Normalize
+  for (const bIdx of affectedBufferIndices) {
+    const nIdx = bIdx * 3;
+    const nx = bufferNormals[nIdx], ny = bufferNormals[nIdx + 1], nz = bufferNormals[nIdx + 2];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 0) {
+      bufferNormals[nIdx] = nx / len;
+      bufferNormals[nIdx + 1] = ny / len;
+      bufferNormals[nIdx + 2] = nz / len;
+    }
+  }
 }
 
 export function gridToTopology(
@@ -114,8 +195,7 @@ export function gridToTopology(
   }
 
   function getOrCreateEdge(v1: number, v2: number): number {
-    const key = edgeKey(v1, v2);
-    let eid = topology.edgeIndex.get(key);
+    let eid = findEdge(topology, v1, v2);
     if (eid === undefined) {
       eid = topology.nextEdgeId++;
       const edge: TerrainEdge = {
@@ -125,7 +205,6 @@ export function gridToTopology(
         triangles: [],
       };
       topology.edges.set(eid, edge);
-      topology.edgeIndex.set(key, eid);
       addVertexEdge(topology, v1, eid);
       addVertexEdge(topology, v2, eid);
     }
@@ -189,21 +268,21 @@ export function findNearestEdge(
 ): { edgeId: number; t: number; dist: number } | null {
   let nearestEdge: number | null = null;
   let nearestT = 0;
-  let minDist = maxDist;
+  let minDistSq = maxDist * maxDist;
 
   for (const [edgeId, edge] of topology.edges) {
     const v1 = topology.vertices.get(edge.v1);
     const v2 = topology.vertices.get(edge.v2);
     if (!v1 || !v2) continue;
 
-    const result = pointToEdgeDistance(
+    const result = pointToEdgeDistanceSq(
       worldX, worldZ,
       v1.position.x, v1.position.z,
       v2.position.x, v2.position.z
     );
 
-    if (result.dist < minDist) {
-      minDist = result.dist;
+    if (result.distSq < minDistSq) {
+      minDistSq = result.distSq;
       nearestEdge = edgeId;
       nearestT = result.t;
     }
@@ -211,21 +290,21 @@ export function findNearestEdge(
 
   if (nearestEdge === null) return null;
 
-  return { edgeId: nearestEdge, t: nearestT, dist: minDist };
+  return { edgeId: nearestEdge, t: nearestT, dist: Math.sqrt(minDistSq) };
 }
 
-function pointToEdgeDistance(
+function pointToEdgeDistanceSq(
   px: number, pz: number,
   ax: number, az: number,
   bx: number, bz: number
-): { dist: number; t: number } {
+): { distSq: number; t: number } {
   const dx = bx - ax;
   const dz = bz - az;
   const lengthSq = dx * dx + dz * dz;
 
   if (lengthSq === 0) {
-    const dist = Math.sqrt((px - ax) * (px - ax) + (pz - az) * (pz - az));
-    return { dist, t: 0 };
+    const dSq = (px - ax) * (px - ax) + (pz - az) * (pz - az);
+    return { distSq: dSq, t: 0 };
   }
 
   let t = ((px - ax) * dx + (pz - az) * dz) / lengthSq;
@@ -234,11 +313,8 @@ function pointToEdgeDistance(
   const closestX = ax + t * dx;
   const closestZ = az + t * dz;
 
-  const dist = Math.sqrt(
-    (px - closestX) * (px - closestX) + (pz - closestZ) * (pz - closestZ)
-  );
-
-  return { dist, t };
+  const dSq = (px - closestX) * (px - closestX) + (pz - closestZ) * (pz - closestZ);
+  return { distSq: dSq, t };
 }
 
 export interface SubdivideResult {
@@ -304,7 +380,6 @@ export function subdivideEdge(
     triangles: [],
   };
   topology.edges.set(newEdge1Id, newEdge1);
-  topology.edgeIndex.set(edgeKey(edge.v1, newVertexId), newEdge1Id);
   addVertexEdge(topology, edge.v1, newEdge1Id);
   addVertexEdge(topology, newVertexId, newEdge1Id);
 
@@ -316,7 +391,6 @@ export function subdivideEdge(
     triangles: [],
   };
   topology.edges.set(newEdge2Id, newEdge2);
-  topology.edgeIndex.set(edgeKey(edge.v2, newVertexId), newEdge2Id);
   addVertexEdge(topology, edge.v2, newEdge2Id);
   addVertexEdge(topology, newVertexId, newEdge2Id);
 
@@ -353,7 +427,6 @@ export function subdivideEdge(
       triangles: [],
     };
     topology.edges.set(newConnectingEdgeId, newConnectingEdge);
-    topology.edgeIndex.set(edgeKey(newVertexId, oppositeVertexId), newConnectingEdgeId);
     addVertexEdge(topology, newVertexId, newConnectingEdgeId);
     addVertexEdge(topology, oppositeVertexId, newConnectingEdgeId);
 
@@ -402,7 +475,6 @@ export function subdivideEdge(
 
   removeVertexEdge(topology, edge.v1, edgeId);
   removeVertexEdge(topology, edge.v2, edgeId);
-  topology.edgeIndex.delete(edgeKey(edge.v1, edge.v2));
   topology.edges.delete(edgeId);
 
   if (import.meta.env.DEV) validateTopology(topology);
@@ -427,7 +499,7 @@ function findTriangleEdges(
   ];
 
   for (const [va, vb] of pairs) {
-    const eid = topology.edgeIndex.get(edgeKey(va, vb));
+    const eid = findEdge(topology, va, vb);
     if (eid !== undefined) {
       edges.push(eid);
     }
@@ -523,7 +595,6 @@ export function deleteVertex(
   for (const eid of edgesToRemove) {
     const e = topology.edges.get(eid);
     if (e) {
-      topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
       removeVertexEdge(topology, e.v1, eid);
       removeVertexEdge(topology, e.v2, eid);
     }
@@ -598,13 +669,11 @@ export function collapseEdge(
       if (otherV === survivingId) {
         edgesToRemove.push(eid);
       } else {
-        topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
         if (e.v1 === removedId) {
           e.v1 = survivingId;
         } else {
           e.v2 = survivingId;
         }
-        topology.edgeIndex.set(edgeKey(e.v1, e.v2), eid);
         addVertexEdge(topology, survivingId, eid);
       }
     }
@@ -624,7 +693,6 @@ export function collapseEdge(
   for (const eid of edgesToRemove) {
     const e = topology.edges.get(eid);
     if (e) {
-      topology.edgeIndex.delete(edgeKey(e.v1, e.v2));
       removeVertexEdge(topology, e.v1, eid);
       removeVertexEdge(topology, e.v2, eid);
     }
@@ -824,8 +892,7 @@ function getOrCreateEdgeForTriangle(
   v2: number,
   triId: number
 ): number {
-  const key = edgeKey(v1, v2);
-  const existingId = topology.edgeIndex.get(key);
+  const existingId = findEdge(topology, v1, v2);
 
   if (existingId !== undefined) {
     const edge = topology.edges.get(existingId);
@@ -843,7 +910,6 @@ function getOrCreateEdgeForTriangle(
     triangles: [triId],
   };
   topology.edges.set(newEdgeId, newEdge);
-  topology.edgeIndex.set(key, newEdgeId);
   addVertexEdge(topology, v1, newEdgeId);
   addVertexEdge(topology, v2, newEdgeId);
 
@@ -854,48 +920,55 @@ export function buildMeshArrays(
   topology: TerrainMeshTopology,
   heightUnit: number = 1
 ): {
-  positions: number[];
-  indices: number[];
-  normals: number[];
-  terrainTypes: number[];
-  faceIds: number[];
+  positions: Float32Array;
+  indices: Uint32Array;
+  normals: Float32Array;
+  terrainTypes: Float32Array;
+  faceIds: Float32Array;
   vertexIdMap: Map<number, number[]>;
 } {
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const normals: number[] = [];
-  const terrainTypes: number[] = [];
-  const faceIds: number[] = [];
+  const triCount = topology.triangles.size;
+  const vertCount = triCount * 3;
+
+  const positions = new Float32Array(vertCount * 3);
+  const indices = new Uint32Array(triCount * 3);
+  const normals = new Float32Array(vertCount * 3);
+  const terrainTypes = new Float32Array(vertCount);
+  const faceIds = new Float32Array(vertCount);
 
   const vertexIdMap = new Map<number, number[]>();
 
-  let nextIndex = 0;
+  let vIdx = 0;
+  let iIdx = 0;
 
   for (const [triId, tri] of topology.triangles) {
     const terrainCode = tri.terrainCode ?? 0;
-    const triIndices: number[] = [];
 
     for (const vId of tri.vertices) {
       const vertex = topology.vertices.get(vId);
       if (!vertex) continue;
 
-      const idx = nextIndex++;
+      const currentVIdx = vIdx++;
 
-      const existing = vertexIdMap.get(vId) || [];
-      existing.push(idx);
-      vertexIdMap.set(vId, existing);
+      let mapped = vertexIdMap.get(vId);
+      if (!mapped) {
+        mapped = [];
+        vertexIdMap.set(vId, mapped);
+      }
+      mapped.push(currentVIdx);
 
-      positions.push(vertex.position.x, vertex.position.y * heightUnit, vertex.position.z);
-      normals.push(0, 1, 0);
-      terrainTypes.push(terrainCode);
-      faceIds.push(triId);
+      const pBase = currentVIdx * 3;
+      positions[pBase] = vertex.position.x;
+      positions[pBase + 1] = vertex.position.y * heightUnit;
+      positions[pBase + 2] = vertex.position.z;
 
-      triIndices.push(idx);
+      terrainTypes[currentVIdx] = terrainCode;
+      faceIds[currentVIdx] = triId;
     }
 
-    if (triIndices.length === 3) {
-      indices.push(triIndices[0], triIndices[1], triIndices[2]);
-    }
+    indices[iIdx++] = vIdx - 3;
+    indices[iIdx++] = vIdx - 2;
+    indices[iIdx++] = vIdx - 1;
   }
 
   computeNormals(positions, indices, normals);
@@ -904,73 +977,55 @@ export function buildMeshArrays(
     if (bufferIndices.length <= 1) continue;
     let nx = 0, ny = 0, nz = 0;
     for (const idx of bufferIndices) {
-      nx += normals[idx * 3];
-      ny += normals[idx * 3 + 1];
-      nz += normals[idx * 3 + 2];
+      const nBase = idx * 3;
+      nx += normals[nBase];
+      ny += normals[nBase + 1];
+      nz += normals[nBase + 2];
     }
     const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    if (len > 0) {
+      nx /= len;
+      ny /= len;
+      nz /= len;
+    }
     for (const idx of bufferIndices) {
-      normals[idx * 3] = nx;
-      normals[idx * 3 + 1] = ny;
-      normals[idx * 3 + 2] = nz;
+      const nBase = idx * 3;
+      normals[nBase] = nx;
+      normals[nBase + 1] = ny;
+      normals[nBase + 2] = nz;
     }
   }
 
   return { positions, indices, normals, terrainTypes, faceIds, vertexIdMap };
 }
 
-function computeNormals(positions: number[], indices: number[], normals: number[]): void {
-  for (let i = 0; i < normals.length; i++) {
-    normals[i] = 0;
-  }
-
+function computeNormals(positions: Float32Array, indices: Uint32Array, normals: Float32Array): void {
+  // normals is already zeroed by Float32Array initialization
   for (let i = 0; i < indices.length; i += 3) {
     const i0 = indices[i];
     const i1 = indices[i + 1];
     const i2 = indices[i + 2];
 
-    const p0x = positions[i0 * 3];
-    const p0y = positions[i0 * 3 + 1];
-    const p0z = positions[i0 * 3 + 2];
+    const i03 = i0 * 3, i13 = i1 * 3, i23 = i2 * 3;
 
-    const p1x = positions[i1 * 3];
-    const p1y = positions[i1 * 3 + 1];
-    const p1z = positions[i1 * 3 + 2];
+    const p0x = positions[i03], p0y = positions[i03 + 1], p0z = positions[i03 + 2];
+    const p1x = positions[i13], p1y = positions[i13 + 1], p1z = positions[i13 + 2];
+    const p2x = positions[i23], p2y = positions[i23 + 1], p2z = positions[i23 + 2];
 
-    const p2x = positions[i2 * 3];
-    const p2y = positions[i2 * 3 + 1];
-    const p2z = positions[i2 * 3 + 2];
-
-    const ax = p1x - p0x;
-    const ay = p1y - p0y;
-    const az = p1z - p0z;
-
-    const bx = p2x - p0x;
-    const by = p2y - p0y;
-    const bz = p2z - p0z;
+    const ax = p1x - p0x, ay = p1y - p0y, az = p1z - p0z;
+    const bx = p2x - p0x, by = p2y - p0y, bz = p2z - p0z;
 
     const nx = ay * bz - az * by;
     const ny = az * bx - ax * bz;
     const nz = ax * by - ay * bx;
 
-    normals[i0 * 3] += nx;
-    normals[i0 * 3 + 1] += ny;
-    normals[i0 * 3 + 2] += nz;
-
-    normals[i1 * 3] += nx;
-    normals[i1 * 3 + 1] += ny;
-    normals[i1 * 3 + 2] += nz;
-
-    normals[i2 * 3] += nx;
-    normals[i2 * 3 + 1] += ny;
-    normals[i2 * 3 + 2] += nz;
+    normals[i03] += nx; normals[i03 + 1] += ny; normals[i03 + 2] += nz;
+    normals[i13] += nx; normals[i13 + 1] += ny; normals[i13 + 2] += nz;
+    normals[i23] += nx; normals[i23 + 1] += ny; normals[i23 + 2] += nz;
   }
 
   for (let i = 0; i < normals.length; i += 3) {
-    const nx = normals[i];
-    const ny = normals[i + 1];
-    const nz = normals[i + 2];
+    const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
     const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (len > 0) {
       normals[i] /= len;
@@ -1056,7 +1111,7 @@ export function flipEdge(
       return false;
   }
 
-  const existingEdgeId = topology.edgeIndex.get(edgeKey(o1, o2));
+  const existingEdgeId = findEdge(topology, o1, o2);
   if (existingEdgeId !== undefined) {
       console.warn(`FlipEdge: Opposite vertices ${o1} and ${o2} are already connected by edge ${existingEdgeId}`);
       return false;
@@ -1104,12 +1159,10 @@ export function flipEdge(
       return false;
   }
 
-  topology.edgeIndex.delete(edgeKey(v1, v2));
   removeVertexEdge(topology, v1, edgeId);
   removeVertexEdge(topology, v2, edgeId);
   edge.v1 = Math.min(o1, o2);
   edge.v2 = Math.max(o1, o2);
-  topology.edgeIndex.set(edgeKey(o1, o2), edgeId);
   addVertexEdge(topology, o1, edgeId);
   addVertexEdge(topology, o2, edgeId);
 
@@ -1300,101 +1353,23 @@ export function computeFaceSlopeAngle(
 
 export function validateTopology(topology: TerrainMeshTopology): void {
   for (const [eid, edge] of topology.edges) {
-    if (!topology.vertices.has(edge.v1)) {
-      throw new Error(`Edge ${eid} references non-existent vertex ${edge.v1}`);
-    }
-    if (!topology.vertices.has(edge.v2)) {
-      throw new Error(`Edge ${eid} references non-existent vertex ${edge.v2}`);
-    }
-
-    for (const tid of edge.triangles) {
-      if (!topology.triangles.has(tid)) {
-        throw new Error(`Edge ${eid} references non-existent triangle ${tid}`);
-      }
-    }
-
-    if (edge.triangles.length === 0 || edge.triangles.length > 2) {
-      throw new Error(`Edge ${eid} has ${edge.triangles.length} triangles (expected 1 or 2)`);
-    }
-
-    const key = edgeKey(edge.v1, edge.v2);
-    const indexed = topology.edgeIndex.get(key);
-    if (indexed !== eid) {
-      throw new Error(`Edge ${eid} (${edge.v1},${edge.v2}) not found in edgeIndex (got ${indexed})`);
-    }
-
-    const v1Edges = topology.vertexEdges.get(edge.v1);
-    if (!v1Edges || !v1Edges.has(eid)) {
-      throw new Error(`Edge ${eid} missing from vertexEdges of vertex ${edge.v1}`);
-    }
-    const v2Edges = topology.vertexEdges.get(edge.v2);
-    if (!v2Edges || !v2Edges.has(eid)) {
-      throw new Error(`Edge ${eid} missing from vertexEdges of vertex ${edge.v2}`);
-    }
+    if (!topology.vertices.has(edge.v1) || !topology.vertices.has(edge.v2)) throw new Error(`Edge ${eid} has non-existent vertex`);
+    for (const tid of edge.triangles) if (!topology.triangles.has(tid)) throw new Error(`Edge ${eid} has non-existent triangle ${tid}`);
+    if (edge.triangles.length === 0 || edge.triangles.length > 2) throw new Error(`Edge ${eid} has ${edge.triangles.length} triangles`);
+    if (findEdge(topology, edge.v1, edge.v2) !== eid) throw new Error(`Edge ${eid} findEdge mismatch`);
+    if (!topology.vertexEdges.get(edge.v1)?.has(eid) || !topology.vertexEdges.get(edge.v2)?.has(eid)) throw new Error(`Edge ${eid} missing from vertexEdges`);
   }
-
-  if (topology.edgeIndex.size !== topology.edges.size) {
-    throw new Error(`edgeIndex size (${topology.edgeIndex.size}) !== edges size (${topology.edges.size})`);
-  }
-
-  for (const [key, eid] of topology.edgeIndex) {
-    if (!topology.edges.has(eid)) {
-      throw new Error(`edgeIndex key ${key} references non-existent edge ${eid}`);
-    }
-  }
-
   for (const [vid, edgeSet] of topology.vertexEdges) {
-    if (!topology.vertices.has(vid)) {
-      throw new Error(`vertexEdges contains orphaned entry for non-existent vertex ${vid}`);
-    }
-    for (const eid of edgeSet) {
-      const edge = topology.edges.get(eid);
-      if (!edge) {
-        throw new Error(`vertexEdges[${vid}] references non-existent edge ${eid}`);
-      }
-      if (edge.v1 !== vid && edge.v2 !== vid) {
-        throw new Error(`vertexEdges[${vid}] contains edge ${eid} which does not reference vertex ${vid}`);
-      }
-    }
+    if (!topology.vertices.has(vid)) throw new Error(`Orphaned vertexEdges entry ${vid}`);
+    for (const eid of edgeSet) if (!topology.edges.get(eid)) throw new Error(`vertexEdges[${vid}] has non-existent edge ${eid}`);
   }
-
   for (const [tid, tri] of topology.triangles) {
-    for (const vid of tri.vertices) {
-      if (!topology.vertices.has(vid)) {
-        throw new Error(`Triangle ${tid} references non-existent vertex ${vid}`);
-      }
-    }
-
-    for (const eid of tri.edges) {
-      if (!topology.edges.has(eid)) {
-        throw new Error(`Triangle ${tid} references non-existent edge ${eid}`);
-      }
-    }
-
-    const pairs: Array<[number, number]> = [
-      [tri.vertices[0], tri.vertices[1]],
-      [tri.vertices[1], tri.vertices[2]],
-      [tri.vertices[2], tri.vertices[0]],
-    ];
-    for (const [va, vb] of pairs) {
-      const key = edgeKey(va, vb);
-      const eid = topology.edgeIndex.get(key);
-      if (eid === undefined) {
-        throw new Error(`Triangle ${tid} vertex pair (${va},${vb}) has no edge in edgeIndex`);
-      }
-      if (!tri.edges.includes(eid)) {
-        throw new Error(`Triangle ${tid} vertex pair (${va},${vb}) edge ${eid} not in triangle's edges`);
-      }
-    }
-  }
-
-  const seenPairs = new Set<string>();
-  for (const [eid, edge] of topology.edges) {
-    const key = edgeKey(edge.v1, edge.v2);
-    if (seenPairs.has(key)) {
-      throw new Error(`Duplicate edge vertex pair ${key} at edge ${eid}`);
-    }
-    seenPairs.add(key);
+    for (const vid of tri.vertices) if (!topology.vertices.has(vid)) throw new Error(`Triangle ${tid} has non-existent vertex ${vid}`);
+    for (const eid of tri.edges) if (!topology.edges.get(eid)) throw new Error(`Triangle ${tid} has non-existent edge ${eid}`);
+    [[0,1], [1,2], [2,0]].forEach(([a,b]) => {
+      const eid = findEdge(topology, tri.vertices[a], tri.vertices[b]);
+      if (eid === undefined || !tri.edges.includes(eid)) throw new Error(`Triangle ${tid} edge mismatch`);
+    });
   }
 }
 
