@@ -20,6 +20,7 @@ import {
   PipeTile,
   SprinklerHead,
   WaterSource,
+  SPRINKLER_CONFIGS,
 } from "../../core/irrigation";
 import { gridTo3D } from "../engine/BabylonEngine";
 import { ElevationProvider } from "./EntityVisualSystem";
@@ -29,6 +30,17 @@ export class IrrigationRenderSystem {
   private elevationProvider: ElevationProvider;
   private pipeMeshes: Map<string, Mesh> = new Map();
   private sprinklerMeshes: Map<string, Mesh> = new Map();
+  private sprinklerEffectMeshes: Map<
+    string,
+    {
+      spray: Mesh;
+      ring: Mesh;
+      sprayMaterial: StandardMaterial;
+      ringMaterial: StandardMaterial;
+      pressureNormalized: number;
+      phase: number;
+    }
+  > = new Map();
   private coverageMeshes: Map<string, Mesh> = new Map();
   private leakMeshes: Map<string, Mesh> = new Map();
   private waterSourceMeshes: Map<string, Mesh> = new Map();
@@ -36,11 +48,15 @@ export class IrrigationRenderSystem {
   private sprinklerMaterial: StandardMaterial | null = null;
   private leakMaterial: StandardMaterial | null = null;
   private isVisible: boolean = false;
+  private sprinklerAnimationTime: number = 0;
+  private readonly animateSprinklerEffectsBeforeRender: () => void;
 
   constructor(scene: Scene, elevationProvider: ElevationProvider) {
     this.scene = scene;
     this.elevationProvider = elevationProvider;
+    this.animateSprinklerEffectsBeforeRender = () => this.animateSprinklerEffects();
     this.createMaterials();
+    this.scene.registerBeforeRender(this.animateSprinklerEffectsBeforeRender);
   }
 
   /**
@@ -82,8 +98,14 @@ export class IrrigationRenderSystem {
     for (const mesh of this.pipeMeshes.values()) {
       mesh.isVisible = this.isVisible;
     }
-    for (const mesh of this.sprinklerMeshes.values()) {
-      mesh.isVisible = this.isVisible;
+    for (const [headId, mesh] of this.sprinklerMeshes.entries()) {
+      // Keep head visible while pumping so active watering is readable outside overlay mode.
+      mesh.isVisible = this.isVisible || this.sprinklerEffectMeshes.has(headId);
+    }
+    for (const effect of this.sprinklerEffectMeshes.values()) {
+      // Spray remains visible as in-world feedback; ring is overlay-only.
+      effect.spray.isVisible = true;
+      effect.ring.isVisible = this.isVisible;
     }
     for (const mesh of this.coverageMeshes.values()) {
       mesh.isVisible = this.isVisible;
@@ -260,9 +282,9 @@ export class IrrigationRenderSystem {
       currentKeys.add(key);
 
       if (!this.sprinklerMeshes.has(key)) {
-        this.createSprinklerMesh(head);
+        this.createSprinklerMesh(head, system);
       } else {
-        this.updateSprinklerMesh(head);
+        this.updateSprinklerMesh(head, system);
       }
     }
 
@@ -273,11 +295,12 @@ export class IrrigationRenderSystem {
           mesh.dispose();
           this.sprinklerMeshes.delete(key);
         }
+        this.removeSprinklerEffect(key);
       }
     }
   }
 
-  private createSprinklerMesh(head: SprinklerHead): void {
+  private createSprinklerMesh(head: SprinklerHead, system: IrrigationSystem): void {
     const elevation = this.elevationProvider.getElevationAt(head.gridX, head.gridY, 0);
     const pos = gridTo3D(head.gridX, head.gridY, elevation);
     pos.y += 0.05;
@@ -297,16 +320,149 @@ export class IrrigationRenderSystem {
     mesh.renderingGroupId = 1;
 
     this.sprinklerMeshes.set(head.id, mesh);
+
+    const pressure = this.getSprinklerPressure(head, system);
+    if (head.isActive && pressure > 0) {
+      this.ensureSprinklerEffect(head, pressure / 100);
+    }
   }
 
-  private updateSprinklerMesh(head: SprinklerHead): void {
+  private updateSprinklerMesh(head: SprinklerHead, system: IrrigationSystem): void {
     const mesh = this.sprinklerMeshes.get(head.id);
     if (!mesh) return;
 
-    if (head.isActive && mesh.material instanceof StandardMaterial) {
-      mesh.material.emissiveColor = new Color3(0.2, 0.6, 0.9);
-    } else if (mesh.material instanceof StandardMaterial) {
-      mesh.material.emissiveColor = new Color3(0.3, 0.3, 0.3);
+    const elevation = this.elevationProvider.getElevationAt(head.gridX, head.gridY, 0);
+    const pos = gridTo3D(head.gridX, head.gridY, elevation);
+    pos.y += 0.05;
+    mesh.position.copyFrom(pos);
+
+    const pressure = this.getSprinklerPressure(head, system);
+    if (head.isActive && pressure > 0) {
+      this.ensureSprinklerEffect(head, pressure / 100);
+    } else {
+      this.removeSprinklerEffect(head.id);
+    }
+  }
+
+  private getSprinklerPressure(head: SprinklerHead, system: IrrigationSystem): number {
+    const pipe = system.pipes.find(
+      (p) => p.gridX === head.gridX && p.gridY === head.gridY
+    );
+    return pipe?.pressureLevel ?? 0;
+  }
+
+  private ensureSprinklerEffect(
+    head: SprinklerHead,
+    pressureNormalized: number
+  ): void {
+    const existing = this.sprinklerEffectMeshes.get(head.id);
+    if (existing) {
+      existing.pressureNormalized = pressureNormalized;
+      this.updateSprinklerEffectPosition(head, existing.spray, existing.ring);
+      return;
+    }
+
+    const coverageRadius = Math.max(
+      0.5,
+      SPRINKLER_CONFIGS[head.sprinklerType].coverageRadius
+    );
+    const ringDiameter = 0.5 + coverageRadius * 0.6;
+    const sprayHeight = 0.32 + coverageRadius * 0.14;
+    const sprayBaseDiameter = 0.2 + coverageRadius * 0.1;
+
+    const sprayMaterial = new StandardMaterial(`sprinklerSprayMat_${head.id}`, this.scene);
+    sprayMaterial.diffuseColor = new Color3(0.4, 0.75, 1.0);
+    sprayMaterial.emissiveColor = new Color3(0.2, 0.5, 0.9);
+    sprayMaterial.alpha = 0.4;
+    sprayMaterial.disableLighting = true;
+
+    const spray = MeshBuilder.CreateCylinder(
+      `sprinkler_spray_${head.id}`,
+      {
+        height: sprayHeight,
+        diameterTop: 0.06,
+        diameterBottom: sprayBaseDiameter,
+        tessellation: 16,
+      },
+      this.scene
+    );
+    spray.material = sprayMaterial;
+    spray.isVisible = this.isVisible;
+    spray.isPickable = false;
+    spray.renderingGroupId = 2;
+
+    const ringMaterial = new StandardMaterial(`sprinklerRingMat_${head.id}`, this.scene);
+    ringMaterial.diffuseColor = new Color3(0.35, 0.75, 1.0);
+    ringMaterial.emissiveColor = new Color3(0.2, 0.6, 0.9);
+    ringMaterial.alpha = 0.45;
+    ringMaterial.disableLighting = true;
+
+    const ring = MeshBuilder.CreateTorus(
+      `sprinkler_ring_${head.id}`,
+      {
+        diameter: ringDiameter,
+        thickness: 0.03,
+        tessellation: 24,
+      },
+      this.scene
+    );
+    ring.material = ringMaterial;
+    ring.isVisible = this.isVisible;
+    ring.isPickable = false;
+    ring.renderingGroupId = 2;
+
+    this.updateSprinklerEffectPosition(head, spray, ring);
+
+    this.sprinklerEffectMeshes.set(head.id, {
+      spray,
+      ring,
+      sprayMaterial,
+      ringMaterial,
+      pressureNormalized,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  private updateSprinklerEffectPosition(head: SprinklerHead, spray: Mesh, ring: Mesh): void {
+    const elevation = this.elevationProvider.getElevationAt(head.gridX, head.gridY, 0);
+    const basePos = gridTo3D(head.gridX, head.gridY, elevation);
+
+    spray.position.copyFrom(basePos);
+    spray.position.y += 0.28;
+
+    ring.position.copyFrom(basePos);
+    ring.position.y += 0.09;
+  }
+
+  private removeSprinklerEffect(headId: string): void {
+    const effect = this.sprinklerEffectMeshes.get(headId);
+    if (!effect) return;
+
+    this.disposeMeshWithMaterial(effect.spray);
+    this.disposeMeshWithMaterial(effect.ring);
+    this.sprinklerEffectMeshes.delete(headId);
+  }
+
+  private animateSprinklerEffects(): void {
+    if (this.sprinklerEffectMeshes.size === 0) return;
+
+    const deltaSeconds = this.scene.getEngine().getDeltaTime() / 1000;
+    this.sprinklerAnimationTime += deltaSeconds;
+
+    for (const effect of this.sprinklerEffectMeshes.values()) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.sprinklerAnimationTime * 6 + effect.phase);
+      const pressureFactor = 0.4 + effect.pressureNormalized * 0.6;
+      const worldAlphaFactor = this.isVisible ? 1 : 0.65;
+
+      const sprayHeight = (0.75 + pulse * 0.45) * pressureFactor;
+      effect.spray.scaling.y = sprayHeight;
+      effect.sprayMaterial.alpha = (0.15 + pulse * 0.28) * pressureFactor * worldAlphaFactor;
+
+      const ringScale = (0.7 + pulse * 0.65) * pressureFactor;
+      effect.ring.scaling.x = ringScale;
+      effect.ring.scaling.z = ringScale;
+      effect.ring.rotation.y += deltaSeconds * 2.5;
+      effect.ringMaterial.alpha = (0.14 + (1 - pulse) * 0.3) * pressureFactor;
     }
   }
 
@@ -452,6 +608,8 @@ export class IrrigationRenderSystem {
   }
 
   public dispose(): void {
+    this.scene.unregisterBeforeRender(this.animateSprinklerEffectsBeforeRender);
+
     // Pipes have per-object materials
     for (const mesh of this.pipeMeshes.values()) {
       this.disposeMeshWithMaterial(mesh);
@@ -459,6 +617,10 @@ export class IrrigationRenderSystem {
     // Sprinklers use shared material
     for (const mesh of this.sprinklerMeshes.values()) {
       mesh.dispose();
+    }
+    for (const effect of this.sprinklerEffectMeshes.values()) {
+      this.disposeMeshWithMaterial(effect.spray);
+      this.disposeMeshWithMaterial(effect.ring);
     }
     // Coverage meshes have per-object materials
     for (const mesh of this.coverageMeshes.values()) {
@@ -474,6 +636,7 @@ export class IrrigationRenderSystem {
     }
     this.pipeMeshes.clear();
     this.sprinklerMeshes.clear();
+    this.sprinklerEffectMeshes.clear();
     this.coverageMeshes.clear();
     this.leakMeshes.clear();
     this.waterSourceMeshes.clear();

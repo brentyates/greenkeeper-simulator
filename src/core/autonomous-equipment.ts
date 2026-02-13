@@ -1,8 +1,20 @@
 import { EquipmentStats, getUnlockedAutonomousEquipment, ResearchState } from './research';
-import { WorkCandidate } from '../babylon/systems/TerrainSystemInterface';
+import {
+  WorkCandidate,
+  type WorkCandidateTerrainStats,
+} from '../babylon/systems/TerrainSystemInterface';
 import { TERRAIN_CODES } from './terrain';
+import {
+  isExtremeNeed,
+  scoreNeedWithDistance,
+} from './work-priority';
+import {
+  advanceTowardPoint,
+  isDirectSegmentTraversable,
+  type TraversalRule,
+} from './navigation';
 
-export type RobotType = 'mower' | 'sprayer' | 'spreader';
+export type RobotType = 'mower' | 'sprayer' | 'spreader' | 'raker';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
 
 export interface RobotUnit {
@@ -34,9 +46,20 @@ export interface RobotTickResult {
 
 export interface RobotEffect {
   readonly type: RobotType;
+  readonly equipmentId: string;
   readonly worldX: number;
   readonly worldZ: number;
   readonly efficiency: number;
+}
+
+export type RobotTraversalRule = TraversalRule<RobotUnit>;
+
+interface RankedRobotTarget {
+  readonly x: number;
+  readonly z: number;
+  readonly urgency: number;
+  readonly distance: number;
+  readonly score: number;
 }
 
 export function createInitialAutonomousState(
@@ -54,6 +77,7 @@ export function getRobotTypeFromEquipmentId(equipmentId: string): RobotType {
   if (equipmentId.includes('mower')) return 'mower';
   if (equipmentId.includes('sprayer') || equipmentId.includes('sprinkler')) return 'sprayer';
   if (equipmentId.includes('fertilizer') || equipmentId.includes('spreader')) return 'spreader';
+  if (equipmentId.includes('rake') || equipmentId.includes('bunker')) return 'raker';
   return 'mower';
 }
 
@@ -122,48 +146,368 @@ export function countBrokenRobots(state: AutonomousEquipmentState): number {
   return state.robots.filter(r => r.state === 'broken').length;
 }
 
-function findNeedsWork(
-  candidates: WorkCandidate[],
-  type: RobotType,
-  currentX: number,
-  currentZ: number,
-): { x: number; z: number } | null {
-  let bestTarget: { x: number; z: number; priority: number; distance: number } | null = null;
+function targetKey(worldX: number, worldZ: number): string {
+  return `${Math.floor(worldX)},${Math.floor(worldZ)}`;
+}
 
-  for (const c of candidates) {
-    if (c.dominantTerrainCode === TERRAIN_CODES.WATER) continue;
+const MAX_PATH_CHECK_CANDIDATES = 8;
+const NEARBY_FALLBACK_DISTANCE = 12;
+const PARKING_RING_RADII: readonly number[] = [0, 1.25, 2.5, 3.75];
+const PARKING_RING_SLOTS = 10;
 
-    const distance = Math.abs(c.worldX - currentX) + Math.abs(c.worldZ - currentZ);
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
-    let priority = 0;
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
 
-    switch (type) {
-      case 'mower':
-        if (c.avgHealth < 100) {
-          priority = 100 - c.avgHealth;
-        }
-        break;
-      case 'sprayer':
-        if (c.avgMoisture < 50) {
-          priority = 50 - c.avgMoisture;
-        }
-        break;
-      case 'spreader':
-        if (c.avgNutrients < 50) {
-          priority = 50 - c.avgNutrients;
-        }
-        break;
+function getIdleParkingTarget(
+  robot: RobotUnit,
+  chargingX: number,
+  chargingZ: number,
+  canTraverse?: RobotTraversalRule
+): { x: number; z: number } {
+  if (!canTraverse) {
+    return { x: chargingX, z: chargingZ };
+  }
+
+  const candidates: Array<{ x: number; z: number }> = [];
+  for (const radius of PARKING_RING_RADII) {
+    if (radius <= 1e-6) {
+      candidates.push({ x: chargingX, z: chargingZ });
+      continue;
     }
-
-    if (priority > 0) {
-      if (!bestTarget || priority > bestTarget.priority ||
-          (priority === bestTarget.priority && distance < bestTarget.distance)) {
-        bestTarget = { x: c.worldX, z: c.worldZ, priority, distance };
-      }
+    for (let i = 0; i < PARKING_RING_SLOTS; i++) {
+      const angle = (Math.PI * 2 * i) / PARKING_RING_SLOTS;
+      candidates.push({
+        x: chargingX + Math.cos(angle) * radius,
+        z: chargingZ + Math.sin(angle) * radius,
+      });
     }
   }
 
-  return bestTarget ? { x: bestTarget.x, z: bestTarget.z } : null;
+  const preferredSlot = hashString(robot.id) % candidates.length;
+  let bestCandidate: { x: number; z: number; score: number } | null = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (!canTraverse(robot, candidate.x, candidate.z)) continue;
+
+    const dist =
+      Math.abs(candidate.x - robot.worldX) + Math.abs(candidate.z - robot.worldZ);
+    const cyclicOffset = Math.abs(i - preferredSlot);
+    const slotDistance = Math.min(cyclicOffset, candidates.length - cyclicOffset);
+    const score = dist + slotDistance * 0.2;
+
+    if (!bestCandidate || score < bestCandidate.score) {
+      bestCandidate = { x: candidate.x, z: candidate.z, score };
+    }
+  }
+
+  if (bestCandidate) {
+    return { x: bestCandidate.x, z: bestCandidate.z };
+  }
+
+  return { x: chargingX, z: chargingZ };
+}
+
+function getActionUrgency(type: RobotType, candidate: WorkCandidate): number {
+  switch (type) {
+    case 'mower': {
+      const maxGrassHeight = candidate.maxGrassHeight ?? candidate.avgGrassHeight;
+      const avgGrassUrgency = clamp(candidate.avgGrassHeight - 1, 0, 100);
+      const hotspotGrassUrgency = clamp(maxGrassHeight - 1, 0, 100);
+      const grassUrgency = avgGrassUrgency * 0.7 + hotspotGrassUrgency * 0.3;
+      if (grassUrgency <= 0) {
+        // Once turf is already cut, mowers should stop and park instead of chasing health alone.
+        return 0;
+      }
+      const healthUrgency = clamp(100 - candidate.avgHealth, 0, 100);
+      // Use health only as a mild tie-breaker while there is actual overgrowth to mow.
+      return grassUrgency * 0.9 + Math.min(healthUrgency, grassUrgency) * 0.1;
+    }
+    case 'sprayer': {
+      const minMoisture = candidate.minMoisture ?? candidate.avgMoisture;
+      const avgDeficit = clamp(50 - candidate.avgMoisture, 0, 50);
+      const hotspotDeficit = clamp(50 - minMoisture, 0, 50);
+      // Keep reacting to localized dry pockets even if a larger bucket average looks acceptable.
+      return avgDeficit * 1.4 + hotspotDeficit * 0.6;
+    }
+    case 'spreader': {
+      const minNutrients = candidate.minNutrients ?? candidate.avgNutrients;
+      const avgDeficit = clamp(50 - candidate.avgNutrients, 0, 50);
+      const hotspotDeficit = clamp(50 - minNutrients, 0, 50);
+      return avgDeficit * 1.4 + hotspotDeficit * 0.6;
+    }
+    case 'raker':
+      if (candidate.dominantTerrainCode !== TERRAIN_CODES.BUNKER) return 0;
+      return clamp(100 - candidate.avgHealth, 0, 100);
+  }
+}
+
+interface CandidateFocus {
+  readonly targetX: number;
+  readonly targetZ: number;
+  readonly urgencyCandidate: WorkCandidate;
+}
+
+function isWaterOnlyCandidate(candidate: WorkCandidate): boolean {
+  const terrainCodesPresent = candidate.terrainCodesPresent;
+  if (!terrainCodesPresent || terrainCodesPresent.length === 0) {
+    return candidate.dominantTerrainCode === TERRAIN_CODES.WATER;
+  }
+  return terrainCodesPresent.every(code => code === TERRAIN_CODES.WATER);
+}
+
+function buildTerrainScopedCandidate(
+  candidate: WorkCandidate,
+  terrainCode: number,
+  stats: WorkCandidateTerrainStats
+): WorkCandidate {
+  return {
+    ...candidate,
+    worldX: stats.worldX,
+    worldZ: stats.worldZ,
+    avgMoisture: stats.avgMoisture,
+    avgNutrients: stats.avgNutrients,
+    avgGrassHeight: stats.avgGrassHeight,
+    maxGrassHeight: stats.maxGrassHeight,
+    avgHealth: stats.avgHealth,
+    dominantTerrainCode: terrainCode,
+    terrainCodesPresent: [terrainCode],
+    faceCount: stats.faceCount,
+    minMoisture: stats.minMoisture,
+    minNutrients: stats.minNutrients,
+  };
+}
+
+function projectCandidateForRobot(
+  candidate: WorkCandidate,
+  type: RobotType,
+  allowedTerrainCodes: readonly number[] | null
+): CandidateFocus | null {
+  if (!allowedTerrainCodes || allowedTerrainCodes.length === 0) {
+    return {
+      targetX: candidate.worldX,
+      targetZ: candidate.worldZ,
+      urgencyCandidate: candidate,
+    };
+  }
+
+  const allowedTerrainSet = new Set(allowedTerrainCodes);
+  const terrainStatsByCode = candidate.terrainStatsByCode;
+
+  if (!terrainStatsByCode) {
+    const terrainCodesPresent = candidate.terrainCodesPresent;
+    const canAffectAnyAllowedTerrain = terrainCodesPresent
+      ? terrainCodesPresent.some(code => allowedTerrainSet.has(code))
+      : allowedTerrainSet.has(candidate.dominantTerrainCode);
+    if (!canAffectAnyAllowedTerrain) return null;
+
+    return {
+      targetX: candidate.worldX,
+      targetZ: candidate.worldZ,
+      urgencyCandidate: candidate,
+    };
+  }
+
+  const allowedTerrainStats: Array<{
+    terrainCode: number;
+    stats: WorkCandidateTerrainStats;
+  }> = [];
+  for (const terrainCode of allowedTerrainCodes) {
+    const terrainStats = terrainStatsByCode[terrainCode];
+    if (!terrainStats) continue;
+    allowedTerrainStats.push({ terrainCode, stats: terrainStats });
+  }
+  if (allowedTerrainStats.length === 0) return null;
+
+  let totalFaces = 0;
+  let sumX = 0;
+  let sumZ = 0;
+  let totalMoisture = 0;
+  let totalNutrients = 0;
+  let totalGrassHeight = 0;
+  let totalHealth = 0;
+  let maxGrassHeight = 0;
+  let minMoisture = Number.POSITIVE_INFINITY;
+  let minNutrients = Number.POSITIVE_INFINITY;
+  let dominantTerrainCode = allowedTerrainStats[0].terrainCode;
+  let dominantFaceCount = 0;
+  let bestTarget = allowedTerrainStats[0];
+  let bestTargetUrgency = Number.NEGATIVE_INFINITY;
+
+  for (const entry of allowedTerrainStats) {
+    const { terrainCode, stats } = entry;
+    const terrainFaceCount = Math.max(1, stats.faceCount);
+
+    totalFaces += terrainFaceCount;
+    sumX += stats.worldX * terrainFaceCount;
+    sumZ += stats.worldZ * terrainFaceCount;
+    totalMoisture += stats.avgMoisture * terrainFaceCount;
+    totalNutrients += stats.avgNutrients * terrainFaceCount;
+    totalGrassHeight += stats.avgGrassHeight * terrainFaceCount;
+    totalHealth += stats.avgHealth * terrainFaceCount;
+    maxGrassHeight = Math.max(maxGrassHeight, stats.maxGrassHeight);
+    minMoisture = Math.min(minMoisture, stats.minMoisture);
+    minNutrients = Math.min(minNutrients, stats.minNutrients);
+
+    if (terrainFaceCount > dominantFaceCount) {
+      dominantFaceCount = terrainFaceCount;
+      dominantTerrainCode = terrainCode;
+    }
+
+    const terrainScopedCandidate = buildTerrainScopedCandidate(
+      candidate,
+      terrainCode,
+      stats
+    );
+    const terrainUrgency = getActionUrgency(type, terrainScopedCandidate);
+    if (
+      terrainUrgency > bestTargetUrgency ||
+      (terrainUrgency === bestTargetUrgency &&
+        terrainFaceCount > bestTarget.stats.faceCount)
+    ) {
+      bestTarget = entry;
+      bestTargetUrgency = terrainUrgency;
+    }
+  }
+
+  if (totalFaces <= 0) return null;
+
+  const urgencyCandidate: WorkCandidate = {
+    ...candidate,
+    worldX: sumX / totalFaces,
+    worldZ: sumZ / totalFaces,
+    avgMoisture: totalMoisture / totalFaces,
+    avgNutrients: totalNutrients / totalFaces,
+    avgGrassHeight: totalGrassHeight / totalFaces,
+    maxGrassHeight,
+    avgHealth: totalHealth / totalFaces,
+    dominantTerrainCode,
+    terrainCodesPresent: allowedTerrainStats.map(entry => entry.terrainCode),
+    faceCount: totalFaces,
+    minMoisture,
+    minNutrients,
+  };
+
+  return {
+    targetX: bestTarget.stats.worldX,
+    targetZ: bestTarget.stats.worldZ,
+    urgencyCandidate,
+  };
+}
+
+export function getAllowedTerrainCodesForRobotEquipment(
+  equipmentId: string,
+  type: RobotType
+): readonly number[] | null {
+  if (type === 'mower') {
+    if (equipmentId.includes('mower_fairway')) {
+      return [TERRAIN_CODES.FAIRWAY];
+    }
+    if (equipmentId.includes('mower_greens')) {
+      return [TERRAIN_CODES.GREEN];
+    }
+    if (equipmentId.includes('mower_rough')) {
+      return [TERRAIN_CODES.ROUGH];
+    }
+    return [
+      TERRAIN_CODES.FAIRWAY,
+      TERRAIN_CODES.ROUGH,
+      TERRAIN_CODES.GREEN,
+      TERRAIN_CODES.TEE,
+    ];
+  }
+  if (type === 'raker') {
+    return [TERRAIN_CODES.BUNKER];
+  }
+  return null;
+}
+
+function insertRankedTarget(
+  rankedTargets: RankedRobotTarget[],
+  candidate: RankedRobotTarget,
+  comparator: (a: RankedRobotTarget, b: RankedRobotTarget) => number
+): void {
+  let insertAt = rankedTargets.findIndex(existing => comparator(candidate, existing) < 0);
+  if (insertAt === -1) {
+    insertAt = rankedTargets.length;
+  }
+  rankedTargets.splice(insertAt, 0, candidate);
+  if (rankedTargets.length > MAX_PATH_CHECK_CANDIDATES) {
+    rankedTargets.length = MAX_PATH_CHECK_CANDIDATES;
+  }
+}
+
+function findNeedsWork(
+  candidates: WorkCandidate[],
+  robot: RobotUnit,
+  currentX: number,
+  currentZ: number,
+  claimedTargets: Set<string>,
+  canTraverse?: RobotTraversalRule,
+): { x: number; z: number } | null {
+  const type = robot.type;
+  const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(robot.equipmentId, type);
+  const rankedTargets: RankedRobotTarget[] = [];
+  const rankedExtremeTargets: RankedRobotTarget[] = [];
+
+  for (const c of candidates) {
+    if (isWaterOnlyCandidate(c)) continue;
+
+    const focusedCandidate = projectCandidateForRobot(c, type, allowedTerrainCodes);
+    if (!focusedCandidate) continue;
+    if (claimedTargets.has(targetKey(focusedCandidate.targetX, focusedCandidate.targetZ))) continue;
+    if (canTraverse && !canTraverse(robot, focusedCandidate.targetX, focusedCandidate.targetZ)) continue;
+
+    const distance =
+      Math.abs(focusedCandidate.targetX - currentX) +
+      Math.abs(focusedCandidate.targetZ - currentZ);
+    const urgency = getActionUrgency(type, focusedCandidate.urgencyCandidate);
+    if (urgency <= 0) continue;
+    const scoredCandidate: RankedRobotTarget = {
+      x: focusedCandidate.targetX,
+      z: focusedCandidate.targetZ,
+      urgency,
+      distance,
+      score: scoreNeedWithDistance(urgency, distance),
+    };
+
+    if (isExtremeNeed(urgency)) {
+      insertRankedTarget(
+        rankedExtremeTargets,
+        scoredCandidate,
+        (a, b) => (b.urgency - a.urgency) || (a.distance - b.distance)
+      );
+      continue;
+    }
+    insertRankedTarget(
+      rankedTargets,
+      scoredCandidate,
+      (a, b) => (b.score - a.score) || (b.urgency - a.urgency) || (a.distance - b.distance)
+    );
+  }
+
+  const pool = rankedExtremeTargets.length > 0 ? rankedExtremeTargets : rankedTargets;
+  if (pool.length === 0) {
+    return null;
+  }
+
+  for (const candidate of pool) {
+    if (isDirectSegmentTraversable(robot, currentX, currentZ, candidate.x, candidate.z, canTraverse)) {
+      return { x: candidate.x, z: candidate.z };
+    }
+  }
+
+  const nearbyFallback = pool.find(candidate => candidate.distance <= NEARBY_FALLBACK_DISTANCE);
+  const fallback = nearbyFallback ?? pool[0];
+  return { x: fallback.x, z: fallback.z };
 }
 
 function moveToward(
@@ -171,23 +515,18 @@ function moveToward(
   targetX: number,
   targetZ: number,
   speed: number,
-  deltaMinutes: number
-): { worldX: number; worldZ: number; arrived: boolean } {
-  const moveAmount = speed * (deltaMinutes / 60);
-  const dx = targetX - robot.worldX;
-  const dz = targetZ - robot.worldZ;
-  const distance = Math.abs(dx) + Math.abs(dz);
-
-  if (distance <= moveAmount) {
-    return { worldX: targetX, worldZ: targetZ, arrived: true };
-  }
-
-  const ratio = moveAmount / distance;
-  return {
-    worldX: robot.worldX + dx * ratio,
-    worldZ: robot.worldZ + dz * ratio,
-    arrived: false,
-  };
+  deltaMinutes: number,
+  canTraverse?: RobotTraversalRule
+): { worldX: number; worldZ: number; arrived: boolean; blocked: boolean } {
+  return advanceTowardPoint(
+    robot,
+    robot.worldX,
+    robot.worldZ,
+    targetX,
+    targetZ,
+    speed * deltaMinutes,
+    canTraverse
+  );
 }
 
 function tickRobot(
@@ -196,7 +535,9 @@ function tickRobot(
   chargingX: number,
   chargingZ: number,
   deltaMinutes: number,
-  fleetAIActive: boolean
+  fleetAIActive: boolean,
+  claimedTargets: Set<string>,
+  canTraverse?: RobotTraversalRule
 ): { robot: RobotUnit; effect: RobotEffect | null; operatingCost: number } {
   let operatingCost = 0;
 
@@ -250,7 +591,14 @@ function tickRobot(
   const newResource = Math.max(0, robot.resourceCurrent - resourceConsumption);
 
   if (newResource < robot.resourceMax * 0.1) {
-    const { worldX, worldZ, arrived } = moveToward(robot, chargingX, chargingZ, robot.stats.speed, deltaMinutes);
+    const { worldX, worldZ, arrived, blocked } = moveToward(
+      robot,
+      chargingX,
+      chargingZ,
+      robot.stats.speed,
+      deltaMinutes,
+      canTraverse
+    );
 
     if (arrived) {
       return {
@@ -260,6 +608,19 @@ function tickRobot(
           worldZ,
           state: 'charging',
           resourceCurrent: Math.min(robot.resourceMax, newResource + deltaMinutes * 5),
+          targetX: null,
+          targetY: null,
+        },
+        effect: null,
+        operatingCost,
+      };
+    }
+    if (blocked) {
+      return {
+        robot: {
+          ...robot,
+          state: 'idle',
+          resourceCurrent: newResource,
           targetX: null,
           targetY: null,
         },
@@ -310,19 +671,65 @@ function tickRobot(
   }
 
   if (robot.targetX === null || robot.targetY === null) {
-    const target = findNeedsWork(candidates, robot.type, robot.worldX, robot.worldZ);
+    const target = findNeedsWork(
+      candidates,
+      robot,
+      robot.worldX,
+      robot.worldZ,
+      claimedTargets,
+      canTraverse
+    );
 
     if (!target) {
+      const parkingTarget = getIdleParkingTarget(
+        robot,
+        chargingX,
+        chargingZ,
+        canTraverse
+      );
+      const {
+        worldX: parkX,
+        worldZ: parkZ,
+        arrived: parked,
+        blocked: parkingBlocked,
+      } = moveToward(
+        robot,
+        parkingTarget.x,
+        parkingTarget.z,
+        robot.stats.speed,
+        deltaMinutes,
+        canTraverse
+      );
+
+      if (parkingBlocked) {
+        return {
+          robot: {
+            ...robot,
+            state: 'idle',
+            resourceCurrent: newResource,
+            targetX: null,
+            targetY: null,
+          },
+          effect: null,
+          operatingCost,
+        };
+      }
+
       return {
         robot: {
           ...robot,
-          state: 'idle',
+          worldX: parkX,
+          worldZ: parkZ,
+          state: parked ? 'idle' : 'moving',
           resourceCurrent: newResource,
+          targetX: null,
+          targetY: null,
         },
         effect: null,
         operatingCost,
       };
     }
+    claimedTargets.add(targetKey(target.x, target.z));
 
     return {
       robot: {
@@ -337,16 +744,71 @@ function tickRobot(
     };
   }
 
-  const { worldX, worldZ, arrived } = moveToward(robot, robot.targetX, robot.targetY, robot.stats.speed, deltaMinutes);
+  const { worldX, worldZ, arrived, blocked } = moveToward(
+    robot,
+    robot.targetX,
+    robot.targetY,
+    robot.stats.speed,
+    deltaMinutes,
+    canTraverse
+  );
+  if (blocked) {
+    const blockedTargetX = robot.targetX;
+    const blockedTargetY = robot.targetY;
+    const blockedKey = targetKey(blockedTargetX, blockedTargetY);
+    claimedTargets.delete(blockedKey);
 
-  if (arrived) {
-    const effect: RobotEffect = {
-      type: robot.type,
+    const blockedClaims = new Set(claimedTargets);
+    blockedClaims.add(blockedKey);
+    const alternateTarget = findNeedsWork(
+      candidates,
+      robot,
       worldX,
       worldZ,
-      efficiency: robot.stats.efficiency,
-    };
+      blockedClaims,
+      canTraverse
+    );
 
+    if (alternateTarget) {
+      claimedTargets.add(targetKey(alternateTarget.x, alternateTarget.z));
+      return {
+        robot: {
+          ...robot,
+          worldX,
+          worldZ,
+          state: 'moving',
+          resourceCurrent: newResource,
+          targetX: alternateTarget.x,
+          targetY: alternateTarget.z,
+        },
+        effect: null,
+        operatingCost,
+      };
+    }
+
+    return {
+      robot: {
+        ...robot,
+        worldX,
+        worldZ,
+        state: 'idle',
+        resourceCurrent: newResource,
+        targetX: null,
+        targetY: null,
+      },
+      effect: null,
+      operatingCost,
+    };
+  }
+  const movementEffect: RobotEffect = {
+    type: robot.type,
+    equipmentId: robot.equipmentId,
+    worldX,
+    worldZ,
+    efficiency: robot.stats.efficiency,
+  };
+
+  if (arrived) {
     return {
       robot: {
         ...robot,
@@ -357,7 +819,7 @@ function tickRobot(
         targetX: null,
         targetY: null,
       },
-      effect,
+      effect: movementEffect,
       operatingCost,
     };
   }
@@ -370,7 +832,7 @@ function tickRobot(
       state: 'moving',
       resourceCurrent: newResource,
     },
-    effect: null,
+    effect: movementEffect,
     operatingCost,
   };
 }
@@ -379,20 +841,38 @@ export function tickAutonomousEquipment(
   state: AutonomousEquipmentState,
   candidates: WorkCandidate[],
   deltaMinutes: number,
-  fleetAIActive: boolean = false
+  fleetAIActive: boolean = false,
+  canTraverse?: RobotTraversalRule
 ): RobotTickResult {
   const effects: RobotEffect[] = [];
   let totalOperatingCost = 0;
   const newRobots: RobotUnit[] = [];
+  const claimedTargets = new Set<string>();
 
   for (const robot of state.robots) {
+    let updatedRobot = robot;
+    if (updatedRobot.targetX !== null && updatedRobot.targetY !== null) {
+      const key = targetKey(updatedRobot.targetX, updatedRobot.targetY);
+      if (claimedTargets.has(key)) {
+        updatedRobot = {
+          ...updatedRobot,
+          targetX: null,
+          targetY: null,
+          state: updatedRobot.state === 'moving' || updatedRobot.state === 'working' ? 'idle' : updatedRobot.state,
+        };
+      } else {
+        claimedTargets.add(key);
+      }
+    }
     const result = tickRobot(
-      robot,
+      updatedRobot,
       candidates,
       state.chargingStationX,
       state.chargingStationY,
       deltaMinutes,
-      fleetAIActive
+      fleetAIActive,
+      claimedTargets,
+      canTraverse
     );
 
     newRobots.push(result.robot);

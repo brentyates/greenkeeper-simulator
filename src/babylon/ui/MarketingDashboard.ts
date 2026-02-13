@@ -3,8 +3,6 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
-import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
-import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import {
   MarketingState,
@@ -15,7 +13,9 @@ import {
   getActiveCampaignCount,
   getCampaignSummary,
 } from '../../core/marketing';
-import { createOverlayPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { createActionButton, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogScrollBlock } from './DialogBlueprint';
+import { UI_THEME } from './UITheme';
 
 export interface MarketingDashboardCallbacks {
   onStartCampaign: (campaignId: string, duration: number) => void;
@@ -60,85 +60,78 @@ export class MarketingDashboard {
   }
 
   private createMetricsSection(parent: StackPanel): void {
-    const container = new Rectangle('metricsContainer');
-    container.height = '50px';
-    container.width = '520px';
-    container.cornerRadius = 6;
-    container.background = 'rgba(30, 60, 45, 0.7)';
-    container.thickness = 1;
-    container.color = '#3a5a4a';
-    container.paddingTop = '5px';
-    parent.addControl(container);
+    const container = createPanelSection(parent, {
+      name: 'metricsContainer',
+      width: 520,
+      height: 50,
+      theme: 'green',
+      paddingTop: 5,
+    });
 
     this.metricsText = new TextBlock('metricsText');
     this.metricsText.text = 'Loading...';
-    this.metricsText.color = '#aaaaaa';
-    this.metricsText.fontSize = 12;
+    this.metricsText.color = UI_THEME.colors.text.secondary;
+    this.metricsText.fontSize = UI_THEME.typography.bodySize;
+    this.metricsText.fontFamily = UI_THEME.typography.fontFamily;
     container.addControl(this.metricsText);
   }
 
   private createActiveCampaignsSection(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('activeLabel');
-    sectionLabel.text = '📣 ACTIVE CAMPAIGNS';
-    sectionLabel.color = '#88ff88';
-    sectionLabel.fontSize = 12;
-    sectionLabel.height = '25px';
-    sectionLabel.paddingTop = '8px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    parent.addControl(sectionLabel);
-
-    const container = new Rectangle('activeContainer');
-    container.height = '130px';
-    container.width = '520px';
-    container.cornerRadius = 6;
-    container.background = 'rgba(20, 40, 30, 0.5)';
-    container.thickness = 1;
-    container.color = '#3a5a4a';
-    parent.addControl(container);
-
-    const scrollViewer = new ScrollViewer('activeScroll');
-    scrollViewer.width = '510px';
-    scrollViewer.height = '120px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a8a5a';
-    container.addControl(scrollViewer);
-
-    this.activeCampaignsList = new StackPanel('activeList');
-    this.activeCampaignsList.width = '490px';
-    scrollViewer.addControl(this.activeCampaignsList);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'activeContainer',
+      title: {
+        text: '📣 ACTIVE CAMPAIGNS',
+        color: '#88ff88',
+        fontSize: 12,
+        height: 25,
+        paddingTop: 8,
+      },
+      width: 520,
+      height: 130,
+      theme: 'green',
+      paddingTop: 6,
+      scroll: {
+        name: 'activeScroll',
+        width: 510,
+        height: 120,
+        contentName: 'activeList',
+        contentWidth: '490px',
+        options: {
+          barSize: 8,
+          barColor: '#4a8a5a',
+        },
+      },
+    });
+    this.activeCampaignsList = content;
   }
 
   private createAvailableCampaignsSection(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('availableLabel');
-    sectionLabel.text = '📋 AVAILABLE CAMPAIGNS';
-    sectionLabel.color = '#88ccff';
-    sectionLabel.fontSize = 12;
-    sectionLabel.height = '25px';
-    sectionLabel.paddingTop = '8px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    parent.addControl(sectionLabel);
-
-    const container = new Rectangle('availableContainer');
-    container.height = '300px';
-    container.width = '520px';
-    container.cornerRadius = 6;
-    container.background = 'rgba(20, 40, 30, 0.5)';
-    container.thickness = 1;
-    container.color = '#3a5a4a';
-    parent.addControl(container);
-
-    const scrollViewer = new ScrollViewer('availableScroll');
-    scrollViewer.width = '510px';
-    scrollViewer.height = '290px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a8a5a';
-    container.addControl(scrollViewer);
-
-    this.availableCampaignsList = new StackPanel('availableList');
-    this.availableCampaignsList.width = '490px';
-    scrollViewer.addControl(this.availableCampaignsList);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'availableContainer',
+      title: {
+        text: '📋 AVAILABLE CAMPAIGNS',
+        color: '#88ccff',
+        fontSize: 12,
+        height: 25,
+        paddingTop: 8,
+      },
+      width: 520,
+      height: 300,
+      theme: 'green',
+      paddingTop: 6,
+      scroll: {
+        name: 'availableScroll',
+        width: 510,
+        height: 290,
+        contentName: 'availableList',
+        contentWidth: '490px',
+        options: {
+          barSize: 8,
+          barColor: '#4a8a5a',
+        },
+      },
+    });
+    this.availableCampaignsList = content;
   }
 
   private createActiveCampaignRow(campaignId: string, elapsedDays: number, plannedDuration: number): Rectangle {
@@ -152,10 +145,10 @@ export class MarketingDashboard {
     const row = new Rectangle(`active_${campaignId}`);
     row.height = '55px';
     row.width = '480px';
-    row.cornerRadius = 4;
+    row.cornerRadius = UI_THEME.radii.chip;
     row.background = 'rgba(50, 80, 60, 0.6)';
     row.thickness = 1;
-    row.color = '#66aa66';
+    row.color = UI_THEME.colors.legacy.c_66aa66;
     row.paddingTop = '3px';
     row.paddingBottom = '3px';
 
@@ -173,35 +166,37 @@ export class MarketingDashboard {
 
     const nameText = new TextBlock('name');
     nameText.text = campaign.name;
-    nameText.color = '#ffffff';
-    nameText.fontSize = 13;
+    nameText.color = UI_THEME.colors.text.primary;
+    nameText.fontSize = UI_THEME.typography.scale.s13;
+    nameText.fontFamily = UI_THEME.typography.fontFamily;
     nameText.height = '20px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
 
     const progressText = new TextBlock('progress');
     progressText.text = `Day ${elapsedDays}/${plannedDuration} | $${campaign.dailyCost}/day`;
-    progressText.color = '#888888';
-    progressText.fontSize = 11;
+    progressText.color = UI_THEME.colors.text.muted;
+    progressText.fontSize = UI_THEME.typography.scale.s11;
+    progressText.fontFamily = UI_THEME.typography.fontFamily;
     progressText.height = '18px';
     progressText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(progressText);
 
     const effectText = new TextBlock('effect');
     effectText.text = `+${((campaign.demandMultiplier - 1) * 100).toFixed(0)}% demand`;
-    effectText.color = '#88ff88';
-    effectText.fontSize = 12;
+    effectText.color = UI_THEME.colors.text.success;
+    effectText.fontSize = UI_THEME.typography.scale.s12;
+    effectText.fontFamily = UI_THEME.typography.fontFamily;
     grid.addControl(effectText, 0, 1);
 
-    const stopBtn = Button.CreateSimpleButton('stop', 'Stop');
-    stopBtn.width = '60px';
-    stopBtn.height = '30px';
-    stopBtn.cornerRadius = 4;
-    stopBtn.background = '#6a4040';
-    stopBtn.color = '#ff8888';
-    stopBtn.thickness = 1;
-    stopBtn.fontSize = 11;
-    stopBtn.onPointerClickObservable.add(() => this.callbacks.onStopCampaign(campaignId));
+    const stopBtn = createActionButton({
+      id: `stop_${campaignId}`,
+      label: 'Stop',
+      tone: 'danger',
+      width: 68,
+      fontSize: UI_THEME.typography.captionSize,
+      onClick: () => this.callbacks.onStopCampaign(campaignId),
+    });
     grid.addControl(stopBtn, 0, 2);
 
     return row;
@@ -211,7 +206,7 @@ export class MarketingDashboard {
     const row = new Rectangle(`avail_${campaign.id}`);
     row.height = '70px';
     row.width = '480px';
-    row.cornerRadius = 4;
+    row.cornerRadius = UI_THEME.radii.chip;
     row.thickness = 1;
     row.paddingTop = '3px';
     row.paddingBottom = '3px';
@@ -222,10 +217,10 @@ export class MarketingDashboard {
 
     if (canStartResult.canStart) {
       row.background = 'rgba(40, 70, 50, 0.5)';
-      row.color = '#4a8a5a';
+      row.color = UI_THEME.colors.legacy.c_4a8a5a;
     } else {
       row.background = 'rgba(50, 50, 50, 0.4)';
-      row.color = '#555555';
+      row.color = UI_THEME.colors.legacy.c_555555;
     }
 
     const grid = new Grid('rowGrid');
@@ -243,7 +238,8 @@ export class MarketingDashboard {
     const nameText = new TextBlock('name');
     nameText.text = campaign.name;
     nameText.color = canStartResult.canStart ? '#ffffff' : '#888888';
-    nameText.fontSize = 13;
+    nameText.fontSize = UI_THEME.typography.scale.s13;
+    nameText.fontFamily = UI_THEME.typography.fontFamily;
     nameText.height = '20px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
@@ -251,16 +247,18 @@ export class MarketingDashboard {
     const costText = new TextBlock('cost');
     const totalMinCost = campaign.setupCost + (campaign.dailyCost * campaign.minDuration);
     costText.text = `Setup: $${campaign.setupCost} | Daily: $${campaign.dailyCost} | Min: $${totalMinCost}`;
-    costText.color = '#888888';
-    costText.fontSize = 10;
+    costText.color = UI_THEME.colors.text.muted;
+    costText.fontSize = UI_THEME.typography.scale.s10;
+    costText.fontFamily = UI_THEME.typography.fontFamily;
     costText.height = '16px';
     costText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(costText);
 
     const durationText = new TextBlock('duration');
     durationText.text = `Duration: ${campaign.minDuration}-${campaign.maxDuration} days`;
-    durationText.color = '#666666';
-    durationText.fontSize = 10;
+    durationText.color = UI_THEME.colors.legacy.c_666666;
+    durationText.fontSize = UI_THEME.typography.scale.s10;
+    durationText.fontFamily = UI_THEME.typography.fontFamily;
     durationText.height = '16px';
     durationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(durationText);
@@ -271,46 +269,49 @@ export class MarketingDashboard {
 
     const demandText = new TextBlock('demand');
     demandText.text = campaign.demandMultiplier > 1 ? `+${((campaign.demandMultiplier - 1) * 100).toFixed(0)}% demand` : 'Event';
-    demandText.color = '#88ff88';
-    demandText.fontSize = 11;
+    demandText.color = UI_THEME.colors.text.success;
+    demandText.fontSize = UI_THEME.typography.scale.s11;
+    demandText.fontFamily = UI_THEME.typography.fontFamily;
     demandText.height = '18px';
     effectStack.addControl(demandText);
 
     const audienceText = new TextBlock('audience');
     audienceText.text = campaign.targetAudience.slice(0, 2).join(', ');
-    audienceText.color = '#666666';
-    audienceText.fontSize = 10;
+    audienceText.color = UI_THEME.colors.legacy.c_666666;
+    audienceText.fontSize = UI_THEME.typography.scale.s10;
+    audienceText.fontFamily = UI_THEME.typography.fontFamily;
     audienceText.height = '16px';
     effectStack.addControl(audienceText);
 
     const actionStack = new StackPanel('actions');
     actionStack.isVertical = true;
+    actionStack.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     grid.addControl(actionStack, 0, 2);
 
     if (canStartResult.canStart) {
-      const startBtn = Button.CreateSimpleButton('start', 'Start');
-      startBtn.width = '70px';
-      startBtn.height = '30px';
-      startBtn.cornerRadius = 4;
-      startBtn.background = '#2a6a4a';
-      startBtn.color = '#88ff88';
-      startBtn.thickness = 1;
-      startBtn.fontSize = 11;
-      startBtn.onPointerClickObservable.add(() => this.callbacks.onStartCampaign(campaign.id, campaign.minDuration));
+      const startBtn = createActionButton({
+        id: `start_${campaign.id}`,
+        label: 'Start',
+        tone: 'success',
+        width: 72,
+        fontSize: UI_THEME.typography.captionSize,
+        onClick: () => this.callbacks.onStartCampaign(campaign.id, campaign.minDuration),
+      });
       actionStack.addControl(startBtn);
     } else {
       const statusText = new TextBlock('status');
       if (cooldownRemaining > 0) {
         statusText.text = `Cooldown: ${cooldownRemaining}d`;
-        statusText.color = '#ff8888';
+        statusText.color = UI_THEME.colors.legacy.c_ff8888;
       } else if (activeCount >= campaign.maxConcurrent) {
         statusText.text = 'Max active';
-        statusText.color = '#ffaa44';
+        statusText.color = UI_THEME.colors.legacy.c_ffaa44;
       } else {
         statusText.text = 'Not enough $';
-        statusText.color = '#ff8888';
+        statusText.color = UI_THEME.colors.legacy.c_ff8888;
       }
-      statusText.fontSize = 10;
+      statusText.fontSize = UI_THEME.typography.captionSize;
+      statusText.fontFamily = UI_THEME.typography.fontFamily;
       statusText.height = '20px';
       actionStack.addControl(statusText);
     }
@@ -334,8 +335,9 @@ export class MarketingDashboard {
       if (summary.activeCampaignCount === 0) {
         const emptyText = new TextBlock('empty');
         emptyText.text = 'No active campaigns';
-        emptyText.color = '#666666';
-        emptyText.fontSize = 12;
+        emptyText.color = UI_THEME.colors.text.muted;
+        emptyText.fontSize = UI_THEME.typography.bodySize;
+        emptyText.fontFamily = UI_THEME.typography.fontFamily;
         emptyText.height = '40px';
         this.activeCampaignsList.addControl(emptyText);
       } else {

@@ -44,7 +44,8 @@ varying vec3 vWorldPosition;
 varying float vTerrainType;
 varying float vFaceId;
 
-// Face data texture (1 texel per face: R=moisture, G=nutrients, B=height, A=health)
+// Face data texture (1 texel per face)
+// R=moisture, G=nutrients (grass) or rake freshness (bunker), B=height, A=health
 // Laid out as 2D texture with width=256 to stay within GPU texture size limits
 uniform sampler2D faceData;
 uniform vec2 faceDataDims;
@@ -153,6 +154,7 @@ void main() {
   float fdGrassHeight = 0.0;
   float fdMoisture = 0.5;
   float fdHealth = 1.0;
+  float fdAux = 0.0;
   if (faceDataDims.x > 0.5) {
     float fid = floor(vFaceId + 0.5);
     float col = mod(fid, faceDataDims.x);
@@ -161,6 +163,7 @@ void main() {
     float v = (row + 0.5) / faceDataDims.y;
     vec4 faceSample = texture2D(faceData, vec2(u, v));
     fdMoisture = faceSample.r;
+    fdAux = faceSample.g;
     fdGrassHeight = faceSample.b;
     fdHealth = faceSample.a;
   }
@@ -228,6 +231,14 @@ void main() {
   else if (bunkerMask > 0.5) {
       color = bunkerColor;
       color = sandGrain(vWorldPosition.xz, color);
+      float rakeFreshness = fdAux;
+      float grooveA = sin((vWorldPosition.x * 22.0 + vWorldPosition.z * 8.0));
+      float grooveB = sin((vWorldPosition.x * 22.0 - vWorldPosition.z * 8.0));
+      float rakeLines = max(smoothstep(0.55, 0.95, grooveA), smoothstep(0.65, 0.98, grooveB) * 0.7);
+      float smoothSand = fbm(vWorldPosition.xz * 2.2) - 0.5;
+      color += vec3(smoothSand * 0.07 * (1.0 - rakeFreshness));
+      color = mix(color * 0.86, color, rakeFreshness * 0.35);
+      color = mix(color, color + vec3(0.11, 0.09, 0.06), rakeLines * rakeFreshness);
   }
   else if (waterMask > 0.5) {
       color = waterColor;

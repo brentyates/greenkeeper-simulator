@@ -11,3 +11,8 @@ playwright-report/
 test-results/
 coverage/
 coverage-e2e/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

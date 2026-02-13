@@ -8,8 +8,24 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { createDockedPanel, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogSectionLabel } from './DialogBlueprint';
+import { addUniformButtons, addVerticalSpacer, createHorizontalRow, UI_SPACING } from './LayoutUtils';
+import { UI_THEME } from './UITheme';
 
-import { PipeType, SprinklerType } from '../../core/irrigation';
+import {
+  PipeType,
+  SprinklerType,
+  PIPE_CONFIGS,
+  SPRINKLER_CONFIGS,
+} from '../../core/irrigation';
+
+export const IRRIGATION_TOOLBAR_BOUNDS = {
+  width: 300,
+  height: 290,
+  left: 10,
+  top: 10,
+};
 
 export interface IrrigationToolbarCallbacks {
   onToolSelect: (tool: 'pipe' | 'sprinkler' | 'delete' | 'info' | null) => void;
@@ -26,6 +42,21 @@ export class IrrigationToolbar {
   private activeTool: 'pipe' | 'sprinkler' | 'delete' | 'info' | null = null;
   private selectedPipeType: PipeType = 'pvc';
   private selectedSprinklerType: SprinklerType = 'fixed';
+  private pipeBtn: Button | null = null;
+  private sprinklerBtn: Button | null = null;
+  private deleteBtn: Button | null = null;
+  private infoBtn: Button | null = null;
+  private pvcBtn: Button | null = null;
+  private metalBtn: Button | null = null;
+  private industrialBtn: Button | null = null;
+  private fixedBtn: Button | null = null;
+  private rotaryBtn: Button | null = null;
+  private impactBtn: Button | null = null;
+  private precisionBtn: Button | null = null;
+  private pipeTypeRow: StackPanel | null = null;
+  private sprinklerTypeRow: StackPanel | null = null;
+  private toolSummaryText: TextBlock | null = null;
+  private toolHintText: TextBlock | null = null;
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: IrrigationToolbarCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -34,140 +65,343 @@ export class IrrigationToolbar {
   }
 
   private createPanel(): void {
-    this.panel = new Rectangle('irrigationToolbarPanel');
-    this.panel.width = '300px';
-    this.panel.height = '200px';
-    this.panel.cornerRadius = 8;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 2;
-    this.panel.background = 'rgba(20, 45, 35, 0.95)';
-    this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.panel.left = '10px';
-    this.panel.top = '10px';
-    this.panel.isVisible = false;
-    this.panel.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.panel);
-
-    const stack = new StackPanel('toolbarStack');
-    stack.width = '280px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.panel.addControl(stack);
-
-    const title = new TextBlock('toolbarTitle');
-    title.text = 'IRRIGATION TOOLBAR';
-    title.color = '#7FFF7F';
-    title.fontSize = 14;
-    title.fontWeight = 'bold';
-    title.height = '20px';
-    stack.addControl(title);
-
-    const toolRow = new StackPanel('toolRow');
-    toolRow.isVertical = false;
-    toolRow.height = '40px';
-    stack.addControl(toolRow);
-
-    const pipeBtn = Button.CreateSimpleButton('pipeBtn', 'Pipe');
-    pipeBtn.width = '60px';
-    pipeBtn.height = '30px';
-    pipeBtn.onPointerUpObservable.add(() => {
-      this.activeTool = this.activeTool === 'pipe' ? null : 'pipe';
-      this.callbacks.onToolSelect(this.activeTool);
-      this.updateButtonStates();
+    const { panel, stack } = createDockedPanel(this.advancedTexture, {
+      name: 'irrigationToolbar',
+      width: IRRIGATION_TOOLBAR_BOUNDS.width,
+      height: IRRIGATION_TOOLBAR_BOUNDS.height,
+      colors: POPUP_COLORS.green,
+      horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_LEFT,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_TOP,
+      left: IRRIGATION_TOOLBAR_BOUNDS.left,
+      top: IRRIGATION_TOOLBAR_BOUNDS.top,
+      padding: 12,
     });
-    toolRow.addControl(pipeBtn);
+    this.panel = panel;
 
-    const sprinklerBtn = Button.CreateSimpleButton('sprinklerBtn', 'Sprinkler');
-    sprinklerBtn.width = '70px';
-    sprinklerBtn.height = '30px';
-    sprinklerBtn.onPointerUpObservable.add(() => {
-      this.activeTool = this.activeTool === 'sprinkler' ? null : 'sprinkler';
-      this.callbacks.onToolSelect(this.activeTool);
-      this.updateButtonStates();
+    createPopupHeader(stack, {
+      title: 'IRRIGATION CONTROL',
+      titleColor: '#b8f0d0',
+      width: 276,
+      onClose: () => this.callbacks.onClose(),
     });
-    toolRow.addControl(sprinklerBtn);
 
-    const deleteBtn = Button.CreateSimpleButton('deleteBtn', 'Delete');
-    deleteBtn.width = '60px';
-    deleteBtn.height = '30px';
-    deleteBtn.onPointerUpObservable.add(() => {
-      this.activeTool = this.activeTool === 'delete' ? null : 'delete';
-      this.callbacks.onToolSelect(this.activeTool);
-      this.updateButtonStates();
+    const subtitle = new TextBlock('toolbarSubtitle');
+    subtitle.text = 'Select a tool, then click terrain';
+    subtitle.color = UI_THEME.colors.legacy.c_87b8a0;
+    subtitle.fontSize = UI_THEME.typography.scale.s10;
+    subtitle.height = '16px';
+    subtitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(subtitle);
+
+    addVerticalSpacer(stack, UI_SPACING.xs, 'irrigationToolbarTitleGap');
+    const toolRow = createHorizontalRow(stack, {
+      name: 'toolRow',
+      widthPx: 276,
+      heightPx: 30,
     });
-    toolRow.addControl(deleteBtn);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', 'X');
-    closeBtn.width = '30px';
-    closeBtn.height = '30px';
-    closeBtn.onPointerUpObservable.add(() => this.callbacks.onClose());
-    toolRow.addControl(closeBtn);
-
-    const pipeTypeRow = new StackPanel('pipeTypeRow');
-    pipeTypeRow.isVertical = false;
-    pipeTypeRow.height = '30px';
-    stack.addControl(pipeTypeRow);
-
-    const pvcBtn = Button.CreateSimpleButton('pvcBtn', 'PVC');
-    pvcBtn.width = '50px';
-    pvcBtn.height = '25px';
-    pvcBtn.onPointerUpObservable.add(() => {
-      this.selectedPipeType = 'pvc';
-      this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+    const [pipeBtn, sprinklerBtn, deleteBtn, infoBtn] = addUniformButtons(toolRow, {
+      rowWidthPx: 276,
+      rowHeightPx: 30,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        {
+          id: 'pipeBtn',
+          label: 'Pipe',
+          onClick: () => {
+            this.activeTool = this.activeTool === 'pipe' ? null : 'pipe';
+            this.callbacks.onToolSelect(this.activeTool);
+            this.updateButtonStates();
+          },
+          fontSize: 11,
+          background: '#223e34',
+          hoverBackground: '#2c5447',
+        },
+        {
+          id: 'sprinklerBtn',
+          label: 'Sprink',
+          onClick: () => {
+            this.activeTool = this.activeTool === 'sprinkler' ? null : 'sprinkler';
+            this.callbacks.onToolSelect(this.activeTool);
+            this.updateButtonStates();
+          },
+          fontSize: 11,
+          background: '#223e34',
+          hoverBackground: '#2c5447',
+        },
+        {
+          id: 'deleteBtn',
+          label: 'Delete',
+          onClick: () => {
+            this.activeTool = this.activeTool === 'delete' ? null : 'delete';
+            this.callbacks.onToolSelect(this.activeTool);
+            this.updateButtonStates();
+          },
+          fontSize: 11,
+          background: '#223e34',
+          hoverBackground: '#2c5447',
+        },
+        {
+          id: 'infoBtn',
+          label: 'Info',
+          onClick: () => {
+            this.activeTool = this.activeTool === 'info' ? null : 'info';
+            this.callbacks.onToolSelect(this.activeTool);
+            this.updateButtonStates();
+          },
+          fontSize: 11,
+          background: '#223e34',
+          hoverBackground: '#2c5447',
+        },
+      ],
     });
-    pipeTypeRow.addControl(pvcBtn);
+    this.pipeBtn = pipeBtn ?? null;
+    this.sprinklerBtn = sprinklerBtn ?? null;
+    this.deleteBtn = deleteBtn ?? null;
+    this.infoBtn = infoBtn ?? null;
 
-    const metalBtn = Button.CreateSimpleButton('metalBtn', 'Metal');
-    metalBtn.width = '60px';
-    metalBtn.height = '25px';
-    metalBtn.onPointerUpObservable.add(() => {
-      this.selectedPipeType = 'metal';
-      this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+    this.toolSummaryText = new TextBlock('toolSummary');
+    const summaryContainer = createPanelSection(stack, {
+      name: 'irrigationSummaryContainer',
+      width: 276,
+      height: 48,
+      theme: 'green',
+      cornerRadius: 4,
+      background: 'rgba(24, 51, 40, 0.85)',
+      borderColor: '#3f6a58',
+      paddingTop: 4,
+      paddingBottom: 4,
     });
-    pipeTypeRow.addControl(metalBtn);
 
-    const industrialBtn = Button.CreateSimpleButton('industrialBtn', 'Industrial');
-    industrialBtn.width = '80px';
-    industrialBtn.height = '25px';
-    industrialBtn.onPointerUpObservable.add(() => {
-      this.selectedPipeType = 'industrial';
-      this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+    const summaryStack = new StackPanel('irrigationSummaryStack');
+    summaryStack.width = '264px';
+    summaryContainer.addControl(summaryStack);
+
+    this.toolSummaryText.color = UI_THEME.colors.legacy.c_b6deef;
+    this.toolSummaryText.fontSize = UI_THEME.typography.scale.s11;
+    this.toolSummaryText.height = '20px';
+    this.toolSummaryText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    summaryStack.addControl(this.toolSummaryText);
+
+    this.toolHintText = new TextBlock('toolHint');
+    this.toolHintText.color = UI_THEME.colors.legacy.c_95a89e;
+    this.toolHintText.fontSize = UI_THEME.typography.scale.s10;
+    this.toolHintText.height = '18px';
+    this.toolHintText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    summaryStack.addControl(this.toolHintText);
+    addVerticalSpacer(stack, UI_SPACING.sm, 'irrigationToolbarSummaryGap');
+
+    addDialogSectionLabel(stack, {
+      id: 'pipeLabel',
+      text: 'Pipe Type',
+      tone: 'info',
+      fontSize: 10,
+      fontWeight: 'bold',
+      height: 18,
     });
-    pipeTypeRow.addControl(industrialBtn);
 
-    const sprinklerTypeRow = new StackPanel('sprinklerTypeRow');
-    sprinklerTypeRow.isVertical = false;
-    sprinklerTypeRow.height = '30px';
-    stack.addControl(sprinklerTypeRow);
-
-    const fixedBtn = Button.CreateSimpleButton('fixedBtn', 'Fixed');
-    fixedBtn.width = '50px';
-    fixedBtn.height = '25px';
-    fixedBtn.onPointerUpObservable.add(() => {
-      this.selectedSprinklerType = 'fixed';
-      this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+    this.pipeTypeRow = createHorizontalRow(stack, {
+      name: 'pipeTypeRow',
+      widthPx: 276,
+      heightPx: 26,
     });
-    sprinklerTypeRow.addControl(fixedBtn);
-
-    const rotaryBtn = Button.CreateSimpleButton('rotaryBtn', 'Rotary');
-    rotaryBtn.width = '60px';
-    rotaryBtn.height = '25px';
-    rotaryBtn.onPointerUpObservable.add(() => {
-      this.selectedSprinklerType = 'rotary';
-      this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+    const [pvcBtn, metalBtn, industrialBtn] = addUniformButtons(this.pipeTypeRow, {
+      rowWidthPx: 276,
+      rowHeightPx: 26,
+      gapPx: UI_SPACING.sm,
+      specs: [
+        {
+          id: 'pvcBtn',
+          label: 'PVC',
+          onClick: () => {
+            this.selectedPipeType = 'pvc';
+            this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+        {
+          id: 'metalBtn',
+          label: 'Metal',
+          onClick: () => {
+            this.selectedPipeType = 'metal';
+            this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+        {
+          id: 'industrialBtn',
+          label: 'Industrial',
+          onClick: () => {
+            this.selectedPipeType = 'industrial';
+            this.callbacks.onPipeTypeSelect(this.selectedPipeType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+      ],
     });
-    sprinklerTypeRow.addControl(rotaryBtn);
+    this.pvcBtn = pvcBtn ?? null;
+    this.metalBtn = metalBtn ?? null;
+    this.industrialBtn = industrialBtn ?? null;
+
+    addDialogSectionLabel(stack, {
+      id: 'sprinklerLabel',
+      text: 'Sprinkler Type',
+      tone: 'info',
+      fontSize: 10,
+      fontWeight: 'bold',
+      height: 18,
+    });
+
+    this.sprinklerTypeRow = createHorizontalRow(stack, {
+      name: 'sprinklerTypeRow',
+      widthPx: 276,
+      heightPx: 26,
+    });
+    const [fixedBtn, rotaryBtn, impactBtn, precisionBtn] = addUniformButtons(this.sprinklerTypeRow, {
+      rowWidthPx: 276,
+      rowHeightPx: 26,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        {
+          id: 'fixedBtn',
+          label: 'Fixed',
+          onClick: () => {
+            this.selectedSprinklerType = 'fixed';
+            this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+        {
+          id: 'rotaryBtn',
+          label: 'Rotary',
+          onClick: () => {
+            this.selectedSprinklerType = 'rotary';
+            this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+        {
+          id: 'impactBtn',
+          label: 'Impact',
+          onClick: () => {
+            this.selectedSprinklerType = 'impact';
+            this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+        {
+          id: 'precisionBtn',
+          label: 'Precision',
+          onClick: () => {
+            this.selectedSprinklerType = 'precision';
+            this.callbacks.onSprinklerTypeSelect(this.selectedSprinklerType);
+            this.updateButtonStates();
+          },
+          fontSize: 10,
+          background: '#263a47',
+          hoverBackground: '#315066',
+        },
+      ],
+    });
+    this.fixedBtn = fixedBtn ?? null;
+    this.rotaryBtn = rotaryBtn ?? null;
+    this.impactBtn = impactBtn ?? null;
+    this.precisionBtn = precisionBtn ?? null;
+
+    this.updateButtonStates();
   }
 
   private updateButtonStates(): void {
-    // Button state updates would go here
+    const setToolStyle = (
+      button: Button | null,
+      selected: boolean,
+      selectedBackground: string = '#2f8f66'
+    ): void => {
+      if (!button) return;
+      button.background = selected ? selectedBackground : '#223e34';
+      button.color = selected ? '#f4fffa' : '#d4e7dd';
+      button.thickness = selected ? 2 : 1;
+      button.cornerRadius = UI_THEME.radii.chip;
+    };
+    const setTypeStyle = (button: Button | null, selected: boolean): void => {
+      if (!button) return;
+      button.background = selected ? '#2f7fa1' : '#263a47';
+      button.color = selected ? '#ecf8ff' : '#c7d8e2';
+      button.thickness = selected ? 2 : 1;
+      button.cornerRadius = UI_THEME.radii.chip;
+    };
+
+    setToolStyle(this.pipeBtn, this.activeTool === 'pipe', '#2f8f66');
+    setToolStyle(this.sprinklerBtn, this.activeTool === 'sprinkler', '#3b7fd0');
+    setToolStyle(this.deleteBtn, this.activeTool === 'delete', '#a14a4a');
+    setToolStyle(this.infoBtn, this.activeTool === 'info', '#5378a8');
+
+    setTypeStyle(this.pvcBtn, this.selectedPipeType === 'pvc');
+    setTypeStyle(this.metalBtn, this.selectedPipeType === 'metal');
+    setTypeStyle(this.industrialBtn, this.selectedPipeType === 'industrial');
+    setTypeStyle(this.fixedBtn, this.selectedSprinklerType === 'fixed');
+    setTypeStyle(this.rotaryBtn, this.selectedSprinklerType === 'rotary');
+    setTypeStyle(this.impactBtn, this.selectedSprinklerType === 'impact');
+    setTypeStyle(this.precisionBtn, this.selectedSprinklerType === 'precision');
+
+    if (this.pipeTypeRow) {
+      this.pipeTypeRow.isVisible = this.activeTool === 'pipe' || this.activeTool === null;
+    }
+    if (this.sprinklerTypeRow) {
+      this.sprinklerTypeRow.isVisible =
+        this.activeTool === 'sprinkler' || this.activeTool === null;
+    }
+
+    if (this.toolSummaryText && this.toolHintText) {
+      if (this.activeTool === 'pipe') {
+        const cost = PIPE_CONFIGS[this.selectedPipeType].cost;
+        this.toolSummaryText.text = `Pipe: ${this.selectedPipeType.toUpperCase()} ($${cost}/tile)`;
+        this.toolHintText.text = 'Click terrain to place pipe';
+      } else if (this.activeTool === 'sprinkler') {
+        const baseCost = SPRINKLER_CONFIGS[this.selectedSprinklerType].cost;
+        const installCost = baseCost + 20;
+        this.toolSummaryText.text =
+          `Sprinkler: ${this.selectedSprinklerType.toUpperCase()} ($${installCost} install)`;
+        this.toolHintText.text = 'Click terrain to place sprinkler';
+      } else if (this.activeTool === 'delete') {
+        this.toolSummaryText.text = 'Delete mode';
+        this.toolHintText.text = 'Click pipe or sprinkler to remove';
+      } else if (this.activeTool === 'info') {
+        this.toolSummaryText.text = 'Info mode';
+        this.toolHintText.text = 'Click pipe or sprinkler for details';
+      } else {
+        this.toolSummaryText.text = 'No irrigation tool selected';
+        this.toolHintText.text = 'Choose Pipe, Sprinkler, Delete, or Info';
+      }
+    }
   }
 
   public show(): void {
     if (this.panel) {
       this.panel.isVisible = true;
     }
+  }
+
+  public resetToolSelection(): void {
+    this.activeTool = null;
+    this.updateButtonStates();
   }
 
   public hide(): void {
@@ -187,4 +421,3 @@ export class IrrigationToolbar {
     }
   }
 }
-

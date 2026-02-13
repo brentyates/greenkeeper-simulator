@@ -112,6 +112,27 @@ describe('irrigation system', () => {
       const head = getSprinklerHeadAt(system, 99, 99);
       expect(head).toBeNull();
     });
+
+    it('should mark sprinkler connected when a pipe is added on its tile', () => {
+      let system = createInitialIrrigationSystem();
+      system = addSprinklerHead(system, 10, 10, 'fixed', 0);
+
+      expect(system.sprinklerHeads[0].connectedToPipe).toBe(false);
+
+      system = addPipe(system, 10, 10, 'pvc', 0);
+      expect(system.sprinklerHeads[0].connectedToPipe).toBe(true);
+    });
+
+    it('should mark sprinkler disconnected when pipe is removed from its tile', () => {
+      let system = createInitialIrrigationSystem();
+      system = addPipe(system, 10, 10, 'pvc', 0);
+      system = addSprinklerHead(system, 10, 10, 'fixed', 0);
+
+      expect(system.sprinklerHeads[0].connectedToPipe).toBe(true);
+
+      system = removePipe(system, 10, 10);
+      expect(system.sprinklerHeads[0].connectedToPipe).toBe(false);
+    });
   });
 
   describe('coverage patterns', () => {
@@ -628,4 +649,3 @@ describe('irrigation system', () => {
     });
   });
 });
-

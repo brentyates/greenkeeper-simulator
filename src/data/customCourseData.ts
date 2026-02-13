@@ -1,14 +1,16 @@
 import { CourseData, ObstacleData } from './courseData';
 import { ScenarioDefinition } from './scenarioData';
 import { SerializedTopology, SerializedVertex, SerializedTriangle } from '../core/mesh-topology';
+import {
+  buildHoleDefinitionsFromAssets,
+  calculateCoursePar,
+  syncHoleFeatureAssignments,
+  type CourseHoleDefinition,
+  type PlaceableHoleAsset,
+  type HoleTeeSet,
+} from '../core/hole-construction';
 
-export interface PlacedAsset {
-  assetId: string;
-  x: number;
-  y: number;
-  z: number;
-  rotation: 0 | 90 | 180 | 270;
-}
+export interface PlacedAsset extends PlaceableHoleAsset {}
 
 export interface CustomCourseData {
   id: string;
@@ -20,9 +22,17 @@ export interface CustomCourseData {
   topology: SerializedTopology;
   placedAssets: PlacedAsset[];
   obstacles: ObstacleData[];
+  holes: CourseHoleDefinition[];
 }
 
 const STORAGE_KEY = 'greenkeeper_custom_courses';
+const VALID_TEE_SETS: ReadonlySet<HoleTeeSet> = new Set([
+  'championship',
+  'middle',
+  'forward',
+  'senior',
+  'custom',
+]);
 
 function getStorageIndex(): Record<string, boolean> {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -33,7 +43,68 @@ function setStorageIndex(index: Record<string, boolean>): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(index));
 }
 
+function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
+  const rotations: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+  return rotations.includes(value as 0 | 90 | 180 | 270)
+    ? (value as 0 | 90 | 180 | 270)
+    : 0;
+}
+
+function normalizePlacedAsset(raw: unknown): PlacedAsset | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate = raw as Record<string, unknown>;
+  if (typeof candidate.assetId !== 'string') return null;
+  if (typeof candidate.x !== 'number' || typeof candidate.y !== 'number' || typeof candidate.z !== 'number') {
+    return null;
+  }
+
+  const normalized: PlacedAsset = {
+    assetId: candidate.assetId,
+    x: candidate.x,
+    y: candidate.y,
+    z: candidate.z,
+    rotation: normalizeRotation(candidate.rotation),
+  };
+
+  const gameplay = candidate.gameplay;
+  if (gameplay && typeof gameplay === 'object') {
+    const feature = (gameplay as Record<string, unknown>).holeFeature;
+    if (feature && typeof feature === 'object') {
+      const featureObj = feature as Record<string, unknown>;
+      if (
+        (featureObj.kind === 'tee_box' || featureObj.kind === 'pin_position') &&
+        typeof featureObj.holeNumber === 'number'
+      ) {
+        normalized.gameplay = {
+          holeFeature: {
+            kind: featureObj.kind,
+            holeNumber: featureObj.holeNumber,
+            teeSet: (
+              typeof featureObj.teeSet === 'string' &&
+              VALID_TEE_SETS.has(featureObj.teeSet as HoleTeeSet)
+            ) ? featureObj.teeSet as HoleTeeSet : undefined,
+          },
+        };
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function deriveHoleData(placedAssets: PlacedAsset[]): {
+  normalizedAssets: PlacedAsset[];
+  holes: CourseHoleDefinition[];
+} {
+  const normalizedAssets = syncHoleFeatureAssignments(placedAssets);
+  const holes = buildHoleDefinitionsFromAssets(normalizedAssets);
+  return { normalizedAssets, holes };
+}
+
 export function saveCustomCourse(course: CustomCourseData): void {
+  const { normalizedAssets, holes } = deriveHoleData(course.placedAssets);
+  course.placedAssets = normalizedAssets;
+  course.holes = holes;
   course.updatedAt = Date.now();
   localStorage.setItem(`course_${course.id}`, JSON.stringify(course));
   const index = getStorageIndex();
@@ -46,7 +117,21 @@ export function loadCustomCourse(id: string): CustomCourseData | null {
   if (!raw) return null;
   const parsed = JSON.parse(raw);
   if (!parsed.topology) return null;
-  return parsed;
+
+  const placedAssetsRaw: unknown[] = Array.isArray(parsed.placedAssets) ? parsed.placedAssets : [];
+  const placedAssets = placedAssetsRaw
+    .map((asset: unknown) => normalizePlacedAsset(asset))
+    .filter((asset: PlacedAsset | null): asset is PlacedAsset => asset !== null);
+  const { normalizedAssets, holes } = deriveHoleData(placedAssets);
+
+  const loaded: CustomCourseData = {
+    ...parsed,
+    placedAssets: normalizedAssets,
+    obstacles: Array.isArray(parsed.obstacles) ? parsed.obstacles : [],
+    holes,
+  };
+
+  return loaded;
 }
 
 export function listCustomCourses(): CustomCourseData[] {
@@ -67,13 +152,15 @@ export function deleteCustomCourse(id: string): void {
 }
 
 export function customCourseToCourseData(course: CustomCourseData): CourseData {
+  const par = calculateCoursePar(course.holes);
   return {
     name: course.name,
     width: course.width,
     height: course.height,
-    par: 3,
+    par: par > 0 ? par : 3,
     topology: course.topology,
     obstacles: course.obstacles,
+    holes: course.holes,
   };
 }
 
@@ -135,5 +222,6 @@ export function createBlankCourse(width: number, height: number, name: string): 
     topology: { vertices, triangles, worldWidth: width, worldHeight: height },
     placedAssets: [],
     obstacles: [],
+    holes: [],
   };
 }

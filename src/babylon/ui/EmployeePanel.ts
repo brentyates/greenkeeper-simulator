@@ -2,11 +2,20 @@ import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
-import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Button } from '@babylonjs/gui/2D/controls/button';
-import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import {
+  createActionButton,
+  createListRowCard,
+  createPanelSection,
+  createSelectableButton,
+  POPUP_COLORS,
+  setSelectableButtonState,
+} from './PopupUtils';
+import { addDialogActionBar, addDialogScrollBlock, addDialogSectionLabel } from './DialogBlueprint';
+import { UI_THEME } from './UITheme';
+import { renderDialog } from './DialogRenderer';
 
 import {
   Employee,
@@ -38,18 +47,20 @@ export class EmployeePanel {
   private callbacks: EmployeePanelCallbacks;
 
   private panel: Rectangle | null = null;
+  private applicationsPanel: Rectangle | null = null;
   private employeeListContainer: StackPanel | null = null;
   private applicationsContainer: StackPanel | null = null;
   private payrollText: TextBlock | null = null;
   private employeeCountText: TextBlock | null = null;
-  private applicationsView: Rectangle | null = null;
-  private mainView: Rectangle | null = null;
   private nextApplicationText: TextBlock | null = null;
   private postingCountText: TextBlock | null = null;
   private postJobButton: Button | null = null;
+  private fireButton: Button | null = null;
+  private mainActionHintText: TextBlock | null = null;
   private hasActivePosting: boolean = false;
 
   private selectedEmployeeId: string | null = null;
+  private selectedEmployeeName: string | null = null;
   private selectedPostingRole: EmployeeRole = 'groundskeeper';
   private roleButtons: Map<EmployeeRole, Button> = new Map();
 
@@ -60,54 +71,34 @@ export class EmployeePanel {
   }
 
   private createPanel(): void {
-    const { panel } = createDirectPopup(this.advancedTexture, {
+    const mainDialog = renderDialog(this.advancedTexture, {
       name: 'employee',
+      shell: 'direct',
       width: 360,
       height: 450,
-      colors: POPUP_COLORS.green,
       padding: 12,
+      colors: POPUP_COLORS.green,
+      title: '👥 EMPLOYEE MANAGEMENT',
+      headerWidth: 336,
+      onClose: () => this.callbacks.onClose(),
+      nodes: [
+        { type: 'custom', id: 'summary', render: (parent) => this.createSummaryRow(parent) },
+        { type: 'custom', id: 'employeeList', render: (parent) => this.createEmployeeList(parent) },
+        { type: 'custom', id: 'mainActions', render: (parent) => this.createActionButtons(parent) },
+      ],
     });
-
-    this.panel = panel;
-
-    this.createMainView();
+    this.panel = mainDialog.panel;
     this.createApplicationsView();
   }
 
-  private createMainView(): void {
-    this.mainView = new Rectangle('mainView');
-    this.mainView.width = '100%';
-    this.mainView.height = '100%';
-    this.mainView.thickness = 0;
-    this.mainView.background = 'transparent';
-    this.panel!.addControl(this.mainView);
-
-    const stack = new StackPanel('employeeStack');
-    stack.width = '336px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.mainView.addControl(stack);
-
-    createPopupHeader(stack, {
-      title: '👥 EMPLOYEE MANAGEMENT',
-      width: 336,
-      onClose: () => this.callbacks.onClose(),
-    });
-    this.createSummaryRow(stack);
-    this.createEmployeeList(stack);
-    this.createActionButtons(stack);
-  }
-
   private createSummaryRow(parent: StackPanel): void {
-    const summaryContainer = new Rectangle('summaryContainer');
-    summaryContainer.height = '50px';
-    summaryContainer.width = '336px';
-    summaryContainer.cornerRadius = 4;
-    summaryContainer.background = 'rgba(30, 60, 45, 0.8)';
-    summaryContainer.thickness = 1;
-    summaryContainer.color = '#3a5a4a';
-    summaryContainer.paddingTop = '8px';
-    parent.addControl(summaryContainer);
+    const summaryContainer = createPanelSection(parent, {
+      name: 'summaryContainer',
+      width: 336,
+      height: 50,
+      theme: 'green',
+      paddingTop: 8,
+    });
 
     const grid = new Grid('summaryGrid');
     grid.addColumnDefinition(0.5);
@@ -118,18 +109,18 @@ export class EmployeePanel {
     countStack.paddingLeft = '12px';
     grid.addControl(countStack, 0, 0);
 
-    const countLabel = new TextBlock('countLabel');
-    countLabel.text = 'Employees';
-    countLabel.color = '#888888';
-    countLabel.fontSize = 10;
-    countLabel.height = '14px';
-    countLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    countStack.addControl(countLabel);
+    addDialogSectionLabel(countStack, {
+      id: 'countLabel',
+      text: 'Employees',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
 
     this.employeeCountText = new TextBlock('employeeCount');
     this.employeeCountText.text = '0 / 10';
-    this.employeeCountText.color = '#ffffff';
-    this.employeeCountText.fontSize = 18;
+    this.employeeCountText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.employeeCountText.fontSize = UI_THEME.typography.scale.s18;
     this.employeeCountText.height = '24px';
     this.employeeCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     countStack.addControl(this.employeeCountText);
@@ -137,64 +128,63 @@ export class EmployeePanel {
     const payrollStack = new StackPanel('payrollStack');
     grid.addControl(payrollStack, 0, 1);
 
-    const payrollLabel = new TextBlock('payrollLabel');
-    payrollLabel.text = 'Hourly Payroll';
-    payrollLabel.color = '#888888';
-    payrollLabel.fontSize = 10;
-    payrollLabel.height = '14px';
-    payrollLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    payrollStack.addControl(payrollLabel);
+    addDialogSectionLabel(payrollStack, {
+      id: 'payrollLabel',
+      text: 'Hourly Payroll',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
 
     this.payrollText = new TextBlock('payrollText');
     this.payrollText.text = '$0/hr';
-    this.payrollText.color = '#ff8844';
-    this.payrollText.fontSize = 18;
+    this.payrollText.color = UI_THEME.colors.legacy.c_ff8844;
+    this.payrollText.fontSize = UI_THEME.typography.scale.s18;
     this.payrollText.height = '24px';
     this.payrollText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     payrollStack.addControl(this.payrollText);
   }
 
   private createEmployeeList(parent: StackPanel): void {
-    const listContainer = new Rectangle('listContainer');
-    listContainer.height = '280px';
-    listContainer.width = '336px';
-    listContainer.cornerRadius = 4;
-    listContainer.background = 'rgba(15, 35, 25, 0.8)';
-    listContainer.thickness = 1;
-    listContainer.color = '#3a5a4a';
-    listContainer.paddingTop = '8px';
-    parent.addControl(listContainer);
-
-    const scrollViewer = new ScrollViewer('employeeScroll');
-    scrollViewer.width = '320px';
-    scrollViewer.height = '270px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a8a5a';
-    scrollViewer.barBackground = 'rgba(0,0,0,0.3)';
-    listContainer.addControl(scrollViewer);
-
-    this.employeeListContainer = new StackPanel('employeeListStack');
-    this.employeeListContainer.width = '100%';
-    scrollViewer.addControl(this.employeeListContainer);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'listContainer',
+      width: 336,
+      height: 280,
+      theme: 'green',
+      paddingTop: 8,
+      scroll: {
+        name: 'employeeScroll',
+        width: 320,
+        height: 270,
+        contentName: 'employeeListStack',
+        contentWidth: '100%',
+        options: {
+          barSize: 8,
+          barColor: '#4a8a5a',
+          barBackground: 'rgba(0,0,0,0.3)',
+        },
+      },
+    });
+    this.employeeListContainer = content;
   }
 
   private createEmployeeRow(employee: Employee): Rectangle {
     const isSelected = this.selectedEmployeeId === employee.id;
 
-    const row = new Rectangle(`emp_${employee.id}`);
-    row.height = '55px';
-    row.width = '300px';
-    row.cornerRadius = 4;
-    row.background = isSelected ? 'rgba(70, 120, 90, 0.8)' : 'rgba(40, 70, 55, 0.6)';
-    row.thickness = isSelected ? 2 : 1;
-    row.color = isSelected ? '#7FFF7F' : '#3a5a4a';
-    row.paddingTop = '4px';
-    row.paddingBottom = '4px';
+    const row = createListRowCard({
+      name: `emp_${employee.id}`,
+      width: 300,
+      height: 55,
+      background: isSelected ? 'rgba(70, 120, 90, 0.8)' : 'rgba(40, 70, 55, 0.6)',
+      borderColor: isSelected ? UI_THEME.colors.editor.buttonTextActive : UI_THEME.colors.editor.buttonBorder,
+      thickness: isSelected ? 2 : 1,
+    });
 
     row.onPointerClickObservable.add(() => {
       this.selectedEmployeeId = employee.id;
+      this.selectedEmployeeName = employee.name;
       this.refreshEmployeeList();
+      this.updateMainActionState();
     });
     row.onPointerEnterObservable.add(() => {
       if (!isSelected) row.background = 'rgba(50, 90, 70, 0.7)';
@@ -212,7 +202,7 @@ export class EmployeePanel {
 
     const icon = new TextBlock('empIcon');
     icon.text = EMPLOYEE_ROLE_INFO[employee.role].icon;
-    icon.fontSize = 18;
+    icon.fontSize = UI_THEME.typography.scale.s18;
     grid.addControl(icon, 0, 0);
 
     const infoStack = new StackPanel('empInfo');
@@ -221,16 +211,16 @@ export class EmployeePanel {
 
     const nameText = new TextBlock('empName');
     nameText.text = employee.name;
-    nameText.color = '#ffffff';
-    nameText.fontSize = 12;
+    nameText.color = UI_THEME.colors.legacy.c_ffffff;
+    nameText.fontSize = UI_THEME.typography.scale.s12;
     nameText.height = '16px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
 
     const roleText = new TextBlock('empRole');
     roleText.text = EMPLOYEE_ROLE_INFO[employee.role].name;
-    roleText.color = '#aaaaaa';
-    roleText.fontSize = 10;
+    roleText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    roleText.fontSize = UI_THEME.typography.scale.s10;
     roleText.height = '14px';
     roleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(roleText);
@@ -239,7 +229,7 @@ export class EmployeePanel {
     statusText.text = employee.status.replace('_', ' ');
     statusText.color = employee.status === 'working' ? '#44aa44' :
                        employee.status === 'on_break' ? '#ffaa44' : '#888888';
-    statusText.fontSize = 9;
+    statusText.fontSize = UI_THEME.typography.scale.s9;
     statusText.height = '12px';
     statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(statusText);
@@ -250,123 +240,132 @@ export class EmployeePanel {
     const skillText = new TextBlock('empSkill');
     skillText.text = employee.skillLevel;
     skillText.color = SKILL_COLORS[employee.skillLevel];
-    skillText.fontSize = 11;
+    skillText.fontSize = UI_THEME.typography.scale.s11;
     skillText.height = '16px';
     infoStack.addControl(skillText);
 
     const wageText = new TextBlock('empWage');
     wageText.text = `$${employee.hourlyWage}/hr`;
-    wageText.color = '#ff8844';
-    wageText.fontSize = 12;
+    wageText.color = UI_THEME.colors.legacy.c_ff8844;
+    wageText.fontSize = UI_THEME.typography.scale.s12;
     grid.addControl(wageText, 0, 3);
 
     return row;
   }
 
   private createActionButtons(parent: StackPanel): void {
-    const buttonContainer = new Rectangle('buttonContainer');
-    buttonContainer.height = '45px';
-    buttonContainer.width = '336px';
-    buttonContainer.thickness = 0;
-    buttonContainer.background = 'transparent';
-    buttonContainer.paddingTop = '8px';
-    parent.addControl(buttonContainer);
-
-    const grid = new Grid('buttonGrid');
-    grid.addColumnDefinition(0.5);
-    grid.addColumnDefinition(0.5);
-    buttonContainer.addControl(grid);
-
-    const hireBtn = Button.CreateSimpleButton('hireBtn', '📋 Applications');
-    hireBtn.width = '150px';
-    hireBtn.height = '35px';
-    hireBtn.cornerRadius = 6;
-    hireBtn.background = '#2a7a4a';
-    hireBtn.color = '#88ff88';
-    hireBtn.thickness = 2;
-    hireBtn.fontSize = 14;
-    hireBtn.onPointerClickObservable.add(() => this.showApplicationsView());
-    hireBtn.onPointerEnterObservable.add(() => { hireBtn.background = '#3a9a5a'; });
-    hireBtn.onPointerOutObservable.add(() => { hireBtn.background = '#2a7a4a'; });
-    grid.addControl(hireBtn, 0, 0);
-
-    const fireBtn = Button.CreateSimpleButton('fireBtn', '🚫 Fire');
-    fireBtn.width = '150px';
-    fireBtn.height = '35px';
-    fireBtn.cornerRadius = 6;
-    fireBtn.background = '#7a3a3a';
-    fireBtn.color = '#ff8888';
-    fireBtn.thickness = 2;
-    fireBtn.fontSize = 14;
-    fireBtn.onPointerClickObservable.add(() => {
-      if (this.selectedEmployeeId) {
-        this.callbacks.onFire(this.selectedEmployeeId);
-        this.selectedEmployeeId = null;
-      }
+    const { buttons } = addDialogActionBar(parent, {
+      id: 'employeeMainActions',
+      width: 336,
+      height: 56,
+      theme: 'green',
+      actions: [
+        {
+          id: 'hireBtn',
+          label: '📋 Applications',
+          tone: 'primary',
+          onClick: () => this.showApplicationsView(),
+        },
+        {
+          id: 'fireBtn',
+          label: '🚫 Fire Selected',
+          tone: 'danger',
+          onClick: () => {
+            if (this.selectedEmployeeId) {
+              this.callbacks.onFire(this.selectedEmployeeId);
+              this.selectedEmployeeId = null;
+              this.selectedEmployeeName = null;
+              this.updateMainActionState();
+            }
+          },
+        },
+      ],
     });
-    fireBtn.onPointerEnterObservable.add(() => { fireBtn.background = '#9a4a4a'; });
-    fireBtn.onPointerOutObservable.add(() => { fireBtn.background = '#7a3a3a'; });
-    grid.addControl(fireBtn, 0, 1);
+    this.fireButton = buttons[1] ?? null;
+
+    this.mainActionHintText = new TextBlock('mainActionHint');
+    this.mainActionHintText.color = UI_THEME.colors.legacy.c_97ada0;
+    this.mainActionHintText.fontSize = UI_THEME.typography.scale.s10;
+    this.mainActionHintText.height = '18px';
+    this.mainActionHintText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.mainActionHintText.paddingTop = '4px';
+    parent.addControl(this.mainActionHintText);
+    this.updateMainActionState();
+  }
+
+  private updateMainActionState(): void {
+    const hasSelection = this.selectedEmployeeId !== null;
+    if (this.fireButton) {
+      this.fireButton.isEnabled = hasSelection;
+      this.fireButton.alpha = hasSelection ? 1 : 0.55;
+      this.fireButton.background = hasSelection ? '#7a3a3a' : '#4a3d3d';
+      this.fireButton.color = hasSelection ? '#ff8888' : '#b6a2a2';
+      if (this.fireButton.textBlock) {
+        this.fireButton.textBlock.text = hasSelection ? '🚫 Fire Selected' : '🚫 Select Employee';
+      }
+    }
+    if (this.mainActionHintText) {
+      this.mainActionHintText.text = hasSelection
+        ? `Selected: ${this.selectedEmployeeName ?? 'Employee'}`
+        : 'Tip: click an employee row to enable firing.';
+    }
   }
 
   private createApplicationsView(): void {
-    this.applicationsView = new Rectangle('applicationsView');
-    this.applicationsView.width = '100%';
-    this.applicationsView.height = '100%';
-    this.applicationsView.thickness = 0;
-    this.applicationsView.background = 'transparent';
-    this.applicationsView.isVisible = false;
-    this.panel!.addControl(this.applicationsView);
-
-    const stack = new StackPanel('applicationsStack');
-    stack.width = '336px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.applicationsView.addControl(stack);
-
-    createPopupHeader(stack, {
+    const dialog = renderDialog(this.advancedTexture, {
+      name: 'employeeApplications',
+      shell: 'direct',
+      width: 360,
+      height: 450,
+      padding: 12,
+      colors: POPUP_COLORS.green,
       title: '📋 JOB APPLICATIONS',
-      width: 336,
+      headerWidth: 336,
       onClose: () => this.hideApplicationsView(),
-      closeLabel: '← Back',
+      nodes: [
+        { type: 'custom', id: 'applicationsContent', render: (stack) => this.renderApplicationsContent(stack) },
+      ],
     });
+    this.applicationsPanel = dialog.panel;
+    this.applicationsPanel.isVisible = false;
+  }
+
+  private renderApplicationsContent(stack: StackPanel): void {
 
     // Status info
-    const statusContainer = new Rectangle('statusContainer');
-    statusContainer.height = '60px';
-    statusContainer.width = '336px';
-    statusContainer.cornerRadius = 4;
-    statusContainer.background = 'rgba(30, 60, 45, 0.8)';
-    statusContainer.thickness = 1;
-    statusContainer.color = '#3a5a4a';
-    statusContainer.paddingTop = '8px';
-    stack.addControl(statusContainer);
+    const statusContainer = createPanelSection(stack, {
+      name: 'statusContainer',
+      width: 336,
+      height: 60,
+      theme: 'green',
+      paddingTop: 8,
+    });
 
     const statusStack = new StackPanel('statusStack');
     statusStack.paddingLeft = '12px';
     statusStack.paddingRight = '12px';
     statusContainer.addControl(statusStack);
 
-    const nextAppLabel = new TextBlock('nextAppLabel');
-    nextAppLabel.text = 'Next Application:';
-    nextAppLabel.color = '#888888';
-    nextAppLabel.fontSize = 10;
-    nextAppLabel.height = '14px';
-    nextAppLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    statusStack.addControl(nextAppLabel);
+    addDialogSectionLabel(statusStack, {
+      id: 'nextAppLabel',
+      text: 'Next Application:',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
 
     this.nextApplicationText = new TextBlock('nextApplicationText');
     this.nextApplicationText.text = 'Loading...';
-    this.nextApplicationText.color = '#ffcc00';
-    this.nextApplicationText.fontSize = 14;
+    this.nextApplicationText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.nextApplicationText.fontSize = UI_THEME.typography.scale.s14;
     this.nextApplicationText.height = '18px';
     this.nextApplicationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     statusStack.addControl(this.nextApplicationText);
 
     this.postingCountText = new TextBlock('postingCountText');
     this.postingCountText.text = 'No active job postings';
-    this.postingCountText.color = '#888888';
-    this.postingCountText.fontSize = 10;
+    this.postingCountText.color = UI_THEME.colors.legacy.c_888888;
+    this.postingCountText.fontSize = UI_THEME.typography.scale.s10;
     this.postingCountText.height = '16px';
     this.postingCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     statusStack.addControl(this.postingCountText);
@@ -374,71 +373,71 @@ export class EmployeePanel {
     // Role selection for job posting
     this.createRoleSelectionRow(stack);
 
-    const applicationsListContainer = new Rectangle('applicationsListContainer');
-    applicationsListContainer.height = '215px';
-    applicationsListContainer.width = '336px';
-    applicationsListContainer.cornerRadius = 4;
-    applicationsListContainer.background = 'rgba(15, 35, 25, 0.8)';
-    applicationsListContainer.thickness = 1;
-    applicationsListContainer.color = '#3a5a4a';
-    applicationsListContainer.paddingTop = '8px';
-    stack.addControl(applicationsListContainer);
+    const { content } = addDialogScrollBlock(stack, {
+      id: 'applicationsListContainer',
+      width: 336,
+      height: 215,
+      theme: 'green',
+      paddingTop: 8,
+      scroll: {
+        name: 'applicationsScroll',
+        width: 320,
+        height: 205,
+        contentName: 'applicationsListStack',
+        contentWidth: '100%',
+        options: {
+          barSize: 8,
+          barColor: '#4a8a5a',
+          barBackground: 'rgba(0,0,0,0.3)',
+        },
+      },
+    });
+    this.applicationsContainer = content;
 
-    const scrollViewer = new ScrollViewer('applicationsScroll');
-    scrollViewer.width = '320px';
-    scrollViewer.height = '205px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a8a5a';
-    scrollViewer.barBackground = 'rgba(0,0,0,0.3)';
-    applicationsListContainer.addControl(scrollViewer);
-
-    this.applicationsContainer = new StackPanel('applicationsListStack');
-    this.applicationsContainer.width = '100%';
-    scrollViewer.addControl(this.applicationsContainer);
-
-    this.postJobButton = Button.CreateSimpleButton('postJobBtn', '📢 Post Job Opening ($500)');
-    this.postJobButton.width = '336px';
-    this.postJobButton.height = '35px';
-    this.postJobButton.cornerRadius = 6;
-    this.postJobButton.background = '#3a6a8a';
-    this.postJobButton.color = '#88ccff';
-    this.postJobButton.thickness = 2;
-    this.postJobButton.fontSize = 14;
+    this.postJobButton = createActionButton({
+      id: 'postJobBtn',
+      label: '📢 Post Job Opening ($500)',
+      tone: 'neutral',
+      width: 336,
+      height: 35,
+      fontSize: 14,
+      cornerRadius: 6,
+      thickness: 2,
+      onClick: () => this.callbacks.onPostJobOpening(this.selectedPostingRole),
+    });
+    this.postJobButton.background = UI_THEME.colors.miscButton.blueAction;
+    this.postJobButton.color = UI_THEME.colors.miscButton.blueActionText;
     this.postJobButton.paddingTop = '8px';
-    this.postJobButton.onPointerClickObservable.add(() => this.callbacks.onPostJobOpening(this.selectedPostingRole));
     this.postJobButton.onPointerEnterObservable.add(() => {
       this.postJobButton!.background = this.hasActivePosting ? '#3a6a4a' : '#4a7a9a';
     });
     this.postJobButton.onPointerOutObservable.add(() => {
-      this.postJobButton!.background = this.hasActivePosting ? '#2a5a3a' : '#3a6a8a';
+      this.postJobButton!.background = this.hasActivePosting ? UI_THEME.colors.miscButton.customPlay : UI_THEME.colors.miscButton.blueAction;
     });
     stack.addControl(this.postJobButton);
   }
 
   private createRoleSelectionRow(parent: StackPanel): void {
-    const container = new Rectangle('roleSelectionContainer');
-    container.height = '65px';
-    container.width = '336px';
-    container.cornerRadius = 4;
-    container.background = 'rgba(30, 50, 60, 0.8)';
-    container.thickness = 1;
-    container.color = '#3a5a6a';
-    container.paddingTop = '8px';
-    parent.addControl(container);
+    const container = createPanelSection(parent, {
+      name: 'roleSelectionContainer',
+      width: 336,
+      height: 65,
+      theme: 'blue',
+      paddingTop: 8,
+    });
 
     const innerStack = new StackPanel('roleSelectionStack');
     innerStack.paddingLeft = '8px';
     innerStack.paddingRight = '8px';
     container.addControl(innerStack);
 
-    const label = new TextBlock('roleLabel');
-    label.text = 'Post for role:';
-    label.color = '#aaaaaa';
-    label.fontSize = 10;
-    label.height = '14px';
-    label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    innerStack.addControl(label);
+    addDialogSectionLabel(innerStack, {
+      id: 'roleLabel',
+      text: 'Post for role:',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
 
     const roles = Object.keys(EMPLOYEE_ROLE_INFO) as EmployeeRole[];
 
@@ -448,22 +447,30 @@ export class EmployeePanel {
     roles.forEach(() => buttonRow.addColumnDefinition(1 / roles.length));
     innerStack.addControl(buttonRow);
     roles.forEach((role, index) => {
-      const btn = Button.CreateSimpleButton(`role_${role}`, EMPLOYEE_ROLE_INFO[role].icon);
-      btn.width = '45px';
-      btn.height = '32px';
-      btn.cornerRadius = 4;
-      btn.fontSize = 16;
-      btn.thickness = 2;
+      const btn = createSelectableButton({
+        id: `role_${role}`,
+        label: EMPLOYEE_ROLE_INFO[role].icon,
+        width: 45,
+        height: 32,
+        fontSize: 16,
+        style: {
+          selectedBackground: '#4a8a9a',
+          selectedColor: '#ffffff',
+          unselectedBackground: '#2a4a5a',
+          unselectedColor: '#88aacc',
+          hoverBackground: '#376173',
+        },
+        selected: role === this.selectedPostingRole,
+        onClick: () => this.selectPostingRole(role),
+      });
       this.updateRoleButtonStyle(btn, role === this.selectedPostingRole);
-      btn.onPointerClickObservable.add(() => this.selectPostingRole(role));
       buttonRow.addControl(btn, 0, index);
       this.roleButtons.set(role, btn);
     });
   }
 
   private updateRoleButtonStyle(btn: Button, isSelected: boolean): void {
-    btn.background = isSelected ? '#4a8a9a' : '#2a4a5a';
-    btn.color = isSelected ? '#ffffff' : '#88aacc';
+    setSelectableButtonState(btn, isSelected);
   }
 
   private selectPostingRole(role: EmployeeRole): void {
@@ -481,15 +488,13 @@ export class EmployeePanel {
   }
 
   private createCandidateRow(candidate: Employee): Rectangle {
-    const row = new Rectangle(`cand_${candidate.id}`);
-    row.height = '65px';
-    row.width = '300px';
-    row.cornerRadius = 4;
-    row.background = 'rgba(40, 70, 55, 0.6)';
-    row.thickness = 1;
-    row.color = '#3a5a4a';
-    row.paddingTop = '4px';
-    row.paddingBottom = '4px';
+    const row = createListRowCard({
+      name: `cand_${candidate.id}`,
+      width: 300,
+      height: 65,
+      background: 'rgba(40, 70, 55, 0.6)',
+      borderColor: UI_THEME.colors.editor.buttonBorder,
+    });
 
     row.onPointerEnterObservable.add(() => {
       row.background = 'rgba(50, 90, 70, 0.7)';
@@ -507,7 +512,7 @@ export class EmployeePanel {
 
     const icon = new TextBlock('candIcon');
     icon.text = EMPLOYEE_ROLE_INFO[candidate.role].icon;
-    icon.fontSize = 18;
+    icon.fontSize = UI_THEME.typography.scale.s18;
     grid.addControl(icon, 0, 0);
 
     const infoStack = new StackPanel('candInfo');
@@ -516,16 +521,16 @@ export class EmployeePanel {
 
     const nameText = new TextBlock('candName');
     nameText.text = candidate.name;
-    nameText.color = '#ffffff';
-    nameText.fontSize = 12;
+    nameText.color = UI_THEME.colors.legacy.c_ffffff;
+    nameText.fontSize = UI_THEME.typography.scale.s12;
     nameText.height = '16px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
 
     const roleText = new TextBlock('candRole');
     roleText.text = EMPLOYEE_ROLE_INFO[candidate.role].name;
-    roleText.color = '#aaaaaa';
-    roleText.fontSize = 10;
+    roleText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    roleText.fontSize = UI_THEME.typography.scale.s10;
     roleText.height = '14px';
     roleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(roleText);
@@ -533,44 +538,42 @@ export class EmployeePanel {
     const skillText = new TextBlock('candSkill');
     skillText.text = candidate.skillLevel;
     skillText.color = SKILL_COLORS[candidate.skillLevel];
-    skillText.fontSize = 10;
+    skillText.fontSize = UI_THEME.typography.scale.s10;
     skillText.height = '14px';
     skillText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(skillText);
 
     const wageText = new TextBlock('candWage');
     wageText.text = `$${candidate.hourlyWage}/hr`;
-    wageText.color = '#ff8844';
-    wageText.fontSize = 11;
+    wageText.color = UI_THEME.colors.legacy.c_ff8844;
+    wageText.fontSize = UI_THEME.typography.scale.s11;
     grid.addControl(wageText, 0, 2);
 
-    const hireBtn = Button.CreateSimpleButton(`hire_${candidate.id}`, 'Hire');
-    hireBtn.width = '55px';
-    hireBtn.height = '28px';
-    hireBtn.cornerRadius = 4;
-    hireBtn.background = '#2a7a4a';
-    hireBtn.color = '#88ff88';
-    hireBtn.thickness = 1;
-    hireBtn.fontSize = 11;
-    hireBtn.onPointerClickObservable.add(() => {
-      this.callbacks.onHire(candidate);
-      this.hideApplicationsView();
+    const hireBtn = createActionButton({
+      id: `hire_${candidate.id}`,
+      label: 'Hire',
+      tone: 'primary',
+      width: 55,
+      height: 28,
+      fontSize: 11,
+      onClick: () => {
+        this.callbacks.onHire(candidate);
+        this.hideApplicationsView();
+      },
     });
-    hireBtn.onPointerEnterObservable.add(() => { hireBtn.background = '#3a9a5a'; });
-    hireBtn.onPointerOutObservable.add(() => { hireBtn.background = '#2a7a4a'; });
     grid.addControl(hireBtn, 0, 3);
 
     return row;
   }
 
   private showApplicationsView(): void {
-    this.mainView!.isVisible = false;
-    this.applicationsView!.isVisible = true;
+    if (this.panel) this.panel.isVisible = false;
+    if (this.applicationsPanel) this.applicationsPanel.isVisible = true;
   }
 
   private hideApplicationsView(): void {
-    this.mainView!.isVisible = true;
-    this.applicationsView!.isVisible = false;
+    if (this.panel) this.panel.isVisible = true;
+    if (this.applicationsPanel) this.applicationsPanel.isVisible = false;
   }
 
   private refreshEmployeeList(): void {
@@ -590,6 +593,16 @@ export class EmployeePanel {
       this.employeeListContainer.removeControl(child);
     }
 
+    if (this.selectedEmployeeId) {
+      const selected = roster.employees.find((employee) => employee.id === this.selectedEmployeeId);
+      if (!selected) {
+        this.selectedEmployeeId = null;
+        this.selectedEmployeeName = null;
+      } else {
+        this.selectedEmployeeName = selected.name;
+      }
+    }
+
     for (const employee of roster.employees) {
       const row = this.createEmployeeRow(employee);
       this.employeeListContainer.addControl(row);
@@ -598,8 +611,8 @@ export class EmployeePanel {
     if (roster.employees.length === 0) {
       const emptyText = new TextBlock('emptyText');
       emptyText.text = 'No employees hired yet.\nClick "Hire" to browse candidates.';
-      emptyText.color = '#888888';
-      emptyText.fontSize = 12;
+      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.fontSize = UI_THEME.typography.scale.s12;
       emptyText.height = '60px';
       emptyText.textWrapping = true;
       this.employeeListContainer.addControl(emptyText);
@@ -609,6 +622,7 @@ export class EmployeePanel {
 
     const hourlyPayroll = roster.employees.reduce((sum, e) => sum + e.hourlyWage, 0);
     this.payrollText.text = `$${hourlyPayroll}/hr`;
+    this.updateMainActionState();
   }
 
   public updateApplications(state: ApplicationState, prestigeTier: PrestigeTier, currentGameTime: number): void {
@@ -633,10 +647,10 @@ export class EmployeePanel {
 
     if (postingCount === 0) {
       this.postingCountText!.text = 'No active job postings';
-      this.postingCountText!.color = '#888888';
+      this.postingCountText!.color = UI_THEME.colors.legacy.c_888888;
       this.updatePostJobButtonText();
-      this.postJobButton!.background = '#3a6a8a';
-      this.postJobButton!.color = '#88ccff';
+      this.postJobButton!.background = UI_THEME.colors.miscButton.blueAction;
+      this.postJobButton!.color = UI_THEME.colors.miscButton.blueActionText;
       this.postJobButton!.isEnabled = true;
     } else {
       const posting = state.activeJobPostings[0];
@@ -647,10 +661,10 @@ export class EmployeePanel {
         ? `${expiresInHours.toFixed(1)}h left`
         : `${Math.ceil(expiresInMinutes)}m left`;
       this.postingCountText!.text = `✓ Hiring ${roleInfo.name} (${expiresText})`;
-      this.postingCountText!.color = '#44ff44';
+      this.postingCountText!.color = UI_THEME.colors.legacy.c_44ff44;
       this.postJobButton!.textBlock!.text = `⏳ ${roleInfo.icon} Posting Active`;
-      this.postJobButton!.background = '#444444';
-      this.postJobButton!.color = '#888888';
+      this.postJobButton!.background = UI_THEME.colors.legacy.c_444444;
+      this.postJobButton!.color = UI_THEME.colors.legacy.c_888888;
       this.postJobButton!.isEnabled = false;
     }
 
@@ -669,8 +683,8 @@ export class EmployeePanel {
       const emptyText = new TextBlock('emptyApplicationsText');
       const tierName = prestigeTier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
       emptyText.text = `No applications yet.\n\n${tierName} courses receive applications every ${config.applicationRate} hours.\n\nPost a job opening to speed up the process!`;
-      emptyText.color = '#888888';
-      emptyText.fontSize = 11;
+      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.fontSize = UI_THEME.typography.scale.s11;
       emptyText.height = '100px';
       emptyText.textWrapping = true;
       emptyText.lineSpacing = '3px';
@@ -681,8 +695,8 @@ export class EmployeePanel {
   public show(): void {
     if (this.panel) {
       this.panel.isVisible = true;
-      this.mainView!.isVisible = true;
-      this.applicationsView!.isVisible = false;
+      if (this.applicationsPanel) this.applicationsPanel.isVisible = false;
+      this.updateMainActionState();
     }
   }
 
@@ -690,10 +704,13 @@ export class EmployeePanel {
     if (this.panel) {
       this.panel.isVisible = false;
     }
+    if (this.applicationsPanel) {
+      this.applicationsPanel.isVisible = false;
+    }
   }
 
   public isVisible(): boolean {
-    return this.panel?.isVisible ?? false;
+    return (this.panel?.isVisible ?? false) || (this.applicationsPanel?.isVisible ?? false);
   }
 
   public toggle(): void {
@@ -707,6 +724,9 @@ export class EmployeePanel {
   public dispose(): void {
     if (this.panel) {
       this.advancedTexture.removeControl(this.panel);
+    }
+    if (this.applicationsPanel) {
+      this.advancedTexture.removeControl(this.applicationsPanel);
     }
   }
 }

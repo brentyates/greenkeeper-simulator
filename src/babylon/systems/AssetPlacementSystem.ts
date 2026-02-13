@@ -6,6 +6,10 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { loadAsset, createInstance, disposeInstance, AssetInstance } from '../assets/AssetLoader';
 import { AssetId, getAssetSpec } from '../assets/AssetManifest';
 import { PlacedAsset } from '../../data/customCourseData';
+import {
+  createHoleFeatureAssignment,
+  getMaxAssignedHoleNumber,
+} from '../../core/hole-construction';
 
 interface PlacedAssetEntry {
   data: PlacedAsset;
@@ -15,6 +19,7 @@ interface PlacedAssetEntry {
 export interface AssetPlacementCallbacks {
   onSelect?: (asset: PlacedAsset | null) => void;
   onPlace?: (asset: PlacedAsset) => void;
+  onHoleNumberChange?: (holeNumber: number) => void;
   getTerrainElevation?: (worldX: number, worldZ: number) => number;
 }
 
@@ -28,6 +33,7 @@ export class AssetPlacementSystem {
   private ghostMesh: Mesh | null = null;
   private ghostMaterial: StandardMaterial | null = null;
   private nextId = 0;
+  private activeHoleNumber = 1;
 
   constructor(scene: Scene, callbacks: AssetPlacementCallbacks = {}) {
     this.scene = scene;
@@ -55,6 +61,17 @@ export class AssetPlacementSystem {
     return this.placeAssetId;
   }
 
+  public getActiveHoleNumber(): number {
+    return this.activeHoleNumber;
+  }
+
+  public setActiveHoleNumber(holeNumber: number): void {
+    const normalized = Math.max(1, Math.floor(holeNumber));
+    if (normalized === this.activeHoleNumber) return;
+    this.activeHoleNumber = normalized;
+    this.callbacks.onHoleNumberChange?.(this.activeHoleNumber);
+  }
+
   public async handleClick(worldX: number, worldZ: number): Promise<void> {
     if (this.placeMode && this.placeAssetId) {
       await this.placeAsset(worldX, worldZ);
@@ -71,12 +88,17 @@ export class AssetPlacementSystem {
 
   public async placeAsset(worldX: number, worldZ: number): Promise<void> {
     const y = this.getElevation(worldX, worldZ);
+    const holeFeature = createHoleFeatureAssignment(
+      this.placeAssetId,
+      this.activeHoleNumber
+    );
     const asset: PlacedAsset = {
       assetId: this.placeAssetId,
       x: worldX,
       y,
       z: worldZ,
       rotation: 0,
+      gameplay: holeFeature ? { holeFeature } : undefined,
     };
 
     const instance = await this.loadAndPlace(asset);
@@ -143,7 +165,7 @@ export class AssetPlacementSystem {
   }
 
   public getPlacedAssets(): PlacedAsset[] {
-    return this.placed.map(e => ({ ...e.data }));
+    return this.placed.map((e) => this.cloneAsset(e.data));
   }
 
   public async loadPlacedAssets(assets: PlacedAsset[]): Promise<void> {
@@ -156,9 +178,14 @@ export class AssetPlacementSystem {
     for (const asset of assets) {
       const instance = await this.loadAndPlace(asset);
       if (instance) {
-        this.placed.push({ data: { ...asset }, instance });
+        this.placed.push({ data: this.cloneAsset(asset), instance });
       }
     }
+
+    const maxAssignedHole = getMaxAssignedHoleNumber(
+      this.placed.map((entry) => entry.data)
+    );
+    this.setActiveHoleNumber(maxAssignedHole + 1);
   }
 
   public dispose(): void {
@@ -173,7 +200,7 @@ export class AssetPlacementSystem {
   private setSelected(index: number): void {
     this.selectedIndex = index;
     const asset = index >= 0 ? this.placed[index].data : null;
-    this.callbacks.onSelect?.(asset);
+    this.callbacks.onSelect?.(asset ? this.cloneAsset(asset) : null);
   }
 
   private async loadAndPlace(asset: PlacedAsset): Promise<AssetInstance | null> {
@@ -229,5 +256,17 @@ export class AssetPlacementSystem {
       return this.callbacks.getTerrainElevation(worldX, worldZ);
     }
     return 0;
+  }
+
+  private cloneAsset(asset: PlacedAsset): PlacedAsset {
+    return {
+      ...asset,
+      gameplay: asset.gameplay ? {
+        ...asset.gameplay,
+        holeFeature: asset.gameplay.holeFeature
+          ? { ...asset.gameplay.holeFeature }
+          : undefined,
+      } : undefined,
+    };
   }
 }

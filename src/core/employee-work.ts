@@ -5,9 +5,13 @@ import {
   GridPosition,
   MOVE_SPEED,
   createEmployeeEntity,
-  moveEmployeeToward,
+  moveEmployeeTowardWithNavigation,
 } from './movable-entity';
 import { isGrassTerrain, getTerrainType } from './terrain';
+import {
+  isExtremeNeed,
+  scoreNeedWithDistance,
+} from './work-priority';
 import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainSystemInterface';
 
 export type { EmployeeTask } from './movable-entity';
@@ -101,6 +105,8 @@ export const WORK_THRESHOLDS = {
   fertilizeCritical: 20,
   fertilizeStandard: 30,
 };
+
+const TASK_ORDER_BONUS_STEP = 6;
 
 export function createInitialWorkSystemState(
   maintenanceShedX: number = 0,
@@ -251,7 +257,13 @@ export function findBestWorkTarget(
   const candidates = terrainSystem.findWorkCandidates(currentWorldX, currentWorldZ, maxDistance);
 
   let bestTarget: WorkTarget | null = null;
-  let bestScore = -1;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestNeed = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  let bestExtremeTarget: WorkTarget | null = null;
+  let bestExtremeNeed = 0;
+  let bestExtremeDistance = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
     if (candidate.faceCount === 0) continue;
@@ -268,18 +280,50 @@ export function findBestWorkTarget(
         const dx = candidate.worldX - currentWorldX;
         const dz = candidate.worldZ - currentWorldZ;
         const distance = Math.abs(dx) + Math.abs(dz);
-        const isCritical = need > 50;
-        const priorityBonus = isCritical ? 5000 : (priorities.length - priorityIndex) * 100;
-        const score = priorityBonus + need * 10 - distance;
 
-        if (score > bestScore) {
+        if (isExtremeNeed(need)) {
+          if (
+            !bestExtremeTarget ||
+            need > bestExtremeNeed ||
+            (need === bestExtremeNeed && distance < bestExtremeDistance)
+          ) {
+            bestExtremeNeed = need;
+            bestExtremeDistance = distance;
+            bestExtremeTarget = {
+              worldX: candidate.worldX,
+              worldZ: candidate.worldZ,
+              task,
+              priority: need,
+            };
+          }
+          continue;
+        }
+
+        const taskOrderBonus = (priorities.length - priorityIndex) * TASK_ORDER_BONUS_STEP;
+        const score = scoreNeedWithDistance(need, distance, taskOrderBonus);
+
+        if (
+          score > bestScore ||
+          (score === bestScore && need > bestNeed) ||
+          (score === bestScore && need === bestNeed && distance < bestDistance)
+        ) {
           bestScore = score;
-          bestTarget = { worldX: candidate.worldX, worldZ: candidate.worldZ, task, priority: need };
+          bestNeed = need;
+          bestDistance = distance;
+          bestTarget = {
+            worldX: candidate.worldX,
+            worldZ: candidate.worldZ,
+            task,
+            priority: need,
+          };
         }
       }
     }
   }
 
+  if (bestExtremeTarget) {
+    return bestExtremeTarget;
+  }
   return bestTarget;
 }
 
@@ -435,7 +479,29 @@ export function tickEmployeeWork(
 
       const moveSpeed = MOVE_SPEED;
       const distanceThisFrame = moveSpeed * deltaMinutes;
-      const moved = moveEmployeeToward(worker, wpX, wpZ, distanceThisFrame);
+      const moveResult = moveEmployeeTowardWithNavigation(
+        worker,
+        wpX,
+        wpZ,
+        distanceThisFrame,
+        (_worker, worldX, worldZ) => terrainSystem.isPositionWalkable(worldX, worldZ)
+      );
+      const moved = moveResult.entity;
+
+      if (moveResult.blocked) {
+        if (worker.targetX !== null && worker.targetZ !== null) {
+          claimedTargets.delete(`${Math.floor(worker.targetX)},${Math.floor(worker.targetZ)}`);
+        }
+        return {
+          ...worker,
+          currentTask: 'idle' as EmployeeTask,
+          path: [],
+          moveProgress: 0,
+          targetX: null,
+          targetZ: null,
+          workProgress: 0,
+        };
+      }
 
       if (isAtTarget(moved as EmployeeWorkState, wpX, wpZ)) {
         const newPath = worker.path.slice(1);

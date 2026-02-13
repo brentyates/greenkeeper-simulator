@@ -21,11 +21,28 @@ generators/
       generate.py
       README.md
 
-  shrub/                # Shrub assets (TODO)
-  equipment/            # Equipment assets (TODO)
-  character/            # Character assets (TODO)
-  building/             # Building assets (TODO)
-  prop/                 # Prop assets (TODO)
+  character/            # Character assets
+    greenkeeper/
+    employee/
+
+  equipment/            # Handheld equipment assets
+    mower_push/
+    spreader/
+    sprinkler_handheld/
+    rake/
+
+  vehicle/              # Vehicle assets (including robot visuals)
+    mower_riding/
+    mower_fairway/
+    mower_greens/
+    sprayer/
+    tractor/
+
+  course/               # Course feature assets
+    bunker_rake/
+
+  building/             # Building assets
+    refill_station/
 ```
 
 ## Quick Start
@@ -35,6 +52,14 @@ generators/
 ```bash
 # Generate medium pine tree
 blender --background --python tools/blender/generators/tree/pine_medium/generate.py
+
+# Generate all robot-visible assets
+blender --background --python tools/blender/generators/vehicle/mower_riding/generate.py
+blender --background --python tools/blender/generators/vehicle/mower_fairway/generate.py
+blender --background --python tools/blender/generators/vehicle/mower_greens/generate.py
+blender --background --python tools/blender/generators/vehicle/sprayer/generate.py
+blender --background --python tools/blender/generators/vehicle/tractor/generate.py
+blender --background --python tools/blender/generators/course/bunker_rake/generate.py
 ```
 
 ### Create a new generator
@@ -103,5 +128,6 @@ All generators automatically validate against specs in `AssetManifest.ts`:
 - Height range check
 - Footprint check
 - Origin placement check
+- Output path check (derived from manifest `path`)
 
 Use `force=True` in `export_asset()` during development to bypass validation.

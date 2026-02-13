@@ -27,6 +27,20 @@ declare global {
     getPrestigeState: () => { score: number; stars: number; tier: string; amenityScore: number } | null;
     purchaseAmenity: (upgradeType: string) => boolean;
     getTeeTimeStats: () => { totalBookings: number; cancellations: number; noShows: number; slotsAvailable: number } | null;
+    getCourseHoleSummary: () => {
+      totalHoles: number;
+      playableHoles: number;
+      totalTeeBoxes: number;
+      totalPinPositions: number;
+      coursePar: number;
+    } | null;
+    getCourseHoles: () => Array<{
+      holeNumber: number;
+      playable: boolean;
+      teeBoxes: number;
+      pinPositions: number;
+      yardages: Record<string, number>;
+    }>;
     getMarketingStats: () => { activeCampaigns: number; totalSpent: number; totalROI: number } | null;
     startMarketingCampaign: (campaignId: string, days?: number) => boolean;
     setCash: (amount: number) => void;
@@ -193,20 +207,35 @@ class GameApp {
   private showCourseSetupDialog(): void {
     if (!this.menuTexture) return;
 
-    this.setupDialog = new CourseSetupDialog(this.menuTexture, {
-      onCreate: (result: CourseSetupResult) => {
-        this.setupDialog?.dispose();
+    // Ensure only one setup dialog instance exists at a time.
+    if (this.setupDialog) {
+      this.setupDialog.dispose();
+      this.setupDialog = null;
+    }
+
+    let dialog: CourseSetupDialog | null = null;
+    const closeDialog = (): void => {
+      if (!dialog) return;
+      dialog.dispose();
+      if (this.setupDialog === dialog) {
         this.setupDialog = null;
+      }
+      dialog = null;
+    };
+
+    dialog = new CourseSetupDialog(this.menuTexture, {
+      onCreate: (result: CourseSetupResult) => {
+        closeDialog();
         this.startDesigner({
           blank: { width: result.width, height: result.height, name: result.name },
           templateCourseId: result.templateCourseId,
         });
       },
       onCancel: () => {
-        this.setupDialog?.dispose();
-        this.setupDialog = null;
+        closeDialog();
       },
     });
+    this.setupDialog = dialog;
   }
 
   public startDesigner(options: CourseDesignerOptions): void {
@@ -387,6 +416,24 @@ window.getTeeTimeStats = () => {
     return window.game.getTeeTimeStats();
   }
   return null;
+};
+
+window.getCourseHoleSummary = () => {
+  if (window.game) {
+    return window.game.getCourseHoleSummary();
+  }
+  return null;
+};
+
+window.getCourseHoles = () => {
+  if (!window.game) return [];
+  return window.game.getCourseHoles().map((hole) => ({
+    holeNumber: hole.holeNumber,
+    playable: hole.playable,
+    teeBoxes: hole.teeBoxes.length,
+    pinPositions: hole.pinPositions.length,
+    yardages: hole.yardages,
+  }));
 };
 
 window.getMarketingStats = () => {

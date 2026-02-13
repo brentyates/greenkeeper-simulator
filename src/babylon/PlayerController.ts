@@ -14,6 +14,7 @@ import {
   disposeEntityMesh,
 } from "./systems/EntityVisualSystem";
 import { EquipmentType, EquipmentState } from "../core/equipment-logic";
+import { advanceTowardPoint } from "../core/navigation";
 
 export interface TerrainProvider {
   getElevationAt(x: number, y: number, defaultForOutOfBounds?: number): number;
@@ -59,6 +60,16 @@ export class PlayerController {
   private cameraFollowPlayer: boolean = true;
   private lastEquipmentFaceId: number | null = null;
   private clickToMoveWaypoints: Array<{ x: number; z: number }> = [];
+  private static readonly PLAYER_DETOUR_ANGLES_DEGREES: readonly number[] = [
+    0,
+    -45,
+    45,
+    -90,
+    90,
+    -135,
+    135,
+    180,
+  ];
 
   private scene: Scene;
   private terrain: TerrainProvider;
@@ -218,16 +229,10 @@ export class PlayerController {
       const delta = speed * (clampedDelta / 1000);
       const targetX = this.player.worldX + ndx * delta;
       const targetZ = this.player.worldZ + ndz * delta;
-
-      if (this.terrain.isPositionWalkable(targetX, targetZ)) {
-        this.movePlayerTo(targetX, targetZ);
-      } else if (this.terrain.isPositionWalkable(targetX, this.player.worldZ)) {
-        this.movePlayerTo(targetX, this.player.worldZ);
-      } else if (this.terrain.isPositionWalkable(this.player.worldX, targetZ)) {
-        this.movePlayerTo(this.player.worldX, targetZ);
-      }
-
-      this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
+      const movement = this.movePlayerToward(targetX, targetZ, delta);
+      this.playerVisual.facingAngle = movement.moved
+        ? Math.atan2(movement.movedDX, movement.movedDZ)
+        : Math.atan2(ndx, ndz);
       this.playerVisual.isAnimating = true;
     } else if (this.clickToMoveWaypoints.length > 0) {
       const wp = this.clickToMoveWaypoints[0];
@@ -245,14 +250,15 @@ export class PlayerController {
         const delta = Math.min(speed * (clampedDelta / 1000), dist);
         const targetX = this.player.worldX + ndx * delta;
         const targetZ = this.player.worldZ + ndz * delta;
+        const movement = this.movePlayerToward(targetX, targetZ, delta);
 
-        if (this.terrain.isPositionWalkable(targetX, targetZ)) {
-          this.movePlayerTo(targetX, targetZ);
-        } else {
+        if (movement.blocked) {
           this.clickToMoveWaypoints = [];
         }
 
-        this.playerVisual.facingAngle = Math.atan2(ndx, ndz);
+        this.playerVisual.facingAngle = movement.moved
+          ? Math.atan2(movement.movedDX, movement.movedDZ)
+          : Math.atan2(ndx, ndz);
         this.playerVisual.isAnimating = true;
       }
     } else {
@@ -297,8 +303,7 @@ export class PlayerController {
       return;
     }
 
-    const targetType = this.terrain.getTerrainTypeAt(gridPos.x + 0.5, gridPos.y + 0.5);
-    if (!targetType || targetType === "water") return;
+    if (!this.canTraversePlayerPosition(gridPos.x + 0.5, gridPos.y + 0.5)) return;
 
     if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
       return;
@@ -408,9 +413,7 @@ export class PlayerController {
           continue;
         if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
 
-        const neighborType = this.terrain.getTerrainTypeAt(neighbor.x + 0.5, neighbor.y + 0.5);
-        if (!neighborType || neighborType === "water") continue;
-        if (!this.terrain.isPositionWalkable(neighbor.x + 0.5, neighbor.y + 0.5)) continue;
+        if (!this.canTraversePlayerPosition(neighbor.x + 0.5, neighbor.y + 0.5)) continue;
 
         const g = current.g + 1;
         const h = heuristic(neighbor.x, neighbor.y);
@@ -481,6 +484,37 @@ export class PlayerController {
     }
   }
 
+  private movePlayerToward(
+    targetX: number,
+    targetZ: number,
+    maxDistance: number
+  ): { moved: boolean; blocked: boolean; movedDX: number; movedDZ: number } {
+    const startX = this.player.worldX;
+    const startZ = this.player.worldZ;
+
+    const movement = advanceTowardPoint(
+      this.player,
+      startX,
+      startZ,
+      targetX,
+      targetZ,
+      maxDistance,
+      (_player, worldX, worldZ) => this.canTraversePlayerPosition(worldX, worldZ),
+      { detourAnglesDegrees: PlayerController.PLAYER_DETOUR_ANGLES_DEGREES }
+    );
+
+    if (movement.moved) {
+      this.movePlayerTo(movement.worldX, movement.worldZ);
+    }
+
+    return {
+      moved: movement.moved,
+      blocked: movement.blocked,
+      movedDX: this.player.worldX - startX,
+      movedDZ: this.player.worldZ - startZ,
+    };
+  }
+
   private raycastToGround(
     canvasX: number,
     canvasY: number
@@ -511,5 +545,24 @@ export class PlayerController {
     }
 
     return { x: gridX, y: gridY };
+  }
+
+  private canTraversePlayerPosition(worldX: number, worldZ: number): boolean {
+    const dims = this.terrain.getWorldDimensions();
+    if (
+      worldX < 0 ||
+      worldX >= dims.width ||
+      worldZ < 0 ||
+      worldZ >= dims.height
+    ) {
+      return false;
+    }
+
+    const terrainType = this.terrain.getTerrainTypeAt(worldX, worldZ);
+    if (!terrainType || terrainType === "water") {
+      return false;
+    }
+
+    return this.terrain.isPositionWalkable(worldX, worldZ);
   }
 }

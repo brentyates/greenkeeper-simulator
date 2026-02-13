@@ -3,11 +3,11 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
-import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
-import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
-import { createOverlayPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { createActionButton, createListRowCard, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogScrollBlock } from './DialogBlueprint';
 import { WalkOnState, WalkOnGolfer } from '../../core/walk-ons';
+import { UI_THEME } from './UITheme';
 
 export interface WalkOnQueuePanelCallbacks {
   onAssignToSlot: (golferId: string) => void;
@@ -52,78 +52,70 @@ export class WalkOnQueuePanel {
   }
 
   private createMetricsSection(parent: StackPanel): void {
-    const metricsContainer = new Rectangle('metricsContainer');
-    metricsContainer.height = '70px';
-    metricsContainer.width = '420px';
-    metricsContainer.cornerRadius = 6;
-    metricsContainer.background = 'rgba(30, 60, 45, 0.7)';
-    metricsContainer.thickness = 1;
-    metricsContainer.color = '#3a5a4a';
-    metricsContainer.paddingTop = '5px';
-    parent.addControl(metricsContainer);
+    const metricsContainer = createPanelSection(parent, {
+      name: 'metricsContainer',
+      width: 420,
+      height: 70,
+      theme: 'green',
+      paddingTop: 5,
+    });
 
     this.metricsText = new TextBlock('metricsText');
     this.metricsText.text = 'Loading...';
-    this.metricsText.color = '#aaaaaa';
-    this.metricsText.fontSize = 12;
+    this.metricsText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.metricsText.fontSize = UI_THEME.typography.scale.s12;
     this.metricsText.textWrapping = true;
     metricsContainer.addControl(this.metricsText);
   }
 
   private createQueueList(parent: StackPanel): void {
-    const listContainer = new Rectangle('listContainer');
-    listContainer.height = '320px';
-    listContainer.width = '420px';
-    listContainer.cornerRadius = 6;
-    listContainer.background = 'rgba(20, 40, 30, 0.5)';
-    listContainer.thickness = 1;
-    listContainer.color = '#3a5a4a';
-    listContainer.paddingTop = '8px';
-    parent.addControl(listContainer);
-
-    const scrollViewer = new ScrollViewer('queueScroll');
-    scrollViewer.width = '410px';
-    scrollViewer.height = '310px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 10;
-    scrollViewer.barColor = '#4a8a5a';
-    listContainer.addControl(scrollViewer);
-
-    this.queueList = new StackPanel('queueList');
-    this.queueList.width = '390px';
-    scrollViewer.addControl(this.queueList);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'listContainer',
+      width: 420,
+      height: 320,
+      theme: 'green',
+      paddingTop: 8,
+      scroll: {
+        name: 'queueScroll',
+        width: 410,
+        height: 310,
+        contentName: 'queueList',
+        contentWidth: '390px',
+        options: {
+          barSize: 10,
+          barColor: '#4a8a5a',
+        },
+      },
+    });
+    this.queueList = content;
   }
 
   private createFooter(parent: StackPanel): void {
     const footer = new TextBlock('footer');
     footer.text = 'Golfers waiting for available tee times';
-    footer.color = '#666666';
-    footer.fontSize = 11;
+    footer.color = UI_THEME.colors.legacy.c_666666;
+    footer.fontSize = UI_THEME.typography.scale.s11;
     footer.height = '30px';
     footer.paddingTop = '8px';
     parent.addControl(footer);
   }
 
   private createGolferRow(golfer: WalkOnGolfer): Rectangle {
-    const row = new Rectangle(`row_${golfer.golferId}`);
-    row.height = '55px';
-    row.width = '380px';
-    row.cornerRadius = 4;
-    row.thickness = 1;
-    row.paddingTop = '3px';
-    row.paddingBottom = '3px';
-
     const waitLevel = golfer.waitedMinutes / golfer.waitTolerance;
-    if (waitLevel >= 0.8) {
-      row.background = 'rgba(100, 50, 50, 0.6)';
-      row.color = '#cc6666';
-    } else if (waitLevel >= 0.5) {
-      row.background = 'rgba(100, 80, 40, 0.6)';
-      row.color = '#ccaa44';
-    } else {
-      row.background = 'rgba(40, 80, 50, 0.5)';
-      row.color = '#4a8a5a';
-    }
+    const rowColors = waitLevel >= 0.8
+      ? { background: 'rgba(100, 50, 50, 0.6)', borderColor: '#cc6666' }
+      : waitLevel >= 0.5
+      ? { background: 'rgba(100, 80, 40, 0.6)', borderColor: '#ccaa44' }
+      : { background: 'rgba(40, 80, 50, 0.5)', borderColor: '#4a8a5a' };
+    const row = createListRowCard({
+      name: `row_${golfer.golferId}`,
+      width: 380,
+      height: 55,
+      background: rowColors.background,
+      borderColor: rowColors.borderColor,
+      paddingTop: 3,
+      paddingBottom: 3,
+    });
 
     const grid = new Grid('rowGrid');
     grid.addColumnDefinition(0.5);
@@ -139,8 +131,8 @@ export class WalkOnQueuePanel {
 
     const nameText = new TextBlock('name');
     nameText.text = golfer.name;
-    nameText.color = '#ffffff';
-    nameText.fontSize = 13;
+    nameText.color = UI_THEME.colors.legacy.c_ffffff;
+    nameText.fontSize = UI_THEME.typography.scale.s13;
     nameText.fontWeight = 'bold';
     nameText.height = '20px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -148,8 +140,8 @@ export class WalkOnQueuePanel {
 
     const detailText = new TextBlock('detail');
     detailText.text = `Group: ${golfer.desiredGroupSize} | ${golfer.membershipStatus}`;
-    detailText.color = '#888888';
-    detailText.fontSize = 10;
+    detailText.color = UI_THEME.colors.legacy.c_888888;
+    detailText.fontSize = UI_THEME.typography.scale.s10;
     detailText.height = '16px';
     detailText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(detailText);
@@ -161,14 +153,14 @@ export class WalkOnQueuePanel {
     const waitText = new TextBlock('wait');
     waitText.text = `${golfer.waitedMinutes}m waited`;
     waitText.color = waitLevel >= 0.8 ? '#ff8888' : waitLevel >= 0.5 ? '#ffaa44' : '#88ff88';
-    waitText.fontSize = 12;
+    waitText.fontSize = UI_THEME.typography.scale.s12;
     waitText.height = '20px';
     waitStack.addControl(waitText);
 
     const toleranceText = new TextBlock('tolerance');
     toleranceText.text = `Max: ${golfer.waitTolerance}m`;
-    toleranceText.color = '#666666';
-    toleranceText.fontSize = 10;
+    toleranceText.color = UI_THEME.colors.legacy.c_666666;
+    toleranceText.fontSize = UI_THEME.typography.scale.s10;
     toleranceText.height = '16px';
     waitStack.addControl(toleranceText);
 
@@ -177,27 +169,29 @@ export class WalkOnQueuePanel {
       actionStack.isVertical = false;
       grid.addControl(actionStack, 0, 2);
 
-      const assignBtn = Button.CreateSimpleButton('assign', '✓');
-      assignBtn.width = '35px';
-      assignBtn.height = '28px';
-      assignBtn.cornerRadius = 3;
-      assignBtn.background = '#2a6a4a';
-      assignBtn.color = '#88ff88';
-      assignBtn.thickness = 1;
-      assignBtn.fontSize = 14;
-      assignBtn.onPointerClickObservable.add(() => this.callbacks.onAssignToSlot(golfer.golferId));
+      const assignBtn = createActionButton({
+        id: 'assign',
+        label: '✓',
+        tone: 'success',
+        width: 35,
+        height: 28,
+        fontSize: 14,
+        cornerRadius: 3,
+        onClick: () => this.callbacks.onAssignToSlot(golfer.golferId),
+      });
       actionStack.addControl(assignBtn);
 
-      const turnAwayBtn = Button.CreateSimpleButton('turnAway', '✕');
-      turnAwayBtn.width = '35px';
-      turnAwayBtn.height = '28px';
-      turnAwayBtn.cornerRadius = 3;
-      turnAwayBtn.background = '#6a3a3a';
-      turnAwayBtn.color = '#ff8888';
-      turnAwayBtn.thickness = 1;
-      turnAwayBtn.fontSize = 14;
+      const turnAwayBtn = createActionButton({
+        id: 'turnAway',
+        label: '✕',
+        tone: 'danger',
+        width: 35,
+        height: 28,
+        fontSize: 14,
+        cornerRadius: 3,
+        onClick: () => this.callbacks.onTurnAway(golfer.golferId),
+      });
       turnAwayBtn.paddingLeft = '3px';
-      turnAwayBtn.onPointerClickObservable.add(() => this.callbacks.onTurnAway(golfer.golferId));
       actionStack.addControl(turnAwayBtn);
     }
 
@@ -229,8 +223,8 @@ export class WalkOnQueuePanel {
       if (waitingGolfers.length === 0) {
         const emptyText = new TextBlock('empty');
         emptyText.text = 'No golfers waiting';
-        emptyText.color = '#666666';
-        emptyText.fontSize = 14;
+        emptyText.color = UI_THEME.colors.legacy.c_666666;
+        emptyText.fontSize = UI_THEME.typography.scale.s14;
         emptyText.height = '40px';
         this.queueList.addControl(emptyText);
       }

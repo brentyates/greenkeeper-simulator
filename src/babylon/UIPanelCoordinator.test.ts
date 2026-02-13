@@ -64,10 +64,19 @@ const mockWalkOnQueuePanel = {
   dispose: vi.fn(),
 };
 
+const mockCourseLayoutPanel = {
+  update: vi.fn(),
+  show: vi.fn(),
+  hide: vi.fn(),
+  isVisible: vi.fn(),
+  dispose: vi.fn(),
+};
+
 const mockIrrigationToolbar = {
   show: vi.fn(),
   hide: vi.fn(),
   isVisible: vi.fn(),
+  resetToolSelection: vi.fn(),
   dispose: vi.fn(),
 };
 
@@ -75,12 +84,14 @@ const mockIrrigationInfoPanel = {
   showPipeInfo: vi.fn(),
   showSprinklerInfo: vi.fn(),
   hide: vi.fn(),
+  isVisible: vi.fn(),
   dispose: vi.fn(),
 };
 
 const mockIrrigationSchedulePanel = {
   show: vi.fn(),
   hide: vi.fn(),
+  isVisible: vi.fn(),
   dispose: vi.fn(),
 };
 
@@ -153,7 +164,14 @@ vi.mock("./ui/WalkOnQueuePanel", () => ({
   }),
 }));
 
+vi.mock("./ui/CourseLayoutPanel", () => ({
+  CourseLayoutPanel: vi.fn().mockImplementation(function () {
+    return mockCourseLayoutPanel;
+  }),
+}));
+
 vi.mock("./ui/IrrigationToolbar", () => ({
+  IRRIGATION_TOOLBAR_BOUNDS: { width: 300, height: 290, left: 10, top: 10 },
   IrrigationToolbar: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedIrrigationToolbarCallbacks = callbacks;
     return mockIrrigationToolbar;
@@ -161,6 +179,7 @@ vi.mock("./ui/IrrigationToolbar", () => ({
 }));
 
 vi.mock("./ui/IrrigationInfoPanel", () => ({
+  IRRIGATION_INFO_PANEL_BOUNDS: { width: 280, height: 350, right: 10, top: 10 },
   IrrigationInfoPanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedIrrigationInfoCallbacks = callbacks;
     return mockIrrigationInfoPanel;
@@ -168,6 +187,7 @@ vi.mock("./ui/IrrigationInfoPanel", () => ({
 }));
 
 vi.mock("./ui/IrrigationSchedulePanel", () => ({
+  IRRIGATION_SCHEDULE_PANEL_BOUNDS: { width: 350, height: 400 },
   IrrigationSchedulePanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedIrrigationScheduleCallbacks = callbacks;
     return mockIrrigationSchedulePanel;
@@ -183,9 +203,29 @@ vi.mock("@babylonjs/gui/2D/advancedDynamicTexture", () => ({
 vi.mock("../core/economy", () => ({
   addIncome: vi.fn(),
   addExpense: vi.fn(),
+  canAfford: vi.fn(() => true),
 }));
 
 vi.mock("../core/irrigation", () => ({
+  PIPE_CONFIGS: {
+    pvc: { cost: 10 },
+    metal: { cost: 25 },
+    industrial: { cost: 40 },
+  },
+  SPRINKLER_CONFIGS: {
+    fixed: { cost: 80 },
+    rotary: { cost: 120 },
+    impact: { cost: 160 },
+    precision: { cost: 220 },
+  },
+  addPipe: vi.fn((system: any) => system),
+  removePipe: vi.fn((system: any) => system),
+  addSprinklerHead: vi.fn((system: any) => system),
+  removeSprinklerHead: vi.fn((system: any) => system),
+  addWaterSource: vi.fn((system: any) => system),
+  updateSprinklerSchedule: vi.fn((system: any) => system),
+  getPipeAt: vi.fn(() => null),
+  getSprinklerHeadAt: vi.fn(() => null),
   repairLeak: vi.fn(),
 }));
 
@@ -254,7 +294,12 @@ import { startCampaign, stopCampaign } from "../core/marketing";
 import { purchaseRobot, sellRobot } from "../core/autonomous-equipment";
 import { upgradeAmenity } from "../core/prestige";
 import { getUpgradeCost } from "../core/amenities";
-import { repairLeak } from "../core/irrigation";
+import {
+  repairLeak,
+  updateSprinklerSchedule,
+  getPipeAt,
+  getSprinklerHeadAt,
+} from "../core/irrigation";
 import { syncWorkersWithRoster } from "../core/employee-work";
 
 function createMockState(): GameState {
@@ -272,7 +317,14 @@ function createMockState(): GameState {
     revenueState: { totalRevenue: 0 },
     marketingState: { campaigns: [] },
     autonomousState: { robots: [] },
-    irrigationSystem: { pipes: [], sprinklers: [] },
+    irrigationSystem: {
+      pipes: [],
+      sprinklerHeads: [],
+      waterSources: [],
+      totalWaterUsedToday: 0,
+      lastTickTime: 0,
+      pressureCache: new Map(),
+    },
     greenFees: {
       weekday18Holes: 50,
       weekday9Holes: 30,
@@ -1045,21 +1097,30 @@ describe("UIPanelCoordinator", () => {
   describe("irrigation UI callbacks", () => {
     beforeEach(() => coordinator.setupAll());
 
-    it("toolbar onToolSelect is a no-op", () => {
-      capturedIrrigationToolbarCallbacks.onToolSelect();
+    it("toolbar onToolSelect shows selected tool notification", () => {
+      capturedIrrigationToolbarCallbacks.onToolSelect("pipe");
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Irrigation tool: PIPE");
     });
 
-    it("toolbar onPipeTypeSelect is a no-op", () => {
-      capturedIrrigationToolbarCallbacks.onPipeTypeSelect();
+    it("toolbar onToolSelect null shows cleared notification", () => {
+      capturedIrrigationToolbarCallbacks.onToolSelect(null);
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Irrigation tool cleared");
     });
 
-    it("toolbar onSprinklerTypeSelect is a no-op", () => {
-      capturedIrrigationToolbarCallbacks.onSprinklerTypeSelect();
+    it("toolbar onPipeTypeSelect updates selection notification", () => {
+      capturedIrrigationToolbarCallbacks.onPipeTypeSelect("metal");
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Pipe type: METAL");
+    });
+
+    it("toolbar onSprinklerTypeSelect supports advanced types", () => {
+      capturedIrrigationToolbarCallbacks.onSprinklerTypeSelect("impact");
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Sprinkler type: IMPACT");
     });
 
     it("toolbar onClose hides toolbar", () => {
       capturedIrrigationToolbarCallbacks.onClose();
       expect(mockIrrigationToolbar.hide).toHaveBeenCalled();
+      expect(mockIrrigationToolbar.resetToolSelection).toHaveBeenCalled();
     });
 
     it("info panel onClose hides info panel", () => {
@@ -1068,11 +1129,15 @@ describe("UIPanelCoordinator", () => {
     });
 
     it("info panel onRepair with successful result", () => {
-      vi.mocked(repairLeak).mockReturnValue({ pipes: [], sprinklers: [] } as any);
+      const startingSystem = state.irrigationSystem;
+      vi.mocked(repairLeak).mockReturnValue({
+        ...startingSystem,
+        pipes: [],
+      } as any);
 
       capturedIrrigationInfoCallbacks.onRepair(1, 2);
 
-      expect(repairLeak).toHaveBeenCalledWith(state.irrigationSystem, 1, 2);
+      expect(repairLeak).toHaveBeenCalledWith(startingSystem, 1, 2);
     });
 
     it("info panel onRepair with null result", () => {
@@ -1099,6 +1164,115 @@ describe("UIPanelCoordinator", () => {
     it("schedule panel onClose hides schedule panel", () => {
       capturedIrrigationScheduleCallbacks.onClose();
       expect(mockIrrigationSchedulePanel.hide).toHaveBeenCalled();
+    });
+
+    it("schedule save handles missing sprinkler gracefully", () => {
+      state.irrigationSystem = {
+        ...state.irrigationSystem,
+        sprinklerHeads: [],
+      } as any;
+
+      capturedIrrigationScheduleCallbacks.onScheduleUpdate("missing", {
+        enabled: true,
+        timeRanges: [{ start: 300, end: 420 }],
+        skipRain: false,
+        zone: "A",
+      });
+
+      expect(updateSprinklerSchedule).not.toHaveBeenCalled();
+      expect(mockIrrigationSchedulePanel.hide).toHaveBeenCalled();
+      expect(mockIrrigationInfoPanel.hide).toHaveBeenCalled();
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith(
+        "Sprinkler no longer exists"
+      );
+    });
+
+    it("schedule save refreshes sprinkler info with live pressure", () => {
+      state.irrigationSystem = {
+        ...state.irrigationSystem,
+        sprinklerHeads: [
+          {
+            id: "s1",
+            gridX: 5,
+            gridY: 5,
+            sprinklerType: "rotary",
+            schedule: { enabled: true, timeRanges: [{ start: 300, end: 420 }], skipRain: false, zone: "A" },
+            coverageTiles: [],
+            isActive: true,
+            connectedToPipe: true,
+          },
+        ],
+      } as any;
+      const updatedHead = {
+        id: "s1",
+        gridX: 5,
+        gridY: 5,
+        sprinklerType: "rotary",
+        schedule: { enabled: true, timeRanges: [{ start: 300, end: 420 }], skipRain: false, zone: "A" },
+        coverageTiles: [],
+        isActive: true,
+        connectedToPipe: true,
+      };
+      vi.mocked(updateSprinklerSchedule).mockReturnValue({
+        ...state.irrigationSystem,
+        sprinklerHeads: [updatedHead],
+      } as any);
+      vi.mocked(getPipeAt).mockReturnValue({
+        gridX: 5,
+        gridY: 5,
+        pressureLevel: 67,
+      } as any);
+      const startingSystem = state.irrigationSystem;
+
+      capturedIrrigationScheduleCallbacks.onScheduleUpdate("s1", {
+        enabled: true,
+        timeRanges: [{ start: 300, end: 420 }],
+        skipRain: false,
+        zone: "A",
+      });
+
+      expect(updateSprinklerSchedule).toHaveBeenCalledWith(
+        startingSystem,
+        "s1",
+        expect.any(Object)
+      );
+      expect(mockIrrigationInfoPanel.showSprinklerInfo).toHaveBeenCalledWith(
+        updatedHead,
+        67
+      );
+    });
+
+    it("info mode shows sprinkler info with pressure", () => {
+      const head = {
+        id: "s2",
+        gridX: 8,
+        gridY: 9,
+      };
+      mockIrrigationToolbar.isVisible.mockReturnValue(true);
+      capturedIrrigationToolbarCallbacks.onToolSelect("info");
+      vi.mocked(getSprinklerHeadAt).mockReturnValue(head as any);
+      vi.mocked(getPipeAt).mockReturnValue({
+        gridX: 8,
+        gridY: 9,
+        pressureLevel: 72,
+      } as any);
+
+      coordinator.handleIrrigationGridAction(8, 9);
+
+      expect(mockIrrigationInfoPanel.showSprinklerInfo).toHaveBeenCalledWith(
+        head,
+        72
+      );
+    });
+
+    it("handleIrrigationGridAction prompts when no tool is selected", () => {
+      mockIrrigationToolbar.isVisible.mockReturnValue(true);
+
+      coordinator.handleIrrigationGridAction(5, 5);
+
+      expect(systems.uiManager.showNotification).toHaveBeenCalledWith(
+        "Select Pipe, Sprinkler, Delete, or Info first"
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import { TerrainType, ObstacleType } from '../core/terrain';
 import { SerializedTopology } from '../core/mesh-topology';
 import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
+import type { CourseHoleDefinition } from '../core/hole-construction';
 
 export type { TerrainType, ObstacleType };
 
@@ -17,6 +18,7 @@ export interface CourseData {
   height: number;
   par: number;
   obstacles?: ObstacleData[];
+  holes?: CourseHoleDefinition[];
   topology: SerializedTopology;
 }
 
@@ -49,46 +51,6 @@ function makeRect(
   ];
 }
 
-function makeFairwayPoly(
-  startZ: number, endZ: number,
-  baseX: number, amplitude: number, frequency: number, halfWidth: number,
-  samples = 24
-): Array<{ x: number; z: number }> {
-  const left: Array<{ x: number; z: number }> = [];
-  const right: Array<{ x: number; z: number }> = [];
-
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const z = startZ + (endZ - startZ) * t;
-    const cx = baseX + Math.sin(t * Math.PI * 2 * frequency) * amplitude;
-    const hw = halfWidth * (0.7 + 0.3 * Math.cos(t * Math.PI));
-    left.push({ x: cx - hw, z });
-    right.push({ x: cx + hw, z });
-  }
-
-  return [...left, ...right.reverse()];
-}
-
-function makeHorizFairwayPoly(
-  startX: number, endX: number,
-  centerZ: number, halfWidth: number,
-  wobbleFreq: number, wobbleAmp: number,
-  samples = 24
-): Array<{ x: number; z: number }> {
-  const top: Array<{ x: number; z: number }> = [];
-  const bottom: Array<{ x: number; z: number }> = [];
-
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const x = startX + (endX - startX) * t;
-    const wobble = Math.sin((x - startX) * wobbleFreq) * wobbleAmp;
-    top.push({ x, z: centerZ - halfWidth + wobble });
-    bottom.push({ x, z: centerZ + halfWidth + wobble });
-  }
-
-  return [...top, ...bottom.reverse()];
-}
-
 // ============================================================================
 // ELEVATION
 // ============================================================================
@@ -105,6 +67,20 @@ function calcMound(
   if (dist <= innerR) return peak;
   const t = (dist - innerR) / (outerR - innerR);
   return peak * (1 - t * t);
+}
+
+function calcBowl(
+  x: number, z: number,
+  cx: number, cz: number,
+  innerR: number, outerR: number, depth: number
+): number {
+  const dx = x - cx;
+  const dz = z - cz;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist > outerR) return 0;
+  if (dist <= innerR) return -depth;
+  const t = (dist - innerR) / (outerR - innerR);
+  return -depth * (1 - t * t);
 }
 
 function calcRidge(
@@ -128,140 +104,87 @@ function calcRidge(
 
 function course3Elevation(x: number, z: number): number {
   const WW = 100, HH = 110;
-
-  let depression = 0;
-  const waterDx = x - 62;
-  const waterDz = z - 60;
-  const waterDist = Math.sqrt(waterDx * waterDx + waterDz * waterDz);
-  if (waterDist <= 15.2) {
-    const t = waterDist <= 7.2 ? 0 : (waterDist - 7.2) / (15.2 - 7.2);
-    depression = -2.4 * (1 - t);
-  }
-
-  let moundElev = 0;
-  moundElev = Math.max(moundElev, calcMound(x, z, 6, 6, 6, 16, 4.0));
-  moundElev = Math.max(moundElev, calcMound(x, z, 92, 6, 6, 16, 4.0));
-  moundElev = Math.max(moundElev, calcMound(x, z, 92, 104, 6, 16, 3.5));
-  moundElev = Math.max(moundElev, calcMound(x, z, 48, 66, 8, 20, 3.0));
-  moundElev = Math.max(moundElev, calcMound(x, z, 24, 38, 6.8, 15.2, 2.6));
-  moundElev = Math.max(moundElev, calcMound(x, z, 70, 42, 8.4, 17.2, 2.6));
-  moundElev = Math.max(moundElev, calcMound(x, z, 24, 90, 8.4, 17.6, 2.6));
-
-  moundElev += calcRidge(x, z, 36, 60, 56, 76, 8, 1.6);
-  moundElev += calcRidge(x, z, 52, 36, 76, 52, 6, 1.2);
-
   const edgeFalloffX = Math.min(1, Math.min(x, WW - x) / 12);
   const edgeFalloffZ = Math.min(1, Math.min(z, HH - z) / 12);
   const edgeFalloff = Math.min(edgeFalloffX, edgeFalloffZ);
-  const rolling = depression < 0 ? 0 : (Math.sin(x * 0.18) * Math.cos(z * 0.14)) * 0.32 * edgeFalloff;
 
-  return depression + moundElev + rolling;
+  let elevation =
+    (Math.sin(x * 0.12 + z * 0.05) + Math.cos(z * 0.11 - x * 0.04)) *
+    0.55 *
+    edgeFalloff;
+
+  // Large-scale site shape: one high shoulder and a central swale.
+  elevation += calcRidge(x, z, 6, 108, 96, 16, 20, 5.2);
+  elevation += calcRidge(x, z, 2, 74, 98, 66, 14, -3.8);
+  elevation += calcBowl(x, z, 57, 74, 10, 26, 1.8);
+
+  // Pond basin for hole 2 carry.
+  elevation += calcBowl(x, z, 53, 69, 6, 16, 4.8);
+
+  // Elevated green pads and small tee shelves per hole.
+  elevation += calcMound(x, z, 34, 56, 6.4, 16.4, 5.8);
+  elevation += calcMound(x, z, 66, 58, 5.8, 14.6, 4.8);
+  elevation += calcMound(x, z, 51, 42, 6.2, 15.2, 5.2);
+  elevation += calcMound(x, z, 13.8, 95, 3.2, 9.6, 1.8);
+  elevation += calcMound(x, z, 45, 89, 3.2, 9.2, 1.6);
+  elevation += calcMound(x, z, 85, 32, 3.0, 9.0, 1.6);
+
+  return elevation;
 }
 
 // ============================================================================
-// 3-HOLE ORGANIC COURSE
+// 3-HOLE COURSE (REDESIGNED)
 // ============================================================================
 // World: 100 wide × 110 tall (at 10 yards/unit = 1000 × 1100 yards)
 //
-// Hole 1 (Par 3, ~160 yds): Plays NORTH, tee near (24,58), green near (24,38)
-// Hole 2 (Par 4, ~380 yds): Plays NORTH, tee near (70,82), green near (70,42)
-// Hole 3 (Par 3, ~140 yds): Plays WEST, tee near (66,90), green near (24,90)
+// Hole 1 (Par 4, ~380 yds): left corridor, uphill into elevated green.
+// Hole 2 (Par 3, ~190 yds): central-right corridor, pond carry to raised target.
+// Hole 3 (Par 3, ~180 yds): upper corridor, right-to-left shot to plateau green.
 // ============================================================================
 
 function generate3HoleTopology(): SerializedTopology {
   const elev = course3Elevation;
   const regions: TerrainRegion[] = [];
 
-  // ========== HOLE 1: Par 3, plays NORTH ==========
+  // ========== HOLE 1: Par 4, left corridor ==========
+  regions.push({ terrainCode: F, boundary: makeEllipse(15, 90, 6.5, 8.5), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(18.5, 80, 7.4, 9.2), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(24, 70, 8.6, 10.2), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(30, 61, 9.4, 8.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(26.5, 56.5, 3.2, 2.4), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(41.5, 56.8, 3.0, 2.3), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(34.2, 49, 3.8, 2.5), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(34, 56, 7.4, 5.6), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(37.7, 55.2, 3.2, 2.8), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(30.2, 57.1, 3.0, 2.6), elevationFn: elev });
+  regions.push({ terrainCode: T, boundary: makeRect(10.5, 93, 17.5, 97.5), elevationFn: elev });
 
-  // H1 Fairway approach (sinuous path from tee to green area)
-  regions.push({
-    terrainCode: F,
-    boundary: makeFairwayPoly(59, 42, 24, 3.6, 0.55, 7.6),
-    elevationFn: elev,
-  });
+  // ========== HOLE 2: Par 3, center-right corridor ==========
+  regions.push({ terrainCode: F, boundary: makeEllipse(45, 86, 6.0, 7.5), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(51, 77, 7.2, 8.3), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(58, 68, 8.2, 8.8), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(63, 61, 9.0, 7.2), elevationFn: elev });
+  regions.push({ terrainCode: W, boundary: makeEllipse(52.5, 69.5, 5.5, 6.5), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(56.2, 59.2, 2.8, 2.1), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(75.0, 59.0, 2.8, 2.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(66.2, 49.2, 3.0, 2.1), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(66, 58, 7.2, 5.4), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(69.8, 58.9, 2.8, 2.4), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(62.7, 57, 2.8, 2.2), elevationFn: elev });
+  regions.push({ terrainCode: T, boundary: makeRect(42, 87, 48, 91), elevationFn: elev });
 
-  // H1 Fringe ring around green
-  regions.push({
-    terrainCode: F,
-    boundary: makeEllipse(24, 38, 11, 9),
-    elevationFn: elev,
-  });
-
-  // H1 Green (main body + two lobes)
-  regions.push({ terrainCode: G, boundary: makeEllipse(24, 38, 9.6, 7.2), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(29.2, 36.8, 4.4, 4.4), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(19.6, 41, 4.2, 4.2), elevationFn: elev });
-
-  // H1 Tee box
-  regions.push({ terrainCode: T, boundary: makeRect(20, 56, 27, 59), elevationFn: elev });
-
-  // H1 Bunkers - kidney left, pot right
-  regions.push({ terrainCode: B, boundary: makeEllipse(14, 38, 4.8, 7.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(34.8, 36.4, 2.4, 2.4), elevationFn: elev });
-
-  // ========== HOLE 2: Par 4, plays NORTH ==========
-
-  // H2 Upper fairway (tee to mid)
-  regions.push({
-    terrainCode: F,
-    boundary: makeFairwayPoly(83, 66, 70, 5.6, 0.6, 8.4),
-    elevationFn: elev,
-  });
-
-  // H2 Lower fairway (mid to green approach)
-  regions.push({
-    terrainCode: F,
-    boundary: makeFairwayPoly(66, 48, 68, 4.2, 0.5, 6.4),
-    elevationFn: elev,
-  });
-
-  // H2 Green (kidney shape with lobes)
-  regions.push({ terrainCode: G, boundary: makeEllipse(70, 42, 9.6, 7.2), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(66, 38, 4.8, 4.8), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(74, 46, 4.8, 4.8), elevationFn: elev });
-
-  // H2 Tee box
-  regions.push({ terrainCode: T, boundary: makeRect(66, 80, 73, 83), elevationFn: elev });
-
-  // H2 Water hazard
-  regions.push({ terrainCode: W, boundary: makeEllipse(62, 60, 5.6, 7.6), elevationFn: elev });
-
-  // H2 Fairway bunker cluster
-  regions.push({ terrainCode: B, boundary: makeEllipse(76, 66, 5.2, 2.8), elevationFn: elev });
-
-  // H2 Greenside bunkers
-  regions.push({ terrainCode: B, boundary: makeEllipse(62, 44, 3.2, 4.8), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(78, 40, 2.6, 2.6), elevationFn: elev });
-
-  // ========== HOLE 3: Par 3, plays WEST ==========
-
-  // H3 Fairway (horizontal approach)
-  regions.push({
-    terrainCode: F,
-    boundary: makeHorizFairwayPoly(36, 64, 89, 3, 0.4, 2.8),
-    elevationFn: elev,
-  });
-
-  // H3 Wider approach strip
-  regions.push({
-    terrainCode: F,
-    boundary: makeRect(44, 85, 58, 88),
-    elevationFn: elev,
-  });
-
-  // H3 Green (elongated with lobes)
-  regions.push({ terrainCode: G, boundary: makeEllipse(24, 90, 7.2, 9.6), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(20, 92, 4.8, 4.8), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(28, 88, 4.4, 4.4), elevationFn: elev });
-
-  // H3 Tee box
-  regions.push({ terrainCode: T, boundary: makeRect(64, 86, 67, 93), elevationFn: elev });
-
-  // H3 Bunkers
-  regions.push({ terrainCode: B, boundary: makeEllipse(24, 80, 7.2, 3.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(16, 90, 3.2, 6.8), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(32, 94, 2.6, 2.6), elevationFn: elev });
+  // ========== HOLE 3: Par 3, upper right-to-left corridor ==========
+  regions.push({ terrainCode: F, boundary: makeEllipse(82, 33, 6.4, 4.8), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(74, 35, 7.5, 5.2), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(66, 37.5, 8.4, 5.8), elevationFn: elev });
+  regions.push({ terrainCode: F, boundary: makeEllipse(58, 40, 9.0, 6.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(41.0, 41.0, 2.8, 2.1), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(59.4, 44.7, 2.7, 2.2), elevationFn: elev });
+  regions.push({ terrainCode: B, boundary: makeEllipse(50.8, 50.0, 3.0, 2.2), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(51, 42, 7.2, 5.2), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(54.4, 41.4, 2.8, 2.2), elevationFn: elev });
+  regions.push({ terrainCode: G, boundary: makeEllipse(47.8, 43.1, 2.6, 2.1), elevationFn: elev });
+  regions.push({ terrainCode: T, boundary: makeRect(82, 30, 88, 34), elevationFn: elev });
 
   return buildDelaunayTopology({
     worldWidth: 100,
@@ -283,37 +206,76 @@ export const COURSE_3_HOLE: CourseData = {
   par: 10,
   topology: course3Topology,
   obstacles: [
-    { x: 5, y: 17, type: 2 },
-    { x: 4, y: 21, type: 1 },
-    { x: 19, y: 17, type: 2 },
-    { x: 20, y: 21, type: 1 },
-    { x: 7, y: 25, type: 1 },
-    { x: 17, y: 26, type: 2 },
+    // West and east perimeter framing.
+    { x: 5, y: 103, type: 2 },
+    { x: 7, y: 97, type: 1 },
+    { x: 5, y: 90, type: 2 },
+    { x: 8, y: 83, type: 1 },
+    { x: 6, y: 76, type: 2 },
+    { x: 5, y: 68, type: 1 },
+    { x: 7, y: 60, type: 2 },
+    { x: 8, y: 52, type: 1 },
+    { x: 6, y: 44, type: 2 },
+    { x: 5, y: 36, type: 1 },
+    { x: 7, y: 28, type: 2 },
+    { x: 8, y: 20, type: 1 },
+    { x: 6, y: 12, type: 2 },
+    { x: 94, y: 102, type: 1 },
+    { x: 93, y: 94, type: 2 },
+    { x: 95, y: 86, type: 1 },
+    { x: 94, y: 78, type: 2 },
+    { x: 93, y: 70, type: 1 },
+    { x: 95, y: 62, type: 2 },
+    { x: 94, y: 54, type: 1 },
+    { x: 93, y: 46, type: 2 },
+    { x: 95, y: 38, type: 1 },
+    { x: 94, y: 30, type: 2 },
+    { x: 93, y: 22, type: 1 },
+    { x: 95, y: 14, type: 2 },
 
-    { x: 28, y: 20, type: 2 },
-    { x: 41, y: 19, type: 1 },
-    { x: 42, y: 23, type: 2 },
-    { x: 27, y: 28, type: 1 },
-    { x: 28, y: 33, type: 2 },
-    { x: 41, y: 35, type: 1 },
-    { x: 40, y: 38, type: 2 },
+    // Top and bottom backdrop.
+    { x: 18, y: 105, type: 2 },
+    { x: 30, y: 104, type: 1 },
+    { x: 44, y: 103, type: 2 },
+    { x: 58, y: 104, type: 1 },
+    { x: 72, y: 105, type: 2 },
+    { x: 84, y: 104, type: 1 },
+    { x: 14, y: 6, type: 1 },
+    { x: 26, y: 7, type: 2 },
+    { x: 38, y: 6, type: 1 },
+    { x: 50, y: 7, type: 2 },
+    { x: 62, y: 6, type: 1 },
+    { x: 74, y: 7, type: 2 },
+    { x: 86, y: 6, type: 1 },
 
-    { x: 6, y: 43, type: 2 },
-    { x: 5, y: 47, type: 1 },
-    { x: 17, y: 41, type: 1 },
-    { x: 18, y: 49, type: 2 },
-    { x: 36, y: 42, type: 2 },
-    { x: 35, y: 48, type: 1 },
+    // Hole 1 and hole 2 separator/frames.
+    { x: 41, y: 88, type: 2 },
+    { x: 39, y: 80, type: 1 },
+    { x: 37, y: 72, type: 2 },
+    { x: 35, y: 64, type: 1 },
+    { x: 33, y: 56, type: 2 },
+    { x: 78, y: 84, type: 1 },
+    { x: 80, y: 76, type: 2 },
+    { x: 82, y: 68, type: 1 },
+    { x: 80, y: 60, type: 2 },
 
-    { x: 3, y: 5, type: 1 },
-    { x: 8, y: 3, type: 2 },
-    { x: 22, y: 4, type: 1 },
-    { x: 28, y: 6, type: 2 },
-    { x: 44, y: 4, type: 1 },
-    { x: 47, y: 8, type: 2 },
-    { x: 2, y: 33, type: 2 },
-    { x: 46, y: 50, type: 1 },
-    { x: 47, y: 52, type: 2 },
+    // Around pond and hole 3 green backstop.
+    { x: 37, y: 82, type: 1 },
+    { x: 35, y: 74, type: 2 },
+    { x: 34, y: 66, type: 1 },
+    { x: 38, y: 58, type: 2 },
+    { x: 46, y: 54, type: 1 },
+    { x: 50, y: 56, type: 2 },
+    { x: 56, y: 56, type: 1 },
+    { x: 62, y: 56, type: 2 },
+    { x: 74, y: 50, type: 1 },
+    { x: 66, y: 52, type: 2 },
+    { x: 58, y: 54, type: 1 },
+    { x: 42, y: 46, type: 2 },
+    { x: 60, y: 30, type: 2 },
+    { x: 70, y: 28, type: 1 },
+    { x: 82, y: 48, type: 2 },
+    { x: 86, y: 44, type: 1 },
   ],
 };
 

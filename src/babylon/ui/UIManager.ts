@@ -7,6 +7,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Ellipse } from '@babylonjs/gui/2D/controls/ellipse';
 import { Button } from '@babylonjs/gui/2D/controls/button';
+import { UI_THEME } from './UITheme';
 
 import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
@@ -62,6 +63,13 @@ export class UIManager {
   private prestigeScoreText!: TextBlock;
   private prestigePriceWarning!: TextBlock;
 
+  private operationsPanel!: Rectangle;
+  private operationsCrewText!: TextBlock;
+  private operationsDemandText!: TextBlock;
+  private operationsResearchText!: TextBlock;
+  private operationsAutomationText!: TextBlock;
+  private operationsIrrigationText!: TextBlock;
+
   private minimapContainer!: Rectangle;
   private minimapPlayerDot!: Ellipse;
   private minimapMapArea!: Rectangle;
@@ -79,6 +87,12 @@ export class UIManager {
   private onResearch?: () => void;
   private onTeeSheet?: () => void;
   private onMarketing?: () => void;
+  private onIrrigation?: () => void;
+  private onHoleBuilder?: () => void;
+  private onEquipmentStore?: () => void;
+  private onAmenityPanel?: () => void;
+  private onCourseLayout?: () => void;
+  private onWalkOnQueue?: () => void;
   private onSpeedChange?: (delta: number) => void;
   private onPriceChange?: (delta: number) => void;
 
@@ -100,6 +114,7 @@ export class UIManager {
     this.createEconomyPanel();
     this.createPrestigePanel();
     this.createScenarioPanel();
+    this.createOperationsPanel();
     this.createResourcesPanel();
     this.createScorePanel();
     this.createMinimap();
@@ -113,8 +128,8 @@ export class UIManager {
     const panel = new Rectangle('courseStatusPanel');
     panel.width = '200px';
     panel.height = '100px';
-    panel.cornerRadius = 5;
-    panel.color = '#4a8a5a';
+    panel.cornerRadius = UI_THEME.radii.scale.r5;
+    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
     panel.thickness = 2;
     panel.background = 'rgba(26, 58, 42, 0.95)';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -130,8 +145,8 @@ export class UIManager {
 
     const title = new TextBlock('courseTitle');
     title.text = 'COURSE STATUS';
-    title.color = '#7a9a7a';
-    title.fontSize = 10;
+    title.color = UI_THEME.colors.legacy.c_7a9a7a;
+    title.fontSize = UI_THEME.typography.scale.s10;
     title.fontFamily = 'Arial, sans-serif';
     title.height = '16px';
     title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -157,14 +172,14 @@ export class UIManager {
     const bar = new Rectangle(`${name}Bar`);
     bar.width = '70px';
     bar.height = '10px';
-    bar.cornerRadius = 2;
+    bar.cornerRadius = UI_THEME.radii.scale.r2;
     bar.background = color;
     bar.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
 
     const text = new TextBlock(`${name}Text`);
     text.text = '100%';
     text.color = color;
-    text.fontSize = 11;
+    text.fontSize = UI_THEME.typography.scale.s11;
     text.fontFamily = 'Arial, sans-serif';
 
     return { bar, text };
@@ -181,13 +196,13 @@ export class UIManager {
 
     const iconText = new TextBlock();
     iconText.text = icon;
-    iconText.fontSize = 12;
+    iconText.fontSize = UI_THEME.typography.scale.s12;
     grid.addControl(iconText, 0, 0);
 
     const labelText = new TextBlock();
     labelText.text = label;
     labelText.color = labelColor;
-    labelText.fontSize = 11;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
     labelText.fontFamily = 'Arial, sans-serif';
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     grid.addControl(labelText, 0, 1);
@@ -195,9 +210,9 @@ export class UIManager {
     const barContainer = new Rectangle();
     barContainer.width = '70px';
     barContainer.height = '10px';
-    barContainer.cornerRadius = 2;
-    barContainer.background = '#1a3a2a';
-    barContainer.color = '#3a5a4a';
+    barContainer.cornerRadius = UI_THEME.radii.scale.r2;
+    barContainer.background = UI_THEME.colors.legacy.c_1a3a2a;
+    barContainer.color = UI_THEME.colors.legacy.c_3a5a4a;
     barContainer.thickness = 1;
     barContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     barContainer.addControl(bar);
@@ -236,9 +251,9 @@ export class UIManager {
       const slot = new Rectangle(`slot${index}`);
       slot.width = '65px';
       slot.height = '60px';
-      slot.cornerRadius = 5;
-      slot.background = '#1a3a2a';
-      slot.color = '#3a5a4a';
+      slot.cornerRadius = UI_THEME.radii.scale.r5;
+      slot.background = UI_THEME.colors.legacy.c_1a3a2a;
+      slot.color = UI_THEME.colors.legacy.c_3a5a4a;
       slot.thickness = 2;
 
       const stack = new StackPanel();
@@ -248,8 +263,8 @@ export class UIManager {
       const badge = new Ellipse(`badge${index}`);
       badge.width = '16px';
       badge.height = '16px';
-      badge.background = '#2a5a3a';
-      badge.color = '#4a8a5a';
+      badge.background = UI_THEME.colors.legacy.c_2a5a3a;
+      badge.color = UI_THEME.colors.legacy.c_4a8a5a;
       badge.thickness = 1;
       badge.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
       badge.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
@@ -260,26 +275,26 @@ export class UIManager {
       const keyText = new TextBlock();
       keyText.text = eq.key;
       keyText.color = 'white';
-      keyText.fontSize = 9;
+      keyText.fontSize = UI_THEME.typography.scale.s9;
       badge.addControl(keyText);
 
       const iconBg = new Rectangle();
       iconBg.width = '40px';
       iconBg.height = '24px';
-      iconBg.cornerRadius = 3;
+      iconBg.cornerRadius = UI_THEME.radii.scale.r3;
       iconBg.background = eq.color;
       iconBg.alpha = 0.8;
       stack.addControl(iconBg);
 
       const iconText = new TextBlock();
       iconText.text = eq.icon;
-      iconText.fontSize = 14;
+      iconText.fontSize = UI_THEME.typography.scale.s14;
       iconBg.addControl(iconText);
 
       const nameText = new TextBlock(`name${index}`);
       nameText.text = eq.name;
-      nameText.color = '#999999';
-      nameText.fontSize = 10;
+      nameText.color = UI_THEME.colors.legacy.c_999999;
+      nameText.fontSize = UI_THEME.typography.scale.s10;
       nameText.fontFamily = 'Arial, sans-serif';
       nameText.height = '18px';
       nameText.paddingTop = '4px';
@@ -296,13 +311,13 @@ export class UIManager {
   private updateEquipmentSelection(index: number): void {
     this.equipmentSlots.forEach((slot, i) => {
       if (i === index) {
-        slot.color = '#7FFF7F';
+        slot.color = UI_THEME.colors.legacy.c_7fff7f;
         slot.thickness = 3;
-        slot.background = '#2a5a3a';
+        slot.background = UI_THEME.colors.legacy.c_2a5a3a;
       } else {
-        slot.color = '#3a5a4a';
+        slot.color = UI_THEME.colors.legacy.c_3a5a4a;
         slot.thickness = 2;
-        slot.background = '#1a3a2a';
+        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
       }
     });
   }
@@ -311,8 +326,8 @@ export class UIManager {
     const panel = new Rectangle('timePanel');
     panel.width = '110px';
     panel.height = '90px';
-    panel.cornerRadius = 5;
-    panel.color = '#4a8a5a';
+    panel.cornerRadius = UI_THEME.radii.scale.r5;
+    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
     panel.thickness = 2;
     panel.background = 'rgba(26, 58, 42, 0.95)';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -332,14 +347,14 @@ export class UIManager {
 
     this.weatherIcon = new TextBlock();
     this.weatherIcon.text = '☀️';
-    this.weatherIcon.fontSize = 13;
+    this.weatherIcon.fontSize = UI_THEME.typography.scale.s13;
     this.weatherIcon.width = '20px';
     dayRow.addControl(this.weatherIcon);
 
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1';
     this.dayText.color = 'white';
-    this.dayText.fontSize = 12;
+    this.dayText.fontSize = UI_THEME.typography.scale.s12;
     this.dayText.fontFamily = 'Arial, sans-serif';
     this.dayText.width = '80px';
     this.dayText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -347,16 +362,16 @@ export class UIManager {
 
     this.timeText = new TextBlock('timeText');
     this.timeText.text = '6:00 AM';
-    this.timeText.color = '#ffcc00';
-    this.timeText.fontSize = 14;
+    this.timeText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.timeText.fontSize = UI_THEME.typography.scale.s14;
     this.timeText.fontFamily = 'Arial, sans-serif';
     this.timeText.height = '20px';
     stack.addControl(this.timeText);
 
     this.weatherText = new TextBlock('weatherText');
     this.weatherText.text = 'Sunny 72°F';
-    this.weatherText.color = '#aaccff';
-    this.weatherText.fontSize = 10;
+    this.weatherText.color = UI_THEME.colors.legacy.c_aaccff;
+    this.weatherText.fontSize = UI_THEME.typography.scale.s10;
     this.weatherText.fontFamily = 'Arial, sans-serif';
     this.weatherText.height = '16px';
     stack.addControl(this.weatherText);
@@ -364,16 +379,16 @@ export class UIManager {
     const speedBg = new Rectangle();
     speedBg.width = '40px';
     speedBg.height = '18px';
-    speedBg.cornerRadius = 3;
-    speedBg.background = '#2a5a3a';
-    speedBg.color = '#4a8a5a';
+    speedBg.cornerRadius = UI_THEME.radii.scale.r3;
+    speedBg.background = UI_THEME.colors.legacy.c_2a5a3a;
+    speedBg.color = UI_THEME.colors.legacy.c_4a8a5a;
     speedBg.thickness = 1;
     stack.addControl(speedBg);
 
     const speedText = new TextBlock();
     speedText.text = '1x';
-    speedText.color = '#88ff88';
-    speedText.fontSize = 11;
+    speedText.color = UI_THEME.colors.legacy.c_88ff88;
+    speedText.fontSize = UI_THEME.typography.scale.s11;
     speedBg.addControl(speedText);
   }
 
@@ -381,8 +396,8 @@ export class UIManager {
     this.economyPanel = new Rectangle('economyPanel');
     this.economyPanel.width = '140px';
     this.economyPanel.height = '85px';
-    this.economyPanel.cornerRadius = 5;
-    this.economyPanel.color = '#4a8a5a';
+    this.economyPanel.cornerRadius = UI_THEME.radii.scale.r5;
+    this.economyPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
     this.economyPanel.thickness = 2;
     this.economyPanel.background = 'rgba(26, 58, 42, 0.95)';
     this.economyPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -403,14 +418,14 @@ export class UIManager {
 
     const cashIcon = new TextBlock();
     cashIcon.text = '💵';
-    cashIcon.fontSize = 14;
+    cashIcon.fontSize = UI_THEME.typography.scale.s14;
     cashIcon.width = '24px';
     cashRow.addControl(cashIcon);
 
     this.cashText = new TextBlock('cashText');
     this.cashText.text = '$10,000';
-    this.cashText.color = '#44ff44';
-    this.cashText.fontSize = 14;
+    this.cashText.color = UI_THEME.colors.legacy.c_44ff44;
+    this.cashText.fontSize = UI_THEME.typography.scale.s14;
     this.cashText.fontFamily = 'Arial Black, sans-serif';
     this.cashText.width = '100px';
     this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -423,14 +438,14 @@ export class UIManager {
 
     const golferIcon = new TextBlock();
     golferIcon.text = '🏌️';
-    golferIcon.fontSize = 13;
+    golferIcon.fontSize = UI_THEME.typography.scale.s13;
     golferIcon.width = '24px';
     golfersRow.addControl(golferIcon);
 
     this.golfersText = new TextBlock('golfersText');
     this.golfersText.text = '0 golfers';
-    this.golfersText.color = '#aaaaaa';
-    this.golfersText.fontSize = 11;
+    this.golfersText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.golfersText.fontSize = UI_THEME.typography.scale.s11;
     this.golfersText.fontFamily = 'Arial, sans-serif';
     this.golfersText.width = '100px';
     this.golfersText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -443,14 +458,14 @@ export class UIManager {
 
     const satisfactionIcon = new TextBlock();
     satisfactionIcon.text = '😊';
-    satisfactionIcon.fontSize = 13;
+    satisfactionIcon.fontSize = UI_THEME.typography.scale.s13;
     satisfactionIcon.width = '24px';
     satisfactionRow.addControl(satisfactionIcon);
 
     this.satisfactionText = new TextBlock('satisfactionText');
     this.satisfactionText.text = '-- rating';
-    this.satisfactionText.color = '#aaaaaa';
-    this.satisfactionText.fontSize = 11;
+    this.satisfactionText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.satisfactionText.fontSize = UI_THEME.typography.scale.s11;
     this.satisfactionText.fontFamily = 'Arial, sans-serif';
     this.satisfactionText.width = '100px';
     this.satisfactionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -461,8 +476,8 @@ export class UIManager {
     this.prestigePanel = new Rectangle('prestigePanel');
     this.prestigePanel.width = '140px';
     this.prestigePanel.height = '115px';
-    this.prestigePanel.cornerRadius = 5;
-    this.prestigePanel.color = '#4a8a5a';
+    this.prestigePanel.cornerRadius = UI_THEME.radii.scale.r5;
+    this.prestigePanel.color = UI_THEME.colors.legacy.c_4a8a5a;
     this.prestigePanel.thickness = 2;
     this.prestigePanel.background = 'rgba(26, 58, 42, 0.95)';
     this.prestigePanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -483,40 +498,40 @@ export class UIManager {
 
     const titleLabel = new TextBlock();
     titleLabel.text = 'PRESTIGE';
-    titleLabel.color = '#7a9a7a';
-    titleLabel.fontSize = 9;
+    titleLabel.color = UI_THEME.colors.legacy.c_7a9a7a;
+    titleLabel.fontSize = UI_THEME.typography.scale.s9;
     titleLabel.width = '120px';
     titleLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     titleRow.addControl(titleLabel);
 
     this.prestigeStarsText = new TextBlock('prestigeStars');
     this.prestigeStarsText.text = '★☆☆☆☆';
-    this.prestigeStarsText.color = '#ffcc00';
-    this.prestigeStarsText.fontSize = 14;
+    this.prestigeStarsText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.prestigeStarsText.fontSize = UI_THEME.typography.scale.s14;
     this.prestigeStarsText.height = '20px';
     this.prestigeStarsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.prestigeStarsText);
 
     this.prestigeTierText = new TextBlock('prestigeTier');
     this.prestigeTierText.text = 'Municipal';
-    this.prestigeTierText.color = '#aaaaaa';
-    this.prestigeTierText.fontSize = 11;
+    this.prestigeTierText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.prestigeTierText.fontSize = UI_THEME.typography.scale.s11;
     this.prestigeTierText.height = '16px';
     this.prestigeTierText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.prestigeTierText);
 
     this.prestigeScoreText = new TextBlock('prestigeScore');
     this.prestigeScoreText.text = '100 / 1000';
-    this.prestigeScoreText.color = '#888888';
-    this.prestigeScoreText.fontSize = 9;
+    this.prestigeScoreText.color = UI_THEME.colors.legacy.c_888888;
+    this.prestigeScoreText.fontSize = UI_THEME.typography.scale.s9;
     this.prestigeScoreText.height = '14px';
     this.prestigeScoreText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.prestigeScoreText);
 
     this.prestigePriceWarning = new TextBlock('prestigePriceWarning');
     this.prestigePriceWarning.text = '';
-    this.prestigePriceWarning.color = '#ffaa44';
-    this.prestigePriceWarning.fontSize = 9;
+    this.prestigePriceWarning.color = UI_THEME.colors.legacy.c_ffaa44;
+    this.prestigePriceWarning.fontSize = UI_THEME.typography.scale.s9;
     this.prestigePriceWarning.height = '14px';
     this.prestigePriceWarning.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.prestigePriceWarning);
@@ -530,20 +545,20 @@ export class UIManager {
     const minusBtn = Button.CreateSimpleButton('priceMinusBtn', '-');
     minusBtn.width = '22px';
     minusBtn.height = '18px';
-    minusBtn.cornerRadius = 3;
-    minusBtn.background = '#4a5a4a';
+    minusBtn.cornerRadius = UI_THEME.radii.scale.r3;
+    minusBtn.background = UI_THEME.colors.legacy.c_4a5a4a;
     minusBtn.color = 'white';
-    minusBtn.fontSize = 12;
+    minusBtn.fontSize = UI_THEME.typography.scale.s12;
     minusBtn.thickness = 0;
     minusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(-5));
-    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = '#5a6a5a'; });
-    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = '#4a5a4a'; });
+    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = UI_THEME.colors.legacy.c_5a6a5a; });
+    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = UI_THEME.colors.legacy.c_4a5a4a; });
     priceRow.addControl(minusBtn);
 
     this.currentPriceText = new TextBlock('currentPrice');
     this.currentPriceText.text = '$25';
-    this.currentPriceText.color = '#88dd88';
-    this.currentPriceText.fontSize = 11;
+    this.currentPriceText.color = UI_THEME.colors.legacy.c_88dd88;
+    this.currentPriceText.fontSize = UI_THEME.typography.scale.s11;
     this.currentPriceText.width = '50px';
     this.currentPriceText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     priceRow.addControl(this.currentPriceText);
@@ -551,20 +566,20 @@ export class UIManager {
     const plusBtn = Button.CreateSimpleButton('pricePlusBtn', '+');
     plusBtn.width = '22px';
     plusBtn.height = '18px';
-    plusBtn.cornerRadius = 3;
-    plusBtn.background = '#4a5a4a';
+    plusBtn.cornerRadius = UI_THEME.radii.scale.r3;
+    plusBtn.background = UI_THEME.colors.legacy.c_4a5a4a;
     plusBtn.color = 'white';
-    plusBtn.fontSize = 12;
+    plusBtn.fontSize = UI_THEME.typography.scale.s12;
     plusBtn.thickness = 0;
     plusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(5));
-    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = '#5a6a5a'; });
-    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = '#4a5a4a'; });
+    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = UI_THEME.colors.legacy.c_5a6a5a; });
+    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = UI_THEME.colors.legacy.c_4a5a4a; });
     priceRow.addControl(plusBtn);
 
     const feeLabel = new TextBlock();
     feeLabel.text = '/18';
-    feeLabel.color = '#7a9a7a';
-    feeLabel.fontSize = 9;
+    feeLabel.color = UI_THEME.colors.legacy.c_7a9a7a;
+    feeLabel.fontSize = UI_THEME.typography.scale.s9;
     feeLabel.width = '22px';
     feeLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     priceRow.addControl(feeLabel);
@@ -574,8 +589,8 @@ export class UIManager {
     this.scenarioPanel = new Rectangle('scenarioPanel');
     this.scenarioPanel.width = '200px';
     this.scenarioPanel.height = '75px';
-    this.scenarioPanel.cornerRadius = 5;
-    this.scenarioPanel.color = '#4a8a5a';
+    this.scenarioPanel.cornerRadius = UI_THEME.radii.scale.r5;
+    this.scenarioPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
     this.scenarioPanel.thickness = 2;
     this.scenarioPanel.background = 'rgba(26, 58, 42, 0.95)';
     this.scenarioPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -593,16 +608,16 @@ export class UIManager {
 
     this.scenarioTitleText = new TextBlock('scenarioTitle');
     this.scenarioTitleText.text = 'OBJECTIVE';
-    this.scenarioTitleText.color = '#7a9a7a';
-    this.scenarioTitleText.fontSize = 9;
+    this.scenarioTitleText.color = UI_THEME.colors.legacy.c_7a9a7a;
+    this.scenarioTitleText.fontSize = UI_THEME.typography.scale.s9;
     this.scenarioTitleText.height = '14px';
     this.scenarioTitleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.scenarioTitleText);
 
     this.scenarioProgressText = new TextBlock('scenarioProgress');
     this.scenarioProgressText.text = 'Earn $50,000';
-    this.scenarioProgressText.color = '#ffffff';
-    this.scenarioProgressText.fontSize = 11;
+    this.scenarioProgressText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.scenarioProgressText.fontSize = UI_THEME.typography.scale.s11;
     this.scenarioProgressText.height = '18px';
     this.scenarioProgressText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.scenarioProgressText);
@@ -610,34 +625,103 @@ export class UIManager {
     this.scenarioProgressBar = new Rectangle('scenarioProgressBar');
     this.scenarioProgressBar.width = '180px';
     this.scenarioProgressBar.height = '12px';
-    this.scenarioProgressBar.cornerRadius = 2;
-    this.scenarioProgressBar.color = '#3a5a4a';
+    this.scenarioProgressBar.cornerRadius = UI_THEME.radii.scale.r2;
+    this.scenarioProgressBar.color = UI_THEME.colors.legacy.c_3a5a4a;
     this.scenarioProgressBar.thickness = 1;
-    this.scenarioProgressBar.background = '#1a3a2a';
+    this.scenarioProgressBar.background = UI_THEME.colors.legacy.c_1a3a2a;
     stack.addControl(this.scenarioProgressBar);
 
     this.scenarioProgressFill = new Rectangle('scenarioProgressFill');
     this.scenarioProgressFill.width = '0%';
     this.scenarioProgressFill.height = '100%';
-    this.scenarioProgressFill.background = '#44aa44';
+    this.scenarioProgressFill.background = UI_THEME.colors.legacy.c_44aa44;
     this.scenarioProgressFill.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     this.scenarioProgressBar.addControl(this.scenarioProgressFill);
 
     this.daysRemainingText = new TextBlock('daysRemaining');
     this.daysRemainingText.text = '';
-    this.daysRemainingText.color = '#aaaaaa';
-    this.daysRemainingText.fontSize = 10;
+    this.daysRemainingText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.daysRemainingText.fontSize = UI_THEME.typography.scale.s10;
     this.daysRemainingText.height = '16px';
     this.daysRemainingText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.daysRemainingText);
+  }
+
+  private createOperationsPanel(): void {
+    this.operationsPanel = new Rectangle('operationsPanel');
+    this.operationsPanel.width = '210px';
+    this.operationsPanel.height = '122px';
+    this.operationsPanel.cornerRadius = UI_THEME.radii.scale.r5;
+    this.operationsPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
+    this.operationsPanel.thickness = 2;
+    this.operationsPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.operationsPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.operationsPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    this.operationsPanel.left = '-10px';
+    this.operationsPanel.top = '405px';
+    this.advancedTexture.addControl(this.operationsPanel);
+
+    const stack = new StackPanel('operationsStack');
+    stack.paddingTop = '6px';
+    stack.paddingLeft = '8px';
+    stack.paddingRight = '8px';
+    this.operationsPanel.addControl(stack);
+
+    const title = new TextBlock('operationsTitle');
+    title.text = 'OPERATIONS';
+    title.color = UI_THEME.colors.legacy.c_7a9a7a;
+    title.fontSize = UI_THEME.typography.scale.s9;
+    title.height = '14px';
+    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(title);
+
+    this.operationsCrewText = new TextBlock('operationsCrew');
+    this.operationsCrewText.text = '👷 Crew: 0 active / 0 idle';
+    this.operationsCrewText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsCrewText.fontSize = UI_THEME.typography.scale.s10;
+    this.operationsCrewText.height = '16px';
+    this.operationsCrewText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.operationsCrewText);
+
+    this.operationsDemandText = new TextBlock('operationsDemand');
+    this.operationsDemandText.text = '⛳ Tee: 0/0 | Queue: 0';
+    this.operationsDemandText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsDemandText.fontSize = UI_THEME.typography.scale.s10;
+    this.operationsDemandText.height = '16px';
+    this.operationsDemandText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.operationsDemandText);
+
+    this.operationsResearchText = new TextBlock('operationsResearch');
+    this.operationsResearchText.text = '🔬 Research: None';
+    this.operationsResearchText.color = UI_THEME.colors.legacy.c_888888;
+    this.operationsResearchText.fontSize = UI_THEME.typography.scale.s10;
+    this.operationsResearchText.height = '16px';
+    this.operationsResearchText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.operationsResearchText);
+
+    this.operationsAutomationText = new TextBlock('operationsAutomation');
+    this.operationsAutomationText.text = '🤖 Robots: 0 active, 0 broken';
+    this.operationsAutomationText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsAutomationText.fontSize = UI_THEME.typography.scale.s10;
+    this.operationsAutomationText.height = '16px';
+    this.operationsAutomationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.operationsAutomationText);
+
+    this.operationsIrrigationText = new TextBlock('operationsIrrigation');
+    this.operationsIrrigationText.text = '💧 Heads: 0 | Leaks: 0';
+    this.operationsIrrigationText.color = UI_THEME.colors.legacy.c_88ccff;
+    this.operationsIrrigationText.fontSize = UI_THEME.typography.scale.s10;
+    this.operationsIrrigationText.height = '16px';
+    this.operationsIrrigationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.operationsIrrigationText);
   }
 
   private createResourcesPanel(): void {
     const panel = new Rectangle('resourcesPanel');
     panel.width = '420px';
     panel.height = '55px';
-    panel.cornerRadius = 5;
-    panel.color = '#4a8a5a';
+    panel.cornerRadius = UI_THEME.radii.scale.r5;
+    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
     panel.thickness = 2;
     panel.background = 'rgba(26, 58, 42, 0.95)';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -653,8 +737,8 @@ export class UIManager {
 
     const title = new TextBlock();
     title.text = 'RESOURCES';
-    title.color = '#7a9a7a';
-    title.fontSize = 10;
+    title.color = UI_THEME.colors.legacy.c_7a9a7a;
+    title.fontSize = UI_THEME.typography.scale.s10;
     title.fontFamily = 'Arial, sans-serif';
     title.height = '14px';
     title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -692,13 +776,13 @@ export class UIManager {
 
     const iconText = new TextBlock();
     iconText.text = icon;
-    iconText.fontSize = 12;
+    iconText.fontSize = UI_THEME.typography.scale.s12;
     container.addControl(iconText, 0, 0);
 
     const labelText = new TextBlock();
     labelText.text = label;
     labelText.color = color;
-    labelText.fontSize = 11;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
     labelText.fontFamily = 'Arial, sans-serif';
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     container.addControl(labelText, 0, 1);
@@ -706,16 +790,16 @@ export class UIManager {
     const barBg = new Rectangle();
     barBg.width = '45px';
     barBg.height = '10px';
-    barBg.cornerRadius = 2;
-    barBg.background = '#1a3a2a';
-    barBg.color = '#3a5a4a';
+    barBg.cornerRadius = UI_THEME.radii.scale.r2;
+    barBg.background = UI_THEME.colors.legacy.c_1a3a2a;
+    barBg.color = UI_THEME.colors.legacy.c_3a5a4a;
     barBg.thickness = 1;
     barBg.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
 
     const bar = new Rectangle();
     bar.width = '45px';
     bar.height = '10px';
-    bar.cornerRadius = 2;
+    bar.cornerRadius = UI_THEME.radii.scale.r2;
     bar.background = color;
     bar.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     barBg.addControl(bar);
@@ -725,7 +809,7 @@ export class UIManager {
     const text = new TextBlock();
     text.text = '100%';
     text.color = color;
-    text.fontSize = 10;
+    text.fontSize = UI_THEME.typography.scale.s10;
     text.fontFamily = 'Arial, sans-serif';
     text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     container.addControl(text, 0, 3);
@@ -737,8 +821,8 @@ export class UIManager {
     const panel = new Rectangle('scorePanel');
     panel.width = '110px';
     panel.height = '40px';
-    panel.cornerRadius = 5;
-    panel.color = '#4a8a5a';
+    panel.cornerRadius = UI_THEME.radii.scale.r5;
+    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
     panel.thickness = 2;
     panel.background = 'rgba(42, 90, 58, 0.95)';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
@@ -752,14 +836,14 @@ export class UIManager {
 
     const trophy = new TextBlock();
     trophy.text = '🏆';
-    trophy.fontSize = 16;
+    trophy.fontSize = UI_THEME.typography.scale.s16;
     trophy.width = '30px';
     row.addControl(trophy);
 
     this.scoreText = new TextBlock('scoreText');
     this.scoreText.text = '0';
-    this.scoreText.color = '#ffcc00';
-    this.scoreText.fontSize = 18;
+    this.scoreText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.scoreText.fontSize = UI_THEME.typography.scale.s18;
     this.scoreText.fontFamily = 'Arial Black, sans-serif';
     this.scoreText.width = '80px';
     row.addControl(this.scoreText);
@@ -769,8 +853,8 @@ export class UIManager {
     this.minimapContainer = new Rectangle('minimapContainer');
     this.minimapContainer.width = '160px';
     this.minimapContainer.height = '130px';
-    this.minimapContainer.cornerRadius = 5;
-    this.minimapContainer.color = '#4a8a5a';
+    this.minimapContainer.cornerRadius = UI_THEME.radii.scale.r5;
+    this.minimapContainer.color = UI_THEME.colors.legacy.c_4a8a5a;
     this.minimapContainer.thickness = 2;
     this.minimapContainer.background = 'rgba(13, 31, 21, 0.95)';
     this.minimapContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -782,8 +866,8 @@ export class UIManager {
     const header = new Rectangle();
     header.width = '150px';
     header.height = '18px';
-    header.background = '#2a5a3a';
-    header.cornerRadius = 3;
+    header.background = UI_THEME.colors.legacy.c_2a5a3a;
+    header.cornerRadius = UI_THEME.radii.scale.r3;
     header.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     header.top = '5px';
     this.minimapContainer.addControl(header);
@@ -791,15 +875,15 @@ export class UIManager {
     const headerText = new TextBlock();
     headerText.text = '📍 MINIMAP';
     headerText.color = 'white';
-    headerText.fontSize = 10;
+    headerText.fontSize = UI_THEME.typography.scale.s10;
     headerText.fontFamily = 'Arial, sans-serif';
     header.addControl(headerText);
 
     this.minimapMapArea = new Rectangle('mapArea');
     this.minimapMapArea.width = '140px';
     this.minimapMapArea.height = '96px';
-    this.minimapMapArea.background = '#228B22';
-    this.minimapMapArea.cornerRadius = 3;
+    this.minimapMapArea.background = UI_THEME.colors.legacy.c_228b22;
+    this.minimapMapArea.cornerRadius = UI_THEME.radii.scale.r3;
     this.minimapMapArea.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     this.minimapMapArea.top = '-8px';
     this.minimapContainer.addControl(this.minimapMapArea);
@@ -808,7 +892,7 @@ export class UIManager {
     this.minimapPlayerDot.width = '10px';
     this.minimapPlayerDot.height = '10px';
     this.minimapPlayerDot.background = 'white';
-    this.minimapPlayerDot.color = '#7FFF7F';
+    this.minimapPlayerDot.color = UI_THEME.colors.legacy.c_7fff7f;
     this.minimapPlayerDot.thickness = 2;
     this.minimapMapArea.addControl(this.minimapPlayerDot);
   }
@@ -823,8 +907,8 @@ export class UIManager {
 
     this.objectiveText = new TextBlock('objectiveText');
     this.objectiveText.text = '';
-    this.objectiveText.color = '#ffcc00';
-    this.objectiveText.fontSize = 12;
+    this.objectiveText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.objectiveText.fontSize = UI_THEME.typography.scale.s12;
     this.objectiveText.height = '20px';
     this.objectiveText.isVisible = false;
     this.notificationContainer.addControl(this.objectiveText);
@@ -834,8 +918,8 @@ export class UIManager {
     const panel = new Rectangle('helpPanel');
     panel.width = '160px';
     panel.height = '170px';
-    panel.cornerRadius = 5;
-    panel.color = '#3a5a4a';
+    panel.cornerRadius = UI_THEME.radii.scale.r5;
+    panel.color = UI_THEME.colors.legacy.c_3a5a4a;
     panel.thickness = 1;
     panel.background = 'rgba(26, 58, 42, 0.8)';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
@@ -856,7 +940,9 @@ export class UIManager {
       '─ Management ─',
       'H: Employees | Y: Research',
       'G: TeeSheet | K: Marketing',
+      'I: Irrigation | J: Hole Builder',
       'B: Equipment | U: Amenities',
+      'L: Course Layout',
       'O: Walk-On Queue',
     ];
 
@@ -864,7 +950,7 @@ export class UIManager {
       const text = new TextBlock();
       text.text = line;
       text.color = line.startsWith('─') ? '#6a8a6a' : '#aaa';
-      text.fontSize = 10;
+      text.fontSize = UI_THEME.typography.scale.s10;
       text.fontFamily = 'Arial, sans-serif';
       text.height = '16px';
       text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -885,10 +971,10 @@ export class UIManager {
 
     const panel = new Rectangle('pausePanel');
     panel.width = '300px';
-    panel.height = '600px';
-    panel.cornerRadius = 10;
+    panel.height = '850px';
+    panel.cornerRadius = UI_THEME.radii.scale.r10;
     panel.background = 'rgba(26, 58, 42, 0.95)';
-    panel.color = '#4a8a5a';
+    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
     panel.thickness = 3;
     this.pauseOverlay.addControl(panel);
 
@@ -898,8 +984,8 @@ export class UIManager {
 
     const title = new TextBlock('pauseTitle');
     title.text = '⏸️ PAUSED';
-    title.color = '#ffcc00';
-    title.fontSize = 28;
+    title.color = UI_THEME.colors.legacy.c_ffcc00;
+    title.fontSize = UI_THEME.typography.scale.s28;
     title.fontFamily = 'Arial Black, sans-serif';
     title.height = '45px';
     stack.addControl(title);
@@ -947,7 +1033,7 @@ export class UIManager {
     const divider = new Rectangle('divider');
     divider.width = '200px';
     divider.height = '2px';
-    divider.background = '#3a6a4a';
+    divider.background = UI_THEME.colors.legacy.c_3a6a4a;
     divider.thickness = 0;
     divider.paddingTop = '10px';
     divider.paddingBottom = '5px';
@@ -955,14 +1041,15 @@ export class UIManager {
 
     const mgmtLabel = new TextBlock('mgmtLabel');
     mgmtLabel.text = 'MANAGEMENT';
-    mgmtLabel.color = '#88ccff';
-    mgmtLabel.fontSize = 12;
+    mgmtLabel.color = UI_THEME.colors.legacy.c_88ccff;
+    mgmtLabel.fontSize = UI_THEME.typography.scale.s12;
     mgmtLabel.height = '25px';
     stack.addControl(mgmtLabel);
 
     const employeesBtn = createAccessibleButton({
       label: '👥 Employees',
       fontSize: 16,
+      height: '36px',
       onClick: () => {
         this.hidePauseMenu();
         this.onEmployees?.();
@@ -976,6 +1063,7 @@ export class UIManager {
     const researchBtn = createAccessibleButton({
       label: '🔬 Research',
       fontSize: 16,
+      height: '36px',
       onClick: () => {
         this.hidePauseMenu();
         this.onResearch?.();
@@ -989,6 +1077,7 @@ export class UIManager {
     const teeSheetBtn = createAccessibleButton({
       label: '📋 Tee Sheet',
       fontSize: 16,
+      height: '36px',
       onClick: () => {
         this.hidePauseMenu();
         this.onTeeSheet?.();
@@ -1002,6 +1091,7 @@ export class UIManager {
     const marketingBtn = createAccessibleButton({
       label: '📢 Marketing',
       fontSize: 16,
+      height: '36px',
       onClick: () => {
         this.hidePauseMenu();
         this.onMarketing?.();
@@ -1012,10 +1102,94 @@ export class UIManager {
     stack.addControl(marketingBtn.control);
     this.pauseMenuButtons.push(marketingBtn);
 
+    const irrigationBtn = createAccessibleButton({
+      label: '💧 Irrigation',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onIrrigation?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    irrigationBtn.control.paddingTop = '10px';
+    stack.addControl(irrigationBtn.control);
+    this.pauseMenuButtons.push(irrigationBtn);
+
+    const equipmentStoreBtn = createAccessibleButton({
+      label: '🛒 Equipment Store',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onEquipmentStore?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    equipmentStoreBtn.control.paddingTop = '10px';
+    stack.addControl(equipmentStoreBtn.control);
+    this.pauseMenuButtons.push(equipmentStoreBtn);
+
+    const amenitiesBtn = createAccessibleButton({
+      label: '🏛️ Amenities',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onAmenityPanel?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    amenitiesBtn.control.paddingTop = '10px';
+    stack.addControl(amenitiesBtn.control);
+    this.pauseMenuButtons.push(amenitiesBtn);
+
+    const holeBuilderBtn = createAccessibleButton({
+      label: '🛠 Hole Builder',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onHoleBuilder?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    holeBuilderBtn.control.paddingTop = '10px';
+    stack.addControl(holeBuilderBtn.control);
+    this.pauseMenuButtons.push(holeBuilderBtn);
+
+    const courseLayoutBtn = createAccessibleButton({
+      label: '⛳ Course Layout',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onCourseLayout?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    courseLayoutBtn.control.paddingTop = '10px';
+    stack.addControl(courseLayoutBtn.control);
+    this.pauseMenuButtons.push(courseLayoutBtn);
+
+    const walkOnQueueBtn = createAccessibleButton({
+      label: '🚶 Walk-On Queue',
+      fontSize: 16,
+      height: '36px',
+      onClick: () => {
+        this.hidePauseMenu();
+        this.onWalkOnQueue?.();
+      },
+      focusGroup: 'pause-menu'
+    }, this.focusManager);
+    walkOnQueueBtn.control.paddingTop = '10px';
+    stack.addControl(walkOnQueueBtn.control);
+    this.pauseMenuButtons.push(walkOnQueueBtn);
+
     const speedDivider = new Rectangle('speedDivider');
     speedDivider.width = '200px';
     speedDivider.height = '2px';
-    speedDivider.background = '#3a6a4a';
+    speedDivider.background = UI_THEME.colors.legacy.c_3a6a4a;
     speedDivider.thickness = 0;
     speedDivider.paddingTop = '8px';
     speedDivider.paddingBottom = '3px';
@@ -1023,8 +1197,8 @@ export class UIManager {
 
     const speedLabel = new TextBlock('speedLabel');
     speedLabel.text = 'GAME SPEED';
-    speedLabel.color = '#ffcc00';
-    speedLabel.fontSize = 11;
+    speedLabel.color = UI_THEME.colors.legacy.c_ffcc00;
+    speedLabel.fontSize = UI_THEME.typography.scale.s11;
     speedLabel.height = '20px';
     stack.addControl(speedLabel);
 
@@ -1053,8 +1227,8 @@ export class UIManager {
 
     this.speedText = new TextBlock('speedText');
     this.speedText.text = '1x';
-    this.speedText.color = '#ffffff';
-    this.speedText.fontSize = 16;
+    this.speedText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.speedText.fontSize = UI_THEME.typography.scale.s16;
     this.speedText.fontWeight = 'bold';
     speedContainer.addControl(this.speedText);
 
@@ -1076,8 +1250,8 @@ export class UIManager {
 
     const hint = new TextBlock('pauseHint');
     hint.text = 'Press P, ESC, or Tab+Enter to navigate';
-    hint.color = '#888888';
-    hint.fontSize = 11;
+    hint.color = UI_THEME.colors.legacy.c_888888;
+    hint.fontSize = UI_THEME.typography.scale.s11;
     hint.fontFamily = 'Arial, sans-serif';
     hint.height = '20px';
     hint.paddingTop = '3px';
@@ -1092,8 +1266,8 @@ export class UIManager {
     this.overlayLegend = new Rectangle('overlayLegend');
     this.overlayLegend.width = '160px';
     this.overlayLegend.height = '60px';
-    this.overlayLegend.cornerRadius = 5;
-    this.overlayLegend.color = '#4a8a5a';
+    this.overlayLegend.cornerRadius = UI_THEME.radii.scale.r5;
+    this.overlayLegend.color = UI_THEME.colors.legacy.c_4a8a5a;
     this.overlayLegend.thickness = 2;
     this.overlayLegend.background = 'rgba(26, 58, 42, 0.95)';
     this.overlayLegend.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -1111,8 +1285,8 @@ export class UIManager {
 
     this.overlayLegendTitle = new TextBlock('overlayTitle');
     this.overlayLegendTitle.text = 'MOISTURE VIEW';
-    this.overlayLegendTitle.color = '#aaccff';
-    this.overlayLegendTitle.fontSize = 10;
+    this.overlayLegendTitle.color = UI_THEME.colors.legacy.c_aaccff;
+    this.overlayLegendTitle.fontSize = UI_THEME.typography.scale.s10;
     this.overlayLegendTitle.height = '14px';
     this.overlayLegendTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.overlayLegendTitle);
@@ -1125,8 +1299,8 @@ export class UIManager {
 
     this.overlayLegendLowLabel = new TextBlock('lowLabel');
     this.overlayLegendLowLabel.text = 'Dry';
-    this.overlayLegendLowLabel.color = '#888888';
-    this.overlayLegendLowLabel.fontSize = 9;
+    this.overlayLegendLowLabel.color = UI_THEME.colors.legacy.c_888888;
+    this.overlayLegendLowLabel.fontSize = UI_THEME.typography.scale.s9;
     this.overlayLegendLowLabel.width = '30px';
     this.overlayLegendLowLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     gradientRow.addControl(this.overlayLegendLowLabel);
@@ -1134,15 +1308,15 @@ export class UIManager {
     this.overlayLegendGradient = new Rectangle('gradient');
     this.overlayLegendGradient.width = '80px';
     this.overlayLegendGradient.height = '12px';
-    this.overlayLegendGradient.cornerRadius = 2;
+    this.overlayLegendGradient.cornerRadius = UI_THEME.radii.scale.r2;
     this.overlayLegendGradient.thickness = 1;
-    this.overlayLegendGradient.color = '#555555';
+    this.overlayLegendGradient.color = UI_THEME.colors.legacy.c_555555;
     gradientRow.addControl(this.overlayLegendGradient);
 
     this.overlayLegendHighLabel = new TextBlock('highLabel');
     this.overlayLegendHighLabel.text = 'Wet';
-    this.overlayLegendHighLabel.color = '#888888';
-    this.overlayLegendHighLabel.fontSize = 9;
+    this.overlayLegendHighLabel.color = UI_THEME.colors.legacy.c_888888;
+    this.overlayLegendHighLabel.fontSize = UI_THEME.typography.scale.s9;
     this.overlayLegendHighLabel.width = '30px';
     this.overlayLegendHighLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     gradientRow.addControl(this.overlayLegendHighLabel);
@@ -1159,24 +1333,31 @@ export class UIManager {
     switch (mode) {
       case 'moisture':
         this.overlayLegendTitle.text = 'MOISTURE VIEW';
-        this.overlayLegendTitle.color = '#88ccff';
+        this.overlayLegendTitle.color = UI_THEME.colors.legacy.c_88ccff;
         this.overlayLegendLowLabel.text = 'Dry';
         this.overlayLegendHighLabel.text = 'Wet';
         this.overlayLegendGradient.background = 'linear-gradient(90deg, #cc6644 0%, #4488cc 100%)';
         break;
       case 'nutrients':
         this.overlayLegendTitle.text = 'NUTRIENTS VIEW';
-        this.overlayLegendTitle.color = '#88ff88';
+        this.overlayLegendTitle.color = UI_THEME.colors.legacy.c_88ff88;
         this.overlayLegendLowLabel.text = 'Low';
         this.overlayLegendHighLabel.text = 'High';
         this.overlayLegendGradient.background = 'linear-gradient(90deg, #cc8844 0%, #66cc44 100%)';
         break;
       case 'height':
         this.overlayLegendTitle.text = 'HEIGHT VIEW';
-        this.overlayLegendTitle.color = '#ffcc88';
+        this.overlayLegendTitle.color = UI_THEME.colors.legacy.c_ffcc88;
         this.overlayLegendLowLabel.text = 'Short';
         this.overlayLegendHighLabel.text = 'Tall';
         this.overlayLegendGradient.background = 'linear-gradient(90deg, #44aa44 0%, #cc6644 100%)';
+        break;
+      case 'irrigation':
+        this.overlayLegendTitle.text = 'IRRIGATION VIEW';
+        this.overlayLegendTitle.color = UI_THEME.colors.legacy.c_88ddff;
+        this.overlayLegendLowLabel.text = 'No Flow';
+        this.overlayLegendHighLabel.text = 'High Flow';
+        this.overlayLegendGradient.background = 'linear-gradient(90deg, #334488 0%, #00ffff 100%)';
         break;
     }
   }
@@ -1191,6 +1372,12 @@ export class UIManager {
     onResearch?: () => void,
     onTeeSheet?: () => void,
     onMarketing?: () => void,
+    onIrrigation?: () => void,
+    onHoleBuilder?: () => void,
+    onEquipmentStore?: () => void,
+    onAmenityPanel?: () => void,
+    onCourseLayout?: () => void,
+    onWalkOnQueue?: () => void,
     onSpeedChange?: (delta: number) => void,
     currentSpeed?: number
   ): void {
@@ -1202,6 +1389,12 @@ export class UIManager {
     this.onResearch = onResearch;
     this.onTeeSheet = onTeeSheet;
     this.onMarketing = onMarketing;
+    this.onIrrigation = onIrrigation;
+    this.onHoleBuilder = onHoleBuilder;
+    this.onEquipmentStore = onEquipmentStore;
+    this.onAmenityPanel = onAmenityPanel;
+    this.onCourseLayout = onCourseLayout;
+    this.onWalkOnQueue = onWalkOnQueue;
     this.onSpeedChange = onSpeedChange;
     if (this.speedText && currentSpeed !== undefined) {
       this.speedText.text = `${currentSpeed}x`;
@@ -1239,7 +1432,7 @@ export class UIManager {
     const notification = new Rectangle('notification');
     notification.width = `${Math.max(200, message.length * 8 + 40)}px`;
     notification.height = '36px';
-    notification.cornerRadius = 5;
+    notification.cornerRadius = UI_THEME.radii.scale.r5;
     notification.background = bgColor;
     notification.color = borderColor;
     notification.thickness = 2;
@@ -1248,7 +1441,7 @@ export class UIManager {
     const text = new TextBlock();
     text.text = message;
     text.color = 'white';
-    text.fontSize = 14;
+    text.fontSize = UI_THEME.typography.scale.s14;
     text.fontFamily = 'Arial, sans-serif';
     notification.addControl(text);
 
@@ -1286,9 +1479,9 @@ export class UIManager {
   public updateEquipment(type: EquipmentType | null, isActive: boolean): void {
     if (type === null) {
       this.equipmentSlots.forEach((slot) => {
-        slot.color = '#666666';
+        slot.color = UI_THEME.colors.legacy.c_666666;
         slot.thickness = 1;
-        slot.background = '#1a3a2a';
+        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
         slot.alpha = 0.7;
       });
       return;
@@ -1345,13 +1538,13 @@ export class UIManager {
     this.weatherText.text = `${type.charAt(0).toUpperCase() + type.slice(1)} ${temperature}°F`;
 
     if (type === 'stormy' || type === 'rainy') {
-      this.weatherText.color = '#88aaff';
+      this.weatherText.color = UI_THEME.colors.legacy.c_88aaff;
     } else if (type === 'cloudy') {
-      this.weatherText.color = '#aabbcc';
+      this.weatherText.color = UI_THEME.colors.legacy.c_aabbcc;
     } else if (temperature > 90) {
-      this.weatherText.color = '#ffaa66';
+      this.weatherText.color = UI_THEME.colors.legacy.c_ffaa66;
     } else {
-      this.weatherText.color = '#ffdd88';
+      this.weatherText.color = UI_THEME.colors.legacy.c_ffdd88;
     }
   }
 
@@ -1369,13 +1562,55 @@ export class UIManager {
     if (satisfaction !== undefined) {
       this.satisfactionText.text = `${Math.round(satisfaction)}% rating`;
       if (satisfaction >= 80) {
-        this.satisfactionText.color = '#44ff44';
+        this.satisfactionText.color = UI_THEME.colors.legacy.c_44ff44;
       } else if (satisfaction >= 60) {
-        this.satisfactionText.color = '#ffcc00';
+        this.satisfactionText.color = UI_THEME.colors.legacy.c_ffcc00;
       } else {
-        this.satisfactionText.color = '#ff6644';
+        this.satisfactionText.color = UI_THEME.colors.legacy.c_ff6644;
       }
     }
+  }
+
+  public updateOperationsSummary(summary: {
+    workersActive: number;
+    workersIdle: number;
+    bookedTeeTimes: number;
+    totalTeeTimes: number;
+    walkOnQueue: number;
+    walkOnsTurnedAway: number;
+    researchName: string | null;
+    researchProgress: number;
+    activeCampaigns: number;
+    robotsWorking: number;
+    robotsBroken: number;
+    sprinklersPumping: number;
+    sprinklersDry: number;
+    pipeLeaks: number;
+  }): void {
+    this.operationsCrewText.text =
+      `👷 Crew: ${summary.workersActive} active / ${summary.workersIdle} idle`;
+    this.operationsDemandText.text =
+      `⛳ Tee: ${summary.bookedTeeTimes}/${summary.totalTeeTimes} | Queue: ${summary.walkOnQueue}`;
+    this.operationsDemandText.color = summary.walkOnQueue >= 6 ? '#ffaa44' : '#aaaaaa';
+
+    if (summary.researchName) {
+      this.operationsResearchText.text =
+        `🔬 ${summary.researchName}: ${Math.round(summary.researchProgress)}%`;
+      this.operationsResearchText.color = UI_THEME.colors.legacy.c_88ff88;
+    } else {
+      this.operationsResearchText.text =
+        `🔬 Research: idle (${summary.activeCampaigns} campaign${summary.activeCampaigns === 1 ? '' : 's'})`;
+      this.operationsResearchText.color = UI_THEME.colors.legacy.c_888888;
+    }
+
+    this.operationsAutomationText.text =
+      `🤖 Work:${summary.robotsWorking} Down:${summary.robotsBroken} Camp:${summary.activeCampaigns}`;
+    this.operationsAutomationText.color = summary.robotsBroken > 0 ? '#ff8844' : '#aaaaaa';
+
+    this.operationsIrrigationText.text =
+      `💧 Pump:${summary.sprinklersPumping} Dry:${summary.sprinklersDry} Leaks:${summary.pipeLeaks}`;
+    this.operationsIrrigationText.color =
+      summary.pipeLeaks > 0 || summary.sprinklersDry > 0 ? '#ff8844' : '#88ccff';
   }
 
   public updatePrestige(state: PrestigeState, rejectionRate: number = 0, recommendedMax?: number): void {
@@ -1384,22 +1619,22 @@ export class UIManager {
     this.prestigeScoreText.text = `${Math.round(state.currentScore)} / 1000`;
 
     if (state.currentScore < state.targetScore) {
-      this.prestigeScoreText.color = '#44aa44';
+      this.prestigeScoreText.color = UI_THEME.colors.legacy.c_44aa44;
     } else if (state.currentScore > state.targetScore) {
-      this.prestigeScoreText.color = '#aa4444';
+      this.prestigeScoreText.color = UI_THEME.colors.legacy.c_aa4444;
     } else {
-      this.prestigeScoreText.color = '#888888';
+      this.prestigeScoreText.color = UI_THEME.colors.legacy.c_888888;
     }
 
     if (rejectionRate >= 20 && recommendedMax) {
       this.prestigePriceWarning.text = `⚠️ ${rejectionRate}% rej (max $${recommendedMax})`;
-      this.prestigePriceWarning.color = '#ff6644';
+      this.prestigePriceWarning.color = UI_THEME.colors.legacy.c_ff6644;
     } else if (rejectionRate >= 5 && recommendedMax) {
       this.prestigePriceWarning.text = `💰 ${rejectionRate}% rej (max $${recommendedMax})`;
-      this.prestigePriceWarning.color = '#ffaa44';
+      this.prestigePriceWarning.color = UI_THEME.colors.legacy.c_ffaa44;
     } else if (rejectionRate >= 5) {
       this.prestigePriceWarning.text = `💰 ${rejectionRate}% rejection`;
-      this.prestigePriceWarning.color = '#ffaa44';
+      this.prestigePriceWarning.color = UI_THEME.colors.legacy.c_ffaa44;
     } else {
       this.prestigePriceWarning.text = '';
     }
@@ -1426,27 +1661,27 @@ export class UIManager {
 
     if (completed) {
       this.scenarioProgressText.text = `✅ ${objectiveText}`;
-      this.scenarioProgressText.color = '#00ff00';
-      this.scenarioProgressFill.background = '#00ff00';
+      this.scenarioProgressText.color = UI_THEME.colors.legacy.c_00ff00;
+      this.scenarioProgressFill.background = UI_THEME.colors.legacy.c_00ff00;
     } else {
       this.scenarioProgressText.text = objectiveText;
-      this.scenarioProgressText.color = '#ffffff';
+      this.scenarioProgressText.color = UI_THEME.colors.legacy.c_ffffff;
       this.scenarioProgressFill.background = progress >= 75 ? '#44aa44' : progress >= 50 ? '#aaaa44' : '#aa6644';
     }
 
     if (dayLimit) {
       const daysRemaining = dayLimit - daysElapsed;
       if (daysRemaining <= 7) {
-        this.daysRemainingText.color = '#ff6666';
+        this.daysRemainingText.color = UI_THEME.colors.legacy.c_ff6666;
       } else if (daysRemaining <= 14) {
-        this.daysRemainingText.color = '#ffaa44';
+        this.daysRemainingText.color = UI_THEME.colors.legacy.c_ffaa44;
       } else {
-        this.daysRemainingText.color = '#aaaaaa';
+        this.daysRemainingText.color = UI_THEME.colors.legacy.c_aaaaaa;
       }
       this.daysRemainingText.text = `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`;
     } else {
       this.daysRemainingText.text = `Day ${daysElapsed}`;
-      this.daysRemainingText.color = '#aaaaaa';
+      this.daysRemainingText.color = UI_THEME.colors.legacy.c_aaaaaa;
     }
   }
 
@@ -1479,8 +1714,8 @@ export class UIManager {
       const dot = new Ellipse(`workerDot_${this.minimapWorkerDots.length}`);
       dot.width = '6px';
       dot.height = '6px';
-      dot.background = '#ff9933';
-      dot.color = '#cc6600';
+      dot.background = UI_THEME.colors.legacy.c_ff9933;
+      dot.color = UI_THEME.colors.legacy.c_cc6600;
       dot.thickness = 1;
       this.minimapMapArea.addControl(dot);
       this.minimapWorkerDots.push(dot);
@@ -1496,15 +1731,15 @@ export class UIManager {
 
       // Color based on task
       if (worker.task === 'idle') {
-        dot.background = '#666666';
+        dot.background = UI_THEME.colors.legacy.c_666666;
       } else if (worker.task === 'mow_grass') {
-        dot.background = '#44aa44';
+        dot.background = UI_THEME.colors.legacy.c_44aa44;
       } else if (worker.task === 'water_area') {
-        dot.background = '#4488cc';
+        dot.background = UI_THEME.colors.legacy.c_4488cc;
       } else if (worker.task === 'fertilize_area') {
-        dot.background = '#cc8844';
+        dot.background = UI_THEME.colors.legacy.c_cc8844;
       } else {
-        dot.background = '#ff9933';
+        dot.background = UI_THEME.colors.legacy.c_ff9933;
       }
     });
   }
@@ -1514,4 +1749,3 @@ export class UIManager {
     this.advancedTexture.dispose();
   }
 }
-

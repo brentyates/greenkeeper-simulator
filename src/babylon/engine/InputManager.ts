@@ -33,8 +33,11 @@ export interface InputCallbacks {
   onResearchPanel?: () => void;
   onTeeSheetPanel?: () => void;
   onMarketingPanel?: () => void;
+  onIrrigationPanel?: () => void;
+  onHoleBuilderPanel?: () => void;
   onEquipmentStore?: () => void;
   onAmenityPanel?: () => void;
+  onCourseLayoutPanel?: () => void;
   onWalkOnQueuePanel?: () => void;
   onDragStart?: (screenX: number, screenY: number, shiftKey?: boolean) => void;
   onDrag?: (screenX: number, screenY: number) => void;
@@ -219,6 +222,14 @@ export class InputManager {
       this.callbacks.onTeeSheetPanel?.();
     } else if (key === "k") {
       this.callbacks.onMarketingPanel?.();
+    } else if (key === "i") {
+      if (!this.callbacks.isEditorActive?.()) {
+        this.callbacks.onIrrigationPanel?.();
+      }
+    } else if (key === "j") {
+      if (!this.callbacks.isEditorActive?.()) {
+        this.callbacks.onHoleBuilderPanel?.();
+      }
     } else if (key === "b") {
       if (this.callbacks.isEditorActive?.()) {
         this.callbacks.onBrushModeToggle?.();
@@ -227,6 +238,8 @@ export class InputManager {
       }
     } else if (key === "u") {
       this.callbacks.onAmenityPanel?.();
+    } else if (key === "l") {
+      this.callbacks.onCourseLayoutPanel?.();
     } else if (key === "o") {
       this.callbacks.onWalkOnQueuePanel?.();
     } else if (key === "x" && this.callbacks.isEditorActive?.()) {
@@ -246,8 +259,10 @@ export class InputManager {
 
       const x = pointerInfo.event.clientX;
       const y = pointerInfo.event.clientY;
+      const inputBlocked = this.callbacks.isInputBlocked?.(x, y) ?? false;
 
       if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
+        if (inputBlocked) return;
         this.isDragging = true;
         const shiftKey = (pointerInfo.event as PointerEvent).shiftKey;
         this.callbacks.onClick?.(x, y, shiftKey);
@@ -258,6 +273,7 @@ export class InputManager {
           this.callbacks.onDragEnd?.();
         }
       } else if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
+        if (inputBlocked) return;
         this.callbacks.onMouseMove?.(x, y);
         if (this.isDragging) {
           this.callbacks.onDrag?.(x, y);
@@ -283,10 +299,15 @@ export class InputManager {
     // Touch start
     canvas.addEventListener('touchstart', (event: TouchEvent) => {
       if (!this.enabled) return;
+      event.preventDefault();
 
       if (event.touches.length === 1) {
         // Single touch - could be tap or swipe
         const touch = event.touches[0];
+        if (this.callbacks.isInputBlocked?.(touch.clientX, touch.clientY)) {
+          this.touchStartPos = null;
+          return;
+        }
         this.touchStartPos = { x: touch.clientX, y: touch.clientY };
         this.touchStartTime = Date.now();
         this.callbacks.onDragStart?.(touch.clientX, touch.clientY, false);
@@ -294,27 +315,42 @@ export class InputManager {
         // Two-finger pinch
         const touch1 = event.touches[0];
         const touch2 = event.touches[1];
+        if (
+          this.callbacks.isInputBlocked?.(touch1.clientX, touch1.clientY) ||
+          this.callbacks.isInputBlocked?.(touch2.clientX, touch2.clientY)
+        ) {
+          this.touchStartPos = null;
+          return;
+        }
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
         this.initialPinchDistance = this.getDistance(dx, dy);
         this.lastPinchDistance = this.initialPinchDistance;
         this.touchStartPos = null; // Cancel swipe detection
       }
-    }, { passive: true });
+    }, { passive: false });
 
     // Touch move
     canvas.addEventListener('touchmove', (event: TouchEvent) => {
       if (!this.enabled) return;
+      event.preventDefault();
 
       if (event.touches.length === 1 && this.touchStartPos) {
         // Single touch drag
         const touch = event.touches[0];
+        if (this.callbacks.isInputBlocked?.(touch.clientX, touch.clientY)) return;
         this.callbacks.onDrag?.(touch.clientX, touch.clientY);
         this.callbacks.onMouseMove?.(touch.clientX, touch.clientY);
       } else if (event.touches.length === 2) {
         // Pinch zoom
         const touch1 = event.touches[0];
         const touch2 = event.touches[1];
+        if (
+          this.callbacks.isInputBlocked?.(touch1.clientX, touch1.clientY) ||
+          this.callbacks.isInputBlocked?.(touch2.clientX, touch2.clientY)
+        ) {
+          return;
+        }
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
         const distance = this.getDistance(dx, dy);
@@ -330,33 +366,36 @@ export class InputManager {
 
         this.lastPinchDistance = distance;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     // Touch end
     canvas.addEventListener('touchend', (event: TouchEvent) => {
       if (!this.enabled) return;
+      event.preventDefault();
 
       if (event.changedTouches.length === 1 && this.touchStartPos) {
         const touch = event.changedTouches[0];
         const endX = touch.clientX;
         const endY = touch.clientY;
-        const timeDiff = Date.now() - this.touchStartTime;
+        if (!this.callbacks.isInputBlocked?.(endX, endY)) {
+          const timeDiff = Date.now() - this.touchStartTime;
 
-        const dx = endX - this.touchStartPos.x;
-        const dy = endY - this.touchStartPos.y;
-        const distance = this.getDistance(dx, dy);
+          const dx = endX - this.touchStartPos.x;
+          const dy = endY - this.touchStartPos.y;
+          const distance = this.getDistance(dx, dy);
 
-        // Check if it was a tap (short time, minimal movement)
-        if (timeDiff < this.TAP_TIME_THRESHOLD && distance < 10) {
-          this.callbacks.onClick?.(endX, endY);
-        }
-        // Check if it was a swipe (significant movement)
-        else if (distance > this.SWIPE_THRESHOLD) {
-          const direction = this.getSwipeDirection(dx, dy);
-          if (direction) {
-            this.callbacks.onSwipe?.(direction);
-            // Also trigger move callback for swipe-to-move
-            this.callbacks.onMove?.(direction);
+          // Check if it was a tap (short time, minimal movement)
+          if (timeDiff < this.TAP_TIME_THRESHOLD && distance < 10) {
+            this.callbacks.onClick?.(endX, endY);
+          }
+          // Check if it was a swipe (significant movement)
+          else if (distance > this.SWIPE_THRESHOLD) {
+            const direction = this.getSwipeDirection(dx, dy);
+            if (direction) {
+              this.callbacks.onSwipe?.(direction);
+              // Also trigger move callback for swipe-to-move
+              this.callbacks.onMove?.(direction);
+            }
           }
         }
 
@@ -369,15 +408,16 @@ export class InputManager {
         this.initialPinchDistance = 0;
         this.lastPinchDistance = 0;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     // Touch cancel
-    canvas.addEventListener('touchcancel', () => {
+    canvas.addEventListener('touchcancel', (event: TouchEvent) => {
+      event.preventDefault();
       this.touchStartPos = null;
       this.initialPinchDistance = 0;
       this.lastPinchDistance = 0;
       this.callbacks.onDragEnd?.();
-    }, { passive: true });
+    }, { passive: false });
   }
 
   private getDistance(dx: number, dy: number): number {

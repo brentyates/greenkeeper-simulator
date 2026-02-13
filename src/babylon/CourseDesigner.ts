@@ -55,6 +55,7 @@ export class CourseDesigner {
   private terrainModeBtn: Rectangle | null = null;
   private assetModeBtn: Rectangle | null = null;
   private overlayModeBtn: Rectangle | null = null;
+  private holeNumberText: TextBlock | null = null;
   private courseNameText: TextBlock | null = null;
   private overlayPanelUI: OverlayPanelUI | null = null;
   private overlayFileInput: HTMLInputElement | null = null;
@@ -99,6 +100,7 @@ export class CourseDesigner {
     this.assetPlacementSystem = new AssetPlacementSystem(scene, {
       onSelect: (asset) => this.handleAssetSelect(asset),
       onPlace: () => {},
+      onHoleNumberChange: (holeNumber) => this.updateActiveHoleLabel(holeNumber),
       getTerrainElevation: (wx, wz) => this.getTerrainElevation(wx, wz),
     });
 
@@ -110,8 +112,13 @@ export class CourseDesigner {
     this.terrainMeshSystem.setAxisIndicatorEnabled(true);
 
     if (options.editCourse?.placedAssets?.length) {
-      this.assetPlacementSystem.loadPlacedAssets(options.editCourse.placedAssets);
+      this.assetPlacementSystem.loadPlacedAssets(options.editCourse.placedAssets)
+        .then(() => {
+          this.updateActiveHoleLabel(this.assetPlacementSystem.getActiveHoleNumber());
+        });
     }
+
+    this.updateActiveHoleLabel(this.assetPlacementSystem.getActiveHoleNumber());
 
     this.babylonEngine.setTargetOrthoSize(35);
     this.setupRenderLoop();
@@ -382,6 +389,19 @@ export class CourseDesigner {
     this.assetModeBtn = this.createToolbarButton(row, 'ASSETS', false);
     this.assetModeBtn.onPointerUpObservable.add(() => this.setDesignerMode('asset'));
 
+    this.createHoleStepButton(row, '-', () => this.changeActiveHole(-1));
+
+    this.holeNumberText = new TextBlock('activeHoleLabel');
+    this.holeNumberText.text = 'Hole: 1';
+    this.holeNumberText.color = '#c9f2c9';
+    this.holeNumberText.fontSize = 11;
+    this.holeNumberText.fontFamily = 'Arial, sans-serif';
+    this.holeNumberText.width = '75px';
+    this.holeNumberText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    row.addControl(this.holeNumberText);
+
+    this.createHoleStepButton(row, '+', () => this.changeActiveHole(1));
+
     this.overlayModeBtn = this.createToolbarButton(row, 'OVERLAY', false);
     this.overlayModeBtn.onPointerUpObservable.add(() => this.toggleOverlayPanel());
 
@@ -435,6 +455,31 @@ export class CourseDesigner {
 
     btn.onPointerUpObservable.add(onClick);
     btn.onPointerEnterObservable.add(() => { btn.alpha = 0.8; });
+    btn.onPointerOutObservable.add(() => { btn.alpha = 1; });
+
+    parent.addControl(btn);
+  }
+
+  private createHoleStepButton(parent: StackPanel, label: string, onClick: () => void): void {
+    const btn = new Rectangle(`holeBtn_${label}`);
+    btn.width = '24px';
+    btn.height = '24px';
+    btn.cornerRadius = 4;
+    btn.background = '#1f3f2b';
+    btn.color = '#5f8f6f';
+    btn.thickness = 1;
+    btn.isPointerBlocker = true;
+
+    const text = new TextBlock();
+    text.text = label;
+    text.color = '#d7f7d7';
+    text.fontSize = 14;
+    text.fontFamily = 'Arial, sans-serif';
+    text.isPointerBlocker = false;
+    btn.addControl(text);
+
+    btn.onPointerUpObservable.add(onClick);
+    btn.onPointerEnterObservable.add(() => { btn.alpha = 0.85; });
     btn.onPointerOutObservable.add(() => { btn.alpha = 1; });
 
     parent.addControl(btn);
@@ -665,8 +710,22 @@ export class CourseDesigner {
     }
   }
 
+  private changeActiveHole(delta: number): void {
+    const nextHole = this.assetPlacementSystem.getActiveHoleNumber() + delta;
+    this.assetPlacementSystem.setActiveHoleNumber(nextHole);
+  }
+
+  private updateActiveHoleLabel(holeNumber: number): void {
+    if (!this.holeNumberText) return;
+    this.holeNumberText.text = `Hole: ${holeNumber}`;
+  }
+
   private handleAssetSelect(asset: PlacedAsset | null): void {
     this.assetBrowserUI?.showActions(asset !== null);
+    const holeNumber = asset?.gameplay?.holeFeature?.holeNumber;
+    if (holeNumber !== undefined) {
+      this.assetPlacementSystem.setActiveHoleNumber(holeNumber);
+    }
   }
 
   private applyOverlayTransform(): void {

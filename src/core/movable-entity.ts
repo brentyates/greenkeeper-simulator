@@ -1,3 +1,8 @@
+import {
+  advanceTowardPoint,
+  type TraversalRule,
+} from './navigation';
+
 export interface GridPosition {
   readonly x: number;
   readonly y: number;
@@ -49,6 +54,12 @@ export interface GolferEntity extends MovableEntity {
   readonly currentHole: number;
   readonly satisfaction: number;
   readonly isWalking: boolean;
+}
+
+export interface EmployeeMoveResult {
+  readonly entity: EmployeeEntity;
+  readonly arrived: boolean;
+  readonly blocked: boolean;
 }
 
 export type AnyEntity = PlayerEntity | EmployeeEntity | GolferEntity;
@@ -115,33 +126,48 @@ export function moveEmployeeToward(
   employee: EmployeeEntity,
   targetWorldX: number,
   targetWorldZ: number,
-  distanceThisFrame: number
+  distanceThisFrame: number,
+  canTraverse?: TraversalRule<EmployeeEntity>
 ): EmployeeEntity {
-  const dx = targetWorldX - employee.worldX;
-  const dz = targetWorldZ - employee.worldZ;
-  const dist = Math.sqrt(dx * dx + dz * dz);
+  return moveEmployeeTowardWithNavigation(
+    employee,
+    targetWorldX,
+    targetWorldZ,
+    distanceThisFrame,
+    canTraverse
+  ).entity;
+}
 
-  if (dist <= distanceThisFrame) {
-    return {
-      ...employee,
-      worldX: targetWorldX,
-      worldZ: targetWorldZ,
-      gridX: Math.floor(targetWorldX),
-      gridY: Math.floor(targetWorldZ),
-      moveProgress: 0,
-    };
-  }
+export function moveEmployeeTowardWithNavigation(
+  employee: EmployeeEntity,
+  targetWorldX: number,
+  targetWorldZ: number,
+  distanceThisFrame: number,
+  canTraverse?: TraversalRule<EmployeeEntity>
+): EmployeeMoveResult {
+  const navigation = advanceTowardPoint(
+    employee,
+    employee.worldX,
+    employee.worldZ,
+    targetWorldX,
+    targetWorldZ,
+    distanceThisFrame,
+    canTraverse
+  );
 
-  const ratio = distanceThisFrame / dist;
-  const newWorldX = employee.worldX + dx * ratio;
-  const newWorldZ = employee.worldZ + dz * ratio;
+  const updated: EmployeeEntity = {
+    ...employee,
+    worldX: navigation.worldX,
+    worldZ: navigation.worldZ,
+    gridX: Math.floor(navigation.worldX),
+    gridY: Math.floor(navigation.worldZ),
+    moveProgress: navigation.arrived ? 0 : employee.moveProgress,
+  };
 
   return {
-    ...employee,
-    worldX: newWorldX,
-    worldZ: newWorldZ,
-    gridX: Math.floor(newWorldX),
-    gridY: Math.floor(newWorldZ),
+    entity: updated,
+    arrived: navigation.arrived,
+    blocked: navigation.blocked,
   };
 }
 

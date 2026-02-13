@@ -15,6 +15,7 @@ import type { TerrainSystem } from "./systems/TerrainSystemInterface";
 import type { UIManager } from "./ui/UIManager";
 import type { CourseData } from "../data/courseData";
 import type { GameOptions } from "./BabylonMain";
+import { TERRAIN_CODES } from "../core/terrain";
 
 vi.mock("../core/weather", () => ({
   tickWeather: vi.fn(),
@@ -92,6 +93,16 @@ vi.mock("../core/marketing", () => ({
 
 vi.mock("../core/autonomous-equipment", () => ({
   tickAutonomousEquipment: vi.fn(() => ({ state: { robots: [], chargingStationX: 0, chargingStationY: 0 }, effects: [], operatingCost: 0 })),
+  getAllowedTerrainCodesForRobotEquipment: vi.fn((equipmentId: string, type: string) => {
+    if (type === "mower") {
+      if (equipmentId.includes("mower_fairway")) return [0];
+      if (equipmentId.includes("mower_greens")) return [2];
+      if (equipmentId.includes("mower_rough")) return [1];
+      return [0, 1, 2, 5];
+    }
+    if (type === "raker") return [3];
+    return null;
+  }),
 }));
 
 vi.mock("../core/irrigation", () => ({
@@ -189,6 +200,8 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
     getAllFaceStates: vi.fn(() => new Map()),
     getCourseStats: vi.fn(() => ({ health: 50, moisture: 50, nutrients: 50, height: 50 })),
     findFaceAtPosition: vi.fn(() => 1),
+    getTerrainTypeAt: vi.fn(() => "fairway"),
+    isPositionWalkable: vi.fn(() => true),
     findWorkCandidates: vi.fn(() => []),
     applyWorkEffect: vi.fn(() => []),
     mowAt: vi.fn(() => true),
@@ -1340,6 +1353,158 @@ describe("SimulationTick", () => {
       expect(coreTickAutonomousEquipment).toHaveBeenCalled();
     });
 
+    it("sanitizes out-of-bounds charging station before ticking robots", () => {
+      const { state, systems } = createMockContext({
+        currentCourse: { name: "Small Test Course", width: 12, height: 25, par: 72 } as unknown as CourseData,
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "idle" as const, targetX: null, targetY: null, breakdownTimeRemaining: 0 }],
+          chargingStationX: 8,
+          chargingStationY: 50,
+        },
+      });
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+
+      runSimulationTick(state, systems, 16);
+
+      expect(coreTickAutonomousEquipment).toHaveBeenCalled();
+      const passedState = vi.mocked(coreTickAutonomousEquipment).mock.calls[0][0];
+      expect(passedState.chargingStationX).toBe(Math.floor(12 / 2));
+      expect(passedState.chargingStationY).toBe(Math.floor(25 / 2));
+    });
+
+    it("runs exactly one global candidate scan from course center", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [
+            { id: "r1", equipmentId: "auto_sprayer_1", type: "sprayer" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "idle" as const, targetX: null, targetY: null, breakdownTimeRemaining: 0 },
+            { id: "r2", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 35, worldZ: 25, resourceCurrent: 100, resourceMax: 100, state: "idle" as const, targetX: null, targetY: null, breakdownTimeRemaining: 0 },
+          ],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+        currentCourse: { name: "Large Test Course", width: 40, height: 30, par: 72 } as unknown as CourseData,
+      });
+      vi.mocked(systems.terrainSystem.findWorkCandidates).mockReturnValue([]);
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+
+      runSimulationTick(state, systems, 16);
+
+      expect(systems.terrainSystem.findWorkCandidates).toHaveBeenCalledTimes(1);
+      expect(systems.terrainSystem.findWorkCandidates).toHaveBeenCalledWith(
+        20,
+        15,
+        Math.ceil(Math.hypot(40, 30) / 2) + 2
+      );
+    });
+
+    it("passes through global candidate snapshots without dropping same-tile entries", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "auto_sprayer_1", type: "sprayer" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "idle" as const, targetX: null, targetY: null, breakdownTimeRemaining: 0 }],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+      });
+      vi.mocked(systems.terrainSystem.findWorkCandidates).mockReturnValue([
+        {
+          worldX: 10.8,
+          worldZ: 5.8,
+          avgMoisture: 70,
+          minMoisture: 70,
+          avgNutrients: 60,
+          minNutrients: 60,
+          avgGrassHeight: 0.5,
+          avgHealth: 90,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+          faceCount: 30,
+        },
+        {
+          worldX: 10.2,
+          worldZ: 5.2,
+          avgMoisture: 58,
+          minMoisture: 20,
+          avgNutrients: 60,
+          minNutrients: 60,
+          avgGrassHeight: 0.5,
+          avgHealth: 90,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+          faceCount: 2,
+        },
+      ]);
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+
+      runSimulationTick(state, systems, 16);
+
+      const passedCandidates = vi.mocked(coreTickAutonomousEquipment).mock.calls[0][1];
+      expect(passedCandidates).toHaveLength(2);
+      expect(passedCandidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ worldX: 10.8, worldZ: 5.8 }),
+          expect.objectContaining({ worldX: 10.2, worldZ: 5.2 }),
+        ])
+      );
+    });
+
+    it("keeps separate dominant-terrain candidates in the global pool", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "auto_mower_1", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "idle" as const, targetX: null, targetY: null, breakdownTimeRemaining: 0 }],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+      });
+      vi.mocked(systems.terrainSystem.findWorkCandidates).mockReturnValue([
+        {
+          worldX: 10.2,
+          worldZ: 5.2,
+          avgMoisture: 60,
+          avgNutrients: 60,
+          avgGrassHeight: 8,
+          maxGrassHeight: 12,
+          avgHealth: 90,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+          terrainCodesPresent: [TERRAIN_CODES.FAIRWAY],
+          faceCount: 8,
+        },
+        {
+          worldX: 10.8,
+          worldZ: 5.8,
+          avgMoisture: 60,
+          avgNutrients: 60,
+          avgGrassHeight: 6,
+          maxGrassHeight: 10,
+          avgHealth: 90,
+          dominantTerrainCode: TERRAIN_CODES.ROUGH,
+          terrainCodesPresent: [TERRAIN_CODES.ROUGH],
+          faceCount: 6,
+        },
+      ]);
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+
+      runSimulationTick(state, systems, 16);
+
+      const passedCandidates = vi.mocked(coreTickAutonomousEquipment).mock.calls[0][1];
+      expect(passedCandidates).toHaveLength(2);
+      const terrainCodes = passedCandidates.map((c: any) => c.dominantTerrainCode).sort((a: number, b: number) => a - b);
+      expect(terrainCodes).toEqual([TERRAIN_CODES.FAIRWAY, TERRAIN_CODES.ROUGH]);
+    });
+
     it("charges operating cost when > 0", () => {
       const { state, systems } = createMockContext({
         autonomousState: {
@@ -1418,11 +1583,49 @@ describe("SimulationTick", () => {
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "mower" as const, worldX: 5, worldZ: 5, efficiency: 1.0 }],
+        effects: [{ type: "mower" as const, equipmentId: "auto_mower_1", worldX: 5, worldZ: 5, efficiency: 1.0 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
-      expect(systems.terrainSystem.mowAt).toHaveBeenCalledWith(5, 5);
+      expect(systems.terrainSystem.applyWorkEffect).toHaveBeenCalledWith(
+        5,
+        5,
+        1.0,
+        "mow",
+        1.0,
+        expect.any(Number),
+        [
+          TERRAIN_CODES.FAIRWAY,
+          TERRAIN_CODES.ROUGH,
+          TERRAIN_CODES.GREEN,
+          TERRAIN_CODES.TEE,
+        ]
+      );
+    });
+
+    it("applies raker effects", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "robot_bunker_rake", type: "raker" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+      });
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [{ type: "raker" as const, equipmentId: "robot_bunker_rake", worldX: 5, worldZ: 5, efficiency: 0.9 }],
+        operatingCost: 0,
+      });
+      runSimulationTick(state, systems, 16);
+      expect(systems.terrainSystem.applyWorkEffect).toHaveBeenCalledWith(
+        5,
+        5,
+        1.5,
+        "rake",
+        0.9,
+        expect.any(Number),
+        [TERRAIN_CODES.BUNKER]
+      );
     });
 
     it("applies sprayer effects", () => {
@@ -1435,11 +1638,11 @@ describe("SimulationTick", () => {
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "sprayer" as const, worldX: 5, worldZ: 5, efficiency: 0.8 }],
+        effects: [{ type: "sprayer" as const, equipmentId: "auto_sprayer_1", worldX: 5, worldZ: 5, efficiency: 0.8 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
-      expect(systems.terrainSystem.waterArea).toHaveBeenCalledWith(5, 5, 1, 8);
+      expect(systems.terrainSystem.waterArea).toHaveBeenCalledWith(5, 5, 2, 8);
     });
 
     it("applies spreader effects with fertilizer effectiveness", () => {
@@ -1452,12 +1655,12 @@ describe("SimulationTick", () => {
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "spreader" as const, worldX: 5, worldZ: 5, efficiency: 0.9 }],
+        effects: [{ type: "spreader" as const, equipmentId: "auto_spreader_1", worldX: 5, worldZ: 5, efficiency: 0.9 }],
         operatingCost: 0,
       });
       vi.mocked(getBestFertilizerEffectiveness).mockReturnValue(1.5);
       runSimulationTick(state, systems, 16);
-      expect(systems.terrainSystem.fertilizeArea).toHaveBeenCalledWith(5, 5, 1, 9, 1.5);
+      expect(systems.terrainSystem.fertilizeArea).toHaveBeenCalledWith(5, 5, 2, 9, 1.5);
     });
 
     it("ignores unknown robot effect types", () => {
@@ -1470,7 +1673,7 @@ describe("SimulationTick", () => {
       });
       vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
         state: state.autonomousState,
-        effects: [{ type: "unknown" as any, worldX: 5, worldZ: 5, efficiency: 1.0 }],
+        effects: [{ type: "unknown" as any, equipmentId: "auto_unknown_1", worldX: 5, worldZ: 5, efficiency: 1.0 }],
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
@@ -1498,7 +1701,8 @@ describe("SimulationTick", () => {
         state.autonomousState,
         expect.anything(),
         expect.any(Number),
-        true
+        true,
+        expect.any(Function)
       );
     });
 
@@ -1520,8 +1724,73 @@ describe("SimulationTick", () => {
         state.autonomousState,
         expect.anything(),
         expect.any(Number),
-        false
+        false,
+        expect.any(Function)
       );
+    });
+
+    it("allows all robots to transit green terrain", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "robot_bunker_rake", type: "raker" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+      });
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+      vi.mocked(systems.terrainSystem.isPositionWalkable).mockReturnValue(true);
+      vi.mocked(systems.terrainSystem.getTerrainTypeAt).mockReturnValue("green");
+
+      runSimulationTick(state, systems, 16);
+
+      const canTraverse = vi.mocked(coreTickAutonomousEquipment).mock.calls[0][4];
+      expect(canTraverse).toBeTypeOf("function");
+
+      expect(canTraverse?.({ equipmentId: "robot_mower_greens", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_bunker_rake", type: "raker" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_mower_fairway", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_mower_rough", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_sprayer", type: "sprayer" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_spreader", type: "spreader" } as any, 5, 5)).toBe(true);
+    });
+
+    it("allows rough transit while still blocking non-rakers from bunker tiles", () => {
+      const { state, systems } = createMockContext({
+        autonomousState: {
+          robots: [{ id: "r1", equipmentId: "robot_mower_fairway", type: "mower" as const, stats: { efficiency: 1, speed: 1, fuelCapacity: 100, fuelEfficiency: 1, durability: 100 }, worldX: 5, worldZ: 5, resourceCurrent: 100, resourceMax: 100, state: "working" as const, targetX: 10, targetY: 10, breakdownTimeRemaining: 0 }],
+          chargingStationX: 0,
+          chargingStationY: 0,
+        },
+      });
+      vi.mocked(coreTickAutonomousEquipment).mockReturnValue({
+        state: state.autonomousState,
+        effects: [],
+        operatingCost: 0,
+      });
+      vi.mocked(systems.terrainSystem.isPositionWalkable).mockReturnValue(true);
+      vi.mocked(systems.terrainSystem.getTerrainTypeAt).mockImplementation((worldX: number) => {
+        if (worldX >= 6) return "bunker";
+        return "rough";
+      });
+
+      runSimulationTick(state, systems, 16);
+
+      const canTraverse = vi.mocked(coreTickAutonomousEquipment).mock.calls[0][4];
+      expect(canTraverse).toBeTypeOf("function");
+
+      expect(canTraverse?.({ equipmentId: "robot_mower_fairway", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_mower_greens", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_sprayer", type: "sprayer" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_spreader", type: "spreader" } as any, 5, 5)).toBe(true);
+
+      expect(canTraverse?.({ equipmentId: "robot_mower_fairway", type: "mower" } as any, 6, 5)).toBe(false);
+      expect(canTraverse?.({ equipmentId: "robot_sprayer", type: "sprayer" } as any, 6, 5)).toBe(false);
+      expect(canTraverse?.({ equipmentId: "robot_spreader", type: "spreader" } as any, 6, 5)).toBe(false);
+      expect(canTraverse?.({ equipmentId: "robot_bunker_rake", type: "raker" } as any, 6, 5)).toBe(true);
     });
   });
 
@@ -1553,6 +1822,31 @@ describe("SimulationTick", () => {
       runSimulationTick(state, systems, 16);
       expect(updatePipePressures).toHaveBeenCalled();
       expect(checkForLeaks).toHaveBeenCalled();
+    });
+
+    it("recomputes pressures after leak checks", () => {
+      const { state, systems } = createMockContext();
+      const leakedSystem = {
+        ...state.irrigationSystem,
+        pipes: [
+          {
+            gridX: 1,
+            gridY: 1,
+            pipeType: "pvc" as const,
+            installDate: 0,
+            durability: 90,
+            isLeaking: true,
+            pressureLevel: 40,
+            connectedTo: [],
+          },
+        ],
+      };
+      vi.mocked(checkForLeaks).mockImplementationOnce(() => leakedSystem as any);
+
+      runSimulationTick(state, systems, 16);
+
+      expect(updatePipePressures).toHaveBeenCalledTimes(2);
+      expect(updatePipePressures).toHaveBeenNthCalledWith(2, leakedSystem);
     });
 
     it("passes weather effect with rainy type", () => {
@@ -1752,6 +2046,143 @@ describe("SimulationTick", () => {
       expect(setSprinklerActive).not.toHaveBeenCalled();
     });
 
+    it("deactivates sprinkler when schedule is disabled but head is active", () => {
+      const { state, systems } = createMockContext({
+        irrigationSystem: {
+          pipes: [],
+          sprinklerHeads: [{
+            id: "s1",
+            gridX: 5,
+            gridY: 5,
+            sprinklerType: "rotary" as const,
+            installDate: 0,
+            isActive: true,
+            schedule: { enabled: false, timeRanges: [{ start: 300, end: 420 }], skipRain: false, zone: "A" },
+            coverageTiles: [],
+            connectedToPipe: true,
+          }],
+          waterSources: [],
+          totalWaterUsedToday: 0,
+          lastTickTime: 0,
+          pressureCache: new Map(),
+        },
+      });
+      runSimulationTick(state, systems, 16);
+      expect(setSprinklerActive).toHaveBeenCalledWith(
+        expect.anything(),
+        "s1",
+        false
+      );
+    });
+
+    it("does not activate sprinklers during rain when skipRain is enabled", () => {
+      const { state, systems } = createMockContext({
+        gameTime: 360,
+        weather: { type: "rainy", temperature: 65, windSpeed: 10 },
+        irrigationSystem: {
+          pipes: [],
+          sprinklerHeads: [{
+            id: "s1",
+            gridX: 5,
+            gridY: 5,
+            sprinklerType: "rotary" as const,
+            installDate: 0,
+            isActive: false,
+            schedule: { enabled: true, timeRanges: [{ start: 300, end: 420 }], skipRain: true, zone: "A" },
+            coverageTiles: [],
+            connectedToPipe: true,
+          }],
+          waterSources: [],
+          totalWaterUsedToday: 0,
+          lastTickTime: 0,
+          pressureCache: new Map(),
+        },
+      });
+      runSimulationTick(state, systems, 16);
+      expect(setSprinklerActive).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "s1",
+        true
+      );
+    });
+
+    it("deactivates active sprinklers during rain when skipRain is enabled", () => {
+      const { state, systems } = createMockContext({
+        gameTime: 360,
+        weather: { type: "stormy", temperature: 55, windSpeed: 20 },
+        irrigationSystem: {
+          pipes: [],
+          sprinklerHeads: [{
+            id: "s1",
+            gridX: 5,
+            gridY: 5,
+            sprinklerType: "rotary" as const,
+            installDate: 0,
+            isActive: true,
+            schedule: { enabled: true, timeRanges: [{ start: 300, end: 420 }], skipRain: true, zone: "A" },
+            coverageTiles: [],
+            connectedToPipe: true,
+          }],
+          waterSources: [],
+          totalWaterUsedToday: 0,
+          lastTickTime: 0,
+          pressureCache: new Map(),
+        },
+      });
+      runSimulationTick(state, systems, 16);
+      expect(setSprinklerActive).toHaveBeenCalledWith(
+        expect.anything(),
+        "s1",
+        false
+      );
+    });
+
+    it("waters immediately when a scheduled sprinkler activates this tick", () => {
+      const { state, systems } = createMockContext({
+        gameTime: 360,
+        irrigationSystem: {
+          pipes: [],
+          sprinklerHeads: [{
+            id: "s1",
+            gridX: 5,
+            gridY: 5,
+            sprinklerType: "rotary" as const,
+            installDate: 0,
+            isActive: false,
+            schedule: { enabled: true, timeRanges: [{ start: 300, end: 420 }], skipRain: false, zone: "A" },
+            coverageTiles: [{ x: 4, y: 5, efficiency: 0.8 }],
+            connectedToPipe: true,
+          }],
+          waterSources: [],
+          totalWaterUsedToday: 0,
+          lastTickTime: 0,
+          pressureCache: new Map(),
+        },
+      });
+      vi.mocked(getPipeAt).mockReturnValue({
+        gridX: 5,
+        gridY: 5,
+        pipeType: "pvc" as const,
+        installDate: 0,
+        durability: 100,
+        isLeaking: false,
+        pressureLevel: 80,
+        connectedTo: [],
+      });
+      runSimulationTick(state, systems, 16);
+      expect(setSprinklerActive).toHaveBeenCalledWith(
+        expect.anything(),
+        "s1",
+        true
+      );
+      expect(systems.terrainSystem.waterArea).toHaveBeenCalledWith(
+        4,
+        5,
+        0,
+        15 * 0.8 * (80 / 100)
+      );
+    });
+
     it("waters coverage tiles when sprinkler is active with pipe pressure", () => {
       const { state, systems } = createMockContext({
         gameTime: 360,
@@ -1780,7 +2211,7 @@ describe("SimulationTick", () => {
       expect(state.dailyStats.maintenance.tilesWatered).toBeGreaterThanOrEqual(1);
     });
 
-    it("uses 0 pressure when no pipe found", () => {
+    it("skips watering when no pipe pressure is available", () => {
       const { state, systems } = createMockContext({
         gameTime: 360,
         irrigationSystem: {
@@ -1804,7 +2235,8 @@ describe("SimulationTick", () => {
       });
       vi.mocked(getPipeAt).mockReturnValue(null as any);
       runSimulationTick(state, systems, 16);
-      expect(systems.terrainSystem.waterArea).toHaveBeenCalledWith(4, 5, 0, 0);
+      expect(systems.terrainSystem.waterArea).not.toHaveBeenCalled();
+      expect(state.dailyStats.maintenance.tilesWatered).toBe(0);
     });
 
     it("skips watering when cell returns null", () => {

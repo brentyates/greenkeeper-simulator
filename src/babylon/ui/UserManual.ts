@@ -11,6 +11,8 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { EMPLOYEE_ROLE_INFO, EmployeeRole } from '../../core/employees';
 import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
+import { configureDialogScrollViewer } from './LayoutUtils';
+import { UI_THEME } from './UITheme';
 
 export interface UserManualCallbacks {
   onClose: () => void;
@@ -55,7 +57,7 @@ export class UserManual {
     this.container = new Rectangle('manualContainer');
     this.container.width = '100%';
     this.container.height = '100%';
-    this.container.background = '#0d1f15';
+    this.container.background = UI_THEME.colors.legacy.c_0d1f15;
     this.container.thickness = 0;
 
     this.buildUI();
@@ -93,15 +95,15 @@ export class UserManual {
 
     const icon = new TextBlock('manualIcon');
     icon.text = '📖';
-    icon.fontSize = 32;
+    icon.fontSize = UI_THEME.typography.scale.s32;
     icon.height = '40px';
     headerStack.addControl(icon);
 
     const title = new TextBlock('manualTitle');
     title.text = 'GREENKEEPER GUIDE';
-    title.color = '#7FFF7F';
-    title.fontSize = 24;
-    title.fontFamily = 'Arial Black, sans-serif';
+    title.color = UI_THEME.colors.legacy.c_7fff7f;
+    title.fontSize = UI_THEME.typography.scale.s24;
+    title.fontFamily = UI_THEME.typography.fontFamily;
     title.height = '35px';
     headerStack.addControl(title);
   }
@@ -136,9 +138,9 @@ export class UserManual {
 
     const navHeader = new TextBlock('navHeader');
     navHeader.text = 'SECTIONS';
-    navHeader.color = '#5a7a6a';
-    navHeader.fontSize = 11;
-    navHeader.fontFamily = 'Arial, sans-serif';
+    navHeader.color = UI_THEME.colors.legacy.c_5a7a6a;
+    navHeader.fontSize = UI_THEME.typography.scale.s11;
+    navHeader.fontFamily = UI_THEME.typography.fontFamily;
     navHeader.height = '25px';
     navHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     navStack.addControl(navHeader);
@@ -153,7 +155,7 @@ export class UserManual {
     const item = new Rectangle(`nav_${section.id}`);
     item.width = '100%';
     item.height = '40px';
-    item.cornerRadius = 6;
+    item.cornerRadius = UI_THEME.radii.scale.r6;
     item.thickness = 0;
     item.paddingTop = '2px';
     item.paddingBottom = '2px';
@@ -169,16 +171,16 @@ export class UserManual {
 
     const icon = new TextBlock(`navIcon_${section.id}`);
     icon.text = section.icon;
-    icon.fontSize = 16;
+    icon.fontSize = UI_THEME.typography.scale.s16;
     icon.width = '30px';
     icon.isPointerBlocker = false;
     itemStack.addControl(icon);
 
     const label = new TextBlock(`navLabel_${section.id}`);
     label.text = section.label;
-    label.color = '#aaccaa';
-    label.fontSize = 13;
-    label.fontFamily = 'Arial, sans-serif';
+    label.color = UI_THEME.colors.legacy.c_aaccaa;
+    label.fontSize = UI_THEME.typography.scale.s13;
+    label.fontFamily = UI_THEME.typography.fontFamily;
     label.width = '150px';
     label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     label.isPointerBlocker = false;
@@ -258,9 +260,10 @@ export class UserManual {
     this.scrollViewer = new ScrollViewer('manualScroll');
     this.scrollViewer.width = '100%';
     this.scrollViewer.height = '100%';
-    this.scrollViewer.barColor = '#4a8a5a';
-    this.scrollViewer.barBackground = '#1a3a2a';
-    this.scrollViewer.thickness = 0;
+    configureDialogScrollViewer(this.scrollViewer, {
+      barColor: '#4a8a5a',
+      barBackground: '#1a3a2a',
+    });
     this.scrollViewer.paddingLeft = '20px';
     this.scrollViewer.paddingRight = '20px';
     contentContainer.addControl(this.scrollViewer);
@@ -283,9 +286,9 @@ export class UserManual {
 
     const sectionHeader = new TextBlock('employeeSectionHeader');
     sectionHeader.text = 'EMPLOYEE TYPES';
-    sectionHeader.color = '#7FFF7F';
-    sectionHeader.fontSize = 18;
-    sectionHeader.fontFamily = 'Arial Black, sans-serif';
+    sectionHeader.color = UI_THEME.colors.legacy.c_7fff7f;
+    sectionHeader.fontSize = UI_THEME.typography.scale.s18;
+    sectionHeader.fontFamily = UI_THEME.typography.fontFamily;
     sectionHeader.height = '50px';
     sectionHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionContainer.addControl(sectionHeader);
@@ -311,9 +314,9 @@ export class UserManual {
 
     const sectionHeader = new TextBlock('equipmentSectionHeader');
     sectionHeader.text = 'EQUIPMENT';
-    sectionHeader.color = '#7FFF7F';
-    sectionHeader.fontSize = 18;
-    sectionHeader.fontFamily = 'Arial Black, sans-serif';
+    sectionHeader.color = UI_THEME.colors.legacy.c_7fff7f;
+    sectionHeader.fontSize = UI_THEME.typography.scale.s18;
+    sectionHeader.fontFamily = UI_THEME.typography.fontFamily;
     sectionHeader.height = '50px';
     sectionHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionContainer.addControl(sectionHeader);
@@ -336,9 +339,9 @@ export class UserManual {
 
     const sectionHeader = new TextBlock('courseSectionHeader');
     sectionHeader.text = 'COURSE CARE';
-    sectionHeader.color = '#7FFF7F';
-    sectionHeader.fontSize = 18;
-    sectionHeader.fontFamily = 'Arial Black, sans-serif';
+    sectionHeader.color = UI_THEME.colors.legacy.c_7fff7f;
+    sectionHeader.fontSize = UI_THEME.typography.scale.s18;
+    sectionHeader.fontFamily = UI_THEME.typography.fontFamily;
     sectionHeader.height = '50px';
     sectionHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionContainer.addControl(sectionHeader);
@@ -361,9 +364,9 @@ export class UserManual {
 
     const sectionHeader = new TextBlock('economySectionHeader');
     sectionHeader.text = 'ECONOMY';
-    sectionHeader.color = '#7FFF7F';
-    sectionHeader.fontSize = 18;
-    sectionHeader.fontFamily = 'Arial Black, sans-serif';
+    sectionHeader.color = UI_THEME.colors.legacy.c_7fff7f;
+    sectionHeader.fontSize = UI_THEME.typography.scale.s18;
+    sectionHeader.fontFamily = UI_THEME.typography.fontFamily;
     sectionHeader.height = '50px';
     sectionHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionContainer.addControl(sectionHeader);
@@ -380,10 +383,10 @@ export class UserManual {
     const card = new Rectangle('placeholderCard');
     card.width = '95%';
     card.height = '120px';
-    card.cornerRadius = 8;
+    card.cornerRadius = UI_THEME.radii.scale.r8;
     card.thickness = 1;
-    card.color = '#3a5a4a';
-    card.background = '#1a3a2a';
+    card.color = UI_THEME.colors.legacy.c_3a5a4a;
+    card.background = UI_THEME.colors.legacy.c_1a3a2a;
     card.paddingTop = '8px';
     card.paddingBottom = '8px';
 
@@ -395,23 +398,23 @@ export class UserManual {
 
     const iconText = new TextBlock('placeholderIcon');
     iconText.text = icon;
-    iconText.fontSize = 32;
+    iconText.fontSize = UI_THEME.typography.scale.s32;
     iconText.height = '45px';
     cardStack.addControl(iconText);
 
     const titleText = new TextBlock('placeholderTitle');
     titleText.text = title;
-    titleText.color = '#88aa88';
-    titleText.fontSize = 14;
-    titleText.fontFamily = 'Arial, sans-serif';
+    titleText.color = UI_THEME.colors.legacy.c_88aa88;
+    titleText.fontSize = UI_THEME.typography.scale.s14;
+    titleText.fontFamily = UI_THEME.typography.fontFamily;
     titleText.height = '25px';
     cardStack.addControl(titleText);
 
     const descText = new TextBlock('placeholderDesc');
     descText.text = description;
-    descText.color = '#6a8a7a';
-    descText.fontSize = 11;
-    descText.fontFamily = 'Arial, sans-serif';
+    descText.color = UI_THEME.colors.legacy.c_6a8a7a;
+    descText.fontSize = UI_THEME.typography.scale.s11;
+    descText.fontFamily = UI_THEME.typography.fontFamily;
     descText.height = '35px';
     descText.textWrapping = true;
     cardStack.addControl(descText);
@@ -432,10 +435,10 @@ export class UserManual {
     const card = new Rectangle(`card_${roleInfo.id}`);
     card.width = '90%';
     card.height = '160px';
-    card.cornerRadius = 8;
+    card.cornerRadius = UI_THEME.radii.scale.r8;
     card.thickness = 1;
-    card.color = '#3a5a4a';
-    card.background = '#1a3a2a';
+    card.color = UI_THEME.colors.legacy.c_3a5a4a;
+    card.background = UI_THEME.colors.legacy.c_1a3a2a;
     card.paddingTop = '8px';
     card.paddingBottom = '8px';
 
@@ -455,7 +458,7 @@ export class UserManual {
 
     const icon = new TextBlock('roleIcon');
     icon.text = roleInfo.icon;
-    icon.fontSize = 40;
+    icon.fontSize = UI_THEME.typography.scale.s40;
     iconContainer.addControl(icon);
 
     const infoStack = new StackPanel('infoStack');
@@ -466,17 +469,17 @@ export class UserManual {
     const nameText = new TextBlock('roleName');
     nameText.text = roleInfo.name;
     nameText.color = 'white';
-    nameText.fontSize = 16;
-    nameText.fontFamily = 'Arial, sans-serif';
+    nameText.fontSize = UI_THEME.typography.scale.s16;
+    nameText.fontFamily = UI_THEME.typography.fontFamily;
     nameText.height = '24px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
 
     const descText = new TextBlock('roleDesc');
     descText.text = roleInfo.description;
-    descText.color = '#aaccaa';
-    descText.fontSize = 12;
-    descText.fontFamily = 'Arial, sans-serif';
+    descText.color = UI_THEME.colors.legacy.c_aaccaa;
+    descText.fontSize = UI_THEME.typography.scale.s12;
+    descText.fontFamily = UI_THEME.typography.fontFamily;
     descText.height = '40px';
     descText.textWrapping = true;
     descText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -496,9 +499,9 @@ export class UserManual {
 
     const dutiesHeader = new TextBlock('dutiesHeader');
     dutiesHeader.text = 'Duties';
-    dutiesHeader.color = '#88aa88';
-    dutiesHeader.fontSize = 11;
-    dutiesHeader.fontFamily = 'Arial, sans-serif';
+    dutiesHeader.color = UI_THEME.colors.legacy.c_88aa88;
+    dutiesHeader.fontSize = UI_THEME.typography.scale.s11;
+    dutiesHeader.fontFamily = UI_THEME.typography.fontFamily;
     dutiesHeader.height = '16px';
     dutiesHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     dutiesStack.addControl(dutiesHeader);
@@ -506,9 +509,9 @@ export class UserManual {
     for (const duty of roleInfo.duties) {
       const dutyText = new TextBlock();
       dutyText.text = `• ${duty}`;
-      dutyText.color = '#7a9a8a';
-      dutyText.fontSize = 10;
-      dutyText.fontFamily = 'Arial, sans-serif';
+      dutyText.color = UI_THEME.colors.legacy.c_7a9a8a;
+      dutyText.fontSize = UI_THEME.typography.scale.s10;
+      dutyText.fontFamily = UI_THEME.typography.fontFamily;
       dutyText.height = '14px';
       dutyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
       dutiesStack.addControl(dutyText);
@@ -519,9 +522,9 @@ export class UserManual {
 
     const benefitsHeader = new TextBlock('benefitsHeader');
     benefitsHeader.text = 'Benefits';
-    benefitsHeader.color = '#88aa88';
-    benefitsHeader.fontSize = 11;
-    benefitsHeader.fontFamily = 'Arial, sans-serif';
+    benefitsHeader.color = UI_THEME.colors.legacy.c_88aa88;
+    benefitsHeader.fontSize = UI_THEME.typography.scale.s11;
+    benefitsHeader.fontFamily = UI_THEME.typography.fontFamily;
     benefitsHeader.height = '16px';
     benefitsHeader.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     benefitsStack.addControl(benefitsHeader);
@@ -529,9 +532,9 @@ export class UserManual {
     for (const benefit of roleInfo.benefits) {
       const benefitText = new TextBlock();
       benefitText.text = `✓ ${benefit}`;
-      benefitText.color = '#7a9a8a';
-      benefitText.fontSize = 10;
-      benefitText.fontFamily = 'Arial, sans-serif';
+      benefitText.color = UI_THEME.colors.legacy.c_7a9a8a;
+      benefitText.fontSize = UI_THEME.typography.scale.s10;
+      benefitText.fontFamily = UI_THEME.typography.fontFamily;
       benefitText.height = '14px';
       benefitText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
       benefitsStack.addControl(benefitText);

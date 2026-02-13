@@ -2,10 +2,10 @@ import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
-import { ScrollViewer } from '@babylonjs/gui/2D/controls/scrollViewers/scrollViewer';
 import { Control } from '@babylonjs/gui/2D/controls/control';
-import { Button } from '@babylonjs/gui/2D/controls/button';
-import { createDirectPopup, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { createActionButton, createDirectPopup, createListRowCard, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogScrollBlock } from './DialogBlueprint';
+import { UI_THEME } from './UITheme';
 
 import {
   ResearchState,
@@ -91,98 +91,104 @@ export class EquipmentStorePanel {
 
     this.cashText = new TextBlock('cashText');
     this.cashText.text = 'Cash: $0';
-    this.cashText.color = '#88dd88';
-    this.cashText.fontSize = 14;
+    this.cashText.color = UI_THEME.colors.legacy.c_88dd88;
+    this.cashText.fontSize = UI_THEME.typography.scale.s14;
     this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.cashText.paddingRight = '40px';
     headerContainer.addControl(this.cashText);
   }
 
   private createFleetStats(parent: StackPanel): void {
-    const container = new Rectangle('fleetStatsContainer');
-    container.height = '50px';
-    container.width = '476px';
-    container.cornerRadius = 4;
-    container.background = 'rgba(30, 50, 70, 0.8)';
-    container.thickness = 1;
-    container.color = '#3a5a7a';
-    container.paddingTop = '4px';
-    container.paddingBottom = '4px';
-    parent.addControl(container);
+    const container = createPanelSection(parent, {
+      name: 'fleetStatsContainer',
+      width: 476,
+      height: 50,
+      theme: 'blue',
+      paddingTop: 4,
+      paddingBottom: 4,
+    });
 
     this.statsText = new TextBlock('statsText');
     this.statsText.text = 'Fleet: 0 robots | Working: 0 | Broken: 0';
-    this.statsText.color = '#aaddff';
-    this.statsText.fontSize = 13;
+    this.statsText.color = UI_THEME.colors.legacy.c_aaddff;
+    this.statsText.fontSize = UI_THEME.typography.scale.s13;
     this.statsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     this.statsText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
     container.addControl(this.statsText);
   }
 
   private createAvailableSection(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('availableLabel');
-    sectionLabel.text = '📦 Available for Purchase';
-    sectionLabel.color = '#88cc88';
-    sectionLabel.fontSize = 13;
-    sectionLabel.fontWeight = 'bold';
-    sectionLabel.height = '24px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    parent.addControl(sectionLabel);
-
-    const scrollViewer = new ScrollViewer('availableScroll');
-    scrollViewer.width = '476px';
-    scrollViewer.height = '160px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a7a9a';
-    scrollViewer.barBackground = 'rgba(30, 50, 70, 0.5)';
-    parent.addControl(scrollViewer);
-
-    this.availableListContainer = new StackPanel('availableList');
-    this.availableListContainer.width = '100%';
-    scrollViewer.addControl(this.availableListContainer);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'availableSection',
+      title: {
+        text: '📦 Available for Purchase',
+        color: '#88cc88',
+        fontSize: 13,
+        fontWeight: 'bold',
+        height: 24,
+        paddingTop: 8,
+      },
+      width: 476,
+      height: 160,
+      theme: 'blue',
+      scroll: {
+        name: 'availableScroll',
+        width: 476,
+        height: 160,
+        contentName: 'availableList',
+        contentWidth: '100%',
+        options: {
+          barSize: 8,
+          barColor: '#4a7a9a',
+          barBackground: 'rgba(30, 50, 70, 0.5)',
+        },
+      },
+    });
+    this.availableListContainer = content;
   }
 
   private createOwnedSection(parent: StackPanel): void {
-    const sectionLabel = new TextBlock('ownedLabel');
-    sectionLabel.text = '🔧 Your Fleet';
-    sectionLabel.color = '#88aacc';
-    sectionLabel.fontSize = 13;
-    sectionLabel.fontWeight = 'bold';
-    sectionLabel.height = '24px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    parent.addControl(sectionLabel);
-
-    const scrollViewer = new ScrollViewer('ownedScroll');
-    scrollViewer.width = '476px';
-    scrollViewer.height = '160px';
-    scrollViewer.thickness = 0;
-    scrollViewer.barSize = 8;
-    scrollViewer.barColor = '#4a7a9a';
-    scrollViewer.barBackground = 'rgba(30, 50, 70, 0.5)';
-    parent.addControl(scrollViewer);
-
-    this.ownedListContainer = new StackPanel('ownedList');
-    this.ownedListContainer.width = '100%';
-    scrollViewer.addControl(this.ownedListContainer);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'ownedSection',
+      title: {
+        text: '🔧 Your Fleet',
+        color: '#88aacc',
+        fontSize: 13,
+        fontWeight: 'bold',
+        height: 24,
+        paddingTop: 8,
+      },
+      width: 476,
+      height: 160,
+      theme: 'blue',
+      scroll: {
+        name: 'ownedScroll',
+        width: 476,
+        height: 160,
+        contentName: 'ownedList',
+        contentWidth: '100%',
+        options: {
+          barSize: 8,
+          barColor: '#4a7a9a',
+          barBackground: 'rgba(30, 50, 70, 0.5)',
+        },
+      },
+    });
+    this.ownedListContainer = content;
   }
 
   private createAvailableItem(robot: AvailableRobot, canAfford: boolean): Rectangle {
-    const row = new Rectangle(`available_${robot.equipmentId}`);
-    row.height = '70px';
-    row.width = '460px';
-    row.cornerRadius = 4;
-    row.background = canAfford ? 'rgba(40, 70, 100, 0.8)' : 'rgba(60, 60, 60, 0.6)';
-    row.thickness = 1;
-    row.color = canAfford ? '#5588aa' : '#555555';
-    row.paddingTop = '4px';
-    row.paddingBottom = '4px';
+    const row = createListRowCard({
+      name: `available_${robot.equipmentId}`,
+      width: 460,
+      height: 70,
+      background: canAfford ? 'rgba(40, 70, 100, 0.8)' : 'rgba(60, 60, 60, 0.6)',
+      borderColor: canAfford ? '#5588aa' : '#555555',
+    });
 
     const icon = new TextBlock('icon');
     icon.text = getRobotIcon(robot.equipmentId);
-    icon.fontSize = 24;
+    icon.fontSize = UI_THEME.typography.scale.s24;
     icon.width = '40px';
     icon.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     icon.left = '8px';
@@ -191,7 +197,7 @@ export class EquipmentStorePanel {
     const nameText = new TextBlock('name');
     nameText.text = robot.name;
     nameText.color = canAfford ? '#ffffff' : '#888888';
-    nameText.fontSize = 13;
+    nameText.fontSize = UI_THEME.typography.scale.s13;
     nameText.fontWeight = 'bold';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     nameText.left = '52px';
@@ -201,7 +207,7 @@ export class EquipmentStorePanel {
     const descText = new TextBlock('desc');
     descText.text = `Speed: ${robot.stats.speed.toFixed(1)}x | Efficiency: ${(robot.stats.efficiency * 100).toFixed(0)}% | Fuel: ${robot.stats.fuelCapacity}`;
     descText.color = canAfford ? '#aaccee' : '#666666';
-    descText.fontSize = 11;
+    descText.fontSize = UI_THEME.typography.scale.s11;
     descText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     descText.left = '52px';
     descText.top = '2px';
@@ -210,51 +216,46 @@ export class EquipmentStorePanel {
     const costText = new TextBlock('cost');
     costText.text = `$${(robot.stats.purchaseCost ?? 0).toLocaleString()}/hr: $${(robot.stats.operatingCostPerHour ?? 0).toFixed(2)}`;
     costText.color = canAfford ? '#88dd88' : '#aa6666';
-    costText.fontSize = 11;
+    costText.fontSize = UI_THEME.typography.scale.s11;
     costText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     costText.left = '52px';
     costText.top = '18px';
     row.addControl(costText);
 
-    const buyBtn = Button.CreateSimpleButton('buyBtn', canAfford ? 'Buy' : 'Need $');
-    buyBtn.width = '60px';
-    buyBtn.height = '28px';
-    buyBtn.cornerRadius = 4;
-    buyBtn.background = canAfford ? '#338833' : '#555555';
-    buyBtn.color = 'white';
-    buyBtn.fontSize = 12;
-    buyBtn.thickness = 0;
+    const buyBtn = createActionButton({
+      id: 'buyBtn',
+      label: canAfford ? 'Buy' : 'Need $',
+      tone: canAfford ? 'success' : 'neutral',
+      width: 60,
+      height: 28,
+      fontSize: 12,
+      thickness: 0,
+      isEnabled: canAfford,
+      onClick: () => {
+        this.callbacks.onPurchaseRobot(robot.equipmentId, robot.stats);
+      },
+    });
     buyBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     buyBtn.left = '-8px';
-    buyBtn.isEnabled = canAfford;
-    if (canAfford) {
-      buyBtn.onPointerClickObservable.add(() => {
-        this.callbacks.onPurchaseRobot(robot.equipmentId, robot.stats);
-      });
-      buyBtn.onPointerEnterObservable.add(() => { buyBtn.background = '#44aa44'; });
-      buyBtn.onPointerOutObservable.add(() => { buyBtn.background = '#338833'; });
-    }
     row.addControl(buyBtn);
 
     return row;
   }
 
   private createOwnedItem(robot: RobotUnit): Rectangle {
-    const row = new Rectangle(`owned_${robot.id}`);
-    row.height = '55px';
-    row.width = '460px';
-    row.cornerRadius = 4;
-    row.background = robot.state === 'broken'
-      ? 'rgba(100, 50, 50, 0.8)'
-      : 'rgba(40, 60, 80, 0.8)';
-    row.thickness = 1;
-    row.color = robot.state === 'broken' ? '#aa5555' : '#4a6a8a';
-    row.paddingTop = '4px';
-    row.paddingBottom = '4px';
+    const row = createListRowCard({
+      name: `owned_${robot.id}`,
+      width: 460,
+      height: 55,
+      background: robot.state === 'broken'
+        ? 'rgba(100, 50, 50, 0.8)'
+        : 'rgba(40, 60, 80, 0.8)',
+      borderColor: robot.state === 'broken' ? '#aa5555' : '#4a6a8a',
+    });
 
     const icon = new TextBlock('icon');
     icon.text = getRobotIcon(robot.equipmentId);
-    icon.fontSize = 20;
+    icon.fontSize = UI_THEME.typography.scale.s20;
     icon.width = '35px';
     icon.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     icon.left = '8px';
@@ -267,8 +268,8 @@ export class EquipmentStorePanel {
 
     const nameText = new TextBlock('name');
     nameText.text = `${robot.id} ${stateIcon}`;
-    nameText.color = '#ffffff';
-    nameText.fontSize = 12;
+    nameText.color = UI_THEME.colors.legacy.c_ffffff;
+    nameText.fontSize = UI_THEME.typography.scale.s12;
     nameText.fontWeight = 'bold';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     nameText.left = '48px';
@@ -282,28 +283,27 @@ export class EquipmentStorePanel {
     const statusText = new TextBlock('status');
     statusText.text = `State: ${robot.state} | Fuel: ${fuelPercent}%`;
     statusText.color = robot.state === 'broken' ? '#ff8888' : '#88bbdd';
-    statusText.fontSize = 11;
+    statusText.fontSize = UI_THEME.typography.scale.s11;
     statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     statusText.left = '48px';
     statusText.top = '10px';
     row.addControl(statusText);
 
     const sellValue = Math.floor((robot.stats.purchaseCost ?? 0) * 0.5);
-    const sellBtn = Button.CreateSimpleButton('sellBtn', `Sell $${sellValue.toLocaleString()}`);
-    sellBtn.width = '80px';
-    sellBtn.height = '24px';
-    sellBtn.cornerRadius = 4;
-    sellBtn.background = '#884433';
-    sellBtn.color = 'white';
-    sellBtn.fontSize = 11;
-    sellBtn.thickness = 0;
+    const sellBtn = createActionButton({
+      id: 'sellBtn',
+      label: `Sell $${sellValue.toLocaleString()}`,
+      tone: 'danger',
+      width: 80,
+      height: 24,
+      fontSize: 11,
+      thickness: 0,
+      onClick: () => {
+        this.callbacks.onSellRobot(robot.id);
+      },
+    });
     sellBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     sellBtn.left = '-8px';
-    sellBtn.onPointerClickObservable.add(() => {
-      this.callbacks.onSellRobot(robot.id);
-    });
-    sellBtn.onPointerEnterObservable.add(() => { sellBtn.background = '#aa5544'; });
-    sellBtn.onPointerOutObservable.add(() => { sellBtn.background = '#884433'; });
     row.addControl(sellBtn);
 
     return row;
@@ -351,8 +351,8 @@ export class EquipmentStorePanel {
     if (availableRobots.length === 0) {
       const emptyText = new TextBlock('emptyAvailable');
       emptyText.text = 'Research robotics to unlock autonomous equipment';
-      emptyText.color = '#888888';
-      emptyText.fontSize = 12;
+      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.fontSize = UI_THEME.typography.scale.s12;
       emptyText.height = '40px';
       emptyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
       this.availableListContainer.addControl(emptyText);
@@ -366,8 +366,8 @@ export class EquipmentStorePanel {
     if (autonomousState.robots.length === 0) {
       const emptyText = new TextBlock('emptyOwned');
       emptyText.text = 'No robots owned yet';
-      emptyText.color = '#888888';
-      emptyText.fontSize = 12;
+      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.fontSize = UI_THEME.typography.scale.s12;
       emptyText.height = '40px';
       emptyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
       this.ownedListContainer.addControl(emptyText);

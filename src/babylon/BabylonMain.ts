@@ -1,7 +1,11 @@
 import { BabylonEngine, gridTo3D, HEIGHT_UNIT } from "./engine/BabylonEngine";
 import { GameAPI, GameSystems } from "./GameAPI";
 import { SimulationSystems, runSimulationTick } from "./SimulationTick";
-import { GameState } from "./GameState";
+import {
+  GameState,
+  getRuntimeRefillStationsFromState,
+  resolveServiceHubAnchorFromState,
+} from "./GameState";
 
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
@@ -9,6 +13,7 @@ import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { OverlayMode } from "../core/terrain";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
+import { RobotVisualSystem } from "./systems/RobotVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import { EntityVisualState } from "./systems/EntityVisualSystem";
 import {
@@ -21,16 +26,27 @@ import {
 } from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
 import { DaySummaryData } from "./ui/DaySummaryPopup";
+import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
+import { Control } from "@babylonjs/gui/2D/controls/control";
+import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Culling/ray";
 
 import { PlayerController } from "./PlayerController";
 import { UIPanelCoordinator } from "./UIPanelCoordinator";
 import { TerrainEditorController } from "./TerrainEditorController";
+import { AssetPlacementSystem } from "./systems/AssetPlacementSystem";
+import {
+  HoleBuilderToolbar,
+  HOLE_BUILDER_TOOLBAR_BOUNDS,
+  HoleBuilderTool,
+} from "./ui/HoleBuilderToolbar";
 
-import { REFILL_STATIONS } from "../data/courseData";
+import { PlacedAsset } from "../data/customCourseData";
 
 import {
   addExpense,
@@ -47,6 +63,7 @@ import {
 } from "../core/golfers";
 import {
   getBestFertilizerEffectiveness,
+  RESEARCH_ITEMS,
 } from "../core/research";
 import {
   takeDailySnapshot,
@@ -63,6 +80,12 @@ import {
   createInitialWeatherState,
   getSeasonFromDay,
 } from "../core/weather";
+import {
+  buildHoleDefinitionsFromAssets,
+  calculateCoursePar,
+  estimateParForHole,
+  syncHoleFeatureAssignments,
+} from "../core/hole-construction";
 
 export interface GameOptions {
   scenario?: import("../data/scenarioData").ScenarioDefinition;
@@ -90,7 +113,16 @@ export class BabylonMain {
   private treeInstances: AssetInstance[] = [];
   private refillStationInstances: AssetInstance[] = [];
 
+  private holePlacementSystem: AssetPlacementSystem;
+  private holeBuilderUITexture: AdvancedDynamicTexture | null = null;
+  private holeBuilderToolbar: HoleBuilderToolbar | null = null;
+  private holeBuilderTool: HoleBuilderTool | null = null;
+  private holeDistanceLines: Mesh[] = [];
+  private holeDistanceLabelAnchors: Mesh[] = [];
+  private holeDistanceLabels: TextBlock[] = [];
+
   private employeeVisualSystem: EmployeeVisualSystem | null = null;
+  private robotVisualSystem: RobotVisualSystem | null = null;
   private irrigationRenderSystem: IrrigationRenderSystem | null = null;
 
   constructor(canvasId: string, options: GameOptions = {}) {
@@ -112,6 +144,10 @@ export class BabylonMain {
 
     this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
     this.employeeVisualSystem = new EmployeeVisualSystem(
+      this.babylonEngine.getScene(),
+      { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
+    );
+    this.robotVisualSystem = new RobotVisualSystem(
       this.babylonEngine.getScene(),
       { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
@@ -175,7 +211,10 @@ export class BabylonMain {
         const pv = this.playerController.getPlayerVisual();
         if (pv) pv.container.setEnabled(enabled);
       },
-      setEmployeeVisualSystemVisible: (visible) => this.employeeVisualSystem?.setVisible(visible),
+      setEmployeeVisualSystemVisible: (visible) => {
+        this.employeeVisualSystem?.setVisible(visible);
+        this.robotVisualSystem?.setVisible(visible);
+      },
       snapEmployeesToTerrain: () => this.employeeVisualSystem?.snapAllToTerrain(),
       snapEntityToTerrain: (visual, worldX, worldZ) => this.snapEntityToTerrain(visual, worldX, worldZ),
       snapAssetsToTerrain: () => this.snapAssetsToTerrain(),
@@ -191,6 +230,26 @@ export class BabylonMain {
         pauseGame: () => this.pauseGame(),
       }
     );
+
+    this.holePlacementSystem = new AssetPlacementSystem(
+      this.babylonEngine.getScene(),
+      {
+        onSelect: (asset) => {
+          const holeNumber = asset?.gameplay?.holeFeature?.holeNumber;
+          if (holeNumber !== undefined) {
+            this.holePlacementSystem.setActiveHoleNumber(holeNumber);
+            this.holeBuilderToolbar?.setActiveHoleNumber(holeNumber);
+            this.updateHoleBuilderGuidance();
+            this.renderHoleDistanceIndicators();
+          }
+        },
+        onPlace: () => this.syncHoleBuilderToCourse(),
+        getTerrainElevation: (worldX, worldZ) =>
+          this.terrainSystem.getElevationAt(worldX, worldZ, 0),
+      }
+    );
+    this.setupHoleBuilderUI();
+    this.loadHoleBuilderAssets(this.getInitialHoleBuilderAssets());
 
     this.setupInputCallbacks();
     this.buildScene();
@@ -245,6 +304,388 @@ export class BabylonMain {
         tilesFertilized: 0,
       },
     };
+  }
+
+  private setupHoleBuilderUI(): void {
+    this.holeBuilderUITexture = AdvancedDynamicTexture.CreateFullscreenUI(
+      "HoleBuilderUI",
+      true,
+      this.babylonEngine.getScene()
+    );
+
+    this.holeBuilderToolbar = new HoleBuilderToolbar(this.holeBuilderUITexture, {
+      onToolSelect: (tool) => this.setHoleBuilderTool(tool),
+      onHoleNumberChange: (holeNumber) => {
+        this.holePlacementSystem.setActiveHoleNumber(holeNumber);
+        this.updateHoleBuilderGuidance();
+        this.renderHoleDistanceIndicators();
+      },
+      onClose: () => this.hideHoleBuilderPanel(),
+    });
+  }
+
+  private getInitialHoleBuilderAssets(): PlacedAsset[] {
+    if (this.state.holeBuilderAssets.length > 0) {
+      return this.state.holeBuilderAssets.map((asset) => ({ ...asset }));
+    }
+
+    const holes = this.state.currentCourse.holes ?? [];
+    if (holes.length === 0) {
+      return [];
+    }
+
+    const assets: PlacedAsset[] = [];
+    for (const hole of holes) {
+      for (const tee of hole.teeBoxes) {
+        assets.push({
+          assetId: tee.assetId,
+          x: tee.x,
+          y: tee.y,
+          z: tee.z,
+          rotation: tee.rotation,
+          gameplay: {
+            holeFeature: {
+              kind: "tee_box",
+              holeNumber: hole.holeNumber,
+              teeSet: tee.teeSet,
+            },
+          },
+        });
+      }
+      for (const pin of hole.pinPositions) {
+        assets.push({
+          assetId: pin.assetId,
+          x: pin.x,
+          y: pin.y,
+          z: pin.z,
+          rotation: pin.rotation,
+          gameplay: {
+            holeFeature: {
+              kind: "pin_position",
+              holeNumber: hole.holeNumber,
+            },
+          },
+        });
+      }
+    }
+
+    return assets;
+  }
+
+  private loadHoleBuilderAssets(assets: PlacedAsset[]): void {
+    const normalized = syncHoleFeatureAssignments(assets);
+    this.state.holeBuilderAssets = normalized;
+
+    void this.holePlacementSystem
+      .loadPlacedAssets(normalized)
+      .then(() => {
+        const activeHole = this.holePlacementSystem.getActiveHoleNumber();
+        this.holeBuilderToolbar?.setActiveHoleNumber(activeHole);
+        this.syncHoleBuilderToCourse();
+      })
+      .catch((error) => {
+        console.error("[BabylonMain] Failed to load hole builder assets:", error);
+      });
+  }
+
+  private syncHoleBuilderToCourse(): void {
+    const placedAssets = this.holePlacementSystem.getPlacedAssets();
+    const normalized = syncHoleFeatureAssignments(placedAssets);
+    this.state.holeBuilderAssets = normalized;
+
+    const holes = buildHoleDefinitionsFromAssets(normalized);
+    this.state.currentCourse.holes = holes;
+
+    const calculatedPar = calculateCoursePar(holes);
+    if (calculatedPar > 0) {
+      this.state.currentCourse.par = calculatedPar;
+    }
+
+    this.uiPanelCoordinator.refreshCourseLayoutPanel();
+    this.updateHoleBuilderGuidance();
+    this.renderHoleDistanceIndicators();
+  }
+
+  private updateHoleBuilderGuidance(): void {
+    if (!this.holeBuilderToolbar) return;
+
+    const activeHoleNumber = this.holePlacementSystem.getActiveHoleNumber();
+    const holes = this.state.currentCourse.holes ?? [];
+    const activeHole = holes.find((hole) => hole.holeNumber === activeHoleNumber);
+
+    if (!activeHole) {
+      this.holeBuilderToolbar.updateHoleMetrics(
+        `Hole ${activeHoleNumber}: add tees and a pin to calculate distance + par.`
+      );
+      return;
+    }
+
+    const par = estimateParForHole(activeHole);
+    const yardages = activeHole.teeBoxes
+      .map((tee) => Math.round(tee.yardageToPrimaryPin))
+      .filter((yards) => yards > 0);
+
+    let yardageText = "No tee-to-pin yardage yet";
+    if (yardages.length > 0) {
+      const minYards = Math.min(...yardages);
+      const maxYards = Math.max(...yardages);
+      yardageText =
+        minYards === maxYards
+          ? `${minYards} yds`
+          : `${minYards}-${maxYards} yds`;
+    }
+
+    const statusText =
+      activeHole.validationIssues.length === 0
+        ? "Playable"
+        : activeHole.validationIssues.join("; ");
+
+    this.holeBuilderToolbar.updateHoleMetrics(
+      `Hole ${activeHoleNumber}: Par ${par} | ${yardageText}\n` +
+      `Tees: ${activeHole.teeBoxes.length} | Pins: ${activeHole.pinPositions.length} | ${statusText}`
+    );
+  }
+
+  private getTeeDistanceLineColor(assetId: string): Color3 {
+    if (assetId === "course.tee.marker.blue") return new Color3(0.31, 0.59, 0.97);
+    if (assetId === "course.tee.marker.white") return new Color3(0.85, 0.89, 0.95);
+    if (assetId === "course.tee.marker.red") return new Color3(0.91, 0.39, 0.39);
+    if (assetId === "course.tee.marker.gold") return new Color3(0.86, 0.72, 0.34);
+    return new Color3(0.64, 0.86, 0.64);
+  }
+
+  private clearHoleDistanceIndicators(): void {
+    for (const mesh of this.holeDistanceLines) {
+      mesh.dispose();
+    }
+    this.holeDistanceLines = [];
+
+    for (const anchor of this.holeDistanceLabelAnchors) {
+      anchor.dispose();
+    }
+    this.holeDistanceLabelAnchors = [];
+
+    for (const label of this.holeDistanceLabels) {
+      this.holeBuilderUITexture?.removeControl(label);
+      label.dispose();
+    }
+    this.holeDistanceLabels = [];
+  }
+
+  private renderHoleDistanceIndicators(): void {
+    this.clearHoleDistanceIndicators();
+    if (!this.holeBuilderToolbar?.isVisible()) return;
+
+    const activeHoleNumber = this.holePlacementSystem.getActiveHoleNumber();
+    const activeHole = (this.state.currentCourse.holes ?? []).find(
+      (hole) => hole.holeNumber === activeHoleNumber
+    );
+    if (!activeHole || activeHole.teeBoxes.length === 0 || activeHole.pinPositions.length === 0) {
+      return;
+    }
+
+    const primaryPin = activeHole.pinPositions.find((pin) => pin.isPrimary) ?? activeHole.pinPositions[0];
+    const pinPoint = new Vector3(primaryPin.x, primaryPin.y + 0.2, primaryPin.z);
+
+    for (let i = 0; i < activeHole.teeBoxes.length; i++) {
+      const tee = activeHole.teeBoxes[i];
+      const teePoint = new Vector3(tee.x, tee.y + 0.2, tee.z);
+      const line = MeshBuilder.CreateLines(
+        `holeDistanceLine_${activeHoleNumber}_${i}`,
+        {
+          points: [teePoint, pinPoint],
+          updatable: false,
+        },
+        this.babylonEngine.getScene()
+      );
+      line.color = this.getTeeDistanceLineColor(tee.assetId);
+      line.isPickable = false;
+      this.holeDistanceLines.push(line);
+
+      const midpoint = teePoint.add(pinPoint).scale(0.5);
+      midpoint.y += 0.12;
+
+      const labelAnchor = MeshBuilder.CreateSphere(
+        `holeDistanceLabelAnchor_${activeHoleNumber}_${i}`,
+        { diameter: 0.08 },
+        this.babylonEngine.getScene()
+      );
+      labelAnchor.position.copyFrom(midpoint);
+      labelAnchor.isPickable = false;
+      labelAnchor.isVisible = false;
+      this.holeDistanceLabelAnchors.push(labelAnchor);
+
+      if (this.holeBuilderUITexture) {
+        const label = new TextBlock(
+          `holeDistanceLabel_${activeHoleNumber}_${i}`,
+          `${Math.round(tee.yardageToPrimaryPin)} yds`
+        );
+        label.fontSize = 16;
+        label.fontWeight = "700";
+        label.color = line.color.toHexString();
+        label.outlineColor = "#102015";
+        label.outlineWidth = 4;
+        label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+        label.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+        label.linkOffsetY = -4;
+        this.holeBuilderUITexture.addControl(label);
+        // Babylon GUI requires linked controls to already be attached to the root texture.
+        label.linkWithMesh(labelAnchor);
+        this.holeDistanceLabels.push(label);
+      }
+    }
+  }
+
+  private getHoleBuilderAssetId(tool: HoleBuilderTool): string | null {
+    switch (tool) {
+      case "tee_blue":
+        return "course.tee.marker.blue";
+      case "tee_white":
+        return "course.tee.marker.white";
+      case "tee_red":
+        return "course.tee.marker.red";
+      case "tee_gold":
+        return "course.tee.marker.gold";
+      case "pin":
+        return "course.flag";
+      case "delete":
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  private setHoleBuilderTool(tool: HoleBuilderTool | null): void {
+    this.holeBuilderTool = tool;
+    if (tool === null || tool === "delete") {
+      this.holePlacementSystem.exitPlaceMode();
+      if (tool === null) {
+        if (this.holeBuilderToolbar?.isVisible()) {
+          this.uiManager.showNotification("Hole builder tool cleared");
+        }
+      } else {
+        this.uiManager.showNotification("Hole builder: Delete marker");
+      }
+      return;
+    }
+
+    const assetId = this.getHoleBuilderAssetId(tool);
+    if (!assetId) return;
+    this.holePlacementSystem.setPlaceMode(assetId);
+    const holeNumber = this.holePlacementSystem.getActiveHoleNumber();
+    this.uiManager.showNotification(`Hole builder: place marker on Hole ${holeNumber}`);
+  }
+
+  private handleHoleBuilderPanel(): void {
+    if (this.terrainEditorController.isEnabled()) {
+      return;
+    }
+
+    if (this.holeBuilderToolbar?.isVisible()) {
+      this.hideHoleBuilderPanel();
+      return;
+    }
+
+    if (this.state.isPaused) {
+      this.resumeGame();
+    }
+
+    if (this.uiPanelCoordinator.isIrrigationToolbarVisible()) {
+      this.uiPanelCoordinator.hideIrrigationPanels();
+    }
+
+    this.holeBuilderToolbar?.show();
+    this.holeBuilderToolbar?.setActiveHoleNumber(this.holePlacementSystem.getActiveHoleNumber());
+    this.updateHoleBuilderGuidance();
+    this.renderHoleDistanceIndicators();
+  }
+
+  private hideHoleBuilderPanel(): void {
+    if (!this.holeBuilderToolbar?.isVisible()) return;
+    this.clearHoleDistanceIndicators();
+    this.holeBuilderToolbar.hide();
+    this.holeBuilderToolbar.clearToolSelection();
+    this.holePlacementSystem.exitPlaceMode();
+    this.holePlacementSystem.clearSelection();
+    this.holeBuilderTool = null;
+  }
+
+  private handleHoleBuilderMouseMove(screenX: number, screenY: number): void {
+    if (!this.holeBuilderToolbar?.isVisible()) return;
+    if (!this.holeBuilderTool || this.holeBuilderTool === "delete") return;
+    const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
+    if (!world) return;
+    this.holePlacementSystem.handleMouseMove(world.x, world.z);
+  }
+
+  private handleHoleBuilderClick(screenX: number, screenY: number): boolean {
+    if (!this.holeBuilderToolbar?.isVisible()) {
+      return false;
+    }
+
+    const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
+    if (!world) {
+      return true;
+    }
+
+    const gridX = Math.floor(world.x);
+    const gridY = Math.floor(world.z);
+    const course = this.state.currentCourse;
+    if (gridX < 0 || gridY < 0 || gridX >= course.width || gridY >= course.height) {
+      this.uiManager.showNotification("Hole builder action out of bounds");
+      return true;
+    }
+
+    if (!this.holeBuilderTool) {
+      this.uiManager.showNotification("Select a hole builder tool first");
+      return true;
+    }
+
+    if (this.holeBuilderTool === "delete") {
+      const before = this.holePlacementSystem.getPlacedAssets().length;
+      this.holePlacementSystem.selectAt(world.x, world.z);
+      this.holePlacementSystem.deleteSelected();
+      const after = this.holePlacementSystem.getPlacedAssets().length;
+      if (after < before) {
+        this.syncHoleBuilderToCourse();
+        this.uiManager.showNotification("Hole marker removed");
+      } else {
+        this.uiManager.showNotification("No hole marker at this location");
+      }
+      return true;
+    }
+
+    const assetId = this.getHoleBuilderAssetId(this.holeBuilderTool);
+    if (!assetId) return true;
+
+    this.holePlacementSystem.setActiveHoleNumber(this.holeBuilderToolbar.getActiveHoleNumber());
+    if (
+      !this.holePlacementSystem.isInPlaceMode() ||
+      this.holePlacementSystem.getPlaceModeAssetId() !== assetId
+    ) {
+      this.holePlacementSystem.setPlaceMode(assetId);
+    }
+
+    void this.holePlacementSystem.placeAsset(world.x, world.z).then(() => {
+      const holeNumber = this.holePlacementSystem.getActiveHoleNumber();
+      this.uiManager.showNotification(`Placed marker on Hole ${holeNumber}`);
+    });
+    return true;
+  }
+
+  private isHoleBuilderUIBlockingPointer(screenX: number, screenY: number): boolean {
+    if (!this.holeBuilderToolbar?.isVisible()) return false;
+    const canvas = this.babylonEngine.getScene().getEngine().getRenderingCanvas();
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const x = screenX - rect.left;
+    const y = screenY - rect.top;
+    return (
+      x >= HOLE_BUILDER_TOOLBAR_BOUNDS.left &&
+      x <= HOLE_BUILDER_TOOLBAR_BOUNDS.left + HOLE_BUILDER_TOOLBAR_BOUNDS.width &&
+      y >= HOLE_BUILDER_TOOLBAR_BOUNDS.top &&
+      y <= HOLE_BUILDER_TOOLBAR_BOUNDS.top + HOLE_BUILDER_TOOLBAR_BOUNDS.height
+    );
   }
 
   private showDaySummary(): void {
@@ -305,7 +746,8 @@ export class BabylonMain {
       this.state.autonomousState,
       this.state.weatherState,
       faceStates,
-      this.state.irrigationSystem
+      this.state.irrigationSystem,
+      this.state.holeBuilderAssets
     );
 
     if (saveGame(savedState)) {
@@ -325,13 +767,38 @@ export class BabylonMain {
     this.state.score = saved.score;
     this.state.economyState = saved.economyState;
     this.state.employeeRoster = saved.employeeRoster;
+    const preferredEmployeeWorkState =
+      saved.employeeWorkState ?? this.state.employeeWorkState;
+    const preferredAutonomousState =
+      saved.autonomousState ?? this.state.autonomousState;
+    const serviceHubAnchor = resolveServiceHubAnchorFromState({
+      currentCourse: this.state.currentCourse,
+      employeeWorkState: {
+        maintenanceShedX: preferredEmployeeWorkState.maintenanceShedX,
+        maintenanceShedY: preferredEmployeeWorkState.maintenanceShedY,
+      },
+      autonomousState: {
+        chargingStationX: preferredAutonomousState.chargingStationX,
+        chargingStationY: preferredAutonomousState.chargingStationY,
+      },
+    });
     if (saved.employeeWorkState) {
       this.state.employeeWorkState = saved.employeeWorkState;
+      this.state.employeeWorkState = {
+        ...this.state.employeeWorkState,
+        maintenanceShedX: serviceHubAnchor.x,
+        maintenanceShedY: serviceHubAnchor.y,
+      };
     } else {
       this.state.employeeWorkState = syncWorkersWithRoster(
         this.state.employeeWorkState,
         this.state.employeeRoster.employees
       );
+      this.state.employeeWorkState = {
+        ...this.state.employeeWorkState,
+        maintenanceShedX: serviceHubAnchor.x,
+        maintenanceShedY: serviceHubAnchor.y,
+      };
     }
     this.state.golferPool = saved.golferPool;
     this.state.researchState = saved.researchState;
@@ -359,7 +826,17 @@ export class BabylonMain {
     }
 
     if (saved.autonomousState) {
-      this.state.autonomousState = saved.autonomousState;
+      this.state.autonomousState = {
+        ...saved.autonomousState,
+        chargingStationX: serviceHubAnchor.x,
+        chargingStationY: serviceHubAnchor.y,
+      };
+    } else {
+      this.state.autonomousState = {
+        ...this.state.autonomousState,
+        chargingStationX: serviceHubAnchor.x,
+        chargingStationY: serviceHubAnchor.y,
+      };
     }
 
     if (saved.weatherState) {
@@ -377,6 +854,12 @@ export class BabylonMain {
         this.irrigationRenderSystem.update(this.state.irrigationSystem);
       }
     }
+
+    if (saved.holeBuilderAssets) {
+      this.loadHoleBuilderAssets(saved.holeBuilderAssets);
+    }
+
+    this.rebuildRefillStations();
 
     return true;
   }
@@ -432,8 +915,10 @@ export class BabylonMain {
       onEditorBrushStrengthChange: (delta: number) =>
         this.terrainEditorController.handleEditorBrushStrengthDelta(delta),
 
-      onMouseMove: (screenX: number, screenY: number) =>
-        this.terrainEditorController.handleMouseMove(screenX, screenY),
+      onMouseMove: (screenX: number, screenY: number) => {
+        this.terrainEditorController.handleMouseMove(screenX, screenY);
+        this.handleHoleBuilderMouseMove(screenX, screenY);
+      },
       onDragStart: (screenX: number, screenY: number, shiftKey?: boolean) =>
         this.terrainEditorController.handleDragStart(screenX, screenY, shiftKey),
       onDrag: (screenX: number, screenY: number) =>
@@ -443,8 +928,11 @@ export class BabylonMain {
       onResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       onTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
       onMarketingPanel: () => this.uiPanelCoordinator.handleMarketingPanel(),
+      onIrrigationPanel: () => this.handleIrrigationPanel(),
+      onHoleBuilderPanel: () => this.handleHoleBuilderPanel(),
       onEquipmentStore: () => this.uiPanelCoordinator.handleEquipmentStore(),
       onAmenityPanel: () => this.uiPanelCoordinator.handleAmenityPanel(),
+      onCourseLayoutPanel: () => this.uiPanelCoordinator.handleCourseLayoutPanel(),
       onWalkOnQueuePanel: () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       onSelectAll: () => {
         const es = editorSystem();
@@ -479,7 +967,11 @@ export class BabylonMain {
       onFlipEdge: () => {
         editorSystem()?.flipSelectedEdge();
       },
-      isInputBlocked: () => this.uiManager.isPauseMenuVisible(),
+      isInputBlocked: (x: number, y: number) =>
+        this.uiManager.isPauseMenuVisible() ||
+        this.uiPanelCoordinator.isModalDialogVisible() ||
+        this.uiPanelCoordinator.isIrrigationUIBlockingPointer(x, y) ||
+        this.isHoleBuilderUIBlockingPointer(x, y),
       isEditorActive: () => this.terrainEditorController.isEnabled(),
       isEdgeModeActive: () => editorSystem()?.getTopologyMode() === 'edge',
       isFaceModeActive: () => editorSystem()?.getTopologyMode() === 'face',
@@ -531,9 +1023,10 @@ export class BabylonMain {
 
   private buildRefillStations(): void {
     const scene = this.babylonEngine.getScene();
+    const stations = this.getRuntimeRefillStations();
 
-    for (let i = 0; i < REFILL_STATIONS.length; i++) {
-      const station = REFILL_STATIONS[i];
+    for (let i = 0; i < stations.length; i++) {
+      const station = stations[i];
       const elevation = this.terrainSystem.getElevationAt(station.x, station.y);
 
       loadAsset(scene, "building.refill.station")
@@ -546,6 +1039,22 @@ export class BabylonMain {
           console.error(`[BabylonMain] Failed to load refill station:`, error);
         });
     }
+  }
+
+  private clearRefillStations(): void {
+    for (const instance of this.refillStationInstances) {
+      disposeInstance(instance);
+    }
+    this.refillStationInstances = [];
+  }
+
+  private rebuildRefillStations(): void {
+    this.clearRefillStations();
+    this.buildRefillStations();
+  }
+
+  private getRuntimeRefillStations(): Array<{ x: number; y: number; name: string }> {
+    return getRuntimeRefillStationsFromState(this.state);
   }
 
   public teleport(x: number, y: number): void {
@@ -584,7 +1093,37 @@ export class BabylonMain {
       return;
     }
 
+    if (this.handleHoleBuilderClick(screenX, screenY)) {
+      return;
+    }
+
+    if (this.handleIrrigationClick(screenX, screenY)) {
+      return;
+    }
+
     this.playerController.handleClick(screenX, screenY);
+  }
+
+  private handleIrrigationClick(screenX: number, screenY: number): boolean {
+    if (!this.uiPanelCoordinator.isIrrigationToolbarVisible()) {
+      return false;
+    }
+
+    const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
+    if (!world) {
+      return true;
+    }
+
+    const gridX = Math.floor(world.x);
+    const gridY = Math.floor(world.z);
+    const course = this.state.currentCourse;
+    if (gridX < 0 || gridY < 0 || gridX >= course.width || gridY >= course.height) {
+      this.uiManager.showNotification("Irrigation action out of bounds");
+      return true;
+    }
+
+    this.uiPanelCoordinator.handleIrrigationGridAction(gridX, gridY);
+    return true;
   }
 
   private applyEquipmentEffect(x: number, y: number): void {
@@ -613,7 +1152,7 @@ export class BabylonMain {
 
   private handleRefill(): void {
     const player = this.playerController.getPlayer();
-    const nearStation = REFILL_STATIONS.some((station) => {
+    const nearStation = this.getRuntimeRefillStations().some((station) => {
       const dx = Math.abs(station.x - player.gridX);
       const dy = Math.abs(station.y - player.gridY);
       return dx <= 2 && dy <= 2;
@@ -646,9 +1185,28 @@ export class BabylonMain {
 
   private handleOverlayCycle(): void {
     const mode = this.terrainSystem.cycleOverlayMode();
+    if (mode !== "irrigation" && this.uiPanelCoordinator.isIrrigationToolbarVisible()) {
+      this.uiPanelCoordinator.hideIrrigationPanels();
+      this.uiManager.showNotification("Irrigation tools closed (overlay changed)");
+    }
     this.uiManager.updateOverlayLegend(mode);
     this.state.overlayAutoSwitched = false;
     this.updateIrrigationVisibility();
+  }
+
+  private handleIrrigationPanel(): void {
+    const willOpen = !this.uiPanelCoordinator.isIrrigationToolbarVisible();
+    if (willOpen && this.holeBuilderToolbar?.isVisible()) {
+      this.hideHoleBuilderPanel();
+    }
+    this.uiPanelCoordinator.toggleIrrigationToolbar();
+
+    if (willOpen && this.terrainSystem.getOverlayMode() !== "irrigation") {
+      this.terrainSystem.setOverlayMode("irrigation");
+      this.uiManager.updateOverlayLegend("irrigation");
+      this.state.overlayAutoSwitched = false;
+      this.updateIrrigationVisibility();
+    }
   }
 
   private updateIrrigationVisibility(): void {
@@ -667,6 +1225,9 @@ export class BabylonMain {
   }
 
   private pauseGame(): void {
+    if (this.holeBuilderToolbar?.isVisible()) {
+      this.hideHoleBuilderPanel();
+    }
     this.state.isPaused = true;
     this.uiManager.showPauseMenu(
       () => this.resumeGame(),
@@ -677,6 +1238,12 @@ export class BabylonMain {
       () => this.uiPanelCoordinator.handleResearchPanel(),
       () => this.uiPanelCoordinator.handleTeeSheetPanel(),
       () => this.uiPanelCoordinator.handleMarketingPanel(),
+      () => this.handleIrrigationPanel(),
+      () => this.handleHoleBuilderPanel(),
+      () => this.uiPanelCoordinator.handleEquipmentStore(),
+      () => this.uiPanelCoordinator.handleAmenityPanel(),
+      () => this.uiPanelCoordinator.handleCourseLayoutPanel(),
+      () => this.uiPanelCoordinator.handleWalkOnQueuePanel(),
       (delta: number) => this.handleTimeSpeed(delta),
       this.state.timeScale
     );
@@ -778,6 +1345,7 @@ export class BabylonMain {
       this.lastTime = now;
 
       this.updateZoom(deltaMs);
+      this.robotVisualSystem?.update(this.state.autonomousState.robots);
 
       if (this.state.isPaused) {
         return;
@@ -879,6 +1447,60 @@ export class BabylonMain {
         getActiveGolferCount(this.state.golferPool),
         getAverageSatisfaction(this.state.golferPool)
       );
+
+      const todayTeeTimes = this.state.teeTimeState.teeTimes.get(this.state.gameDay) ?? [];
+      const bookedTeeTimes = todayTeeTimes.filter((tt) =>
+        tt.status !== "available" && tt.status !== "cancelled"
+      ).length;
+      const workers = this.state.employeeWorkState.workers;
+      const activeWorkers = workers.filter((worker) => worker.currentTask !== "idle").length;
+      const currentResearch = this.state.researchState.currentResearch;
+      const activeResearchName = currentResearch
+        ? (RESEARCH_ITEMS.find((item) => item.id === currentResearch.itemId)?.name ?? currentResearch.itemId)
+        : null;
+      const researchProgress = currentResearch
+        ? (currentResearch.pointsEarned / Math.max(1, currentResearch.pointsRequired)) * 100
+        : 0;
+      const robotsWorking = this.state.autonomousState.robots.filter((robot) =>
+        robot.state === "working" || robot.state === "moving"
+      ).length;
+      const robotsBroken = this.state.autonomousState.robots.filter((robot) => robot.state === "broken").length;
+      const pipePressureByTile = new Map(
+        this.state.irrigationSystem.pipes.map((pipe) => [
+          `${pipe.gridX},${pipe.gridY}`,
+          pipe.pressureLevel,
+        ])
+      );
+      const sprinklersPumping = this.state.irrigationSystem.sprinklerHeads.filter((head) => {
+        if (!head.isActive) return false;
+        const pressure = pipePressureByTile.get(`${head.gridX},${head.gridY}`) ?? 0;
+        return pressure > 0;
+      }).length;
+      const sprinklersDry = this.state.irrigationSystem.sprinklerHeads.filter((head) => {
+        if (!head.isActive) return false;
+        const pressure = pipePressureByTile.get(`${head.gridX},${head.gridY}`) ?? 0;
+        return pressure <= 0;
+      }).length;
+      const pipeLeaks = this.state.irrigationSystem.pipes.filter((pipe) => pipe.isLeaking).length;
+
+      this.uiManager.updateOperationsSummary({
+        workersActive: activeWorkers,
+        workersIdle: workers.length - activeWorkers,
+        bookedTeeTimes,
+        totalTeeTimes: todayTeeTimes.length,
+        walkOnQueue: this.state.walkOnState.queue.length,
+        walkOnsTurnedAway: this.state.walkOnState.metrics.walkOnsTurnedAwayToday,
+        researchName: activeResearchName,
+        researchProgress,
+        activeCampaigns: this.state.marketingState.activeCampaigns.filter(
+          (campaign) => campaign.status === "active"
+        ).length,
+        robotsWorking,
+        robotsBroken,
+        sprinklersPumping,
+        sprinklersDry,
+        pipeLeaks,
+      });
 
       if (this.state.scenarioManager && this.state.currentScenario) {
         const progress = this.state.scenarioManager.getProgress();
@@ -1124,9 +1746,18 @@ export class BabylonMain {
     this.terrainEditorController.dispose();
     this.playerController.dispose();
     this.uiPanelCoordinator.dispose();
+    this.clearHoleDistanceIndicators();
+    this.holeBuilderToolbar?.dispose();
+    this.holeBuilderToolbar = null;
+    this.holeBuilderUITexture?.dispose();
+    this.holeBuilderUITexture = null;
+    this.holePlacementSystem.dispose();
 
     this.employeeVisualSystem?.dispose();
     this.employeeVisualSystem = null;
+
+    this.robotVisualSystem?.dispose();
+    this.robotVisualSystem = null;
 
     this.irrigationRenderSystem?.dispose();
 

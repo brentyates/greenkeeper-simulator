@@ -14,6 +14,7 @@ import { ScenarioProgress } from './scenario';
 import { AutonomousEquipmentState } from './autonomous-equipment';
 import { WeatherState } from './weather';
 import { IrrigationSystem } from './irrigation';
+import type { PlacedAsset } from '../data/customCourseData';
 
 export interface SaveGameState {
   version: number;
@@ -41,6 +42,7 @@ export interface SaveGameState {
   autonomousState: AutonomousEquipmentState;
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
+  holeBuilderAssets?: PlacedAsset[];
 
   faceStates: FaceState[];
 }
@@ -71,6 +73,7 @@ export function createSaveState(
   weatherState: WeatherState,
   faceStates: Map<number, FaceState>,
   irrigationSystem?: IrrigationSystem,
+  holeBuilderAssets?: PlacedAsset[],
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -96,6 +99,7 @@ export function createSaveState(
     autonomousState,
     weatherState,
     irrigationSystem,
+    holeBuilderAssets,
     faceStates: Array.from(faceStates.values()),
   };
 }

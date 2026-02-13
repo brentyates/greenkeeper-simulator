@@ -1077,6 +1077,12 @@ describe("Research System", () => {
       expect(item?.category).toBe("robotics");
     });
 
+    it("has robot mower for rough", () => {
+      const item = getResearchItem("robot_mower_rough");
+      expect(item).not.toBeNull();
+      expect(item?.category).toBe("robotics");
+    });
+
     it("has robot sprayer", () => {
       const item = getResearchItem("robot_sprayer");
       expect(item).not.toBeNull();
@@ -1156,6 +1162,7 @@ describe("Research System", () => {
   describe("isAutonomousEquipment", () => {
     it("returns true for robot equipment", () => {
       expect(isAutonomousEquipment("robot_mower_fairway")).toBe(true);
+      expect(isAutonomousEquipment("robot_mower_rough")).toBe(true);
       expect(isAutonomousEquipment("robot_sprayer")).toBe(true);
       expect(isAutonomousEquipment("robot_fertilizer")).toBe(true);
     });

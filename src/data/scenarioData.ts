@@ -11,6 +11,7 @@ export interface ScenarioDefinition {
   difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert';
   unlockAfter?: string; // ID of previous scenario
   isSandbox?: boolean;
+  unlockAllResearch?: boolean;
 }
 
 export const SCENARIOS: ScenarioDefinition[] = [
@@ -210,6 +211,25 @@ export const SCENARIOS: ScenarioDefinition[] = [
     difficulty: 'expert',
     unlockAfter: 'grand_summit_excellence',
   },
+
+  // ========== SANDBOX: ALL UNLOCKS ==========
+  {
+    id: 'sandbox_all_unlocked',
+    name: 'Sandbox: All Unlocks',
+    description: 'A built-in testing sandbox with almost unlimited funds and all research unlocked from day one.',
+    courseId: '18_hole_championship',
+    objective: {
+      type: 'economic',
+      targetCash: 50000000,
+    },
+    conditions: {
+      startingCash: 25000000,
+      startingHealth: 90,
+      grassGrowthRate: 1.0,
+    },
+    difficulty: 'beginner',
+    unlockAllResearch: true,
+  },
 ];
 
 export interface ScenarioProgress {
@@ -222,7 +242,7 @@ export function getUnlockedScenarios(completedIds: string[]): ScenarioDefinition
   const unlocked: ScenarioDefinition[] = [];
 
   for (const scenario of SCENARIOS) {
-    // Always unlock first scenario
+    // Always unlock scenarios without prerequisites
     if (!scenario.unlockAfter) {
       unlocked.push(scenario);
       continue;

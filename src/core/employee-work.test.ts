@@ -6,6 +6,7 @@ import {
   assignWorkerToArea,
   addArea,
   getWorkerState,
+  findBestWorkTarget,
   tickEmployeeWork,
   syncWorkersWithRoster,
   getActiveWorkerCount,
@@ -445,6 +446,43 @@ describe('employee-work', () => {
       expect(worker.path).toHaveLength(0);
     });
 
+    it('clears blocked patrol paths so workers can recover and retarget', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0);
+      const workingEmployee = { ...employee, status: 'working' as const };
+      state = addWorker(state, workingEmployee);
+
+      state = {
+        ...state,
+        workers: state.workers.map(w => ({
+          ...w,
+          worldX: 0,
+          worldZ: 0,
+          gridX: 0,
+          gridY: 0,
+          currentTask: 'patrol' as const,
+          targetX: 5,
+          targetZ: 0,
+          path: [{ x: 5, y: 0 }],
+          moveProgress: 0.5,
+          workProgress: 0,
+        })),
+      };
+
+      const terrain = createMockTerrainSystem();
+      const blockedTerrain: TerrainSystem = {
+        ...terrain,
+        isPositionWalkable: () => false,
+      };
+      const result = tickEmployeeWork(state, [workingEmployee], blockedTerrain, 1);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).toBe('idle');
+      expect(worker.path).toHaveLength(0);
+      expect(worker.targetX).toBeNull();
+      expect(worker.targetZ).toBeNull();
+    });
+
     it('skips non-groundskeeper employees in tick', () => {
       let state = createInitialWorkSystemState(5, 5);
       const mechanic = createEmployee('mechanic', 'novice', 0);
@@ -778,6 +816,80 @@ describe('employee-work', () => {
 
       const worker = result.state.workers[0];
       expect(worker.currentTask).toBe('idle');
+    });
+
+    it('prefers nearby work over slightly higher-need distant work', () => {
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('11,10', {
+        avgMoisture: 100,
+        avgNutrients: 100,
+        avgGrassHeight: 82,
+        avgHealth: 70,
+        dominantTerrainCode: TERRAIN_CODES.ROUGH,
+        faceCount: 4,
+      });
+      sampleMap.set('40,10', {
+        avgMoisture: 100,
+        avgNutrients: 100,
+        avgGrassHeight: 85,
+        avgHealth: 68,
+        dominantTerrainCode: TERRAIN_CODES.ROUGH,
+        faceCount: 4,
+      });
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+
+      const target = findBestWorkTarget(
+        terrain,
+        10,
+        10,
+        'groundskeeper',
+        null,
+        new Set<string>(),
+        0,
+        100
+      );
+
+      expect(target).not.toBeNull();
+      expect(target?.task).toBe('mow_grass');
+      expect(target?.worldX).toBe(11.5);
+      expect(target?.worldZ).toBe(10.5);
+    });
+
+    it('still chooses extremely neglected distant bunker work', () => {
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('11,10', {
+        avgMoisture: 20,
+        avgNutrients: 0,
+        avgGrassHeight: 0,
+        avgHealth: 40,
+        dominantTerrainCode: TERRAIN_CODES.BUNKER,
+        faceCount: 4,
+      });
+      sampleMap.set('40,10', {
+        avgMoisture: 20,
+        avgNutrients: 0,
+        avgGrassHeight: 0,
+        avgHealth: 2,
+        dominantTerrainCode: TERRAIN_CODES.BUNKER,
+        faceCount: 4,
+      });
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+
+      const target = findBestWorkTarget(
+        terrain,
+        10,
+        10,
+        'groundskeeper',
+        null,
+        new Set<string>(),
+        0,
+        100
+      );
+
+      expect(target).not.toBeNull();
+      expect(target?.task).toBe('rake_bunker');
+      expect(target?.worldX).toBe(40.5);
+      expect(target?.worldZ).toBe(10.5);
     });
   });
 

@@ -3,6 +3,7 @@ import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import { UIManager } from "./ui/UIManager";
 import { GameState } from "./GameState";
+import { resolveServiceHubAnchorFromState } from "./GameState";
 
 import {
   addIncome,
@@ -73,6 +74,8 @@ import {
 } from "../core/marketing";
 import {
   tickAutonomousEquipment as coreTickAutonomousEquipment,
+  getAllowedTerrainCodesForRobotEquipment,
+  type RobotUnit,
 } from "../core/autonomous-equipment";
 import {
   tickWeather as coreTickWeather,
@@ -573,16 +576,81 @@ function tickResearch(state: GameState, systems: SimulationSystems, gameMinutes:
 
 function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, gameMinutes: number, timestamp: number): void {
   if (state.autonomousState.robots.length > 0) {
-    const candidates = state.autonomousState.robots
-      .filter(r => r.state !== 'broken' && r.state !== 'charging')
-      .flatMap(r => systems.terrainSystem.findWorkCandidates(r.worldX, r.worldZ, 50));
+    const safeAnchor = resolveServiceHubAnchorFromState(state);
+    if (
+      safeAnchor.x !== state.autonomousState.chargingStationX ||
+      safeAnchor.y !== state.autonomousState.chargingStationY
+    ) {
+      state.autonomousState = {
+        ...state.autonomousState,
+        chargingStationX: safeAnchor.x,
+        chargingStationY: safeAnchor.y,
+      };
+    }
+    if (
+      safeAnchor.x !== state.employeeWorkState.maintenanceShedX ||
+      safeAnchor.y !== state.employeeWorkState.maintenanceShedY
+    ) {
+      state.employeeWorkState = {
+        ...state.employeeWorkState,
+        maintenanceShedX: safeAnchor.x,
+        maintenanceShedY: safeAnchor.y,
+      };
+    }
+
+    const courseCenterX = state.currentCourse.width / 2;
+    const courseCenterZ = state.currentCourse.height / 2;
+    const globalRadius =
+      Math.ceil(
+        Math.hypot(state.currentCourse.width, state.currentCourse.height) / 2
+      ) + 2;
+    // Use one canonical course-wide candidate snapshot so every robot sees the same work pool.
+    const candidates = systems.terrainSystem.findWorkCandidates(
+      courseCenterX,
+      courseCenterZ,
+      globalRadius
+    );
     const fleetAIActive =
       state.researchState.completedResearch.includes("fleet_ai");
+    const traverseCache = new Map<string, boolean>();
+    const canRobotTraverse = (robot: RobotUnit, worldX: number, worldZ: number): boolean => {
+      const snappedX = Math.round(worldX * 4) / 4;
+      const snappedZ = Math.round(worldZ * 4) / 4;
+      const cacheKey = `${robot.equipmentId}:${robot.type}:${snappedX}:${snappedZ}`;
+      const cached = traverseCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      if (!systems.terrainSystem.isPositionWalkable(worldX, worldZ)) {
+        traverseCache.set(cacheKey, false);
+        return false;
+      }
+
+      const terrainType = systems.terrainSystem.getTerrainTypeAt(worldX, worldZ);
+      if (!terrainType) {
+        traverseCache.set(cacheKey, false);
+        return false;
+      }
+      if (terrainType === "water") {
+        traverseCache.set(cacheKey, false);
+        return false;
+      }
+
+      if (terrainType === "bunker" && robot.type !== "raker") {
+        traverseCache.set(cacheKey, false);
+        return false;
+      }
+
+      traverseCache.set(cacheKey, true);
+      return true;
+    };
     const robotResult = coreTickAutonomousEquipment(
       state.autonomousState,
       candidates,
       gameMinutes,
-      fleetAIActive
+      fleetAIActive,
+      canRobotTraverse
     );
     state.autonomousState = robotResult.state;
 
@@ -602,12 +670,38 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
 
     for (const effect of robotResult.effects) {
       if (effect.type === "mower") {
-        systems.terrainSystem.mowAt(effect.worldX, effect.worldZ);
+        const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(
+          effect.equipmentId,
+          effect.type
+        );
+        systems.terrainSystem.applyWorkEffect(
+          effect.worldX,
+          effect.worldZ,
+          1.0,
+          "mow",
+          effect.efficiency,
+          timestamp,
+          allowedTerrainCodes ?? undefined
+        );
+      } else if (effect.type === "raker") {
+        const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(
+          effect.equipmentId,
+          effect.type
+        );
+        systems.terrainSystem.applyWorkEffect(
+          effect.worldX,
+          effect.worldZ,
+          1.5,
+          "rake",
+          effect.efficiency,
+          timestamp,
+          allowedTerrainCodes ?? undefined
+        );
       } else if (effect.type === "sprayer") {
         systems.terrainSystem.waterArea(
           effect.worldX,
           effect.worldZ,
-          1,
+          2,
           10 * effect.efficiency
         );
       } else if (effect.type === "spreader") {
@@ -617,7 +711,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
         systems.terrainSystem.fertilizeArea(
           effect.worldX,
           effect.worldZ,
-          1,
+          2,
           10 * effect.efficiency,
           effectiveness
         );
@@ -639,6 +733,9 @@ function tickScenario(state: GameState, systems: SimulationSystems): void {
 function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinutes: number, timestamp: number): void {
   const hours = Math.floor(state.gameTime / 60);
   const minutes = state.gameTime % 60;
+  const currentMinutes = hours * 60 + minutes;
+  const isRainSuppressionActive =
+    state.weather?.type === "rainy" || state.weather?.type === "stormy";
 
   state.irrigationSystem = updatePipePressures(state.irrigationSystem);
 
@@ -660,34 +757,28 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
     timestamp,
     weatherEffect
   );
+  // Leaks can change effective pressure; recompute so this tick's watering/FX are accurate.
+  state.irrigationSystem = updatePipePressures(state.irrigationSystem);
 
   for (const head of state.irrigationSystem.sprinklerHeads) {
-    if (!head.schedule.enabled) continue;
+    const isInScheduledWindow = head.schedule.timeRanges.some(
+      (range) => currentMinutes >= range.start && currentMinutes < range.end
+    );
+    const suppressedByRain = head.schedule.skipRain && isRainSuppressionActive;
+    const shouldBeActive =
+      head.schedule.enabled && isInScheduledWindow && !suppressedByRain;
 
-    let shouldWater = false;
-    for (const range of head.schedule.timeRanges) {
-      const currentMinutes = hours * 60 + minutes;
-      if (currentMinutes >= range.start && currentMinutes < range.end) {
-        shouldWater = true;
-        break;
-      }
-    }
-
-    if (shouldWater && !head.isActive) {
+    let isActive = head.isActive;
+    if (shouldBeActive !== head.isActive) {
       state.irrigationSystem = setSprinklerActive(
         state.irrigationSystem,
         head.id,
-        true
+        shouldBeActive
       );
-    } else if (!shouldWater && head.isActive) {
-      state.irrigationSystem = setSprinklerActive(
-        state.irrigationSystem,
-        head.id,
-        false
-      );
+      isActive = shouldBeActive;
     }
 
-    if (head.isActive) {
+    if (isActive) {
       const pipe = getPipeAt(state.irrigationSystem, head.gridX, head.gridY);
       const pressure = pipe ? pipe.pressureLevel : 0;
 
@@ -695,6 +786,9 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
         const faceId = systems.terrainSystem.findFaceAtPosition(tile.x, tile.y);
         if (faceId !== null) {
           const waterAmount = 15 * tile.efficiency * (pressure / 100);
+          if (waterAmount <= 0) {
+            continue;
+          }
           systems.terrainSystem.waterArea(tile.x, tile.y, 0, waterAmount);
           state.dailyStats.maintenance.tilesWatered++;
         }

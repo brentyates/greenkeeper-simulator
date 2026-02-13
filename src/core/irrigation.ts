@@ -521,10 +521,20 @@ export function updatePipePressures(system: IrrigationSystem): IrrigationSystem 
       connectedTo: updatePipeConnections(system, pipe).connectedTo
     };
   });
+  const updatedHeads = system.sprinklerHeads.map((head) => {
+    const connectedToPipe = updatedPipes.some(
+      (pipe) => pipe.gridX === head.gridX && pipe.gridY === head.gridY
+    );
+    return {
+      ...head,
+      connectedToPipe,
+    };
+  });
 
   return {
     ...system,
-    pipes: updatedPipes
+    pipes: updatedPipes,
+    sprinklerHeads: updatedHeads,
   };
 }
 
@@ -773,4 +783,3 @@ export function resetCounters(): void {
   sprinklerIdCounter = 0;
   waterSourceIdCounter = 0;
 }
-

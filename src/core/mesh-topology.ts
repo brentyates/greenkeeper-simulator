@@ -785,6 +785,72 @@ export function pointInTriangle(
   return !(hasNeg && hasPos);
 }
 
+function pointToSegmentDistanceSqXZ(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number
+): number {
+  const abx = bx - ax;
+  const abz = bz - az;
+  const abLenSq = abx * abx + abz * abz;
+
+  if (abLenSq === 0) {
+    const dx = px - ax;
+    const dz = pz - az;
+    return dx * dx + dz * dz;
+  }
+
+  const apx = px - ax;
+  const apz = pz - az;
+  const t = Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq));
+  const closestX = ax + t * abx;
+  const closestZ = az + t * abz;
+
+  const dx = px - closestX;
+  const dz = pz - closestZ;
+  return dx * dx + dz * dz;
+}
+
+export function circleIntersectsTriangleXZ(
+  cx: number,
+  cz: number,
+  radius: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  tx: number,
+  tz: number
+): boolean {
+  if (radius < 0) return false;
+  const radiusSq = radius * radius;
+
+  if (pointInTriangle(cx, cz, ax, az, bx, bz, tx, tz)) {
+    return true;
+  }
+
+  const dax = cx - ax;
+  const daz = cz - az;
+  if (dax * dax + daz * daz <= radiusSq) return true;
+
+  const dbx = cx - bx;
+  const dbz = cz - bz;
+  if (dbx * dbx + dbz * dbz <= radiusSq) return true;
+
+  const dtx = cx - tx;
+  const dtz = cz - tz;
+  if (dtx * dtx + dtz * dtz <= radiusSq) return true;
+
+  if (pointToSegmentDistanceSqXZ(cx, cz, ax, az, bx, bz) <= radiusSq) return true;
+  if (pointToSegmentDistanceSqXZ(cx, cz, bx, bz, tx, tz) <= radiusSq) return true;
+  if (pointToSegmentDistanceSqXZ(cx, cz, tx, tz, ax, az) <= radiusSq) return true;
+
+  return false;
+}
+
 export function retriangulateHole(
   topology: TerrainMeshTopology,
   holeVertices: number[]
@@ -1372,4 +1438,3 @@ export function validateTopology(topology: TerrainMeshTopology): void {
     });
   }
 }
-

@@ -10,10 +10,13 @@ import { BabylonEngine } from "./engine/BabylonEngine";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 
-import { REFILL_STATIONS } from "../data/courseData";
 import { EditorTool } from "../core/terrain-editor-logic";
+import {
+  summarizeHoleGameplay,
+  type CourseHoleDefinition,
+} from "../core/hole-construction";
 
-import { GameState } from "./GameState";
+import { GameState, getRuntimeRefillStationsFromState } from "./GameState";
 export { GameState } from "./GameState";
 
 import {
@@ -255,6 +258,28 @@ export class GameAPI {
       noShows: this.state.teeTimeState.bookingMetrics.noShowsToday,
       slotsAvailable: available,
     };
+  }
+
+  public getCourseHoles(): CourseHoleDefinition[] {
+    const holes = this.state.currentCourse.holes ?? [];
+    return holes.map((hole) => ({
+      ...hole,
+      teeBoxes: hole.teeBoxes.map((tee) => ({ ...tee })),
+      pinPositions: hole.pinPositions.map((pin) => ({ ...pin })),
+      yardages: { ...hole.yardages },
+      validationIssues: [...hole.validationIssues],
+    }));
+  }
+
+  public getCourseHoleSummary(): {
+    totalHoles: number;
+    playableHoles: number;
+    totalTeeBoxes: number;
+    totalPinPositions: number;
+    coursePar: number;
+  } {
+    const holes = this.state.currentCourse.holes ?? [];
+    return summarizeHoleGameplay(holes);
   }
 
   public getMarketingStats(): {
@@ -1181,9 +1206,16 @@ export class GameAPI {
     }
   }
 
+  private getResolvedRefillStations(): Array<{ x: number; y: number }> {
+    return getRuntimeRefillStationsFromState(this.state).map(({ x, y }) => ({
+      x,
+      y,
+    }));
+  }
+
   public refillAtCurrentPosition(): { success: boolean; cost: number } {
     const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
-    const isAtStation = REFILL_STATIONS.some(
+    const isAtStation = this.getResolvedRefillStations().some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );
 
@@ -1210,13 +1242,13 @@ export class GameAPI {
 
   public isAtRefillStation(): boolean {
     const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
-    return REFILL_STATIONS.some(
+    return this.getResolvedRefillStations().some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );
   }
 
   public getRefillStations(): Array<{ x: number; y: number }> {
-    return REFILL_STATIONS.map(s => ({ x: s.x, y: s.y }));
+    return this.getResolvedRefillStations();
   }
 
   public forceGrassGrowth(minutes: number): void {

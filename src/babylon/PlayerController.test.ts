@@ -539,13 +539,12 @@ describe("PlayerController", () => {
       });
 
       it("slides along X axis when target blocked but X component walkable", () => {
-        let callCount = 0;
+        const startX = 25.5;
+        const startZ = 25.5;
         const blockedTerrain = createMockTerrain(50, 40, {
-          isPositionWalkable: (_x, _z) => {
-            callCount++;
-            if (callCount === 1) return false;
-            if (callCount === 2) return true;
-            return true;
+          isPositionWalkable: (x, z) => {
+            const diagonalBlocked = x < startX && z < startZ;
+            return !diagonalBlocked;
           },
         });
         const ctrl = new PlayerController(
@@ -559,15 +558,17 @@ describe("PlayerController", () => {
         ctrl.createPlayer();
         ctrl.updateMovement(16);
         expect(ctrl.getPlayer().worldX).not.toBe(25.5);
+        expect(ctrl.getPlayer().worldZ).toBeCloseTo(25.5, 3);
       });
 
       it("slides along Z axis when target and X blocked but Z walkable", () => {
-        let callCount = 0;
+        const startX = 25.5;
+        const startZ = 25.5;
         const blockedTerrain = createMockTerrain(50, 40, {
-          isPositionWalkable: () => {
-            callCount++;
-            if (callCount <= 2) return false;
-            return true;
+          isPositionWalkable: (x, z) => {
+            const diagonalBlocked = x < startX && z < startZ;
+            const xOnlyBlocked = x < startX && z >= startZ - 0.001;
+            return !(diagonalBlocked || xOnlyBlocked);
           },
         });
         const ctrl = new PlayerController(
@@ -581,6 +582,7 @@ describe("PlayerController", () => {
         ctrl.createPlayer();
         ctrl.updateMovement(16);
         expect(ctrl.getPlayer().worldZ).not.toBe(25.5);
+        expect(ctrl.getPlayer().worldX).toBeCloseTo(25.5, 3);
       });
 
       it("does not move when all directions are blocked", () => {
@@ -590,6 +592,27 @@ describe("PlayerController", () => {
         const ctrl = new PlayerController(
           {} as any,
           blockedTerrain,
+          equipment,
+          engine,
+          createMockInput({ up: true }),
+          { editor, startX: 25, startY: 25 }
+        );
+        ctrl.createPlayer();
+        const startX = ctrl.getPlayer().worldX;
+        const startZ = ctrl.getPlayer().worldZ;
+        ctrl.updateMovement(16);
+        expect(ctrl.getPlayer().worldX).toBe(startX);
+        expect(ctrl.getPlayer().worldZ).toBe(startZ);
+      });
+
+      it("does not move into water even when walkability reports true", () => {
+        const waterTerrain = createMockTerrain(50, 40, {
+          getTerrainTypeAt: () => "water",
+          isPositionWalkable: () => true,
+        });
+        const ctrl = new PlayerController(
+          {} as any,
+          waterTerrain,
           equipment,
           engine,
           createMockInput({ up: true }),
@@ -933,6 +956,44 @@ describe("PlayerController", () => {
       );
       ctrl.createPlayer();
       ctrl.handleClick(400, 300);
+      expect(ctrl.getClickToMoveWaypoints()).toEqual([]);
+    });
+
+    it("returns early when target cell is non-traversable", () => {
+      const nonTraversableTerrain = createMockTerrain(50, 40, {
+        getTerrainTypeAt: () => "fairway",
+        isPositionWalkable: () => false,
+      });
+      const mockScene = {
+        getEngine: () => ({
+          getRenderingCanvas: () => ({
+            width: 800,
+            height: 600,
+            getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+          }),
+        }),
+        pick: vi.fn(() => ({
+          hit: true,
+          pickedMesh: { name: "tile_10_10" },
+        })),
+        createPickingRay: vi.fn(),
+      };
+      const eng = {
+        ...engine,
+        getScene: () => mockScene as any,
+      };
+      const ctrl = new PlayerController(
+        {} as any,
+        nonTraversableTerrain,
+        equipment,
+        eng,
+        input,
+        { editor, startX: 5, startY: 5 }
+      );
+      ctrl.createPlayer();
+      const findPathSpy = vi.spyOn(ctrl, "findPath");
+      ctrl.handleClick(400, 300);
+      expect(findPathSpy).not.toHaveBeenCalled();
       expect(ctrl.getClickToMoveWaypoints()).toEqual([]);
     });
 

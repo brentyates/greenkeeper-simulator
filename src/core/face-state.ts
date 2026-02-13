@@ -19,6 +19,8 @@ export interface FaceState {
   lastRaked: number;
 }
 
+export const BUNKER_RAKE_VISUAL_FADE_MINUTES = 8 * 60;
+
 export function createFaceState(faceId: number, terrainCode: number): FaceState {
   const terrainType = getTerrainType(terrainCode);
   const initial = getInitialValues(terrainType);
@@ -41,6 +43,16 @@ export function createFaceState(faceId: number, terrainCode: number): FaceState 
     lastFertilized: 0,
     lastRaked: 0,
   };
+}
+
+export function getBunkerRakeFreshness(
+  lastRaked: number,
+  currentGameTime: number,
+  fadeMinutes: number = BUNKER_RAKE_VISUAL_FADE_MINUTES
+): number {
+  if (lastRaked <= 0 || fadeMinutes <= 0) return 0;
+  const elapsed = Math.max(0, currentGameTime - lastRaked);
+  return Math.max(0, Math.min(1, 1 - elapsed / fadeMinutes));
 }
 
 export function isGrassFace(terrainCode: number): boolean {

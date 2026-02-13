@@ -6,6 +6,7 @@ import {
   CourseData,
   getCourseById,
 } from "../data/courseData";
+import type { PlacedAsset } from "../data/customCourseData";
 import { ScenarioDefinition } from "../data/scenarioData";
 
 import {
@@ -36,6 +37,7 @@ import {
 import {
   ResearchState,
   createInitialResearchState,
+  RESEARCH_ITEMS,
 } from "../core/research";
 import { ScenarioManager } from "../core/scenario";
 import {
@@ -103,6 +105,94 @@ function createEmptyDailyStats(): DailyStats {
   };
 }
 
+function isInBounds(
+  course: Pick<CourseData, "width" | "height">,
+  x: number,
+  y: number
+): boolean {
+  return x >= 0 && x < course.width && y >= 0 && y < course.height;
+}
+
+export function resolveRefillAnchor(
+  course: Pick<CourseData, "width" | "height">,
+  preferredX?: number,
+  preferredY?: number
+): { x: number; y: number } {
+  if (
+    typeof preferredX === "number" &&
+    Number.isFinite(preferredX) &&
+    typeof preferredY === "number" &&
+    Number.isFinite(preferredY) &&
+    isInBounds(course, preferredX, preferredY)
+  ) {
+    return { x: preferredX, y: preferredY };
+  }
+
+  const configured = REFILL_STATIONS[0];
+  if (configured && isInBounds(course, configured.x, configured.y)) {
+    return { x: configured.x, y: configured.y };
+  }
+
+  return {
+    x: Math.floor(course.width / 2),
+    y: Math.floor(course.height / 2),
+  };
+}
+
+export interface RuntimeRefillStation {
+  x: number;
+  y: number;
+  name: string;
+}
+
+interface RefillStateSnapshot {
+  currentCourse: Pick<CourseData, "width" | "height">;
+  autonomousState: { chargingStationX: number; chargingStationY: number };
+  employeeWorkState: { maintenanceShedX: number; maintenanceShedY: number };
+}
+
+export function resolveServiceHubAnchorFromState(
+  state: RefillStateSnapshot
+): { x: number; y: number } {
+  if (
+    isInBounds(
+      state.currentCourse,
+      state.autonomousState.chargingStationX,
+      state.autonomousState.chargingStationY
+    )
+  ) {
+    return {
+      x: state.autonomousState.chargingStationX,
+      y: state.autonomousState.chargingStationY,
+    };
+  }
+
+  return resolveRefillAnchor(state.currentCourse);
+}
+
+export function getRuntimeRefillStationsFromState(
+  state: RefillStateSnapshot
+): RuntimeRefillStation[] {
+  const anchor = resolveServiceHubAnchorFromState(state);
+  return [{ x: anchor.x, y: anchor.y, name: "Maintenance Shed" }];
+}
+
+function createFullyUnlockedResearchState(baseState: ResearchState): ResearchState {
+  const completedResearch = RESEARCH_ITEMS.map(item => item.id);
+  const totalPointsSpent = RESEARCH_ITEMS.reduce(
+    (total, item) => total + item.baseCost,
+    0
+  );
+
+  return {
+    ...baseState,
+    completedResearch,
+    currentResearch: null,
+    researchQueue: [],
+    totalPointsSpent,
+  };
+}
+
 export class GameState {
   gameTime: number = 6 * 60;
   gameDay: number = 1;
@@ -148,6 +238,7 @@ export class GameState {
   currentScenario: ScenarioDefinition | null = null;
 
   currentCourse!: CourseData;
+  holeBuilderAssets: PlacedAsset[] = [];
   gameOptions!: GameOptions;
 
   lastPayrollHour: number = -1;
@@ -178,10 +269,9 @@ export class GameState {
     state.economyState = createInitialEconomyState(startingCash);
     state.employeeRoster = createInitialRoster();
 
-    const maintenanceShedX =
-      REFILL_STATIONS[0]?.x ?? Math.floor(course.width / 2);
-    const maintenanceShedY =
-      REFILL_STATIONS[0]?.y ?? Math.floor(course.height / 2);
+    const refillAnchor = resolveRefillAnchor(course);
+    const maintenanceShedX = refillAnchor.x;
+    const maintenanceShedY = refillAnchor.y;
     state.employeeWorkState = createInitialWorkSystemState(
       maintenanceShedX,
       maintenanceShedY
@@ -189,15 +279,15 @@ export class GameState {
 
     state.golferPool = createInitialPoolState();
     state.researchState = createInitialResearchState();
+    if (options.scenario?.unlockAllResearch) {
+      state.researchState = createFullyUnlockedResearchState(state.researchState);
+    }
     state.prestigeState = createInitialPrestigeState(100);
     state.teeTimeState = createInitialTeeTimeState();
     state.walkOnState = createInitialWalkOnState();
     state.revenueState = createInitialRevenueState();
     state.marketingState = createInitialMarketingState();
-    state.autonomousState = createInitialAutonomousState(
-      REFILL_STATIONS[0]?.x ?? 25,
-      REFILL_STATIONS[0]?.y ?? 19
-    );
+    state.autonomousState = createInitialAutonomousState(refillAnchor.x, refillAnchor.y);
 
     const courseHoles = course.par ? Math.round(course.par / 4) : 9;
     if (courseHoles <= 3) {

@@ -15,6 +15,8 @@ import { hasSave } from '../../core/save-game';
 import { listCustomCourses, CustomCourseData } from '../../data/customCourseData';
 import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
+import { configureDialogScrollViewer } from './LayoutUtils';
+import { UI_THEME } from './UITheme';
 
 export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
@@ -54,7 +56,7 @@ export class LaunchScreen {
     this.container = new Rectangle('launchContainer');
     this.container.width = '100%';
     this.container.height = '100%';
-    this.container.background = '#0d1f15';
+    this.container.background = UI_THEME.colors.legacy.c_0d1f15;
     this.container.thickness = 0;
 
     this.buildUI();
@@ -108,25 +110,25 @@ export class LaunchScreen {
     // Game icon
     const icon = new TextBlock('gameIcon');
     icon.text = '🌿';
-    icon.fontSize = 40;
+    icon.fontSize = UI_THEME.typography.scale.s40;
     icon.height = '50px';
     titleStack.addControl(icon);
 
     // Game title
     const title = new TextBlock('gameTitle');
     title.text = 'GREENKEEPER SIMULATOR';
-    title.color = '#7FFF7F';
-    title.fontSize = 32;
-    title.fontFamily = 'Arial Black, sans-serif';
+    title.color = UI_THEME.colors.editor.buttonTextActive;
+    title.fontSize = UI_THEME.typography.scale.s32;
+    title.fontFamily = UI_THEME.typography.fontFamily;
     title.height = '45px';
     titleStack.addControl(title);
 
     // Subtitle
     const subtitle = new TextBlock('subtitle');
     subtitle.text = 'Master the Art of Course Maintenance';
-    subtitle.color = '#4a8a5a';
-    subtitle.fontSize = 14;
-    subtitle.fontFamily = 'Arial, sans-serif';
+    subtitle.color = UI_THEME.colors.legacy.c_4a8a5a;
+    subtitle.fontSize = UI_THEME.typography.scale.s14;
+    subtitle.fontFamily = UI_THEME.typography.fontFamily;
     subtitle.height = '20px';
     titleStack.addControl(subtitle);
   }
@@ -142,9 +144,9 @@ export class LaunchScreen {
 
     const header = new TextBlock('scenarioHeader');
     header.text = 'SELECT SCENARIO';
-    header.color = '#7a9a7a';
-    header.fontSize = 14;
-    header.fontFamily = 'Arial, sans-serif';
+    header.color = UI_THEME.colors.legacy.c_7a9a7a;
+    header.fontSize = UI_THEME.typography.scale.s14;
+    header.fontFamily = UI_THEME.typography.fontFamily;
     headerContainer.addControl(header);
 
     // Scrollable scenario container in row 2 (flexible height)
@@ -158,9 +160,10 @@ export class LaunchScreen {
     const scrollViewer = new ScrollViewer('scenarioScroll');
     scrollViewer.width = '95%';
     scrollViewer.height = '100%';
-    scrollViewer.barColor = '#4a8a5a';
-    scrollViewer.barBackground = '#1a3a2a';
-    scrollViewer.thickness = 0;
+    configureDialogScrollViewer(scrollViewer, {
+      barColor: '#4a8a5a',
+      barBackground: UI_THEME.colors.editor.buttonBase,
+    });
     scrollContainer.addControl(scrollViewer);
 
     // Hide horizontal scrollbar area after it's created (it's created lazily on first render)
@@ -213,21 +216,21 @@ export class LaunchScreen {
     const card = new Rectangle(`card_${scenario.id}`);
     card.width = '180px';
     card.height = '125px';
-    card.cornerRadius = 8;
+    card.cornerRadius = UI_THEME.radii.scale.r8;
     card.thickness = 2;
     card.paddingTop = '5px';
     card.paddingBottom = '5px';
 
     if (isLocked) {
-      card.background = '#1a2a20';
-      card.color = '#2a3a30';
+      card.background = UI_THEME.colors.miscButton.neutralBase;
+      card.color = UI_THEME.colors.legacy.c_2a3a30;
       card.alpha = 0.7;
     } else if (isCompleted) {
-      card.background = '#1a3a2a';
-      card.color = '#4a8a5a';
+      card.background = UI_THEME.colors.editor.buttonBase;
+      card.color = UI_THEME.colors.legacy.c_4a8a5a;
     } else {
-      card.background = '#1a3a2a';
-      card.color = '#3a5a4a';
+      card.background = UI_THEME.colors.editor.buttonBase;
+      card.color = UI_THEME.colors.editor.buttonBorder;
     }
 
     const stack = new StackPanel();
@@ -247,7 +250,7 @@ export class LaunchScreen {
     const diffBadge = new Rectangle('diffBadge');
     diffBadge.width = '70px';
     diffBadge.height = '18px';
-    diffBadge.cornerRadius = 3;
+    diffBadge.cornerRadius = UI_THEME.radii.scale.r3;
     diffBadge.thickness = 0;
     diffBadge.background = this.getDifficultyColor(scenario.difficulty);
     badgeRow.addControl(diffBadge);
@@ -255,8 +258,8 @@ export class LaunchScreen {
     const diffText = new TextBlock();
     diffText.text = scenario.difficulty.toUpperCase();
     diffText.color = 'white';
-    diffText.fontSize = 9;
-    diffText.fontFamily = 'Arial, sans-serif';
+    diffText.fontSize = UI_THEME.typography.scale.s9;
+    diffText.fontFamily = UI_THEME.typography.fontFamily;
     diffBadge.addControl(diffText);
 
     // Status icons
@@ -265,14 +268,14 @@ export class LaunchScreen {
     if (isLocked) {
       const lockIcon = new TextBlock('lockIcon');
       lockIcon.text = '🔒';
-      lockIcon.fontSize = 14;
+      lockIcon.fontSize = UI_THEME.typography.scale.s14;
       lockIcon.width = '30px';
       lockIcon.paddingLeft = '8px';
       badgeRow.addControl(lockIcon);
     } else if (isCompleted) {
       const checkIcon = new TextBlock('checkIcon');
       checkIcon.text = '✅';
-      checkIcon.fontSize = 14;
+      checkIcon.fontSize = UI_THEME.typography.scale.s14;
       checkIcon.width = '30px';
       checkIcon.paddingLeft = '8px';
       badgeRow.addControl(checkIcon);
@@ -281,7 +284,7 @@ export class LaunchScreen {
     if (hasSavedGame && !isLocked) {
       const saveIcon = new TextBlock('saveIcon');
       saveIcon.text = '💾';
-      saveIcon.fontSize = 12;
+      saveIcon.fontSize = UI_THEME.typography.scale.s12;
       saveIcon.width = '25px';
       saveIcon.paddingLeft = '4px';
       badgeRow.addControl(saveIcon);
@@ -291,8 +294,8 @@ export class LaunchScreen {
     const name = new TextBlock('scenarioName');
     name.text = scenario.name;
     name.color = isLocked ? '#4a5a50' : 'white';
-    name.fontSize = 12;
-    name.fontFamily = 'Arial, sans-serif';
+    name.fontSize = UI_THEME.typography.scale.s12;
+    name.fontFamily = UI_THEME.typography.fontFamily;
     name.height = '20px';
     name.textWrapping = true;
     name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -304,8 +307,8 @@ export class LaunchScreen {
     const courseInfo = new TextBlock('courseInfo');
     courseInfo.text = course ? `${course.name} (Par ${course.par})` : scenario.courseId;
     courseInfo.color = isLocked ? '#3a4a40' : '#88aa88';
-    courseInfo.fontSize = 10;
-    courseInfo.fontFamily = 'Arial, sans-serif';
+    courseInfo.fontSize = UI_THEME.typography.scale.s10;
+    courseInfo.fontFamily = UI_THEME.typography.fontFamily;
     courseInfo.height = '16px';
     courseInfo.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(courseInfo);
@@ -319,15 +322,15 @@ export class LaunchScreen {
 
     const objIcon = new TextBlock('objIcon');
     objIcon.text = this.getObjectiveIcon(scenario.objective.type);
-    objIcon.fontSize = 12;
+    objIcon.fontSize = UI_THEME.typography.scale.s12;
     objIcon.width = '20px';
     objRow.addControl(objIcon);
 
     const objText = new TextBlock('objText');
     objText.text = this.getObjectiveShortText(scenario);
-    objText.color = isLocked ? '#3a4a40' : '#aaccaa';
-    objText.fontSize = 10;
-    objText.fontFamily = 'Arial, sans-serif';
+    objText.color = isLocked ? '#3a4a40' : UI_THEME.colors.editor.buttonText;
+    objText.fontSize = UI_THEME.typography.scale.s10;
+    objText.fontFamily = UI_THEME.typography.fontFamily;
     objText.width = '200px';
     objText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     objRow.addControl(objText);
@@ -338,9 +341,9 @@ export class LaunchScreen {
       if (bestScore !== null) {
         const scoreText = new TextBlock('scoreText');
         scoreText.text = `Best: ${bestScore.toLocaleString()}`;
-        scoreText.color = '#ffcc00';
-        scoreText.fontSize = 10;
-        scoreText.fontFamily = 'Arial, sans-serif';
+        scoreText.color = UI_THEME.colors.legacy.c_ffcc00;
+        scoreText.fontSize = UI_THEME.typography.scale.s10;
+        scoreText.fontFamily = UI_THEME.typography.fontFamily;
         scoreText.height = '16px';
         scoreText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
         stack.addControl(scoreText);
@@ -351,13 +354,13 @@ export class LaunchScreen {
     if (!isLocked) {
       card.onPointerEnterObservable.add(() => {
         if (this.selectedScenario?.id !== scenario.id) {
-          card.background = '#2a5a3a';
+          card.background = UI_THEME.colors.miscButton.customPlay;
         }
       });
 
       card.onPointerOutObservable.add(() => {
         if (this.selectedScenario?.id !== scenario.id) {
-          card.background = isCompleted ? '#1a3a2a' : '#1a3a2a';
+          card.background = isCompleted ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
         }
       });
 
@@ -367,12 +370,12 @@ export class LaunchScreen {
         onActivate: () => this.selectScenario(scenario),
         onFocus: () => {
           if (this.selectedScenario?.id !== scenario.id) {
-            card.background = '#2a5a3a';
+            card.background = UI_THEME.colors.miscButton.customPlay;
           }
         },
         onBlur: () => {
           if (this.selectedScenario?.id !== scenario.id) {
-            card.background = isCompleted ? '#1a3a2a' : '#1a3a2a';
+            card.background = isCompleted ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
           }
         },
         isEnabled: () => !isLocked,
@@ -390,8 +393,8 @@ export class LaunchScreen {
       const prevCard = this.scenarioCards.get(this.selectedScenario.id);
       if (prevCard) {
         const prevStatus = this.progressManager.getScenarioStatus(this.selectedScenario.id);
-        prevCard.background = prevStatus === 'completed' ? '#1a3a2a' : '#1a3a2a';
-        prevCard.color = prevStatus === 'completed' ? '#4a8a5a' : '#3a5a4a';
+        prevCard.background = prevStatus === 'completed' ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
+        prevCard.color = prevStatus === 'completed' ? '#4a8a5a' : UI_THEME.colors.editor.buttonBorder;
       }
     }
 
@@ -399,8 +402,8 @@ export class LaunchScreen {
     this.selectedScenario = scenario;
     const card = this.scenarioCards.get(scenario.id);
     if (card) {
-      card.background = '#2a6a4a';
-      card.color = '#7FFF7F';
+      card.background = UI_THEME.colors.editor.buttonActive;
+      card.color = UI_THEME.colors.editor.buttonTextActive;
     }
 
     // Show/hide continue button based on saved game
@@ -551,9 +554,9 @@ export class LaunchScreen {
 
     const header = new TextBlock('customHeader');
     header.text = 'CUSTOM COURSES';
-    header.color = '#7a9a7a';
-    header.fontSize = 12;
-    header.fontFamily = 'Arial, sans-serif';
+    header.color = UI_THEME.colors.legacy.c_7a9a7a;
+    header.fontSize = UI_THEME.typography.scale.s12;
+    header.fontFamily = UI_THEME.typography.fontFamily;
     header.height = '24px';
     header.paddingTop = '6px';
     stack.addControl(header);
@@ -561,9 +564,10 @@ export class LaunchScreen {
     const scrollViewer = new ScrollViewer('customScroll');
     scrollViewer.width = '95%';
     scrollViewer.height = '95px';
-    scrollViewer.barColor = '#4a8a5a';
-    scrollViewer.barBackground = '#1a3a2a';
-    scrollViewer.thickness = 0;
+    configureDialogScrollViewer(scrollViewer, {
+      barColor: '#4a8a5a',
+      barBackground: UI_THEME.colors.editor.buttonBase,
+    });
     stack.addControl(scrollViewer);
 
     const cardRow = new StackPanel('customCardRow');
@@ -580,9 +584,9 @@ export class LaunchScreen {
     if (courses.length === 0) {
       const empty = new TextBlock('emptyCustom');
       empty.text = 'No custom courses yet';
-      empty.color = '#4a6a5a';
-      empty.fontSize = 11;
-      empty.fontFamily = 'Arial, sans-serif';
+      empty.color = UI_THEME.colors.miscButton.mutedGreen;
+      empty.fontSize = UI_THEME.typography.scale.s11;
+      empty.fontFamily = UI_THEME.typography.fontFamily;
       empty.width = '200px';
       empty.height = '30px';
       cardRow.addControl(empty);
@@ -593,10 +597,10 @@ export class LaunchScreen {
     const card = new Rectangle(`custom_${course.id}`);
     card.width = '160px';
     card.height = '80px';
-    card.cornerRadius = 6;
+    card.cornerRadius = UI_THEME.radii.scale.r6;
     card.thickness = 1;
-    card.color = '#4a6a5a';
-    card.background = '#1a3a2a';
+    card.color = UI_THEME.colors.miscButton.mutedGreen;
+    card.background = UI_THEME.colors.editor.buttonBase;
     card.paddingLeft = '4px';
     card.paddingRight = '4px';
 
@@ -609,8 +613,8 @@ export class LaunchScreen {
     const name = new TextBlock();
     name.text = course.name;
     name.color = 'white';
-    name.fontSize = 11;
-    name.fontFamily = 'Arial, sans-serif';
+    name.fontSize = UI_THEME.typography.scale.s11;
+    name.fontFamily = UI_THEME.typography.fontFamily;
     name.height = '18px';
     name.textWrapping = true;
     name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -621,9 +625,9 @@ export class LaunchScreen {
 
     const info = new TextBlock();
     info.text = `${course.width}x${course.height}  ${dateStr}`;
-    info.color = '#88aa88';
-    info.fontSize = 9;
-    info.fontFamily = 'Arial, sans-serif';
+    info.color = UI_THEME.colors.legacy.c_88aa88;
+    info.fontSize = UI_THEME.typography.scale.s9;
+    info.fontFamily = UI_THEME.typography.fontFamily;
     info.height = '14px';
     info.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(info);
@@ -637,15 +641,15 @@ export class LaunchScreen {
     const playBtn = new Rectangle('playBtn');
     playBtn.width = '50px';
     playBtn.height = '20px';
-    playBtn.cornerRadius = 3;
-    playBtn.background = '#2a5a3a';
-    playBtn.color = '#7FFF7F';
+    playBtn.cornerRadius = UI_THEME.radii.chip;
+    playBtn.background = UI_THEME.colors.miscButton.customPlay;
+    playBtn.color = UI_THEME.colors.editor.buttonTextActive;
     playBtn.thickness = 1;
     playBtn.isPointerBlocker = true;
     const playText = new TextBlock();
     playText.text = 'Play';
     playText.color = 'white';
-    playText.fontSize = 9;
+    playText.fontSize = UI_THEME.typography.scale.s9;
     playText.isPointerBlocker = false;
     playBtn.addControl(playText);
     playBtn.onPointerUpObservable.add(() => this.callbacks.onPlayCustomCourse?.(course));
@@ -661,22 +665,22 @@ export class LaunchScreen {
     const editBtn = new Rectangle('editBtn');
     editBtn.width = '50px';
     editBtn.height = '20px';
-    editBtn.cornerRadius = 3;
-    editBtn.background = '#3a4a5a';
-    editBtn.color = '#7faFFF';
+    editBtn.cornerRadius = UI_THEME.radii.chip;
+    editBtn.background = UI_THEME.colors.miscButton.customEdit;
+    editBtn.color = UI_THEME.colors.miscButton.customEditText;
     editBtn.thickness = 1;
     editBtn.isPointerBlocker = true;
     const editText = new TextBlock();
     editText.text = 'Edit';
     editText.color = 'white';
-    editText.fontSize = 9;
+    editText.fontSize = UI_THEME.typography.scale.s9;
     editText.isPointerBlocker = false;
     editBtn.addControl(editText);
     editBtn.onPointerUpObservable.add(() => this.callbacks.onEditCustomCourse?.(course));
     btnRow.addControl(editBtn);
 
-    card.onPointerEnterObservable.add(() => { card.background = '#2a4a3a'; });
-    card.onPointerOutObservable.add(() => { card.background = '#1a3a2a'; });
+    card.onPointerEnterObservable.add(() => { card.background = UI_THEME.colors.editor.buttonHover; });
+    card.onPointerOutObservable.add(() => { card.background = UI_THEME.colors.editor.buttonBase; });
 
     return card;
   }
@@ -746,20 +750,20 @@ export class LaunchScreen {
       const isSelected = this.selectedScenario?.id === scenarioId;
 
       if (isSelected) {
-        card.background = '#2a6a4a';
-        card.color = '#7FFF7F';
+        card.background = UI_THEME.colors.editor.buttonActive;
+        card.color = UI_THEME.colors.editor.buttonTextActive;
         card.alpha = 1;
       } else if (isLocked) {
-        card.background = '#1a2a20';
-        card.color = '#2a3a30';
+        card.background = UI_THEME.colors.miscButton.neutralBase;
+        card.color = UI_THEME.colors.legacy.c_2a3a30;
         card.alpha = 0.7;
       } else if (isCompleted) {
-        card.background = '#1a3a2a';
-        card.color = '#4a8a5a';
+        card.background = UI_THEME.colors.editor.buttonBase;
+        card.color = UI_THEME.colors.legacy.c_4a8a5a;
         card.alpha = 1;
       } else {
-        card.background = '#1a3a2a';
-        card.color = '#3a5a4a';
+        card.background = UI_THEME.colors.editor.buttonBase;
+        card.color = UI_THEME.colors.editor.buttonBorder;
         card.alpha = 1;
       }
     }

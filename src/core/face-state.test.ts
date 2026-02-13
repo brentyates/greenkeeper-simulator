@@ -9,6 +9,8 @@ import {
   calculateFaceHealth,
   isGrassFace,
   getAverageFaceStats,
+  getBunkerRakeFreshness,
+  BUNKER_RAKE_VISUAL_FADE_MINUTES,
 } from './face-state';
 import { TERRAIN_CODES } from './terrain';
 
@@ -88,6 +90,25 @@ describe('FaceState', () => {
     it('returns false for non-grass terrain codes', () => {
       expect(isGrassFace(TERRAIN_CODES.BUNKER)).toBe(false);
       expect(isGrassFace(TERRAIN_CODES.WATER)).toBe(false);
+    });
+  });
+
+  describe('getBunkerRakeFreshness', () => {
+    it('returns 0 when never raked', () => {
+      expect(getBunkerRakeFreshness(0, 1000)).toBe(0);
+    });
+
+    it('returns 1 immediately after raking', () => {
+      expect(getBunkerRakeFreshness(1000, 1000)).toBe(1);
+    });
+
+    it('fades linearly over configured time', () => {
+      const half = BUNKER_RAKE_VISUAL_FADE_MINUTES / 2;
+      expect(getBunkerRakeFreshness(1000, 1000 + half)).toBeCloseTo(0.5, 2);
+    });
+
+    it('returns 0 after fade window', () => {
+      expect(getBunkerRakeFreshness(1000, 1000 + BUNKER_RAKE_VISUAL_FADE_MINUTES + 1)).toBe(0);
     });
   });
 

@@ -30,6 +30,7 @@ import {
   applyFaceFertilizing,
   isGrassFace,
   getAverageFaceStats,
+  getBunkerRakeFreshness,
 } from "../../core/face-state";
 import {
   Vec3,
@@ -46,11 +47,16 @@ import {
   barycentricInterpolateY,
   getTriangleCentroid,
   pointInTriangle,
+  circleIntersectsTriangleXZ,
   recomputeNormalsLocally,
   getTrianglesAdjacentToVertex,
 } from "../../core/mesh-topology";
 import { rotateAroundPivot } from "../../core/transform-ops";
 import { ShapeTemplate, generateStampTopology, stampIntoTopology } from "../../core/shape-templates";
+import type {
+  WorkCandidate,
+  WorkCandidateTerrainStats,
+} from "./TerrainSystemInterface";
 
 export interface TerrainMeshOptions {
   enableStripes: boolean;
@@ -269,8 +275,6 @@ export class TerrainMeshSystem {
   public getFacesInBrush(worldX: number, worldZ: number, radius: number): number[] {
     if (!this.topology || !this.faceSpatialIndex || this.faceSpatialIndex.length === 0) return [];
 
-    const radiusSq = radius * radius;
-
     const minGX = Math.max(0, Math.floor(worldX - radius));
     const maxGX = Math.min(this.gridWidth - 1, Math.ceil(worldX + radius));
     const minGZ = Math.max(0, Math.floor(worldZ - radius));
@@ -288,12 +292,25 @@ export class TerrainMeshSystem {
           if (visited.has(triId)) continue;
           visited.add(triId);
 
-          const centroid = getTriangleCentroid(this.topology, triId);
-          if (!centroid) continue;
+          const triangle = this.topology.triangles.get(triId);
+          if (!triangle) continue;
+          const [v0, v1, v2] = triangle.vertices;
+          const p0 = this.topology.vertices.get(v0)?.position;
+          const p1 = this.topology.vertices.get(v1)?.position;
+          const p2 = this.topology.vertices.get(v2)?.position;
+          if (!p0 || !p1 || !p2) continue;
 
-          const dx = centroid.x - worldX;
-          const dz = centroid.z - worldZ;
-          if (dx * dx + dz * dz <= radiusSq) {
+          if (circleIntersectsTriangleXZ(
+            worldX,
+            worldZ,
+            radius,
+            p0.x,
+            p0.z,
+            p1.x,
+            p1.z,
+            p2.x,
+            p2.z
+          )) {
             faceIds.push(triId);
           }
         }
@@ -1053,7 +1070,10 @@ export class TerrainMeshSystem {
       if (texIdx === undefined || texIdx >= totalPixels) continue;
       const idx = texIdx * 4;
       data[idx + 0] = Math.min(255, Math.max(0, Math.round((state.moisture / 100) * 255)));
-      data[idx + 1] = Math.min(255, Math.max(0, Math.round((state.nutrients / 100) * 255)));
+      const auxValue = state.terrainCode === TERRAIN_CODES.BUNKER
+        ? getBunkerRakeFreshness(state.lastRaked, this.gameTime)
+        : Math.min(1, Math.max(0, state.nutrients / 100));
+      data[idx + 1] = Math.min(255, Math.max(0, Math.round(auxValue * 255)));
       data[idx + 2] = Math.min(255, Math.max(0, Math.round((state.grassHeight / 100) * 255)));
       data[idx + 3] = Math.min(255, Math.max(0, Math.round((state.health / 100) * 255)));
     }
@@ -1349,12 +1369,26 @@ export class TerrainMeshSystem {
     centerZ: number,
     maxRadius: number,
     cellSize: number = 3
-  ): { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] {
+  ): WorkCandidate[] {
     if (!this.topology) return [];
 
     const groups = new Map<string, {
       totalMoisture: number; totalNutrients: number; totalGrassHeight: number; totalHealth: number;
+      maxGrassHeight: number;
       terrainCounts: Map<number, number>; count: number; sumX: number; sumZ: number;
+      terrainStatsByCode: Map<number, {
+        totalMoisture: number;
+        totalNutrients: number;
+        totalGrassHeight: number;
+        totalHealth: number;
+        maxGrassHeight: number;
+        count: number;
+        sumX: number;
+        sumZ: number;
+        minMoisture: number;
+        minNutrients: number;
+      }>;
+      minMoisture: number; minNutrients: number;
     }>();
 
     for (const [faceId, state] of this.faceStates) {
@@ -1371,24 +1405,84 @@ export class TerrainMeshSystem {
       const cellKey = `${bucketX},${bucketZ}`;
       let group = groups.get(cellKey);
       if (!group) {
-        group = { totalMoisture: 0, totalNutrients: 0, totalGrassHeight: 0, totalHealth: 0, terrainCounts: new Map(), count: 0, sumX: 0, sumZ: 0 };
+        group = {
+          totalMoisture: 0,
+          totalNutrients: 0,
+          totalGrassHeight: 0,
+          maxGrassHeight: 0,
+          totalHealth: 0,
+          terrainCounts: new Map(),
+          terrainStatsByCode: new Map(),
+          count: 0,
+          sumX: 0,
+          sumZ: 0,
+          minMoisture: Infinity,
+          minNutrients: Infinity,
+        };
         groups.set(cellKey, group);
       }
 
       group.totalMoisture += state.moisture;
       group.totalNutrients += state.nutrients;
       group.totalGrassHeight += state.grassHeight;
+      group.maxGrassHeight = Math.max(group.maxGrassHeight, state.grassHeight);
       group.totalHealth += state.health;
       group.terrainCounts.set(state.terrainCode, (group.terrainCounts.get(state.terrainCode) || 0) + 1);
+
+      let terrainGroup = group.terrainStatsByCode.get(state.terrainCode);
+      if (!terrainGroup) {
+        terrainGroup = {
+          totalMoisture: 0,
+          totalNutrients: 0,
+          totalGrassHeight: 0,
+          totalHealth: 0,
+          maxGrassHeight: 0,
+          count: 0,
+          sumX: 0,
+          sumZ: 0,
+          minMoisture: Infinity,
+          minNutrients: Infinity,
+        };
+        group.terrainStatsByCode.set(state.terrainCode, terrainGroup);
+      }
+      terrainGroup.totalMoisture += state.moisture;
+      terrainGroup.totalNutrients += state.nutrients;
+      terrainGroup.totalGrassHeight += state.grassHeight;
+      terrainGroup.totalHealth += state.health;
+      terrainGroup.maxGrassHeight = Math.max(terrainGroup.maxGrassHeight, state.grassHeight);
+      terrainGroup.count++;
+      terrainGroup.sumX += cx;
+      terrainGroup.sumZ += cz;
+      terrainGroup.minMoisture = Math.min(terrainGroup.minMoisture, state.moisture);
+      terrainGroup.minNutrients = Math.min(terrainGroup.minNutrients, state.nutrients);
+
       group.count++;
       group.sumX += cx;
       group.sumZ += cz;
+      group.minMoisture = Math.min(group.minMoisture, state.moisture);
+      group.minNutrients = Math.min(group.minNutrients, state.nutrients);
     }
 
-    const candidates: { worldX: number; worldZ: number; avgMoisture: number; avgNutrients: number; avgGrassHeight: number; avgHealth: number; dominantTerrainCode: number; faceCount: number }[] = [];
+    const candidates: WorkCandidate[] = [];
     for (const group of groups.values()) {
       const n = group.count;
       const dominantTerrainCode = findDominantTerrainCode(group.terrainCounts);
+      const terrainStatsByCode: Partial<Record<number, WorkCandidateTerrainStats>> = {};
+      for (const [terrainCode, terrainGroup] of group.terrainStatsByCode.entries()) {
+        const terrainCount = terrainGroup.count;
+        terrainStatsByCode[terrainCode] = {
+          worldX: terrainGroup.sumX / terrainCount,
+          worldZ: terrainGroup.sumZ / terrainCount,
+          avgMoisture: terrainGroup.totalMoisture / terrainCount,
+          avgNutrients: terrainGroup.totalNutrients / terrainCount,
+          avgGrassHeight: terrainGroup.totalGrassHeight / terrainCount,
+          maxGrassHeight: terrainGroup.maxGrassHeight,
+          avgHealth: terrainGroup.totalHealth / terrainCount,
+          faceCount: terrainCount,
+          minMoisture: terrainGroup.minMoisture,
+          minNutrients: terrainGroup.minNutrients,
+        };
+      }
 
       candidates.push({
         worldX: group.sumX / n,
@@ -1396,9 +1490,14 @@ export class TerrainMeshSystem {
         avgMoisture: group.totalMoisture / n,
         avgNutrients: group.totalNutrients / n,
         avgGrassHeight: group.totalGrassHeight / n,
+        maxGrassHeight: group.maxGrassHeight,
         avgHealth: group.totalHealth / n,
         dominantTerrainCode,
+        terrainCodesPresent: Array.from(group.terrainStatsByCode.keys()),
+        terrainStatsByCode,
         faceCount: n,
+        minMoisture: group.minMoisture,
+        minNutrients: group.minNutrients,
       });
     }
 
@@ -1411,16 +1510,19 @@ export class TerrainMeshSystem {
     equipmentRadius: number,
     jobType: 'mow' | 'water' | 'fertilize' | 'rake',
     efficiency: number,
-    gameTime: number
+    gameTime: number,
+    allowedTerrainCodes?: readonly number[]
   ): number[] {
     const facesInBrush = this.getFacesInBrush(worldX, worldZ, equipmentRadius);
     if (facesInBrush.length === 0) return [];
 
     const modifiedFaces: number[] = [];
+    const allowedTerrainSet = allowedTerrainCodes?.length ? new Set(allowedTerrainCodes) : null;
 
     for (const faceId of facesInBrush) {
       const faceState = this.faceStates.get(faceId);
       if (!faceState) continue;
+      if (allowedTerrainSet && !allowedTerrainSet.has(faceState.terrainCode)) continue;
 
       let success = false;
       switch (jobType) {

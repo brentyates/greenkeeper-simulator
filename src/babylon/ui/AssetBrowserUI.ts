@@ -8,6 +8,10 @@ import { Image } from '@babylonjs/gui/2D/controls/image';
 import { Scene } from '@babylonjs/core/scene';
 
 import { UIParent } from './UIParent';
+import { createPanelSection, createPopupHeader } from './PopupUtils';
+import { addDialogActionBar, addDialogScrollBlock, addDialogSectionLabel } from './DialogBlueprint';
+import { addVerticalSpacer, UI_SPACING } from './LayoutUtils';
+import { UI_THEME } from './UITheme';
 import { AssetPreviewRenderer } from '../assets/AssetPreviewRenderer';
 
 import {
@@ -43,13 +47,13 @@ export class AssetBrowserUI {
     this.callbacks = callbacks;
     this.previewRenderer = new AssetPreviewRenderer(scene.getEngine());
 
-    this.container = new Rectangle('assetBrowserContainer');
+    this.container = new Rectangle('assetBrowserShell');
     this.container.width = '220px';
     this.container.height = '100%';
     this.container.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.container.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.container.background = '#1a3a2a';
-    this.container.color = '#3a5a4a';
+    this.container.background = UI_THEME.colors.editor.buttonBase;
+    this.container.color = UI_THEME.colors.editor.buttonBorder;
     this.container.thickness = 1;
     this.container.isVisible = false;
 
@@ -63,14 +67,12 @@ export class AssetBrowserUI {
     mainStack.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.container.addControl(mainStack);
 
-    const header = new TextBlock('assetHeader');
-    header.text = 'ASSET BROWSER';
-    header.color = '#7FFF7F';
-    header.fontSize = 13;
-    header.fontFamily = 'Arial, sans-serif';
-    header.height = '30px';
-    header.paddingTop = '8px';
-    mainStack.addControl(header);
+    createPopupHeader(mainStack, {
+      title: 'ASSET BROWSER',
+      titleColor: UI_THEME.colors.editor.buttonTextActive,
+      width: 200,
+      onClose: () => this.hide(),
+    });
 
     this.buildCategoryTabs(mainStack);
     this.buildAssetScroll(mainStack);
@@ -83,13 +85,27 @@ export class AssetBrowserUI {
   }
 
   private buildCategoryTabs(parent: StackPanel): void {
-    const tabScroll = new ScrollViewer('catScroll');
-    tabScroll.width = '100%';
-    tabScroll.height = '90px';
-    tabScroll.barColor = '#4a8a5a';
-    tabScroll.barBackground = '#1a3a2a';
-    tabScroll.thickness = 0;
-    parent.addControl(tabScroll);
+    const { content } = addDialogScrollBlock(parent, {
+      id: 'assetCategoryBlock',
+      width: 220,
+      height: 90,
+      theme: 'neutral',
+      cornerRadius: 0,
+      thickness: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      scroll: {
+        name: 'catScroll',
+        width: 220,
+        height: 90,
+        contentName: 'catScrollContent',
+        contentWidth: '100%',
+        options: {
+          barColor: '#4a8a5a',
+          barBackground: UI_THEME.colors.editor.buttonBase,
+        },
+      },
+    });
 
     const tabGrid = new Grid('catGrid');
     tabGrid.width = '100%';
@@ -102,7 +118,7 @@ export class AssetBrowserUI {
     for (let c = 0; c < cols; c++) tabGrid.addColumnDefinition(1 / cols);
     for (let r = 0; r < rows; r++) tabGrid.addRowDefinition(24, true);
 
-    tabScroll.addControl(tabGrid);
+    content.addControl(tabGrid);
 
     categories.forEach((cat, i) => {
       const row = Math.floor(i / cols);
@@ -110,18 +126,18 @@ export class AssetBrowserUI {
 
       const tab = new Rectangle(`catTab_${cat}`);
       tab.height = '22px';
-      tab.cornerRadius = 3;
+      tab.cornerRadius = UI_THEME.radii.scale.r3;
       tab.thickness = 1;
-      tab.color = '#3a5a4a';
-      tab.background = '#1a2a20';
+      tab.color = UI_THEME.colors.editor.buttonBorder;
+      tab.background = UI_THEME.colors.miscButton.neutralBase;
       tab.paddingLeft = '2px';
       tab.paddingRight = '2px';
 
       const label = new TextBlock();
       label.text = cat;
-      label.color = '#aaccaa';
-      label.fontSize = 9;
-      label.fontFamily = 'Arial, sans-serif';
+      label.color = UI_THEME.colors.editor.buttonText;
+      label.fontSize = UI_THEME.typography.scale.s9;
+      label.fontFamily = UI_THEME.typography.fontFamily;
       label.isPointerBlocker = false;
       tab.addControl(label);
 
@@ -129,10 +145,10 @@ export class AssetBrowserUI {
       tab.onPointerUpObservable.add(() => this.selectCategory(cat));
 
       tab.onPointerEnterObservable.add(() => {
-        if (this.activeCategory !== cat) tab.background = '#2a4a3a';
+        if (this.activeCategory !== cat) tab.background = UI_THEME.colors.editor.buttonHover;
       });
       tab.onPointerOutObservable.add(() => {
-        if (this.activeCategory !== cat) tab.background = '#1a2a20';
+        if (this.activeCategory !== cat) tab.background = UI_THEME.colors.miscButton.neutralBase;
       });
 
       tabGrid.addControl(tab, row, col);
@@ -141,94 +157,87 @@ export class AssetBrowserUI {
   }
 
   private buildAssetScroll(parent: StackPanel): void {
-    this.scrollViewer = new ScrollViewer('assetScroll');
-    this.scrollViewer.width = '100%';
-    this.scrollViewer.height = '400px';
-    this.scrollViewer.barColor = '#4a8a5a';
-    this.scrollViewer.barBackground = '#1a3a2a';
-    this.scrollViewer.thickness = 0;
-    parent.addControl(this.scrollViewer);
+    const { scrollViewer } = addDialogScrollBlock(parent, {
+      id: 'assetListBlock',
+      width: 220,
+      height: 400,
+      theme: 'neutral',
+      cornerRadius: 0,
+      thickness: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      scroll: {
+        name: 'assetScroll',
+        width: 220,
+        height: 400,
+        contentName: 'assetScrollContent',
+        contentWidth: '100%',
+        options: {
+          barColor: '#4a8a5a',
+          barBackground: UI_THEME.colors.editor.buttonBase,
+        },
+      },
+    });
+    this.scrollViewer = scrollViewer;
   }
 
   private buildActionPanel(parent: StackPanel): void {
-    this.actionPanel = new Rectangle('actionPanel');
-    this.actionPanel.width = '100%';
-    this.actionPanel.height = '80px';
-    this.actionPanel.thickness = 0;
-    this.actionPanel.background = 'rgba(26, 42, 32, 0.8)';
+    this.actionPanel = createPanelSection(parent, {
+      name: 'assetActionBlock',
+      width: 220,
+      height: 86,
+      theme: 'green',
+      paddingTop: 4,
+      paddingBottom: 4,
+    });
     this.actionPanel.isVisible = false;
-    parent.addControl(this.actionPanel);
 
     const actionStack = new StackPanel();
-    actionStack.width = '100%';
+    actionStack.width = '208px';
     this.actionPanel.addControl(actionStack);
 
-    const selectedLabel = new TextBlock('selectedLabel');
-    selectedLabel.text = 'Selected Asset';
-    selectedLabel.color = '#7FFF7F';
-    selectedLabel.fontSize = 11;
-    selectedLabel.height = '20px';
-    actionStack.addControl(selectedLabel);
+    addDialogSectionLabel(actionStack, {
+      id: 'selectedLabel',
+      text: 'Selected Asset',
+      tone: 'success',
+      fontSize: 11,
+      height: 18,
+    });
+    addVerticalSpacer(actionStack, UI_SPACING.xs, 'assetActionGap');
 
-    const buttonRow = new StackPanel();
-    buttonRow.isVertical = false;
-    buttonRow.height = '30px';
-    buttonRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    actionStack.addControl(buttonRow);
-
-    this.createActionButton(buttonRow, 'Rotate', '#4a6a5a', () => this.callbacks.onRotate());
-    this.createActionButton(buttonRow, 'Delete', '#6a3a3a', () => this.callbacks.onDelete());
-
-    const cancelRow = new StackPanel();
-    cancelRow.isVertical = false;
-    cancelRow.height = '25px';
-    cancelRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    actionStack.addControl(cancelRow);
-
-    this.createActionButton(cancelRow, 'Cancel', '#4a4a5a', () => this.callbacks.onExitPlaceMode());
-  }
-
-  private createActionButton(parent: StackPanel, label: string, bg: string, onClick: () => void): void {
-    const btn = new Rectangle(`actionBtn_${label}`);
-    btn.width = '70px';
-    btn.height = '26px';
-    btn.cornerRadius = 4;
-    btn.background = bg;
-    btn.color = '#7FFF7F';
-    btn.thickness = 1;
-    btn.paddingLeft = '3px';
-    btn.paddingRight = '3px';
-    btn.isPointerBlocker = true;
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = 'white';
-    text.fontSize = 10;
-    text.fontFamily = 'Arial, sans-serif';
-    text.isPointerBlocker = false;
-    btn.addControl(text);
-
-    btn.onPointerUpObservable.add(onClick);
-    btn.onPointerEnterObservable.add(() => { btn.alpha = 0.8; });
-    btn.onPointerOutObservable.add(() => { btn.alpha = 1; });
-
-    parent.addControl(btn);
+    const { buttons } = addDialogActionBar(actionStack, {
+      id: 'assetActions',
+      width: 208,
+      height: 44,
+      theme: 'neutral',
+      paddingTop: 2,
+      paddingBottom: 2,
+      actions: [
+        { id: 'assetRotateBtn', label: 'Rotate', tone: 'neutral', onClick: () => this.callbacks.onRotate(), fontSize: 11 },
+        { id: 'assetDeleteBtn', label: 'Delete', tone: 'danger', onClick: () => this.callbacks.onDelete(), fontSize: 11 },
+        { id: 'assetCancelBtn', label: 'Cancel', tone: 'neutral', onClick: () => this.callbacks.onExitPlaceMode(), fontSize: 11 },
+      ],
+    });
+    const rotateButton = buttons[0];
+    if (rotateButton) rotateButton.background = UI_THEME.colors.miscButton.mutedGreen;
+    const cancelButton = buttons[2];
+    if (cancelButton) cancelButton.background = UI_THEME.colors.miscButton.mutedBlue;
   }
 
   private selectCategory(category: string): void {
     if (this.activeCategory) {
       const prevTab = this.categoryTabs.get(this.activeCategory);
       if (prevTab) {
-        prevTab.background = '#1a2a20';
-        prevTab.color = '#3a5a4a';
+        prevTab.background = UI_THEME.colors.miscButton.neutralBase;
+        prevTab.color = UI_THEME.colors.editor.buttonBorder;
       }
     }
 
     this.activeCategory = category;
     const tab = this.categoryTabs.get(category);
     if (tab) {
-      tab.background = '#2a5a3a';
-      tab.color = '#7FFF7F';
+      tab.background = UI_THEME.colors.miscButton.customPlay;
+      tab.color = UI_THEME.colors.editor.buttonTextActive;
     }
 
     this.populateAssets(category);
@@ -284,10 +293,10 @@ export class AssetBrowserUI {
   private createAssetCard(assetId: string, spec: AssetSpec): Rectangle {
     const card = new Rectangle(`assetCard_${assetId}`);
     card.height = '90px';
-    card.cornerRadius = 4;
+    card.cornerRadius = UI_THEME.radii.scale.r4;
     card.thickness = 1;
-    card.color = '#3a5a4a';
-    card.background = '#1a2a20';
+    card.color = UI_THEME.colors.editor.buttonBorder;
+    card.background = UI_THEME.colors.miscButton.neutralBase;
     card.paddingLeft = '3px';
     card.paddingRight = '3px';
     card.paddingTop = '2px';
@@ -310,8 +319,8 @@ export class AssetBrowserUI {
     const name = new TextBlock();
     name.text = getAssetDisplayName(assetId);
     name.color = 'white';
-    name.fontSize = 9;
-    name.fontFamily = 'Arial, sans-serif';
+    name.fontSize = UI_THEME.typography.scale.s9;
+    name.fontFamily = UI_THEME.typography.fontFamily;
     name.height = '16px';
     name.textWrapping = true;
     name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -319,18 +328,18 @@ export class AssetBrowserUI {
 
     const dims = new TextBlock();
     dims.text = `${spec.footprint[0]}x${spec.footprint[1]}`;
-    dims.color = '#88aa88';
-    dims.fontSize = 8;
-    dims.fontFamily = 'Arial, sans-serif';
+    dims.color = UI_THEME.colors.legacy.c_88aa88;
+    dims.fontSize = UI_THEME.typography.scale.s8;
+    dims.fontFamily = UI_THEME.typography.fontFamily;
     dims.height = '14px';
     dims.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(dims);
 
     card.onPointerEnterObservable.add(() => {
-      if (this.selectedAssetId !== assetId) card.background = '#2a4a3a';
+      if (this.selectedAssetId !== assetId) card.background = UI_THEME.colors.editor.buttonHover;
     });
     card.onPointerOutObservable.add(() => {
-      if (this.selectedAssetId !== assetId) card.background = '#1a2a20';
+      if (this.selectedAssetId !== assetId) card.background = UI_THEME.colors.miscButton.neutralBase;
     });
 
     card.onPointerUpObservable.add(() => {

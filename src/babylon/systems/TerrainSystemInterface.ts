@@ -15,6 +15,24 @@ export interface FaceStateSample {
 export interface WorkCandidate extends FaceStateSample {
   worldX: number;
   worldZ: number;
+  maxGrassHeight?: number;
+  terrainCodesPresent?: readonly number[];
+  terrainStatsByCode?: Readonly<Partial<Record<number, WorkCandidateTerrainStats>>>;
+  minMoisture?: number;
+  minNutrients?: number;
+}
+
+export interface WorkCandidateTerrainStats {
+  worldX: number;
+  worldZ: number;
+  avgMoisture: number;
+  avgNutrients: number;
+  avgGrassHeight: number;
+  maxGrassHeight: number;
+  avgHealth: number;
+  faceCount: number;
+  minMoisture: number;
+  minNutrients: number;
 }
 
 export interface TerrainSystem {
@@ -60,7 +78,8 @@ export interface TerrainSystem {
     equipmentRadius: number,
     jobType: 'mow' | 'water' | 'fertilize' | 'rake',
     efficiency: number,
-    gameTime: number
+    gameTime: number,
+    allowedTerrainCodes?: readonly number[]
   ): number[];
 
   getResolution?(): number;

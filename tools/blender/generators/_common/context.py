@@ -52,16 +52,30 @@ def setup_asset_context(asset_id: str):
     # Get spec info
     spec = get_spec(asset_id)
 
-    # Calculate output path (public/assets/models/category/name.glb)
-    parts = asset_id.split(".")
-    category = parts[0]
-    name = "_".join(parts[1:]) if len(parts) > 1 else parts[0]
-
-    # Output to project's public/assets/models/
-    # TOOLS_DIR is tools/blender, so go up 2 levels to project root
+    # Output to project's public/ folder.
+    # TOOLS_DIR is tools/blender, so go up 2 levels to project root.
     project_root = os.path.dirname(os.path.dirname(TOOLS_DIR))
-    output_dir = os.path.join(project_root, "public", "assets", "models", f"{category}s")
-    output_path = os.path.join(output_dir, f"{name}.glb")
+    manifest_path = spec.get("path") if spec else None
+
+    # Prefer the manifest path so generators always match runtime loading paths.
+    if manifest_path:
+        relative_path = manifest_path.lstrip("/")
+        output_path = os.path.join(project_root, "public", relative_path)
+    else:
+        # Legacy fallback for unknown assets.
+        parts = asset_id.split(".")
+        category = parts[0]
+        name = "_".join(parts[1:]) if len(parts) > 1 else parts[0]
+        output_path = os.path.join(
+            project_root,
+            "public",
+            "assets",
+            "models",
+            f"{category}s",
+            f"{name}.glb",
+        )
+
+    output_dir = os.path.dirname(output_path)
 
     return {
         "asset_id": asset_id,

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GameState, DailyStats } from './GameState';
+import { GameState, DailyStats, getRuntimeRefillStationsFromState } from './GameState';
 import { GameOptions } from './BabylonMain';
 import { COURSE_HOLE_1 } from '../data/courseData';
 import { ScenarioDefinition } from '../data/scenarioData';
 import { DEFAULT_GREEN_FEES } from '../core/golfers';
+import { RESEARCH_ITEMS } from '../core/research';
 
 const mockRefillStations: Array<{ x: number; y: number; name: string }> = [
   { x: 16, y: 100, name: 'Maintenance Shed' },
@@ -109,6 +110,19 @@ describe('GameState', () => {
       const scenario = makeScenario({ conditions: { startingCash: 7500 } });
       const state = GameState.createGameState({ scenario });
       expect(state.economyState.cash).toBe(7500);
+    });
+
+    it('completes all research when scenario requests full unlocks', () => {
+      mockedGetCourseById.mockReturnValue(COURSE_HOLE_1);
+      const scenario = makeScenario({ unlockAllResearch: true });
+      const state = GameState.createGameState({ scenario });
+      const expectedResearch = RESEARCH_ITEMS.map(item => item.id);
+      const expectedPoints = RESEARCH_ITEMS.reduce((sum, item) => sum + item.baseCost, 0);
+
+      expect(state.researchState.completedResearch).toEqual(expectedResearch);
+      expect(state.researchState.currentResearch).toBeNull();
+      expect(state.researchState.researchQueue).toEqual([]);
+      expect(state.researchState.totalPointsSpent).toBe(expectedPoints);
     });
   });
 
@@ -256,8 +270,32 @@ describe('GameState', () => {
         const state = GameState.createGameState({});
         expect(state.employeeWorkState).toBeDefined();
         expect(state.autonomousState).toBeDefined();
+        expect(state.employeeWorkState.maintenanceShedX).toBe(Math.floor(COURSE_HOLE_1.width / 2));
+        expect(state.employeeWorkState.maintenanceShedY).toBe(Math.floor(COURSE_HOLE_1.height / 2));
+        expect(state.autonomousState.chargingStationX).toBe(Math.floor(COURSE_HOLE_1.width / 2));
+        expect(state.autonomousState.chargingStationY).toBe(Math.floor(COURSE_HOLE_1.height / 2));
       } finally {
         mockRefillStations.push({ x: 16, y: 100, name: 'Maintenance Shed' });
+      }
+    });
+
+    it('uses course center when configured refill station is out of bounds', () => {
+      const state = GameState.createGameState({});
+      expect(state.employeeWorkState.maintenanceShedX).toBe(Math.floor(COURSE_HOLE_1.width / 2));
+      expect(state.employeeWorkState.maintenanceShedY).toBe(Math.floor(COURSE_HOLE_1.height / 2));
+      expect(state.autonomousState.chargingStationX).toBe(Math.floor(COURSE_HOLE_1.width / 2));
+      expect(state.autonomousState.chargingStationY).toBe(Math.floor(COURSE_HOLE_1.height / 2));
+    });
+
+    it('derives runtime refill stations from sanitized game state anchors', () => {
+      const state = GameState.createGameState({});
+      const stations = getRuntimeRefillStationsFromState(state);
+      expect(stations.length).toBeGreaterThan(0);
+      for (const station of stations) {
+        expect(station.x).toBeGreaterThanOrEqual(0);
+        expect(station.x).toBeLessThan(COURSE_HOLE_1.width);
+        expect(station.y).toBeGreaterThanOrEqual(0);
+        expect(station.y).toBeLessThan(COURSE_HOLE_1.height);
       }
     });
   });

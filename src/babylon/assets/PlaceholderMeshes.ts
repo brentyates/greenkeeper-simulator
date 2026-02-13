@@ -71,7 +71,18 @@ export function createPlaceholderAsset(
 export async function assetFileExists(path: string): Promise<boolean> {
   try {
     const response = await fetch(path, { method: "HEAD" });
-    return response.ok;
+    if (!response.ok) {
+      return false;
+    }
+
+    // Dev servers can return index.html with HTTP 200 for missing files.
+    // Treat HTML responses as missing so we cleanly fall back to placeholders.
+    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (contentType.includes("text/html")) {
+      return false;
+    }
+
+    return true;
   } catch {
     return false;
   }

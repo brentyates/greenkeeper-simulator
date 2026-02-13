@@ -1,6 +1,7 @@
 import { Rectangle } from "@babylonjs/gui/2D/controls/rectangle";
 import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
 import { FocusManager, FocusableElement } from "./FocusManager";
+import { UI_THEME } from './UITheme';
 
 export interface AccessibleButtonOptions {
   /** Button label text */
@@ -114,7 +115,7 @@ export class AccessibleButton {
     if (this.isFocused || this.isHovered) {
       // Brighten background when hovered or focused
       this.control.background = this.lightenColor(this.options.backgroundColor!, 0.3);
-      this.control.color = '#ffffff';
+      this.control.color = UI_THEME.colors.legacy.c_ffffff;
     } else {
       this.control.background = this.options.backgroundColor!;
       this.control.color = this.options.borderColor!;

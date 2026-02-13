@@ -4,8 +4,9 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
-import { Button } from '@babylonjs/gui/2D/controls/button';
-import { createOverlayPopup, POPUP_COLORS } from './PopupUtils';
+import { createActionButton, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogSectionLabel } from './DialogBlueprint';
+import { UI_THEME } from './UITheme';
 
 export interface DaySummaryData {
   day: number;
@@ -83,49 +84,49 @@ export class DaySummaryPopup {
   }
 
   private createHeader(parent: StackPanel): void {
-    const header = new Rectangle('header');
+    createPopupHeader(parent, {
+      title: '🌅 DAY SUMMARY',
+      width: 420,
+      onClose: () => {
+        this.hide();
+        this.callbacks.onContinue();
+      },
+      closeLabel: 'Skip',
+    });
+
+    const header = new Rectangle('summaryHeaderDetails');
     header.height = '55px';
     header.width = '420px';
     header.thickness = 0;
     header.background = 'transparent';
     parent.addControl(header);
 
-    const sunIcon = new TextBlock('sunIcon');
-    sunIcon.text = '🌅';
-    sunIcon.fontSize = 28;
-    sunIcon.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    sunIcon.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sunIcon.left = '5px';
-    header.addControl(sunIcon);
-
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1 Complete';
-    this.dayText.color = '#ffcc00';
-    this.dayText.fontSize = 22;
+    this.dayText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.dayText.fontSize = UI_THEME.typography.scale.s20;
     this.dayText.fontWeight = 'bold';
     this.dayText.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.dayText.top = '5px';
+    this.dayText.top = '8px';
     header.addControl(this.dayText);
 
     this.profitText = new TextBlock('profitText');
     this.profitText.text = 'Net: +$0';
-    this.profitText.color = '#44ff44';
-    this.profitText.fontSize = 18;
+    this.profitText.color = UI_THEME.colors.legacy.c_44ff44;
+    this.profitText.fontSize = UI_THEME.typography.scale.s18;
     this.profitText.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     this.profitText.top = '-5px';
     header.addControl(this.profitText);
   }
 
   private createFinancialSummary(parent: StackPanel): void {
-    const container = new Rectangle('financialContainer');
-    container.height = '210px';
-    container.width = '420px';
-    container.cornerRadius = 6;
-    container.background = 'rgba(30, 60, 45, 0.7)';
-    container.thickness = 1;
-    container.color = '#3a5a4a';
-    container.paddingTop = '8px';
-    parent.addControl(container);
+    const container = createPanelSection(parent, {
+      name: 'financialContainer',
+      width: 420,
+      height: 210,
+      theme: 'green',
+      paddingTop: 8,
+    });
 
     const grid = new Grid('financialGrid');
     grid.addColumnDefinition(0.5);
@@ -137,13 +138,13 @@ export class DaySummaryPopup {
     revenueSection.paddingTop = '10px';
     grid.addControl(revenueSection, 0, 0);
 
-    const revenueTitle = new TextBlock('revenueTitle');
-    revenueTitle.text = '💰 REVENUE';
-    revenueTitle.color = '#44ff44';
-    revenueTitle.fontSize = 12;
-    revenueTitle.height = '20px';
-    revenueTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    revenueSection.addControl(revenueTitle);
+    addDialogSectionLabel(revenueSection, {
+      id: 'revenueLabel',
+      text: '💰 REVENUE',
+      tone: 'success',
+      fontSize: 12,
+      height: 20,
+    });
 
     this.revenueStack = new StackPanel('revenueStack');
     this.revenueStack.paddingTop = '5px';
@@ -153,13 +154,14 @@ export class DaySummaryPopup {
     expenseSection.paddingTop = '10px';
     grid.addControl(expenseSection, 0, 1);
 
-    const expenseTitle = new TextBlock('expenseTitle');
-    expenseTitle.text = '💸 EXPENSES';
-    expenseTitle.color = '#ff6666';
-    expenseTitle.fontSize = 12;
-    expenseTitle.height = '20px';
-    expenseTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    expenseSection.addControl(expenseTitle);
+    const expenseLabel = addDialogSectionLabel(expenseSection, {
+      id: 'expenseLabel',
+      text: '💸 EXPENSES',
+      tone: 'default',
+      fontSize: 12,
+      height: 20,
+    });
+    expenseLabel.color = UI_THEME.colors.legacy.c_ff6666;
 
     this.expenseStack = new StackPanel('expenseStack');
     this.expenseStack.paddingTop = '5px';
@@ -174,8 +176,8 @@ export class DaySummaryPopup {
 
     const labelText = new TextBlock('label');
     labelText.text = label;
-    labelText.color = '#aaaaaa';
-    labelText.fontSize = 11;
+    labelText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
     labelText.width = '100px';
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     row.addControl(labelText);
@@ -183,7 +185,7 @@ export class DaySummaryPopup {
     const amountText = new TextBlock('amount');
     amountText.text = `$${Math.abs(amount).toLocaleString()}`;
     amountText.color = isPositive ? '#66ff66' : '#ff8888';
-    amountText.fontSize = 11;
+    amountText.fontSize = UI_THEME.typography.scale.s11;
     amountText.width = '80px';
     amountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     row.addControl(amountText);
@@ -192,24 +194,23 @@ export class DaySummaryPopup {
   }
 
   private createStatsSection(parent: StackPanel): void {
-    const container = new Rectangle('statsContainer');
-    container.height = '175px';
-    container.width = '420px';
-    container.cornerRadius = 6;
-    container.background = 'rgba(30, 60, 45, 0.7)';
-    container.thickness = 1;
-    container.color = '#3a5a4a';
-    container.paddingTop = '6px';
-    parent.addControl(container);
+    const container = createPanelSection(parent, {
+      name: 'statsContainer',
+      width: 420,
+      height: 175,
+      theme: 'green',
+      paddingTop: 6,
+    });
 
-    const title = new TextBlock('statsTitle');
-    title.text = '📊 DAY STATISTICS';
-    title.color = '#88ccff';
-    title.fontSize = 12;
-    title.height = '25px';
+    const title = addDialogSectionLabel(container, {
+      id: 'statsLabel',
+      text: '📊 DAY STATISTICS',
+      tone: 'info',
+      fontSize: 12,
+      height: 25,
+    });
     title.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     title.top = '10px';
-    container.addControl(title);
 
     this.statsStack = new StackPanel('statsStack');
     this.statsStack.paddingTop = '35px';
@@ -225,14 +226,14 @@ export class DaySummaryPopup {
 
     const iconText = new TextBlock('icon');
     iconText.text = icon;
-    iconText.fontSize = 14;
+    iconText.fontSize = UI_THEME.typography.scale.s14;
     iconText.width = '25px';
     row.addControl(iconText);
 
     const labelText = new TextBlock('label');
     labelText.text = label;
-    labelText.color = '#aaaaaa';
-    labelText.fontSize = 12;
+    labelText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    labelText.fontSize = UI_THEME.typography.scale.s12;
     labelText.width = '200px';
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     row.addControl(labelText);
@@ -240,7 +241,7 @@ export class DaySummaryPopup {
     const valueText = new TextBlock('value');
     valueText.text = value;
     valueText.color = valueColor;
-    valueText.fontSize = 12;
+    valueText.fontSize = UI_THEME.typography.scale.s12;
     valueText.width = '180px';
     valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     row.addControl(valueText);
@@ -249,21 +250,21 @@ export class DaySummaryPopup {
   }
 
   private createContinueButton(parent: StackPanel): void {
-    const btn = Button.CreateSimpleButton('continueBtn', '▶️  Continue to Next Day');
-    btn.width = '420px';
-    btn.height = '45px';
-    btn.cornerRadius = 8;
-    btn.background = '#2a7a4a';
-    btn.color = '#88ff88';
-    btn.thickness = 2;
-    btn.fontSize = 16;
-    btn.paddingTop = '12px';
-    btn.onPointerClickObservable.add(() => {
-      this.hide();
-      this.callbacks.onContinue();
+    const btn = createActionButton({
+      id: 'continueBtn',
+      label: '▶️  Continue to Next Day',
+      tone: 'primary',
+      width: 420,
+      height: 45,
+      fontSize: 16,
+      cornerRadius: 8,
+      thickness: 2,
+      onClick: () => {
+        this.hide();
+        this.callbacks.onContinue();
+      },
     });
-    btn.onPointerEnterObservable.add(() => { btn.background = '#3a9a5a'; });
-    btn.onPointerOutObservable.add(() => { btn.background = '#2a7a4a'; });
+    btn.paddingTop = '12px';
     parent.addControl(btn);
   }
 
@@ -301,7 +302,7 @@ export class DaySummaryPopup {
 
     const totalRow = this.createLineItem('TOTAL', totalRevenue, true);
     const totalLabel = totalRow.children[0] as TextBlock;
-    totalLabel.color = '#ffffff';
+    totalLabel.color = UI_THEME.colors.legacy.c_ffffff;
     totalLabel.fontWeight = 'bold';
     this.revenueStack.addControl(totalRow);
 
@@ -328,7 +329,7 @@ export class DaySummaryPopup {
 
     const expenseTotal = this.createLineItem('TOTAL', totalExpenses, false);
     const expenseTotalLabel = expenseTotal.children[0] as TextBlock;
-    expenseTotalLabel.color = '#ffffff';
+    expenseTotalLabel.color = UI_THEME.colors.legacy.c_ffffff;
     expenseTotalLabel.fontWeight = 'bold';
     this.expenseStack.addControl(expenseTotal);
 

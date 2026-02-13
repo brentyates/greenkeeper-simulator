@@ -42,7 +42,7 @@ export type ResearchUnlock =
 
 export interface EquipmentStats {
   readonly efficiency: number;       // 1.0 = baseline
-  readonly speed: number;            // Tiles per second
+  readonly speed: number;            // Tiles per game minute
   readonly fuelCapacity: number;     // Max fuel
   readonly fuelEfficiency: number;   // Consumption rate multiplier
   readonly durability: number;       // Maintenance interval
@@ -497,6 +497,31 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
         operatingCostPerHour: 3.00,
         breakdownRate: 0.025,          // Slightly higher due to precision components
         repairTime: 90                 // More complex repairs
+      }
+    }
+  },
+  {
+    id: "robot_mower_rough",
+    name: "RoboMow Rough Cutter",
+    description: "Heavy-duty autonomous rough mower built for dense grass and uneven lies.",
+    category: "robotics",
+    baseCost: 6200,
+    prerequisites: ["fairway_mower", "smart_irrigation"],
+    tier: 5,
+    unlocks: {
+      type: "equipment",
+      equipmentId: "robot_mower_rough",
+      stats: {
+        efficiency: 2.6,
+        speed: 1.6,
+        fuelCapacity: 320,
+        fuelEfficiency: 0.45,
+        durability: 420,
+        isAutonomous: true,
+        purchaseCost: 42000,
+        operatingCostPerHour: 2.20,
+        breakdownRate: 0.022,
+        repairTime: 65
       }
     }
   },

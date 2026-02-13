@@ -3,9 +3,12 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
-import { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { UIParent } from './UIParent';
+import { createActionButton, createDockedPanel, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addDialogActionBar } from './DialogBlueprint';
+import { addVerticalSpacer } from './LayoutUtils';
+import { UI_THEME } from './UITheme';
 
 export interface OverlayPanelCallbacks {
   onLoadImage: () => void;
@@ -48,30 +51,17 @@ export class OverlayPanelUI {
   }
 
   private createPanel(): Rectangle {
-    const panel = new Rectangle('overlayPanel');
-    panel.width = '220px';
-    panel.height = '420px';
-    panel.cornerRadius = 8;
-    panel.color = '#5a9a6a';
-    panel.thickness = 2;
-    panel.background = 'rgba(20, 45, 35, 0.95)';
-    panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    panel.left = '-10px';
-    panel.top = '10px';
-    panel.isVisible = false;
-    panel.isPointerBlocker = true;
-    panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    panel.shadowBlur = 10;
-    panel.shadowOffsetX = 3;
-    panel.shadowOffsetY = 3;
-    this.parent.addControl(panel);
-
-    const stack = new StackPanel('overlayStack');
-    stack.width = '200px';
-    stack.paddingTop = '10px';
-    stack.paddingBottom = '10px';
-    panel.addControl(stack);
+    const { panel, stack } = createDockedPanel(this.parent, {
+      name: 'overlay',
+      width: 220,
+      height: 420,
+      colors: POPUP_COLORS.green,
+      horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_RIGHT,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_TOP,
+      left: -10,
+      top: 10,
+      padding: 10,
+    });
 
     this.createHeader(stack);
     this.createLoadButton(stack);
@@ -105,25 +95,24 @@ export class OverlayPanelUI {
   }
 
   private createHeader(parent: StackPanel): void {
-    const header = new TextBlock('overlayHeader', 'IMAGE OVERLAY');
-    header.color = '#7FFF7F';
-    header.fontSize = 13;
-    header.fontFamily = 'Arial, sans-serif';
-    header.height = '24px';
-    header.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    parent.addControl(header);
+    createPopupHeader(parent, {
+      title: 'IMAGE OVERLAY',
+      titleColor: UI_THEME.colors.editor.buttonTextActive,
+      width: 200,
+      onClose: () => this.hide(),
+    });
   }
 
   private createLoadButton(parent: StackPanel): void {
-    const btn = Button.CreateSimpleButton('loadImageBtn', 'Load Image');
-    btn.width = '180px';
-    btn.height = '30px';
-    btn.color = '#7FFF7F';
-    btn.background = '#2a5a3a';
-    btn.cornerRadius = 4;
-    btn.fontSize = 12;
-    btn.fontFamily = 'Arial, sans-serif';
-    btn.onPointerUpObservable.add(() => this.callbacks.onLoadImage());
+    const btn = createActionButton({
+      id: 'loadImageBtn',
+      label: 'Load Image',
+      tone: 'primary',
+      width: 180,
+      height: 30,
+      fontSize: 12,
+      onClick: () => this.callbacks.onLoadImage(),
+    });
     parent.addControl(btn);
   }
 
@@ -145,39 +134,45 @@ export class OverlayPanelUI {
     parent.addControl(row);
 
     const labelText = new TextBlock(`overlay_${label}_label`, label);
-    labelText.color = '#aaccaa';
-    labelText.fontSize = 11;
-    labelText.fontFamily = 'Arial, sans-serif';
+    labelText.color = UI_THEME.colors.editor.buttonText;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
+    labelText.fontFamily = UI_THEME.typography.fontFamily;
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     row.addControl(labelText, 0, 0);
 
-    const minusBtn = Button.CreateSimpleButton(`overlay_${label}_minus`, '-');
-    minusBtn.width = '26px';
-    minusBtn.height = '22px';
-    minusBtn.color = '#aaccaa';
-    minusBtn.background = '#1a2a20';
-    minusBtn.cornerRadius = 3;
-    minusBtn.fontSize = 13;
-    minusBtn.fontFamily = 'Arial, sans-serif';
-    minusBtn.onPointerUpObservable.add(() => onChange(decrementDelta));
+    const minusBtn = createActionButton({
+      id: `overlay_${label}_minus`,
+      label: '-',
+      tone: 'neutral',
+      width: 26,
+      height: 22,
+      fontSize: 13,
+      cornerRadius: 3,
+      onClick: () => onChange(decrementDelta),
+    });
+    minusBtn.color = UI_THEME.colors.editor.buttonText;
+    minusBtn.background = UI_THEME.colors.miscButton.neutralBase;
     row.addControl(minusBtn, 0, 1);
 
     const valueText = new TextBlock(`overlay_${label}_value`, initialValue);
-    valueText.color = '#cceecc';
-    valueText.fontSize = 11;
-    valueText.fontFamily = 'Arial, sans-serif';
+    valueText.color = UI_THEME.colors.legacy.c_cceecc;
+    valueText.fontSize = UI_THEME.typography.scale.s11;
+    valueText.fontFamily = UI_THEME.typography.fontFamily;
     valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     row.addControl(valueText, 0, 2);
 
-    const plusBtn = Button.CreateSimpleButton(`overlay_${label}_plus`, '+');
-    plusBtn.width = '26px';
-    plusBtn.height = '22px';
-    plusBtn.color = '#aaccaa';
-    plusBtn.background = '#1a2a20';
-    plusBtn.cornerRadius = 3;
-    plusBtn.fontSize = 13;
-    plusBtn.fontFamily = 'Arial, sans-serif';
-    plusBtn.onPointerUpObservable.add(() => onChange(incrementDelta));
+    const plusBtn = createActionButton({
+      id: `overlay_${label}_plus`,
+      label: '+',
+      tone: 'neutral',
+      width: 26,
+      height: 22,
+      fontSize: 13,
+      cornerRadius: 3,
+      onClick: () => onChange(incrementDelta),
+    });
+    plusBtn.color = UI_THEME.colors.editor.buttonText;
+    plusBtn.background = UI_THEME.colors.miscButton.neutralBase;
     row.addControl(plusBtn, 0, 3);
 
     return valueText;
@@ -193,17 +188,20 @@ export class OverlayPanelUI {
     parent.addControl(row);
 
     const makeToggle = (name: string, label: string, onClick: () => void): TextBlock => {
-      const btn = Button.CreateSimpleButton(`overlay_${name}`, label);
-      btn.width = '60px';
-      btn.height = '24px';
-      btn.color = '#aaccaa';
-      btn.background = '#1a2a20';
-      btn.cornerRadius = 3;
-      btn.fontSize = 10;
-      btn.fontFamily = 'Arial, sans-serif';
+      const btn = createActionButton({
+        id: `overlay_${name}`,
+        label,
+        tone: 'neutral',
+        width: 60,
+        height: 24,
+        fontSize: 10,
+        cornerRadius: 3,
+        onClick,
+      });
+      btn.color = UI_THEME.colors.editor.buttonText;
+      btn.background = UI_THEME.colors.miscButton.neutralBase;
       btn.paddingLeft = '2px';
       btn.paddingRight = '2px';
-      btn.onPointerUpObservable.add(onClick);
       row.addControl(btn);
       const textControl = btn.children[0] as TextBlock;
       return textControl;
@@ -229,44 +227,25 @@ export class OverlayPanelUI {
   }
 
   private createActionButtons(parent: StackPanel): void {
-    const row = new StackPanel('overlayActions');
-    row.isVertical = false;
-    row.width = '200px';
-    row.height = '30px';
-    parent.addControl(row);
-
-    const toggleBtn = Button.CreateSimpleButton('overlayToggleBtn', 'Toggle');
-    toggleBtn.width = '90px';
-    toggleBtn.height = '28px';
-    toggleBtn.color = '#aaccaa';
-    toggleBtn.background = '#1a3a2a';
-    toggleBtn.cornerRadius = 4;
-    toggleBtn.fontSize = 11;
-    toggleBtn.fontFamily = 'Arial, sans-serif';
-    toggleBtn.paddingRight = '4px';
-    toggleBtn.onPointerUpObservable.add(() => this.callbacks.onToggle());
-    row.addControl(toggleBtn);
-
-    const clearBtn = Button.CreateSimpleButton('overlayClearBtn', 'Clear');
-    clearBtn.width = '90px';
-    clearBtn.height = '28px';
-    clearBtn.color = '#ffaaaa';
-    clearBtn.background = '#3a1a1a';
-    clearBtn.cornerRadius = 4;
-    clearBtn.fontSize = 11;
-    clearBtn.fontFamily = 'Arial, sans-serif';
-    clearBtn.paddingLeft = '4px';
-    clearBtn.onPointerUpObservable.add(() => this.callbacks.onClear());
-    row.addControl(clearBtn);
+    const { buttons } = addDialogActionBar(parent, {
+      id: 'overlayActions',
+      width: 200,
+      height: 44,
+      theme: 'neutral',
+      actions: [
+        { id: 'overlayToggleBtn', label: 'Toggle', tone: 'neutral', onClick: () => this.callbacks.onToggle(), fontSize: 11 },
+        { id: 'overlayClearBtn', label: 'Clear', tone: 'danger', onClick: () => this.callbacks.onClear(), fontSize: 11 },
+      ],
+    });
+    const toggleBtn = buttons[0];
+    if (toggleBtn) {
+      toggleBtn.color = UI_THEME.colors.editor.buttonText;
+      toggleBtn.background = UI_THEME.colors.editor.buttonBase;
+    }
   }
 
   private createSpacer(parent: StackPanel, height: number): void {
-    const spacer = new Rectangle();
-    spacer.width = '1px';
-    spacer.height = `${height}px`;
-    spacer.thickness = 0;
-    spacer.background = 'transparent';
-    parent.addControl(spacer);
+    addVerticalSpacer(parent, height, 'overlaySpacer');
   }
 
   public show(): void {

@@ -14,6 +14,7 @@ import {
   Vec3,
   getVertexNeighbors,
   validateTopology,
+  circleIntersectsTriangleXZ,
 } from './mesh-topology';
 
 describe('mesh-topology', () => {
@@ -312,6 +313,48 @@ describe('mesh-topology', () => {
       const nearestVertex = topology.vertices.get(result!.vertexId);
       expect(nearestVertex!.position.x).toBe(0);
       expect(nearestVertex!.position.z).toBe(0);
+    });
+  });
+
+  describe('circleIntersectsTriangleXZ', () => {
+    it('returns true when circle center is inside triangle with zero radius', () => {
+      const intersects = circleIntersectsTriangleXZ(
+        0.25, 0.25, 0,
+        0, 0,
+        2, 0,
+        0, 2
+      );
+      expect(intersects).toBe(true);
+    });
+
+    it('returns true when a triangle vertex is inside the circle', () => {
+      const intersects = circleIntersectsTriangleXZ(
+        4.7, 0, 0.4,
+        5, 0,
+        7, 0,
+        5, 2
+      );
+      expect(intersects).toBe(true);
+    });
+
+    it('returns true when the circle intersects an edge but no vertex', () => {
+      const intersects = circleIntersectsTriangleXZ(
+        2, -0.2, 0.25,
+        0, 0,
+        4, 0,
+        2, 3
+      );
+      expect(intersects).toBe(true);
+    });
+
+    it('returns false when the circle does not overlap triangle', () => {
+      const intersects = circleIntersectsTriangleXZ(
+        -2, -2, 0.5,
+        0, 0,
+        4, 0,
+        2, 3
+      );
+      expect(intersects).toBe(false);
     });
   });
 

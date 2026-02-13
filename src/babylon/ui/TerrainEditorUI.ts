@@ -3,10 +3,11 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
-import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Slider } from '@babylonjs/gui/2D/controls/sliders/slider';
 
 import { UIParent } from './UIParent';
+import { createActionButton, createDockedPanel, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { UI_THEME } from './UITheme';
 import { EditorTool, EditorMode, TopologyMode, InteractionMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
 import { degreesToRadians } from '../../core/transform-ops';
 import { BUILT_IN_TEMPLATES } from '../../data/shape-templates';
@@ -82,30 +83,21 @@ export class TerrainEditorUI {
   }
 
   private createPanel(): void {
-    this.panel = new Rectangle('terrainEditorPanel');
-    this.panel.width = '360px';
-    this.panel.adaptHeightToChildren = true;
-    this.panel.cornerRadius = 8;
-    this.panel.color = '#5a9a6a';
-    this.panel.thickness = 2;
-    this.panel.background = 'rgba(20, 45, 35, 0.95)';
-    this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.panel.left = '10px';
-    this.panel.top = '10px';
-    this.panel.isVisible = false;
-    this.panel.isPointerBlocker = true;
-    this.panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    this.panel.shadowBlur = 10;
-    this.panel.shadowOffsetX = 3;
-    this.panel.shadowOffsetY = 3;
-    this.parent.addControl(this.panel);
-
-    const stack = new StackPanel('editorStack');
+    const { panel, stack } = createDockedPanel(this.parent, {
+      name: 'terrainEditor',
+      width: 360,
+      height: 1,
+      colors: POPUP_COLORS.green,
+      horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_LEFT,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_TOP,
+      left: 10,
+      top: 10,
+      padding: 12,
+    });
+    panel.adaptHeightToChildren = true;
+    panel.height = '1px';
     stack.width = '316px';
-    stack.paddingTop = '12px';
-    stack.paddingBottom = '12px';
-    this.panel.addControl(stack);
+    this.panel = panel;
 
     this.createHeader(stack);
     this.createModeToggle(stack);
@@ -125,35 +117,12 @@ export class TerrainEditorUI {
   }
 
   private createHeader(parent: StackPanel): void {
-    const headerContainer = new Rectangle('headerContainer');
-    headerContainer.height = '36px';
-    headerContainer.width = '316px';
-    headerContainer.thickness = 0;
-    headerContainer.background = 'transparent';
-    parent.addControl(headerContainer);
-
-    const title = new TextBlock('editorTitle');
-    title.text = 'TERRAIN EDITOR';
-    title.color = '#7FFF7F';
-    title.fontSize = 14;
-    title.fontFamily = 'Arial, sans-serif';
-    title.fontWeight = 'bold';
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    title.left = '0px';
-    headerContainer.addControl(title);
-
-    const closeBtn = Button.CreateSimpleButton('closeBtn', 'X');
-    closeBtn.width = '28px';
-    closeBtn.height = '28px';
-    closeBtn.color = '#ff8888';
-    closeBtn.background = '#4a2a2a';
-    closeBtn.cornerRadius = 4;
-    closeBtn.thickness = 1;
-    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    closeBtn.onPointerUpObservable.add(() => this.callbacks.onClose());
-    closeBtn.onPointerEnterObservable.add(() => { closeBtn.background = '#6a3a3a'; });
-    closeBtn.onPointerOutObservable.add(() => { closeBtn.background = '#4a2a2a'; });
-    headerContainer.addControl(closeBtn);
+    createPopupHeader(parent, {
+      title: 'TERRAIN EDITOR',
+      titleColor: UI_THEME.colors.editor.buttonTextActive,
+      width: 316,
+      onClose: () => this.callbacks.onClose(),
+    });
   }
 
   private createModeToggle(parent: StackPanel): void {
@@ -204,27 +173,27 @@ export class TerrainEditorUI {
     const container = new Rectangle(`interaction_${mode}`);
     container.width = '95%';
     container.height = '28px';
-    container.cornerRadius = 4;
-    container.background = '#1a3a2a';
-    container.color = '#3a5a4a';
+    container.cornerRadius = UI_THEME.radii.scale.r4;
+    container.background = UI_THEME.colors.editor.buttonBase;
+    container.color = UI_THEME.colors.editor.buttonBorder;
     container.thickness = 2;
 
     const text = new TextBlock();
     text.text = label;
-    text.color = '#aaccaa';
-    text.fontSize = 11;
+    text.color = UI_THEME.colors.editor.buttonText;
+    text.fontSize = UI_THEME.typography.scale.s11;
     text.fontWeight = 'bold';
     container.addControl(text);
 
     container.onPointerEnterObservable.add(() => {
       if (this.activeInteractionMode !== mode) {
-        container.background = '#2a4a3a';
+        container.background = UI_THEME.colors.editor.buttonHover;
       }
     });
 
     container.onPointerOutObservable.add(() => {
       if (this.activeInteractionMode !== mode) {
-        container.background = '#1a3a2a';
+        container.background = UI_THEME.colors.editor.buttonBase;
       }
     });
 
@@ -241,13 +210,13 @@ export class TerrainEditorUI {
     for (const [mode, btn] of this.interactionButtons) {
       const text = btn.children[0] as TextBlock;
       if (mode === this.activeInteractionMode) {
-        btn.background = '#2a6a4a';
-        btn.color = '#7FFF7F';
-        if (text) text.color = '#7FFF7F';
+        btn.background = UI_THEME.colors.editor.buttonActive;
+        btn.color = UI_THEME.colors.editor.buttonTextActive;
+        if (text) text.color = UI_THEME.colors.editor.buttonTextActive;
       } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
-        if (text) text.color = '#aaccaa';
+        btn.background = UI_THEME.colors.editor.buttonBase;
+        btn.color = UI_THEME.colors.editor.buttonBorder;
+        if (text) text.color = UI_THEME.colors.editor.buttonText;
       }
     }
   }
@@ -256,27 +225,27 @@ export class TerrainEditorUI {
     const container = new Rectangle(`mode_${mode}`);
     container.width = '95%';
     container.height = '32px';
-    container.cornerRadius = 4;
-    container.background = '#1a3a2a';
-    container.color = '#3a5a4a';
+    container.cornerRadius = UI_THEME.radii.scale.r4;
+    container.background = UI_THEME.colors.editor.buttonBase;
+    container.color = UI_THEME.colors.editor.buttonBorder;
     container.thickness = 2;
 
     const text = new TextBlock();
     text.text = label;
-    text.color = '#aaccaa';
-    text.fontSize = 12;
+    text.color = UI_THEME.colors.editor.buttonText;
+    text.fontSize = UI_THEME.typography.scale.s12;
     text.fontWeight = 'bold';
     container.addControl(text);
 
     container.onPointerEnterObservable.add(() => {
       if (this.activeMode !== mode) {
-        container.background = '#2a4a3a';
+        container.background = UI_THEME.colors.editor.buttonHover;
       }
     });
 
     container.onPointerOutObservable.add(() => {
       if (this.activeMode !== mode) {
-        container.background = '#1a3a2a';
+        container.background = UI_THEME.colors.editor.buttonBase;
       }
     });
 
@@ -305,13 +274,13 @@ export class TerrainEditorUI {
     for (const [mode, btn] of this.modeButtons) {
       const text = btn.children[0] as TextBlock;
       if (mode === this.activeMode) {
-        btn.background = '#2a6a4a';
-        btn.color = '#7FFF7F';
-        if (text) text.color = '#7FFF7F';
+        btn.background = UI_THEME.colors.editor.buttonActive;
+        btn.color = UI_THEME.colors.editor.buttonTextActive;
+        if (text) text.color = UI_THEME.colors.editor.buttonTextActive;
       } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
-        if (text) text.color = '#aaccaa';
+        btn.background = UI_THEME.colors.editor.buttonBase;
+        btn.color = UI_THEME.colors.editor.buttonBorder;
+        if (text) text.color = UI_THEME.colors.editor.buttonText;
       }
     }
   }
@@ -323,8 +292,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('sculptLabel');
     sectionLabel.text = 'SCULPT TOOLS';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '8px';
@@ -340,7 +309,7 @@ export class TerrainEditorUI {
     this.sculptToolsPanel.addControl(grid);
 
     const tools: { tool: EditorTool; label: string; key: string; color: string }[] = [
-      { tool: 'raise', label: 'Raise', key: '1', color: '#7FFF7F' },
+      { tool: 'raise', label: 'Raise', key: '1', color: UI_THEME.colors.editor.buttonTextActive },
       { tool: 'lower', label: 'Lower', key: '2', color: '#FF7F7F' },
       { tool: 'smooth', label: 'Smooth', key: '3', color: '#7F7FFF' },
       { tool: 'flatten', label: 'Flatten', key: '4', color: '#FFFF7F' },
@@ -359,8 +328,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('terrainLabel');
     sectionLabel.text = 'TERRAIN TYPE';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '28px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '8px';
@@ -396,9 +365,9 @@ export class TerrainEditorUI {
     const container = new Rectangle(`btn_${tool}`);
     container.width = '95%';
     container.height = '50px';
-    container.cornerRadius = 6;
-    container.background = '#1a3a2a';
-    container.color = '#3a5a4a';
+    container.cornerRadius = UI_THEME.radii.scale.r6;
+    container.background = UI_THEME.colors.editor.buttonBase;
+    container.color = UI_THEME.colors.editor.buttonBorder;
     container.thickness = 2;
 
     const stack = new StackPanel();
@@ -408,29 +377,29 @@ export class TerrainEditorUI {
     const keyBadge = new TextBlock();
     keyBadge.text = keyHint;
     keyBadge.color = accentColor ?? '#6a9a7a';
-    keyBadge.fontSize = 10;
+    keyBadge.fontSize = UI_THEME.typography.scale.s10;
     keyBadge.height = '14px';
     keyBadge.fontWeight = 'bold';
     stack.addControl(keyBadge);
 
     const labelText = new TextBlock();
     labelText.text = label;
-    labelText.color = '#ccddcc';
-    labelText.fontSize = 11;
+    labelText.color = UI_THEME.colors.legacy.c_ccddcc;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
     labelText.height = '16px';
     stack.addControl(labelText);
 
     container.onPointerEnterObservable.add(() => {
       if (this.activeTool !== tool) {
-        container.background = '#2a4a3a';
-        container.color = '#5a8a6a';
+        container.background = UI_THEME.colors.editor.buttonHover;
+        container.color = UI_THEME.colors.legacy.c_5a8a6a;
       }
     });
 
     container.onPointerOutObservable.add(() => {
       if (this.activeTool !== tool) {
-        container.background = '#1a3a2a';
-        container.color = '#3a5a4a';
+        container.background = UI_THEME.colors.editor.buttonBase;
+        container.color = UI_THEME.colors.editor.buttonBorder;
       }
     });
 
@@ -456,15 +425,15 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('brushLabel');
     sectionLabel.text = 'BRUSH SIZE';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     header.addControl(sectionLabel, 0, 0);
 
     this.brushSizeText = new TextBlock('brushSizeText');
     this.brushSizeText.text = '1';
-    this.brushSizeText.color = '#7FFF7F';
-    this.brushSizeText.fontSize = 12;
+    this.brushSizeText.color = UI_THEME.colors.editor.buttonTextActive;
+    this.brushSizeText.fontSize = UI_THEME.typography.scale.s12;
     this.brushSizeText.fontWeight = 'bold';
     this.brushSizeText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     header.addControl(this.brushSizeText, 0, 1);
@@ -478,8 +447,8 @@ export class TerrainEditorUI {
     slider.height = '20px';
     slider.width = '310px';
     slider.thumbWidth = 20;
-    slider.color = '#3a6a4a';
-    slider.background = '#1a3a2a';
+    slider.color = UI_THEME.colors.legacy.c_3a6a4a;
+    slider.background = UI_THEME.colors.editor.buttonBase;
     slider.onValueChangedObservable.add((value) => {
         const intVal = Math.round(value);
         if (this.brushSizeText) this.brushSizeText.text = intVal.toString();
@@ -508,15 +477,15 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('strengthLabel');
     sectionLabel.text = 'BRUSH STRENGTH';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     header.addControl(sectionLabel, 0, 0);
 
     this.brushStrengthText = new TextBlock('brushStrengthText');
     this.brushStrengthText.text = '1.0';
-    this.brushStrengthText.color = '#7FFF7F';
-    this.brushStrengthText.fontSize = 12;
+    this.brushStrengthText.color = UI_THEME.colors.editor.buttonTextActive;
+    this.brushStrengthText.fontSize = UI_THEME.typography.scale.s12;
     this.brushStrengthText.fontWeight = 'bold';
     this.brushStrengthText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     header.addControl(this.brushStrengthText, 0, 1);
@@ -530,8 +499,8 @@ export class TerrainEditorUI {
     slider.height = '20px';
     slider.width = '310px';
     slider.thumbWidth = 20;
-    slider.color = '#3a6a4a';
-    slider.background = '#1a3a2a';
+    slider.color = UI_THEME.colors.legacy.c_3a6a4a;
+    slider.background = UI_THEME.colors.editor.buttonBase;
     slider.onValueChangedObservable.add((value) => {
        if (this.brushStrengthText) this.brushStrengthText.text = value.toFixed(1);
        this.callbacks.onBrushStrengthChange?.(value);
@@ -548,8 +517,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('topologyLabel');
     sectionLabel.text = 'TOPOLOGY MODE';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '4px';
@@ -582,8 +551,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('edgeActionsLabel');
     sectionLabel.text = 'EDGE ACTIONS';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '4px';
@@ -596,26 +565,30 @@ export class TerrainEditorUI {
     grid.addColumnDefinition(0.5);
     this.edgeActionsContainer.addControl(grid);
 
-    const splitBtn = Button.CreateSimpleButton('splitEdgeBtn', 'Split');
-    splitBtn.width = '90%';
-    splitBtn.height = '24px';
-    splitBtn.color = '#aaccaa';
-    splitBtn.fontSize = 10;
-    splitBtn.background = '#1a3a2a';
-    splitBtn.cornerRadius = 4;
-    splitBtn.thickness = 1;
-    splitBtn.onPointerUpObservable.add(() => this.callbacks.onSplitEdge?.());
+    const splitBtn = createActionButton({
+      id: 'splitEdgeBtn',
+      label: 'Split',
+      tone: 'neutral',
+      width: 140,
+      height: 24,
+      fontSize: 10,
+      onClick: () => this.callbacks.onSplitEdge?.(),
+    });
+    splitBtn.color = UI_THEME.colors.editor.buttonText;
+    splitBtn.background = UI_THEME.colors.editor.buttonBase;
     grid.addControl(splitBtn, 0, 0);
 
-    const flipBtn = Button.CreateSimpleButton('flipEdgeBtn', 'Flip');
-    flipBtn.width = '90%';
-    flipBtn.height = '24px';
-    flipBtn.color = '#aaccaa';
-    flipBtn.fontSize = 10;
-    flipBtn.background = '#1a3a2a';
-    flipBtn.cornerRadius = 4;
-    flipBtn.thickness = 1;
-    flipBtn.onPointerUpObservable.add(() => this.callbacks.onFlipEdge?.());
+    const flipBtn = createActionButton({
+      id: 'flipEdgeBtn',
+      label: 'Flip',
+      tone: 'neutral',
+      width: 140,
+      height: 24,
+      fontSize: 10,
+      onClick: () => this.callbacks.onFlipEdge?.(),
+    });
+    flipBtn.color = UI_THEME.colors.editor.buttonText;
+    flipBtn.background = UI_THEME.colors.editor.buttonBase;
     grid.addControl(flipBtn, 0, 1);
   }
 
@@ -623,28 +596,28 @@ export class TerrainEditorUI {
     const container = new Rectangle(`topology_${mode}`);
     container.width = '95%';
     container.height = '28px';
-    container.cornerRadius = 4;
-    container.background = '#1a3a2a';
-    container.color = '#3a5a4a';
+    container.cornerRadius = UI_THEME.radii.scale.r4;
+    container.background = UI_THEME.colors.editor.buttonBase;
+    container.color = UI_THEME.colors.editor.buttonBorder;
     container.thickness = 2;
     container.metadata = { accentColor };
 
     const text = new TextBlock();
     text.text = label;
-    text.color = '#aaccaa';
-    text.fontSize = 11;
+    text.color = UI_THEME.colors.editor.buttonText;
+    text.fontSize = UI_THEME.typography.scale.s11;
     text.fontWeight = 'bold';
     container.addControl(text);
 
     container.onPointerEnterObservable.add(() => {
       if (this.activeTopologyMode !== mode) {
-        container.background = '#2a4a3a';
+        container.background = UI_THEME.colors.editor.buttonHover;
       }
     });
 
     container.onPointerOutObservable.add(() => {
       if (this.activeTopologyMode !== mode) {
-        container.background = '#1a3a2a';
+        container.background = UI_THEME.colors.editor.buttonBase;
       }
     });
 
@@ -659,16 +632,16 @@ export class TerrainEditorUI {
   private updateTopologyModeStyles(): void {
     for (const [mode, btn] of this.topologyButtons) {
       const text = btn.children[0] as TextBlock;
-      const accent = btn.metadata?.accentColor ?? '#7FFF7F';
+      const accent = btn.metadata?.accentColor ?? UI_THEME.colors.editor.buttonTextActive;
 
       if (mode === this.activeTopologyMode) {
-        btn.background = '#2a6a4a';
+        btn.background = UI_THEME.colors.editor.buttonActive;
         btn.color = accent;
         if (text) text.color = accent;
       } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
-        if (text) text.color = '#aaccaa';
+        btn.background = UI_THEME.colors.editor.buttonBase;
+        btn.color = UI_THEME.colors.editor.buttonBorder;
+        if (text) text.color = UI_THEME.colors.editor.buttonText;
       }
     }
 
@@ -689,32 +662,33 @@ export class TerrainEditorUI {
 
     this.selectionCountText = new TextBlock('selCountText');
     this.selectionCountText.text = '0 selected';
-    this.selectionCountText.color = '#6a9a7a';
-    this.selectionCountText.fontSize = 12;
+    this.selectionCountText.color = UI_THEME.colors.legacy.c_6a9a7a;
+    this.selectionCountText.fontSize = UI_THEME.typography.scale.s12;
     this.selectionCountText.fontWeight = 'bold';
     this.selectionCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     grid.addControl(this.selectionCountText, 0, 0);
 
-    const deleteBtn = Button.CreateSimpleButton('deleteBtn', 'Delete');
-    deleteBtn.width = '80px';
-    deleteBtn.height = '24px';
-    deleteBtn.color = '#ff8888';
-    deleteBtn.fontSize = 10;
-    deleteBtn.background = '#1a3a2a';
-    deleteBtn.cornerRadius = 4;
-    deleteBtn.thickness = 1;
-    deleteBtn.onPointerUpObservable.add(() => {
-      if (this.activeTopologyMode === 'edge') {
-        this.callbacks.onCollapseEdge?.();
-      } else {
-        this.callbacks.onDeleteVertex?.();
-      }
+    const deleteBtn = createActionButton({
+      id: 'deleteBtn',
+      label: 'Delete',
+      tone: 'danger',
+      width: 80,
+      height: 24,
+      fontSize: 10,
+      onClick: () => {
+        if (this.activeTopologyMode === 'edge') {
+          this.callbacks.onCollapseEdge?.();
+        } else {
+          this.callbacks.onDeleteVertex?.();
+        }
+      },
     });
-    deleteBtn.onPointerEnterObservable.add(() => { deleteBtn.background = '#3a2a2a'; });
-    deleteBtn.onPointerOutObservable.add(() => { deleteBtn.background = '#1a3a2a'; });
+    deleteBtn.color = UI_THEME.colors.text.danger;
+    deleteBtn.background = UI_THEME.colors.editor.buttonBase;
+    deleteBtn.onPointerEnterObservable.add(() => { deleteBtn.background = UI_THEME.colors.editor.buttonDangerHover; });
+    deleteBtn.onPointerOutObservable.add(() => { deleteBtn.background = UI_THEME.colors.editor.buttonBase; });
     grid.addControl(deleteBtn, 0, 1);
   }
-
   private createTransformSection(parent: StackPanel): void {
     this.transformContainer = new StackPanel('transformContainer');
     this.transformContainer.width = '316px';
@@ -722,45 +696,45 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('constraintLabel');
     sectionLabel.text = 'MOVE AXIS';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '6px';
     this.transformContainer.addControl(sectionLabel);
 
     // Visual Axis Gizmo Container
-    const gizmoContainer = new Rectangle('gizmoContainer');
-    gizmoContainer.height = '140px';
-    gizmoContainer.width = '316px';
-    gizmoContainer.thickness = 0;
-    gizmoContainer.background = 'transparent';
-    this.transformContainer.addControl(gizmoContainer);
+    const gizmoHost = new Rectangle('gizmoHost');
+    gizmoHost.height = '140px';
+    gizmoHost.width = '316px';
+    gizmoHost.thickness = 0;
+    gizmoHost.background = 'transparent';
+    this.transformContainer.addControl(gizmoHost);
     
     // Y Axis (Green, Up)
-    this.createAxisRod(gizmoContainer, 'y', '#44cc44', 0, -32, 6, 60, 0);
-    this.createAxisLabel(gizmoContainer, 'Y', '#44cc44', 0, -70);
+    this.createAxisRod(gizmoHost, 'y', '#44cc44', 0, -32, 6, 60, 0);
+    this.createAxisLabel(gizmoHost, 'Y', '#44cc44', 0, -70);
     
     // X Axis (Red, Right)
-    this.createAxisRod(gizmoContainer, 'x', '#cc4444', 32, 0, 60, 6, 0);
-    this.createAxisLabel(gizmoContainer, 'X', '#cc4444', 70, 0);
+    this.createAxisRod(gizmoHost, 'x', '#cc4444', 32, 0, 60, 6, 0);
+    this.createAxisLabel(gizmoHost, 'X', '#cc4444', 70, 0);
 
     // Z Axis (Blue, Diagonal Top-Right for "Into Screen")
     // Rotation -45 deg points Top-Right
     // Offset calc: Center of 50px rod at angle -45
     // x = cos(-45)*28 = 19.8, y = sin(-45)*28 = -19.8
-    this.createAxisRod(gizmoContainer, 'z', '#4444cc', 20, -20, 50, 6, -Math.PI / 4);
-    this.createAxisLabel(gizmoContainer, 'Z', '#4444cc', 50, -50);
+    this.createAxisRod(gizmoHost, 'z', '#4444cc', 20, -20, 50, 6, -Math.PI / 4);
+    this.createAxisLabel(gizmoHost, 'Z', '#4444cc', 50, -50);
 
     // Center Hub
     const hub = new Rectangle('hub');
     hub.width = '12px';
     hub.height = '12px';
-    hub.cornerRadius = 6;
-    hub.color = '#aaccaa';
-    hub.background = '#aaccaa';
+    hub.cornerRadius = UI_THEME.radii.scale.r6;
+    hub.color = UI_THEME.colors.editor.buttonText;
+    hub.background = UI_THEME.colors.editor.buttonText;
     hub.thickness = 0;
-    gizmoContainer.addControl(hub);
+    gizmoHost.addControl(hub);
 
     this.updateAxisButtonStyles();
   }
@@ -769,7 +743,7 @@ export class TerrainEditorUI {
       const label = new TextBlock();
       label.text = text;
       label.color = color; // dim if needed, but axis colors usually bright
-      label.fontSize = 12;
+      label.fontSize = UI_THEME.typography.scale.s12;
       label.fontWeight = 'bold';
       label.left = `${left}px`;
       label.top = `${top}px`;
@@ -784,22 +758,22 @@ export class TerrainEditorUI {
       container.top = `${top}px`;
       container.rotation = rotation;
       container.color = color; // Border
-      container.background = '#1a3a2a'; // Dim fill
+      container.background = UI_THEME.colors.editor.buttonBase; // Dim fill
       container.thickness = 2;
-      container.cornerRadius = 3;
+      container.cornerRadius = UI_THEME.radii.scale.r3;
       container.isPointerBlocker = true;
       container.metadata = { accentColor: color }; 
 
       container.onPointerEnterObservable.add(() => {
           const isActive = this.activeAxis.includes(axis);
           if (!isActive) {
-              container.background = '#2a4a3a';
+              container.background = UI_THEME.colors.editor.buttonHover;
           }
       });
       container.onPointerOutObservable.add(() => {
           const isActive = this.activeAxis.includes(axis);
           if (!isActive) {
-              container.background = '#1a3a2a';
+              container.background = UI_THEME.colors.editor.buttonBase;
           }
       });
       container.onPointerUpObservable.add((_info, state) => {
@@ -846,7 +820,7 @@ export class TerrainEditorUI {
             btn.background = accent;
             // Label is now separate, no child text to update
         } else {
-            btn.background = '#1a3a2a';
+            btn.background = UI_THEME.colors.editor.buttonBase;
         }
     });
   }
@@ -861,8 +835,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('stampLabel');
     sectionLabel.text = 'TEMPLATES';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '6px';
@@ -885,22 +859,22 @@ export class TerrainEditorUI {
       const btn = new Rectangle(`template_${template.name}`);
       btn.width = '95%';
       btn.height = '30px';
-      btn.cornerRadius = 4;
-      btn.background = '#1a3a2a';
-      btn.color = '#3a5a4a';
+      btn.cornerRadius = UI_THEME.radii.chip;
+      btn.background = UI_THEME.colors.editor.buttonBase;
+      btn.color = UI_THEME.colors.editor.buttonBorder;
       btn.thickness = 2;
 
       const text = new TextBlock();
       text.text = template.name;
-      text.color = '#cde6d0';
-      text.fontSize = 11;
+      text.color = UI_THEME.colors.editor.buttonSoftText;
+      text.fontSize = UI_THEME.typography.scale.s11;
       btn.addControl(text);
 
       btn.onPointerEnterObservable.add(() => {
-        if (this.activeTemplateName !== template.name) btn.background = '#2a4a3a';
+        if (this.activeTemplateName !== template.name) btn.background = UI_THEME.colors.editor.buttonHover;
       });
       btn.onPointerOutObservable.add(() => {
-        if (this.activeTemplateName !== template.name) btn.background = '#1a3a2a';
+        if (this.activeTemplateName !== template.name) btn.background = UI_THEME.colors.editor.buttonBase;
       });
       btn.onPointerUpObservable.add(() => {
         this.activeTemplateName = template.name;
@@ -921,15 +895,15 @@ export class TerrainEditorUI {
 
     const sizeLabel = new TextBlock('stampSizeLabel');
     sizeLabel.text = 'STAMP SIZE';
-    sizeLabel.color = '#8aba9a';
-    sizeLabel.fontSize = 11;
+    sizeLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sizeLabel.fontSize = UI_THEME.typography.scale.s11;
     sizeLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sizeHeader.addControl(sizeLabel, 0, 0);
 
     this.stampSizeText = new TextBlock('stampSizeText');
     this.stampSizeText.text = '1';
-    this.stampSizeText.color = '#7FFF7F';
-    this.stampSizeText.fontSize = 12;
+    this.stampSizeText.color = UI_THEME.colors.editor.buttonTextActive;
+    this.stampSizeText.fontSize = UI_THEME.typography.scale.s12;
     this.stampSizeText.fontWeight = 'bold';
     this.stampSizeText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     sizeHeader.addControl(this.stampSizeText, 0, 1);
@@ -943,8 +917,8 @@ export class TerrainEditorUI {
     sizeSlider.height = '20px';
     sizeSlider.width = '310px';
     sizeSlider.thumbWidth = 20;
-    sizeSlider.color = '#3a6a4a';
-    sizeSlider.background = '#1a3a2a';
+    sizeSlider.color = UI_THEME.colors.legacy.c_3a6a4a;
+    sizeSlider.background = UI_THEME.colors.editor.buttonBase;
     sizeSlider.onValueChangedObservable.add((value) => {
       const snapped = Math.round(value / 0.25) * 0.25;
       if (this.stampSizeText) this.stampSizeText.text = formatStampSize(snapped);
@@ -959,11 +933,11 @@ export class TerrainEditorUI {
   private updateTemplateButtonStyles(): void {
     this.templateButtons.forEach((btn, name) => {
       if (name === this.activeTemplateName) {
-        btn.background = '#3a6a4a';
-        btn.color = '#8aba9a';
+        btn.background = UI_THEME.colors.editor.buttonSelected;
+        btn.color = UI_THEME.colors.editor.buttonTextSelected;
       } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
+        btn.background = UI_THEME.colors.editor.buttonBase;
+        btn.color = UI_THEME.colors.editor.buttonBorder;
       }
     });
   }
@@ -976,8 +950,8 @@ export class TerrainEditorUI {
 
     const sectionLabel = new TextBlock('rotationLabel');
     sectionLabel.text = 'ROTATE';
-    sectionLabel.color = '#8aba9a';
-    sectionLabel.fontSize = 11;
+    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
+    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
     sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     sectionLabel.paddingTop = '6px';
@@ -999,41 +973,46 @@ export class TerrainEditorUI {
       const label = new TextBlock();
       label.text = axis.label;
       label.color = axis.color;
-      label.fontSize = 12;
+      label.fontSize = UI_THEME.typography.scale.s12;
       label.fontWeight = 'bold';
       label.width = '30px';
       label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
       row.addControl(label);
 
-      const minusBtn = Button.CreateSimpleButton(`rot${axis.label}Minus`, '-5');
-      minusBtn.width = '50px';
-      minusBtn.height = '26px';
-      minusBtn.color = '#cde6d0';
-      minusBtn.background = '#2a4a3a';
-      minusBtn.fontSize = 11;
-      minusBtn.cornerRadius = 4;
-      minusBtn.onPointerUpObservable.add(() => {
-        const [ax, ay, az] = axis.getArgs(degreesToRadians(-5));
-        this.callbacks.onRotateBy?.(ax, ay, az);
+      const minusBtn = createActionButton({
+        id: `rot${axis.label}Minus`,
+        label: '-5',
+        tone: 'neutral',
+        width: 50,
+        height: 26,
+        fontSize: 11,
+        onClick: () => {
+          const [ax, ay, az] = axis.getArgs(degreesToRadians(-5));
+          this.callbacks.onRotateBy?.(ax, ay, az);
+        },
       });
+      minusBtn.color = UI_THEME.colors.editor.buttonSoftText;
+      minusBtn.background = UI_THEME.colors.editor.buttonHover;
       row.addControl(minusBtn);
 
-      const plusBtn = Button.CreateSimpleButton(`rot${axis.label}Plus`, '+5');
-      plusBtn.width = '50px';
-      plusBtn.height = '26px';
-      plusBtn.color = '#cde6d0';
-      plusBtn.background = '#2a4a3a';
-      plusBtn.fontSize = 11;
-      plusBtn.cornerRadius = 4;
-      plusBtn.paddingLeft = '4px';
-      plusBtn.onPointerUpObservable.add(() => {
-        const [ax, ay, az] = axis.getArgs(degreesToRadians(5));
-        this.callbacks.onRotateBy?.(ax, ay, az);
+      const plusBtn = createActionButton({
+        id: `rot${axis.label}Plus`,
+        label: '+5',
+        tone: 'neutral',
+        width: 50,
+        height: 26,
+        fontSize: 11,
+        onClick: () => {
+          const [ax, ay, az] = axis.getArgs(degreesToRadians(5));
+          this.callbacks.onRotateBy?.(ax, ay, az);
+        },
       });
+      plusBtn.color = UI_THEME.colors.editor.buttonSoftText;
+      plusBtn.background = UI_THEME.colors.editor.buttonHover;
+      plusBtn.paddingLeft = '4px';
       row.addControl(plusBtn);
     }
   }
-
   private updateVisibility(): void {
     const mode = this.activeMode;
     const interaction = this.activeInteractionMode;
@@ -1071,11 +1050,11 @@ export class TerrainEditorUI {
   public setActiveTool(tool: EditorTool): void {
     for (const [t, btn] of this.toolButtons) {
       if (t === tool) {
-        btn.background = '#2a6a4a';
-        btn.color = '#7FFF7F';
+        btn.background = UI_THEME.colors.editor.buttonActive;
+        btn.color = UI_THEME.colors.editor.buttonTextActive;
       } else {
-        btn.background = '#1a3a2a';
-        btn.color = '#3a5a4a';
+        btn.background = UI_THEME.colors.editor.buttonBase;
+        btn.color = UI_THEME.colors.editor.buttonBorder;
       }
     }
     this.activeTool = tool;
@@ -1145,7 +1124,7 @@ export class TerrainEditorUI {
   public setSelectionCount(count: number): void {
     if (this.selectionCountText) {
       this.selectionCountText.text = count === 1 ? '1 selected' : `${count} selected`;
-      this.selectionCountText.color = count > 0 ? '#7FFF7F' : '#6a9a7a';
+      this.selectionCountText.color = count > 0 ? UI_THEME.colors.editor.buttonTextActive : '#6a9a7a';
     }
   }
 

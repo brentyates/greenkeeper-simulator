@@ -56,6 +56,7 @@ def _get_asset_specs():
     specs = {}
     for asset_id, spec in manifest["assets"].items():
         specs[asset_id] = {
+            "path": spec["path"],
             "height_range": tuple(spec["height_range"]),
             "footprint": tuple(spec["footprint"]),
             "origin": spec["origin"],

@@ -9,17 +9,40 @@ import { MarketingDashboard } from "./ui/MarketingDashboard";
 import { EquipmentStorePanel } from "./ui/EquipmentStorePanel";
 import { AmenityPanel } from "./ui/AmenityPanel";
 import { WalkOnQueuePanel } from "./ui/WalkOnQueuePanel";
-import { IrrigationToolbar } from "./ui/IrrigationToolbar";
-import { IrrigationInfoPanel } from "./ui/IrrigationInfoPanel";
-import { IrrigationSchedulePanel } from "./ui/IrrigationSchedulePanel";
+import { CourseLayoutPanel } from "./ui/CourseLayoutPanel";
+import {
+  IrrigationToolbar,
+  IRRIGATION_TOOLBAR_BOUNDS,
+} from "./ui/IrrigationToolbar";
+import {
+  IrrigationInfoPanel,
+  IRRIGATION_INFO_PANEL_BOUNDS,
+} from "./ui/IrrigationInfoPanel";
+import {
+  IrrigationSchedulePanel,
+  IRRIGATION_SCHEDULE_PANEL_BOUNDS,
+} from "./ui/IrrigationSchedulePanel";
 import { UIManager } from "./ui/UIManager";
-import { GameState } from "./GameState";
+import { GameState, getRuntimeRefillStationsFromState } from "./GameState";
 
 import {
   addIncome,
   addExpense,
+  canAfford,
 } from "../core/economy";
 import {
+  PipeType,
+  SprinklerType,
+  PIPE_CONFIGS,
+  SPRINKLER_CONFIGS,
+  addPipe,
+  removePipe,
+  addSprinklerHead,
+  removeSprinklerHead,
+  addWaterSource,
+  updateSprinklerSchedule,
+  getPipeAt,
+  getSprinklerHeadAt,
   repairLeak,
 } from "../core/irrigation";
 import {
@@ -86,9 +109,13 @@ export class UIPanelCoordinator {
   private equipmentStorePanel: EquipmentStorePanel | null = null;
   private amenityPanel: AmenityPanel | null = null;
   private walkOnQueuePanel: WalkOnQueuePanel | null = null;
+  private courseLayoutPanel: CourseLayoutPanel | null = null;
   private irrigationToolbar: IrrigationToolbar | null = null;
   private irrigationInfoPanel: IrrigationInfoPanel | null = null;
   private irrigationSchedulePanel: IrrigationSchedulePanel | null = null;
+  private irrigationTool: "pipe" | "sprinkler" | "delete" | "info" | null = null;
+  private selectedPipeType: PipeType = "pvc";
+  private selectedSprinklerType: SprinklerType = "fixed";
 
   constructor(scene: Scene, state: GameState, systems: UIPanelSystems) {
     this.scene = scene;
@@ -105,6 +132,7 @@ export class UIPanelCoordinator {
     this.setupEquipmentStorePanel();
     this.setupAmenityPanel();
     this.setupWalkOnQueuePanel();
+    this.setupCourseLayoutPanel();
     this.setupIrrigationUI();
     this.setupPriceCallback();
   }
@@ -526,6 +554,21 @@ export class UIPanelCoordinator {
     });
   }
 
+  private setupCourseLayoutPanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
+      "CourseLayoutUI",
+      true,
+      this.scene
+    );
+
+    this.courseLayoutPanel = new CourseLayoutPanel(uiTexture, {
+      onClose: () => {
+        this.courseLayoutPanel?.hide();
+      },
+    });
+    this.courseLayoutPanel.update(this.state.currentCourse?.holes ?? []);
+  }
+
   private setupIrrigationUI(): void {
     const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
       "IrrigationUI",
@@ -534,11 +577,32 @@ export class UIPanelCoordinator {
     );
 
     this.irrigationToolbar = new IrrigationToolbar(uiTexture, {
-      onToolSelect: () => {},
-      onPipeTypeSelect: () => {},
-      onSprinklerTypeSelect: () => {},
+      onToolSelect: (tool) => {
+        this.irrigationTool = tool;
+        if (tool) {
+          this.systems.uiManager.showNotification(
+            `Irrigation tool: ${tool.toUpperCase()}`
+          );
+        } else {
+          this.systems.uiManager.showNotification("Irrigation tool cleared");
+        }
+      },
+      onPipeTypeSelect: (type) => {
+        if (!type) return;
+        this.selectedPipeType = type;
+        this.systems.uiManager.showNotification(
+          `Pipe type: ${type.toUpperCase()}`
+        );
+      },
+      onSprinklerTypeSelect: (type) => {
+        if (!type) return;
+        this.selectedSprinklerType = type;
+        this.systems.uiManager.showNotification(
+          `Sprinkler type: ${type.toUpperCase()}`
+        );
+      },
       onClose: () => {
-        this.irrigationToolbar?.hide();
+        this.hideIrrigationPanels();
       },
     });
 
@@ -546,11 +610,45 @@ export class UIPanelCoordinator {
       onClose: () => {
         this.irrigationInfoPanel?.hide();
       },
+      onManageSchedule: (headId) => {
+        const head = this.state.irrigationSystem.sprinklerHeads.find(
+          (sprinklerHead) => sprinklerHead.id === headId
+        );
+        if (head) {
+          this.irrigationSchedulePanel?.showForSprinkler(head);
+        }
+      },
       onRepair: (x, y) => {
+        const repairCost = 20;
+        if (!canAfford(this.state.economyState, repairCost)) {
+          this.systems.uiManager.showNotification(
+            `⚠️ Not enough cash! Need $${repairCost}`,
+            "#ff4444"
+          );
+          return;
+        }
         const result = repairLeak(this.state.irrigationSystem, x, y);
         if (result) {
+          const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
+          const expenseResult = addExpense(
+            this.state.economyState,
+            repairCost,
+            "equipment_maintenance",
+            "Pipe leak repair",
+            timestamp,
+            false
+          );
+          if (expenseResult) {
+            this.state.economyState = expenseResult;
+            this.state.dailyStats.expenses.other += repairCost;
+          }
           this.state.irrigationSystem = result;
           this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+          this.systems.uiManager.showNotification(
+            `Leak repaired ($${repairCost})`
+          );
+        } else {
+          this.systems.uiManager.showNotification("No leak to repair");
         }
       },
     });
@@ -558,6 +656,33 @@ export class UIPanelCoordinator {
     this.irrigationSchedulePanel = new IrrigationSchedulePanel(uiTexture, {
       onClose: () => {
         this.irrigationSchedulePanel?.hide();
+      },
+      onScheduleUpdate: (headId, schedule) => {
+        const currentHeads = this.state.irrigationSystem.sprinklerHeads ?? [];
+        const currentHead = currentHeads.find((head) => head.id === headId);
+        if (!currentHead) {
+          this.irrigationSchedulePanel?.hide();
+          this.irrigationInfoPanel?.hide();
+          this.systems.uiManager.showNotification("Sprinkler no longer exists");
+          return;
+        }
+
+        this.state.irrigationSystem = updateSprinklerSchedule(
+          this.state.irrigationSystem,
+          headId,
+          schedule
+        );
+        this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+        const updatedHead = (this.state.irrigationSystem.sprinklerHeads ?? []).find(
+          (head) => head.id === headId
+        );
+        if (updatedHead) {
+          this.irrigationInfoPanel?.showSprinklerInfo(
+            updatedHead,
+            this.getSprinklerPressureLevel(updatedHead.gridX, updatedHead.gridY)
+          );
+        }
+        this.systems.uiManager.showNotification("Updated sprinkler schedule");
       },
     });
   }
@@ -662,6 +787,314 @@ export class UIPanelCoordinator {
     }
   }
 
+  handleCourseLayoutPanel(): void {
+    if (this.courseLayoutPanel?.isVisible()) {
+      this.courseLayoutPanel.hide();
+      return;
+    }
+
+    const holes = this.state.currentCourse?.holes ?? [];
+    this.courseLayoutPanel?.update(holes);
+    this.courseLayoutPanel?.show();
+  }
+
+  refreshCourseLayoutPanel(): void {
+    if (!this.courseLayoutPanel?.isVisible()) return;
+    this.courseLayoutPanel.update(this.state.currentCourse?.holes ?? []);
+  }
+
+  toggleIrrigationToolbar(): void {
+    if (!this.irrigationToolbar) return;
+
+    if (this.irrigationToolbar.isVisible()) {
+      this.hideIrrigationPanels();
+      return;
+    }
+
+    this.ensureIrrigationWaterSource();
+    this.irrigationTool = null;
+    this.irrigationToolbar.resetToolSelection();
+    this.irrigationToolbar.show();
+    this.irrigationInfoPanel?.hide();
+    this.irrigationSchedulePanel?.hide();
+  }
+
+  hideIrrigationPanels(): void {
+    this.irrigationToolbar?.hide();
+    this.irrigationToolbar?.resetToolSelection();
+    this.irrigationInfoPanel?.hide();
+    this.irrigationSchedulePanel?.hide();
+    this.irrigationTool = null;
+  }
+
+  handleIrrigationGridAction(gridX: number, gridY: number): void {
+    if (!this.irrigationToolbar?.isVisible()) return;
+    if (!this.irrigationTool) {
+      this.systems.uiManager.showNotification(
+        "Select Pipe, Sprinkler, Delete, or Info first"
+      );
+      return;
+    }
+
+    if (this.irrigationTool === "pipe") {
+      this.handlePipePlacement(gridX, gridY);
+      return;
+    }
+
+    if (this.irrigationTool === "sprinkler") {
+      this.handleSprinklerPlacement(gridX, gridY);
+      return;
+    }
+
+    if (this.irrigationTool === "delete") {
+      this.handleIrrigationDelete(gridX, gridY);
+      return;
+    }
+
+    if (this.irrigationTool === "info") {
+      this.showIrrigationInfo(gridX, gridY);
+    }
+  }
+
+  isIrrigationToolbarVisible(): boolean {
+    return this.irrigationToolbar?.isVisible() ?? false;
+  }
+
+  isModalDialogVisible(): boolean {
+    return (
+      (this.employeePanel?.isVisible() ?? false) ||
+      (this.researchPanel?.isVisible() ?? false) ||
+      (this.daySummaryPopup?.isVisible() ?? false) ||
+      (this.teeSheetPanel?.isVisible() ?? false) ||
+      (this.marketingDashboard?.isVisible() ?? false) ||
+      (this.equipmentStorePanel?.isVisible() ?? false) ||
+      (this.amenityPanel?.isVisible() ?? false) ||
+      (this.walkOnQueuePanel?.isVisible() ?? false) ||
+      (this.courseLayoutPanel?.isVisible() ?? false) ||
+      (this.irrigationSchedulePanel?.isVisible() ?? false)
+    );
+  }
+
+  isIrrigationUIBlockingPointer(screenX: number, screenY: number): boolean {
+    const canvas = this.scene?.getEngine?.()?.getRenderingCanvas?.();
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const x = screenX - rect.left;
+    const y = screenY - rect.top;
+
+    const isInside = (
+      left: number,
+      top: number,
+      width: number,
+      height: number
+    ): boolean => x >= left && x <= left + width && y >= top && y <= top + height;
+
+    if (
+      this.irrigationToolbar?.isVisible() &&
+      isInside(
+        IRRIGATION_TOOLBAR_BOUNDS.left,
+        IRRIGATION_TOOLBAR_BOUNDS.top,
+        IRRIGATION_TOOLBAR_BOUNDS.width,
+        IRRIGATION_TOOLBAR_BOUNDS.height
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      this.irrigationInfoPanel?.isVisible() &&
+      isInside(
+        rect.width -
+          (IRRIGATION_INFO_PANEL_BOUNDS.width + IRRIGATION_INFO_PANEL_BOUNDS.right),
+        IRRIGATION_INFO_PANEL_BOUNDS.top,
+        IRRIGATION_INFO_PANEL_BOUNDS.width,
+        IRRIGATION_INFO_PANEL_BOUNDS.height
+      )
+    ) {
+      return true;
+    }
+
+    if (this.irrigationSchedulePanel?.isVisible()) {
+      const panelWidth = IRRIGATION_SCHEDULE_PANEL_BOUNDS.width;
+      const panelHeight = IRRIGATION_SCHEDULE_PANEL_BOUNDS.height;
+      const left = rect.width / 2 - panelWidth / 2;
+      const top = rect.height / 2 - panelHeight / 2;
+      if (isInside(left, top, panelWidth, panelHeight)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private ensureIrrigationWaterSource(): void {
+    if (this.state.irrigationSystem.waterSources.length > 0) return;
+
+    const maxX = Math.max(0, this.state.currentCourse.width - 1);
+    const maxY = Math.max(0, this.state.currentCourse.height - 1);
+    const defaultSource =
+      getRuntimeRefillStationsFromState(this.state)[0] ?? {
+        x: Math.floor(this.state.currentCourse.width / 2),
+        y: Math.floor(this.state.currentCourse.height / 2),
+      };
+    const sourceX = Math.min(Math.max(0, defaultSource.x), maxX);
+    const sourceY = Math.min(Math.max(0, defaultSource.y), maxY);
+
+    this.state.irrigationSystem = addWaterSource(
+      this.state.irrigationSystem,
+      "municipal",
+      sourceX,
+      sourceY
+    );
+    this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+    this.systems.uiManager.showNotification("Municipal water source connected");
+  }
+
+  private handlePipePlacement(gridX: number, gridY: number): void {
+    const existingPipe = getPipeAt(this.state.irrigationSystem, gridX, gridY);
+    if (existingPipe) {
+      this.systems.uiManager.showNotification("Pipe already exists here");
+      return;
+    }
+
+    const cost = PIPE_CONFIGS[this.selectedPipeType].cost;
+    if (!canAfford(this.state.economyState, cost)) {
+      this.systems.uiManager.showNotification(
+        `⚠️ Need $${cost} to place ${this.selectedPipeType} pipe`,
+        "#ff4444"
+      );
+      return;
+    }
+
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
+    this.state.irrigationSystem = addPipe(
+      this.state.irrigationSystem,
+      gridX,
+      gridY,
+      this.selectedPipeType,
+      timestamp
+    );
+
+    const expenseResult = addExpense(
+      this.state.economyState,
+      cost,
+      "construction",
+      `Pipe installation: ${this.selectedPipeType}`,
+      timestamp,
+      false
+    );
+    if (expenseResult) {
+      this.state.economyState = expenseResult;
+      this.state.dailyStats.expenses.other += cost;
+    }
+
+    this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+    this.systems.uiManager.showNotification(
+      `Placed ${this.selectedPipeType.toUpperCase()} pipe ($${cost})`
+    );
+  }
+
+  private handleSprinklerPlacement(gridX: number, gridY: number): void {
+    const existingHead = getSprinklerHeadAt(this.state.irrigationSystem, gridX, gridY);
+    if (existingHead) {
+      this.systems.uiManager.showNotification("Sprinkler already exists here");
+      return;
+    }
+
+    const installCost = SPRINKLER_CONFIGS[this.selectedSprinklerType].cost + 20;
+    if (!canAfford(this.state.economyState, installCost)) {
+      this.systems.uiManager.showNotification(
+        `⚠️ Need $${installCost} to place ${this.selectedSprinklerType} sprinkler`,
+        "#ff4444"
+      );
+      return;
+    }
+
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
+    this.state.irrigationSystem = addSprinklerHead(
+      this.state.irrigationSystem,
+      gridX,
+      gridY,
+      this.selectedSprinklerType,
+      timestamp
+    );
+
+    const expenseResult = addExpense(
+      this.state.economyState,
+      installCost,
+      "construction",
+      `Sprinkler installation: ${this.selectedSprinklerType}`,
+      timestamp,
+      false
+    );
+    if (expenseResult) {
+      this.state.economyState = expenseResult;
+      this.state.dailyStats.expenses.other += installCost;
+    }
+
+    this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+    this.systems.uiManager.showNotification(
+      `Placed ${this.selectedSprinklerType.toUpperCase()} sprinkler ($${installCost})`
+    );
+  }
+
+  private handleIrrigationDelete(gridX: number, gridY: number): void {
+    const sprinkler = getSprinklerHeadAt(this.state.irrigationSystem, gridX, gridY);
+    if (sprinkler) {
+      this.state.irrigationSystem = removeSprinklerHead(
+        this.state.irrigationSystem,
+        sprinkler.id
+      );
+      this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+      this.systems.uiManager.showNotification("Removed sprinkler");
+      this.irrigationInfoPanel?.hide();
+      this.irrigationSchedulePanel?.hide();
+      return;
+    }
+
+    const pipe = getPipeAt(this.state.irrigationSystem, gridX, gridY);
+    if (pipe) {
+      this.state.irrigationSystem = removePipe(
+        this.state.irrigationSystem,
+        gridX,
+        gridY
+      );
+      this.systems.irrigationRenderSystem?.update(this.state.irrigationSystem);
+      this.systems.uiManager.showNotification("Removed pipe");
+      this.irrigationInfoPanel?.hide();
+      this.irrigationSchedulePanel?.hide();
+      return;
+    }
+
+    this.systems.uiManager.showNotification("No irrigation part at this tile");
+  }
+
+  private showIrrigationInfo(gridX: number, gridY: number): void {
+    const sprinkler = getSprinklerHeadAt(this.state.irrigationSystem, gridX, gridY);
+    if (sprinkler) {
+      this.irrigationInfoPanel?.showSprinklerInfo(
+        sprinkler,
+        this.getSprinklerPressureLevel(gridX, gridY)
+      );
+      return;
+    }
+
+    const pipe = getPipeAt(this.state.irrigationSystem, gridX, gridY);
+    if (pipe) {
+      this.irrigationInfoPanel?.showPipeInfo(pipe);
+      return;
+    }
+
+    this.irrigationInfoPanel?.hide();
+    this.irrigationSchedulePanel?.hide();
+    this.systems.uiManager.showNotification("No irrigation component here");
+  }
+
+  private getSprinklerPressureLevel(gridX: number, gridY: number): number {
+    const pipe = getPipeAt(this.state.irrigationSystem, gridX, gridY);
+    return pipe?.pressureLevel ?? 0;
+  }
+
   showDaySummary(data: DaySummaryData): void {
     this.daySummaryPopup?.show(data);
     this.systems.pauseGame();
@@ -696,6 +1129,7 @@ export class UIPanelCoordinator {
     this.equipmentStorePanel?.dispose();
     this.amenityPanel?.dispose();
     this.walkOnQueuePanel?.dispose();
+    this.courseLayoutPanel?.dispose();
     this.irrigationToolbar?.dispose();
     this.irrigationInfoPanel?.dispose();
     this.irrigationSchedulePanel?.dispose();
