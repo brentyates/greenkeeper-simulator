@@ -971,6 +971,7 @@ export class BabylonMain {
         this.uiManager.isPauseMenuVisible() ||
         this.uiPanelCoordinator.isModalDialogVisible() ||
         this.uiPanelCoordinator.isIrrigationUIBlockingPointer(x, y) ||
+        this.uiPanelCoordinator.isEntityInspectorBlockingPointer(x, y) ||
         this.isHoleBuilderUIBlockingPointer(x, y),
       isEditorActive: () => this.terrainEditorController.isEnabled(),
       isEdgeModeActive: () => editorSystem()?.getTopologyMode() === 'edge',
@@ -1101,6 +1102,11 @@ export class BabylonMain {
       return;
     }
 
+    if (this.handleEntityClick(screenX, screenY)) {
+      return;
+    }
+
+    this.uiPanelCoordinator.hideEntityInspector();
     this.playerController.handleClick(screenX, screenY);
   }
 
@@ -1124,6 +1130,35 @@ export class BabylonMain {
 
     this.uiPanelCoordinator.handleIrrigationGridAction(gridX, gridY);
     return true;
+  }
+
+  private handleEntityClick(screenX: number, screenY: number): boolean {
+    if (this.uiPanelCoordinator.isEntityInspectorBlockingPointer(screenX, screenY)) {
+      return true;
+    }
+
+    const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
+    if (!world) return false;
+
+    let bestDist = 1.5;
+    let candidate: typeof this.state.autonomousState.robots[number] | null = null;
+
+    for (const robot of this.state.autonomousState.robots) {
+      const dx = robot.worldX - world.x;
+      const dz = robot.worldZ - world.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < bestDist) {
+        bestDist = dist;
+        candidate = robot;
+      }
+    }
+
+    if (candidate) {
+      this.uiPanelCoordinator.showRobotInspector(candidate);
+      return true;
+    }
+
+    return false;
   }
 
   private applyEquipmentEffect(x: number, y: number): void {
@@ -1346,6 +1381,18 @@ export class BabylonMain {
 
       this.updateZoom(deltaMs);
       this.robotVisualSystem?.update(this.state.autonomousState.robots);
+
+      if (this.uiPanelCoordinator.isEntityInspectorVisible()) {
+        const trackedId = this.uiPanelCoordinator.getEntityInspectorTrackedRobotId();
+        if (trackedId) {
+          const tracked = this.state.autonomousState.robots.find(r => r.id === trackedId);
+          if (tracked) {
+            this.uiPanelCoordinator.updateEntityInspector(tracked);
+          } else {
+            this.uiPanelCoordinator.hideEntityInspector();
+          }
+        }
+      }
 
       if (this.state.isPaused) {
         return;
@@ -1734,6 +1781,7 @@ export class BabylonMain {
       updatePlayerPosition: () => this.playerController.updatePlayerPosition(),
       saveCurrentGame: () => this.saveCurrentGame(),
       hasSavedGame: () => this.hasSavedGame(),
+      showRobotInspector: (robot) => this.uiPanelCoordinator.showRobotInspector(robot),
     };
     return new GameAPI(this.state, gameSystems);
   }

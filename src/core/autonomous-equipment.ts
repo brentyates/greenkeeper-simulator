@@ -10,12 +10,18 @@ import {
 } from './work-priority';
 import {
   advanceTowardPoint,
-  isDirectSegmentTraversable,
+  findPath,
+  type PathPoint,
   type TraversalRule,
 } from './navigation';
 
 export type RobotType = 'mower' | 'sprayer' | 'spreader' | 'raker';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
+
+export interface Waypoint {
+  readonly x: number;
+  readonly z: number;
+}
 
 export interface RobotUnit {
   readonly id: string;
@@ -29,6 +35,8 @@ export interface RobotUnit {
   readonly state: RobotState;
   readonly targetX: number | null;
   readonly targetY: number | null;
+  readonly path: readonly Waypoint[] | null;
+  readonly pathIndex: number;
   readonly breakdownTimeRemaining: number;
 }
 
@@ -104,6 +112,8 @@ export function purchaseRobot(
     state: 'idle',
     targetX: null,
     targetY: null,
+    path: null,
+    pathIndex: 0,
     breakdownTimeRemaining: 0,
   };
 
@@ -150,13 +160,22 @@ function targetKey(worldX: number, worldZ: number): string {
   return `${Math.floor(worldX)},${Math.floor(worldZ)}`;
 }
 
-const MAX_PATH_CHECK_CANDIDATES = 8;
-const NEARBY_FALLBACK_DISTANCE = 12;
+const MAX_PATH_CHECK_CANDIDATES = 12;
 const PARKING_RING_RADII: readonly number[] = [0, 1.25, 2.5, 3.75];
 const PARKING_RING_SLOTS = 10;
+const BREAKDOWN_RATE_BALANCE_MULTIPLIER = 0.2;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function getBreakdownChanceForElapsedHours(
+  hourlyRate: number,
+  hoursElapsed: number
+): number {
+  if (hourlyRate <= 0 || hoursElapsed <= 0) return 0;
+  // Poisson process: convert per-hour hazard into per-tick probability.
+  return 1 - Math.exp(-hourlyRate * hoursElapsed);
 }
 
 function hashString(value: string): number {
@@ -409,7 +428,7 @@ export function getAllowedTerrainCodesForRobotEquipment(
 ): readonly number[] | null {
   if (type === 'mower') {
     if (equipmentId.includes('mower_fairway')) {
-      return [TERRAIN_CODES.FAIRWAY];
+      return [TERRAIN_CODES.FAIRWAY, TERRAIN_CODES.TEE];
     }
     if (equipmentId.includes('mower_greens')) {
       return [TERRAIN_CODES.GREEN];
@@ -451,8 +470,40 @@ function findNeedsWork(
   currentX: number,
   currentZ: number,
   claimedTargets: Set<string>,
-  canTraverse?: RobotTraversalRule,
 ): { x: number; z: number } | null {
+  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets);
+  return pool.length > 0 ? { x: pool[0].x, z: pool[0].z } : null;
+}
+
+const LONG_RANGE_DISTANCE = 30;
+const LONG_RANGE_GRID_STEP = 2;
+
+function findReachableWork(
+  candidates: WorkCandidate[],
+  robot: RobotUnit,
+  currentX: number,
+  currentZ: number,
+  claimedTargets: Set<string>,
+  canTraverse: RobotTraversalRule
+): { x: number; z: number; path: readonly PathPoint[] } | null {
+  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets);
+  const limit = pool.length;
+  for (let i = 0; i < limit; i++) {
+    const target = pool[i];
+    const gridStep = target.distance > LONG_RANGE_DISTANCE ? LONG_RANGE_GRID_STEP : undefined;
+    const path = findPath(robot, currentX, currentZ, target.x, target.z, canTraverse, gridStep);
+    if (path) return { x: target.x, z: target.z, path };
+  }
+  return null;
+}
+
+function rankWorkCandidates(
+  candidates: WorkCandidate[],
+  robot: RobotUnit,
+  currentX: number,
+  currentZ: number,
+  claimedTargets: Set<string>,
+): RankedRobotTarget[] {
   const type = robot.type;
   const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(robot.equipmentId, type);
   const rankedTargets: RankedRobotTarget[] = [];
@@ -464,13 +515,12 @@ function findNeedsWork(
     const focusedCandidate = projectCandidateForRobot(c, type, allowedTerrainCodes);
     if (!focusedCandidate) continue;
     if (claimedTargets.has(targetKey(focusedCandidate.targetX, focusedCandidate.targetZ))) continue;
-    if (canTraverse && !canTraverse(robot, focusedCandidate.targetX, focusedCandidate.targetZ)) continue;
 
     const distance =
       Math.abs(focusedCandidate.targetX - currentX) +
       Math.abs(focusedCandidate.targetZ - currentZ);
     const urgency = getActionUrgency(type, focusedCandidate.urgencyCandidate);
-    if (urgency <= 0) continue;
+    if (urgency < 1) continue;
     const scoredCandidate: RankedRobotTarget = {
       x: focusedCandidate.targetX,
       z: focusedCandidate.targetZ,
@@ -494,20 +544,27 @@ function findNeedsWork(
     );
   }
 
-  const pool = rankedExtremeTargets.length > 0 ? rankedExtremeTargets : rankedTargets;
-  if (pool.length === 0) {
-    return null;
-  }
+  return rankedExtremeTargets.length > 0 ? rankedExtremeTargets : rankedTargets;
+}
 
-  for (const candidate of pool) {
-    if (isDirectSegmentTraversable(robot, currentX, currentZ, candidate.x, candidate.z, canTraverse)) {
-      return { x: candidate.x, z: candidate.z };
-    }
+function hasWorkAtPosition(
+  candidates: WorkCandidate[],
+  robot: RobotUnit,
+  worldX: number,
+  worldZ: number,
+): boolean {
+  const type = robot.type;
+  const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(robot.equipmentId, type);
+  const key = targetKey(worldX, worldZ);
+  for (const c of candidates) {
+    if (isWaterOnlyCandidate(c)) continue;
+    const focused = projectCandidateForRobot(c, type, allowedTerrainCodes);
+    if (!focused) continue;
+    if (targetKey(focused.targetX, focused.targetZ) !== key) continue;
+    const urgency = getActionUrgency(type, focused.urgencyCandidate);
+    if (urgency >= 1) return true;
   }
-
-  const nearbyFallback = pool.find(candidate => candidate.distance <= NEARBY_FALLBACK_DISTANCE);
-  const fallback = nearbyFallback ?? pool[0];
-  return { x: fallback.x, z: fallback.z };
+  return false;
 }
 
 function moveToward(
@@ -527,6 +584,89 @@ function moveToward(
     speed * deltaMinutes,
     canTraverse
   );
+}
+
+function followPath(
+  robot: RobotUnit,
+  speed: number,
+  deltaMinutes: number,
+  canTraverse?: RobotTraversalRule
+): { worldX: number; worldZ: number; arrived: boolean; blocked: boolean; newPathIndex: number } {
+  const path = robot.path!;
+  let idx = robot.pathIndex;
+  let cx = robot.worldX;
+  let cz = robot.worldZ;
+  let remaining = speed * deltaMinutes;
+
+  while (remaining > 1e-6 && idx < path.length) {
+    const wp = path[idx];
+    const dx = wp.x - cx;
+    const dz = wp.z - cz;
+    const dist = Math.hypot(dx, dz);
+
+    if (dist <= 1e-6) {
+      idx++;
+      continue;
+    }
+
+    const stepDistance = Math.min(dist, remaining);
+    const t = stepDistance / dist;
+    const nextX = cx + dx * t;
+    const nextZ = cz + dz * t;
+    if (canTraverse && !canTraverse(robot, nextX, nextZ)) {
+      return {
+        worldX: cx,
+        worldZ: cz,
+        arrived: false,
+        blocked: true,
+        newPathIndex: idx,
+      };
+    }
+    cx = nextX;
+    cz = nextZ;
+    remaining -= stepDistance;
+    if (stepDistance + 1e-6 >= dist) {
+      idx++;
+    }
+  }
+
+  const arrived = idx >= path.length;
+  return { worldX: cx, worldZ: cz, arrived, blocked: false, newPathIndex: idx };
+}
+
+function findAlternateTargetAfterBlock(
+  robot: RobotUnit,
+  candidates: WorkCandidate[],
+  worldX: number,
+  worldZ: number,
+  claimedTargets: Set<string>,
+  blockedKey: string,
+  canTraverse?: RobotTraversalRule
+): { x: number; z: number; path?: readonly PathPoint[] } | null {
+  const blockedClaims = new Set(claimedTargets);
+  blockedClaims.add(blockedKey);
+  blockedClaims.add(targetKey(worldX, worldZ));
+  if (canTraverse) {
+    const alternate = findReachableWork(
+      candidates,
+      robot,
+      worldX,
+      worldZ,
+      blockedClaims,
+      canTraverse
+    );
+    if (alternate) return alternate;
+  } else {
+    const alternate = findNeedsWork(
+      candidates,
+      robot,
+      worldX,
+      worldZ,
+      blockedClaims
+    );
+    if (alternate) return alternate;
+  }
+  return null;
 }
 
 function tickRobot(
@@ -569,11 +709,18 @@ function tickRobot(
   const hoursElapsed = deltaMinutes / 60;
   operatingCost = (robot.stats.operatingCostPerHour ?? 0) * hoursElapsed;
 
-  const breakdownRate = fleetAIActive
-    ? (robot.stats.breakdownRate ?? 0) * 0.6
-    : robot.stats.breakdownRate ?? 0;
+  const baseBreakdownRate = robot.stats.breakdownRate ?? 0;
+  const fleetAIMultiplier = fleetAIActive ? 0.6 : 1;
+  const effectiveBreakdownRate =
+    baseBreakdownRate *
+    fleetAIMultiplier *
+    BREAKDOWN_RATE_BALANCE_MULTIPLIER;
+  const breakdownChance = getBreakdownChanceForElapsedHours(
+    effectiveBreakdownRate,
+    hoursElapsed
+  );
 
-  if (breakdownRate > 0 && Math.random() < breakdownRate * hoursElapsed) {
+  if (breakdownChance > 0 && Math.random() < breakdownChance) {
     return {
       robot: {
         ...robot,
@@ -581,6 +728,8 @@ function tickRobot(
         breakdownTimeRemaining: robot.stats.repairTime ?? 60,
         targetX: null,
         targetY: null,
+        path: null,
+        pathIndex: 0,
       },
       effect: null,
       operatingCost,
@@ -591,6 +740,73 @@ function tickRobot(
   const newResource = Math.max(0, robot.resourceCurrent - resourceConsumption);
 
   if (newResource < robot.resourceMax * 0.1) {
+    let chargePath = robot.path;
+    let chargePathIndex = robot.pathIndex;
+    const isChargingTarget = robot.targetX === chargingX && robot.targetY === chargingZ;
+
+    if (!chargePath && canTraverse) {
+      const found = findPath(robot, robot.worldX, robot.worldZ, chargingX, chargingZ, canTraverse);
+      if (found) {
+        chargePath = found;
+        chargePathIndex = 0;
+      }
+    }
+
+    if (chargePath && chargePathIndex < chargePath.length) {
+      const tempRobot = isChargingTarget ? robot : {
+        ...robot,
+        path: chargePath,
+        pathIndex: chargePathIndex,
+        targetX: chargingX,
+        targetY: chargingZ,
+      };
+      const result = followPath(
+        tempRobot,
+        robot.stats.speed,
+        deltaMinutes,
+        canTraverse
+      );
+
+      if (result.arrived) {
+        return {
+          robot: {
+            ...robot,
+            worldX: result.worldX,
+            worldZ: result.worldZ,
+            state: 'charging',
+            resourceCurrent: Math.min(robot.resourceMax, newResource + deltaMinutes * 5),
+            targetX: null,
+            targetY: null,
+            path: null,
+            pathIndex: 0,
+          },
+          effect: null,
+          operatingCost,
+        };
+      }
+
+      if (result.blocked) {
+        chargePath = null;
+        chargePathIndex = 0;
+      } else {
+        return {
+          robot: {
+            ...robot,
+            worldX: result.worldX,
+            worldZ: result.worldZ,
+            state: 'moving',
+            resourceCurrent: newResource,
+            targetX: chargingX,
+            targetY: chargingZ,
+            path: chargePath,
+            pathIndex: result.newPathIndex,
+          },
+          effect: null,
+          operatingCost,
+        };
+      }
+    }
+
     const { worldX, worldZ, arrived, blocked } = moveToward(
       robot,
       chargingX,
@@ -610,6 +826,8 @@ function tickRobot(
           resourceCurrent: Math.min(robot.resourceMax, newResource + deltaMinutes * 5),
           targetX: null,
           targetY: null,
+          path: null,
+          pathIndex: 0,
         },
         effect: null,
         operatingCost,
@@ -619,10 +837,14 @@ function tickRobot(
       return {
         robot: {
           ...robot,
+          worldX,
+          worldZ,
           state: 'idle',
           resourceCurrent: newResource,
           targetX: null,
           targetY: null,
+          path: null,
+          pathIndex: 0,
         },
         effect: null,
         operatingCost,
@@ -670,17 +892,96 @@ function tickRobot(
     };
   }
 
-  if (robot.targetX === null || robot.targetY === null) {
-    const target = findNeedsWork(
-      candidates,
-      robot,
-      robot.worldX,
-      robot.worldZ,
-      claimedTargets,
-      canTraverse
+  if (robot.targetX !== null && robot.targetY !== null) {
+    const distanceToTarget = Math.hypot(
+      robot.targetX - robot.worldX,
+      robot.targetY - robot.worldZ
     );
+    if (distanceToTarget <= 0.05) {
+      const currentCellNeedsWork = hasWorkAtPosition(
+        candidates,
+        robot,
+        robot.worldX,
+        robot.worldZ
+      );
+      const settledEffect: RobotEffect | null = currentCellNeedsWork
+        ? {
+            type: robot.type,
+            equipmentId: robot.equipmentId,
+            worldX: robot.worldX,
+            worldZ: robot.worldZ,
+            efficiency: robot.stats.efficiency,
+          }
+        : null;
+      return {
+        robot: {
+          ...robot,
+          state: currentCellNeedsWork ? 'working' : 'idle',
+          resourceCurrent: newResource,
+          targetX: null,
+          targetY: null,
+          path: null,
+          pathIndex: 0,
+        },
+        effect: settledEffect,
+        operatingCost,
+      };
+    }
+  }
+
+  if (robot.targetX === null || robot.targetY === null) {
+    let target: { x: number; z: number; path?: readonly PathPoint[] } | null = null;
+
+    const currentKey = targetKey(robot.worldX, robot.worldZ);
+    const selectionClaims = new Set(claimedTargets);
+    selectionClaims.add(currentKey);
+
+    if (canTraverse) {
+      const reachable = findReachableWork(
+        candidates,
+        robot,
+        robot.worldX,
+        robot.worldZ,
+        selectionClaims,
+        canTraverse
+      );
+      if (reachable) target = { x: reachable.x, z: reachable.z, path: reachable.path };
+    } else {
+      target = findNeedsWork(
+        candidates,
+        robot,
+        robot.worldX,
+        robot.worldZ,
+        selectionClaims
+      );
+    }
+
+    const currentCellNeedsWork = hasWorkAtPosition(candidates, robot, robot.worldX, robot.worldZ);
+    const localEffect: RobotEffect | null = currentCellNeedsWork ? {
+      type: robot.type,
+      equipmentId: robot.equipmentId,
+      worldX: robot.worldX,
+      worldZ: robot.worldZ,
+      efficiency: robot.stats.efficiency,
+    } : null;
 
     if (!target) {
+      if (localEffect) {
+        return {
+          robot: {
+            ...robot,
+            state: 'working',
+            resourceCurrent: newResource,
+            targetX: null,
+            targetY: null,
+            path: null,
+            pathIndex: 0,
+          },
+          effect: localEffect,
+          operatingCost,
+        };
+      }
+
       const parkingTarget = getIdleParkingTarget(
         robot,
         chargingX,
@@ -709,6 +1010,8 @@ function tickRobot(
             resourceCurrent: newResource,
             targetX: null,
             targetY: null,
+            path: null,
+            pathIndex: 0,
           },
           effect: null,
           operatingCost,
@@ -724,11 +1027,14 @@ function tickRobot(
           resourceCurrent: newResource,
           targetX: null,
           targetY: null,
+          path: null,
+          pathIndex: 0,
         },
         effect: null,
         operatingCost,
       };
     }
+
     claimedTargets.add(targetKey(target.x, target.z));
 
     return {
@@ -738,50 +1044,91 @@ function tickRobot(
         resourceCurrent: newResource,
         targetX: target.x,
         targetY: target.z,
+        path: target.path ?? null,
+        pathIndex: 0,
       },
-      effect: null,
+      effect: localEffect,
       operatingCost,
     };
   }
 
-  const { worldX, worldZ, arrived, blocked } = moveToward(
-    robot,
-    robot.targetX,
-    robot.targetY,
-    robot.stats.speed,
-    deltaMinutes,
-    canTraverse
-  );
-  if (blocked) {
-    const blockedTargetX = robot.targetX;
-    const blockedTargetY = robot.targetY;
-    const blockedKey = targetKey(blockedTargetX, blockedTargetY);
-    claimedTargets.delete(blockedKey);
+  if (robot.path && robot.pathIndex < robot.path.length) {
+    const result = followPath(robot, robot.stats.speed, deltaMinutes, canTraverse);
 
-    const blockedClaims = new Set(claimedTargets);
-    blockedClaims.add(blockedKey);
-    const alternateTarget = findNeedsWork(
-      candidates,
-      robot,
-      worldX,
-      worldZ,
-      blockedClaims,
-      canTraverse
-    );
+    const movedThisStep =
+      Math.abs(result.worldX - robot.worldX) > 1e-6 ||
+      Math.abs(result.worldZ - robot.worldZ) > 1e-6;
+    const movementEffect: RobotEffect = {
+      type: robot.type,
+      equipmentId: robot.equipmentId,
+      worldX: result.worldX,
+      worldZ: result.worldZ,
+      efficiency: robot.stats.efficiency,
+    };
 
-    if (alternateTarget) {
-      claimedTargets.add(targetKey(alternateTarget.x, alternateTarget.z));
+    if (result.blocked) {
+      const blockedTargetX = robot.targetX ?? result.worldX;
+      const blockedTargetY = robot.targetY ?? result.worldZ;
+      const blockedKey = targetKey(blockedTargetX, blockedTargetY);
+      claimedTargets.delete(blockedKey);
+      const alternateTarget = findAlternateTargetAfterBlock(
+        robot,
+        candidates,
+        result.worldX,
+        result.worldZ,
+        claimedTargets,
+        blockedKey,
+        canTraverse
+      );
+      if (alternateTarget) {
+        claimedTargets.add(targetKey(alternateTarget.x, alternateTarget.z));
+        return {
+          robot: {
+            ...robot,
+            worldX: result.worldX,
+            worldZ: result.worldZ,
+            state: 'moving',
+            resourceCurrent: newResource,
+            targetX: alternateTarget.x,
+            targetY: alternateTarget.z,
+            path: alternateTarget.path ?? null,
+            pathIndex: 0,
+          },
+          effect: movedThisStep ? movementEffect : null,
+          operatingCost,
+        };
+      }
       return {
         robot: {
           ...robot,
-          worldX,
-          worldZ,
-          state: 'moving',
+          worldX: result.worldX,
+          worldZ: result.worldZ,
+          state: 'idle',
           resourceCurrent: newResource,
-          targetX: alternateTarget.x,
-          targetY: alternateTarget.z,
+          targetX: null,
+          targetY: null,
+          path: null,
+          pathIndex: 0,
         },
-        effect: null,
+        effect: movedThisStep ? movementEffect : null,
+        operatingCost,
+      };
+    }
+
+    if (result.arrived) {
+      return {
+        robot: {
+          ...robot,
+          worldX: result.worldX,
+          worldZ: result.worldZ,
+          state: 'working',
+          resourceCurrent: newResource,
+          targetX: null,
+          targetY: null,
+          path: null,
+          pathIndex: 0,
+        },
+        effect: movementEffect,
         operatingCost,
       };
     }
@@ -789,17 +1136,135 @@ function tickRobot(
     return {
       robot: {
         ...robot,
-        worldX,
-        worldZ,
+        worldX: result.worldX,
+        worldZ: result.worldZ,
+        state: 'moving',
+        resourceCurrent: newResource,
+        pathIndex: result.newPathIndex,
+      },
+      effect: movementEffect,
+      operatingCost,
+    };
+  }
+
+  if (canTraverse) {
+    const repath = findPath(robot, robot.worldX, robot.worldZ, robot.targetX, robot.targetY, canTraverse);
+    if (repath) {
+      const repathedRobot: RobotUnit = { ...robot, path: repath, pathIndex: 0 };
+      const result = followPath(
+        repathedRobot,
+        robot.stats.speed,
+        deltaMinutes,
+        canTraverse
+      );
+      const movementEffect: RobotEffect = {
+        type: robot.type,
+        equipmentId: robot.equipmentId,
+        worldX: result.worldX,
+        worldZ: result.worldZ,
+        efficiency: robot.stats.efficiency,
+      };
+      if (result.blocked) {
+        const blockedTargetX = robot.targetX ?? result.worldX;
+        const blockedTargetY = robot.targetY ?? result.worldZ;
+        const blockedKey = targetKey(blockedTargetX, blockedTargetY);
+        claimedTargets.delete(blockedKey);
+        const alternateTarget = findAlternateTargetAfterBlock(
+          robot,
+          candidates,
+          result.worldX,
+          result.worldZ,
+          claimedTargets,
+          blockedKey,
+          canTraverse
+        );
+        if (alternateTarget) {
+          claimedTargets.add(targetKey(alternateTarget.x, alternateTarget.z));
+          return {
+            robot: {
+              ...robot,
+              worldX: result.worldX,
+              worldZ: result.worldZ,
+              state: 'moving',
+              resourceCurrent: newResource,
+              targetX: alternateTarget.x,
+              targetY: alternateTarget.z,
+              path: alternateTarget.path ?? null,
+              pathIndex: 0,
+            },
+            effect: null,
+            operatingCost,
+          };
+        }
+        return {
+          robot: {
+            ...robot,
+            worldX: result.worldX,
+            worldZ: result.worldZ,
+            state: 'idle',
+            resourceCurrent: newResource,
+            targetX: null,
+            targetY: null,
+            path: null,
+            pathIndex: 0,
+          },
+          effect: null,
+          operatingCost,
+        };
+      }
+      if (result.arrived) {
+        return {
+          robot: {
+            ...robot,
+            worldX: result.worldX,
+            worldZ: result.worldZ,
+            state: 'working',
+            resourceCurrent: newResource,
+            targetX: null,
+            targetY: null,
+            path: null,
+            pathIndex: 0,
+          },
+          effect: movementEffect,
+          operatingCost,
+        };
+      }
+      return {
+        robot: {
+          ...robot,
+          worldX: result.worldX,
+          worldZ: result.worldZ,
+          state: 'moving',
+          resourceCurrent: newResource,
+          path: repath,
+          pathIndex: result.newPathIndex,
+        },
+        effect: movementEffect,
+        operatingCost,
+      };
+    }
+    return {
+      robot: {
+        ...robot,
         state: 'idle',
         resourceCurrent: newResource,
         targetX: null,
         targetY: null,
+        path: null,
+        pathIndex: 0,
       },
       effect: null,
       operatingCost,
     };
   }
+
+  const { worldX, worldZ, arrived } = moveToward(
+    robot,
+    robot.targetX,
+    robot.targetY,
+    robot.stats.speed,
+    deltaMinutes
+  );
   const movementEffect: RobotEffect = {
     type: robot.type,
     equipmentId: robot.equipmentId,
@@ -818,6 +1283,8 @@ function tickRobot(
         resourceCurrent: newResource,
         targetX: null,
         targetY: null,
+        path: null,
+        pathIndex: 0,
       },
       effect: movementEffect,
       operatingCost,
@@ -858,6 +1325,8 @@ export function tickAutonomousEquipment(
           ...updatedRobot,
           targetX: null,
           targetY: null,
+          path: null,
+          pathIndex: 0,
           state: updatedRobot.state === 'moving' || updatedRobot.state === 'working' ? 'idle' : updatedRobot.state,
         };
       } else {

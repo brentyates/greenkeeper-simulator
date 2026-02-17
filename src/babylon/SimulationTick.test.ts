@@ -1590,7 +1590,7 @@ describe("SimulationTick", () => {
       expect(systems.terrainSystem.applyWorkEffect).toHaveBeenCalledWith(
         5,
         5,
-        1.0,
+        2.0,
         "mow",
         1.0,
         expect.any(Number),
@@ -1620,7 +1620,7 @@ describe("SimulationTick", () => {
       expect(systems.terrainSystem.applyWorkEffect).toHaveBeenCalledWith(
         5,
         5,
-        1.5,
+        2.0,
         "rake",
         0.9,
         expect.any(Number),
@@ -1751,8 +1751,8 @@ describe("SimulationTick", () => {
       expect(canTraverse).toBeTypeOf("function");
 
       expect(canTraverse?.({ equipmentId: "robot_mower_greens", type: "mower" } as any, 5, 5)).toBe(true);
-      expect(canTraverse?.({ equipmentId: "robot_bunker_rake", type: "raker" } as any, 5, 5)).toBe(true);
-      expect(canTraverse?.({ equipmentId: "robot_mower_fairway", type: "mower" } as any, 5, 5)).toBe(true);
+      expect(canTraverse?.({ equipmentId: "robot_bunker_rake", type: "raker" } as any, 5, 5)).toBe(false);
+      expect(canTraverse?.({ equipmentId: "robot_mower_fairway", type: "mower" } as any, 5, 5)).toBe(false);
       expect(canTraverse?.({ equipmentId: "robot_mower_rough", type: "mower" } as any, 5, 5)).toBe(true);
       expect(canTraverse?.({ equipmentId: "robot_sprayer", type: "sprayer" } as any, 5, 5)).toBe(true);
       expect(canTraverse?.({ equipmentId: "robot_spreader", type: "spreader" } as any, 5, 5)).toBe(true);

@@ -575,14 +575,14 @@ describe('getTerrainThresholds', () => {
     expect(thresholds.growingHeight).toBe(25);
   });
 
-  it('returns default thresholds for non-grass terrain', () => {
+  it('returns zero thresholds for non-grass terrain', () => {
     const bunkerThresholds = getTerrainThresholds('bunker');
-    expect(bunkerThresholds.mownHeight).toBe(30);
-    expect(bunkerThresholds.growingHeight).toBe(60);
+    expect(bunkerThresholds.mownHeight).toBe(0);
+    expect(bunkerThresholds.growingHeight).toBe(0);
 
     const waterThresholds = getTerrainThresholds('water');
-    expect(waterThresholds.mownHeight).toBe(30);
-    expect(waterThresholds.growingHeight).toBe(60);
+    expect(waterThresholds.mownHeight).toBe(0);
+    expect(waterThresholds.growingHeight).toBe(0);
   });
 
   it('green has the strictest thresholds', () => {

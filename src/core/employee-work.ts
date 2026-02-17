@@ -12,6 +12,7 @@ import {
   isExtremeNeed,
   scoreNeedWithDistance,
 } from './work-priority';
+import { findPath } from './navigation';
 import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainSystemInterface';
 
 export type { EmployeeTask } from './movable-entity';
@@ -342,24 +343,15 @@ export function generateWaypointsToTarget(
     return [];
   }
 
-  const waypoints: GridPosition[] = [];
-  const steps = Math.ceil(dist / 5.0);
+  const entity = {};
+  const canWalk = (_e: unknown, x: number, z: number) => terrainSystem.isPositionWalkable(x, z);
+  const pathPoints = findPath(entity, startWorldX, startWorldZ, targetWorldX, targetWorldZ, canWalk);
 
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const wpX = startWorldX + dx * t;
-    const wpZ = startWorldZ + dz * t;
-
-    if (terrainSystem.isPositionWalkable(wpX, wpZ)) {
-      waypoints.push({ x: wpX, y: wpZ });
-    }
+  if (pathPoints) {
+    return pathPoints.map(p => ({ x: p.x, y: p.z }));
   }
 
-  if (waypoints.length === 0 || waypoints[waypoints.length - 1].x !== targetWorldX || waypoints[waypoints.length - 1].y !== targetWorldZ) {
-    waypoints.push({ x: targetWorldX, y: targetWorldZ });
-  }
-
-  return waypoints;
+  return [];
 }
 
 function getWorkEffect(task: EmployeeTask): 'mow' | 'water' | 'fertilize' | 'rake' | null {

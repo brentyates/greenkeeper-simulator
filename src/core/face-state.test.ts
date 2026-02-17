@@ -145,12 +145,19 @@ describe('FaceState', () => {
   });
 
   describe('simulateFaceGrowth', () => {
-    it('does not change bunker faces', () => {
-      const state = makeFace({ terrainCode: TERRAIN_CODES.BUNKER, grassHeight: 0, moisture: 20, nutrients: 0 });
+    it('degrades bunker health over time', () => {
+      const state = makeFace({ terrainCode: TERRAIN_CODES.BUNKER, grassHeight: 0, moisture: 20, nutrients: 0, health: 100 });
       const result = simulateFaceGrowth(state, 60);
       expect(result.grassHeight).toBe(0);
       expect(result.moisture).toBe(20);
       expect(result.nutrients).toBe(0);
+      expect(result.health).toBeLessThan(100);
+    });
+
+    it('bunker health reaches 0 after 24 hours', () => {
+      const state = makeFace({ terrainCode: TERRAIN_CODES.BUNKER, health: 100 });
+      const result = simulateFaceGrowth(state, 24 * 60);
+      expect(result.health).toBe(0);
     });
 
     it('does not change water faces', () => {

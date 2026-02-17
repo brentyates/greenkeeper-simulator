@@ -121,6 +121,7 @@ import {
   countWorkingRobots,
   countBrokenRobots,
   getAvailableRobotsToPurchase,
+  RobotUnit,
 } from "../core/autonomous-equipment";
 import {
   getWeatherDescription,
@@ -162,6 +163,7 @@ export interface GameSystems {
   updatePlayerPosition(): void;
   saveCurrentGame(): void;
   hasSavedGame(): boolean;
+  showRobotInspector(robot: RobotUnit): void;
 }
 
 export class GameAPI {
@@ -1560,6 +1562,13 @@ export class GameAPI {
       timestamp
     );
     this.state.economyState = incomeResult;
+    return true;
+  }
+
+  public inspectRobot(robotId: string): boolean {
+    const robot = this.state.autonomousState.robots.find(r => r.id === robotId);
+    if (!robot) return false;
+    this.systems.showRobotInspector(robot);
     return true;
   }
 

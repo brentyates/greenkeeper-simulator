@@ -49,7 +49,7 @@ export interface EquipmentStats {
   readonly isAutonomous?: boolean;   // Operates without employee
   readonly purchaseCost?: number;    // One-time purchase price
   readonly operatingCostPerHour?: number;  // Hourly cost (lower than employee wages)
-  readonly breakdownRate?: number;   // Chance per hour of breakdown (0-1)
+  readonly breakdownRate?: number;   // Base per-hour breakdown hazard (runtime balancing may scale this)
   readonly repairTime?: number;      // Minutes for mechanic to repair
 }
 

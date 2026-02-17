@@ -196,7 +196,7 @@ vi.mock("./ui/IrrigationSchedulePanel", () => ({
 
 vi.mock("@babylonjs/gui/2D/advancedDynamicTexture", () => ({
   AdvancedDynamicTexture: {
-    CreateFullscreenUI: vi.fn().mockReturnValue({}),
+    CreateFullscreenUI: vi.fn().mockReturnValue({ addControl: vi.fn(), removeControl: vi.fn() }),
   },
 }));
 

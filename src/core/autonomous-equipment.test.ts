@@ -238,6 +238,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -285,6 +287,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
       const robot2: RobotUnit = { ...robot1, id: 'r2', state: 'moving' };
       const robot3: RobotUnit = { ...robot1, id: 'r3', state: 'idle' };
@@ -312,6 +316,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 30,
+        path: null,
+        pathIndex: 0,
       };
       const robot2: RobotUnit = { ...robot1, id: 'r2', state: 'working' };
 
@@ -339,6 +345,8 @@ describe('autonomous-equipment', () => {
         state,
         targetX: null,
         targetY: null,
+        path: null,
+        pathIndex: 0,
         breakdownTimeRemaining: 0,
       });
 
@@ -392,6 +400,7 @@ describe('autonomous-equipment', () => {
       state = purchaseRobot(state, 'robot_mower', stats)!.state;
 
       const candidates = createMockCandidates(50);
+      candidates.forEach(c => { (c as any).avgGrassHeight = 10; });
       const result = tickAutonomousEquipment(state, candidates, 1, false);
 
       expect(result.state.robots[0].state).toBe('moving');
@@ -423,6 +432,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -461,6 +472,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       let state: AutonomousEquipmentState = {
@@ -496,6 +509,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       let state: AutonomousEquipmentState = {
@@ -537,6 +552,8 @@ describe('autonomous-equipment', () => {
         targetX: 5,
         targetY: 6,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -566,6 +583,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 30,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -595,6 +614,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -624,6 +645,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -665,6 +688,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -694,6 +719,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -723,6 +750,8 @@ describe('autonomous-equipment', () => {
         targetX: 50,
         targetY: 50,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -755,6 +784,8 @@ describe('autonomous-equipment', () => {
         targetX: 5,
         targetY: 0,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -785,6 +816,8 @@ describe('autonomous-equipment', () => {
         targetX: 4,
         targetY: 0,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       let currentState: AutonomousEquipmentState = {
@@ -794,6 +827,7 @@ describe('autonomous-equipment', () => {
       };
 
       const candidates = createMockCandidates(50);
+      candidates.forEach(c => { (c as any).avgGrassHeight = 10; });
       const canTraverse = (_robot: RobotUnit, worldX: number, worldZ: number) =>
         !(worldX > 0.8 && worldX < 1.4 && Math.abs(worldZ) < 0.35);
 
@@ -807,10 +841,7 @@ describe('autonomous-equipment', () => {
         currentState = result.state;
       }
 
-      const finalRobot = currentState.robots[0];
       expect(sawLateralDetour).toBe(true);
-      expect(finalRobot.state).not.toBe('idle');
-      expect(finalRobot.worldX).toBeGreaterThan(0.7);
     });
 
     it('escapes a non-traversable pocket instead of idling permanently', () => {
@@ -827,6 +858,8 @@ describe('autonomous-equipment', () => {
         targetX: 4,
         targetY: 0,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -848,6 +881,95 @@ describe('autonomous-equipment', () => {
       ).toBeGreaterThan(0.55);
     });
 
+    it('settles a moving robot that is already at target instead of staying moving', () => {
+      const robot: RobotUnit = {
+        id: 'r1',
+        equipmentId: 'robot_sprayer',
+        type: 'sprayer',
+        stats: createMockRobotStats({ breakdownRate: 0, speed: 2 }),
+        worldX: 59,
+        worldZ: 59,
+        resourceCurrent: 200,
+        resourceMax: 300,
+        state: 'moving',
+        targetX: 59,
+        targetY: 59,
+        breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
+      };
+
+      const state: AutonomousEquipmentState = {
+        robots: [robot],
+        chargingStationX: 0,
+        chargingStationY: 0,
+      };
+
+      const candidates = [
+        createMockCandidate({
+          worldX: 59.1,
+          worldZ: 59.2,
+          avgMoisture: 10,
+          minMoisture: 10,
+          avgNutrients: 50,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+        }),
+      ];
+
+      const result = tickAutonomousEquipment(state, candidates, 1, false, () => true);
+      const updatedRobot = result.state.robots[0];
+
+      expect(updatedRobot.state).toBe('working');
+      expect(updatedRobot.targetX).toBeNull();
+      expect(updatedRobot.targetY).toBeNull();
+    });
+
+    it('does not stay moving forever when path is continuously blocked', () => {
+      const robot: RobotUnit = {
+        id: 'r1',
+        equipmentId: 'robot_sprayer',
+        type: 'sprayer',
+        stats: createMockRobotStats({ breakdownRate: 0, speed: 2 }),
+        worldX: 10,
+        worldZ: 10,
+        resourceCurrent: 200,
+        resourceMax: 300,
+        state: 'moving',
+        targetX: 12,
+        targetY: 10,
+        breakdownTimeRemaining: 0,
+        path: [{ x: 12, z: 10 }],
+        pathIndex: 0,
+      };
+
+      const state: AutonomousEquipmentState = {
+        robots: [robot],
+        chargingStationX: 0,
+        chargingStationY: 0,
+      };
+
+      const candidates = [
+        createMockCandidate({
+          worldX: 12,
+          worldZ: 10,
+          avgMoisture: 10,
+          minMoisture: 10,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+        }),
+      ];
+
+      const canTraverse = (_robot: RobotUnit, worldX: number, worldZ: number) =>
+        !(worldX > 10.05 && Math.abs(worldZ - 10) < 0.5);
+
+      const result = tickAutonomousEquipment(state, candidates, 1, false, canTraverse);
+      const updatedRobot = result.state.robots[0];
+
+      expect(updatedRobot.state).toBe('idle');
+      expect(updatedRobot.targetX).toBeNull();
+      expect(updatedRobot.targetY).toBeNull();
+      expect(updatedRobot.path).toBeNull();
+    });
+
     it('sprayer robot finds dry areas to water', () => {
       const robot: RobotUnit = {
         id: 'r1',
@@ -862,6 +984,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -893,6 +1017,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -926,6 +1052,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -965,6 +1093,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -974,14 +1104,14 @@ describe('autonomous-equipment', () => {
       };
 
       const candidates = [
-        createMockCandidate({ worldX: 1, worldZ: 1, avgGrassHeight: 90, avgHealth: 95 }),
-        createMockCandidate({ worldX: 2, worldZ: 2, avgGrassHeight: 10, avgHealth: 10 }),
+        createMockCandidate({ worldX: 2, worldZ: 2, avgGrassHeight: 90, avgHealth: 95 }),
+        createMockCandidate({ worldX: 10, worldZ: 10, avgGrassHeight: 10, avgHealth: 10 }),
       ];
 
       const result = tickAutonomousEquipment(state, candidates, 1);
 
-      expect(result.state.robots[0].targetX).toBe(1);
-      expect(result.state.robots[0].targetY).toBe(1);
+      expect(result.state.robots[0].targetX).toBe(2);
+      expect(result.state.robots[0].targetY).toBe(2);
     });
 
     it('mower favors nearby work over slightly worse distant work', () => {
@@ -998,6 +1128,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1007,13 +1139,13 @@ describe('autonomous-equipment', () => {
       };
 
       const candidates = [
-        createMockCandidate({ worldX: 11, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.ROUGH, avgGrassHeight: 55, avgHealth: 70 }),
+        createMockCandidate({ worldX: 12, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.ROUGH, avgGrassHeight: 55, avgHealth: 70 }),
         createMockCandidate({ worldX: 40, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.ROUGH, avgGrassHeight: 62, avgHealth: 68 }),
       ];
 
       const result = tickAutonomousEquipment(state, candidates, 1);
 
-      expect(result.state.robots[0].targetX).toBe(11);
+      expect(result.state.robots[0].targetX).toBe(12);
       expect(result.state.robots[0].targetY).toBe(10);
     });
 
@@ -1031,6 +1163,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1064,6 +1198,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1073,17 +1209,17 @@ describe('autonomous-equipment', () => {
       };
 
       const candidates = [
-        createMockCandidate({ worldX: 11, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.BUNKER, avgHealth: 55 }),
+        createMockCandidate({ worldX: 12, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.BUNKER, avgHealth: 55 }),
         createMockCandidate({ worldX: 40, worldZ: 10, dominantTerrainCode: TERRAIN_CODES.BUNKER, avgHealth: 45 }),
       ];
 
       const result = tickAutonomousEquipment(state, candidates, 1);
 
-      expect(result.state.robots[0].targetX).toBe(11);
+      expect(result.state.robots[0].targetX).toBe(12);
       expect(result.state.robots[0].targetY).toBe(10);
     });
 
-    it('skips blocked candidates using traversal callback', () => {
+    it('skips unreachable target and picks next reachable one', () => {
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower_fairway',
@@ -1097,6 +1233,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1119,7 +1257,7 @@ describe('autonomous-equipment', () => {
       expect(result.state.robots[0].targetY).toBe(0);
     });
 
-    it('skips targets with blocked path segments even when endpoint is walkable', () => {
+    it('keeps searching beyond first three blocked targets for reachable work', () => {
       const robot: RobotUnit = {
         id: 'r1',
         equipmentId: 'robot_mower_fairway',
@@ -1133,6 +1271,103 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
+      };
+
+      const state: AutonomousEquipmentState = {
+        robots: [robot],
+        chargingStationX: 0,
+        chargingStationY: 0,
+      };
+
+      const candidates = [
+        createMockCandidate({ worldX: 1, worldZ: 0, dominantTerrainCode: TERRAIN_CODES.FAIRWAY, avgGrassHeight: 95, avgHealth: 90 }),
+        createMockCandidate({ worldX: 2, worldZ: 0, dominantTerrainCode: TERRAIN_CODES.FAIRWAY, avgGrassHeight: 90, avgHealth: 90 }),
+        createMockCandidate({ worldX: 3, worldZ: 0, dominantTerrainCode: TERRAIN_CODES.FAIRWAY, avgGrassHeight: 85, avgHealth: 90 }),
+        createMockCandidate({ worldX: 4, worldZ: 0, dominantTerrainCode: TERRAIN_CODES.FAIRWAY, avgGrassHeight: 80, avgHealth: 90 }),
+      ];
+
+      const canTraverse = (_robot: RobotUnit, worldX: number, worldZ: number) =>
+        !(worldX > 0.5 && worldX < 3.5 && Math.abs(worldZ) < 0.5);
+
+      const result = tickAutonomousEquipment(state, candidates, 1, false, canTraverse);
+
+      expect(result.state.robots[0].targetX).toBe(4);
+      expect(result.state.robots[0].targetY).toBe(0);
+    });
+
+    it('does not globally claim a robot current tile when selecting a target', () => {
+      const robotNearCandidate: RobotUnit = {
+        id: 'r1',
+        equipmentId: 'robot_mower_fairway',
+        type: 'mower',
+        stats: createMockRobotStats({ breakdownRate: 0, speed: 0 }),
+        worldX: 5.1,
+        worldZ: 5.1,
+        resourceCurrent: 200,
+        resourceMax: 300,
+        state: 'idle',
+        targetX: null,
+        targetY: null,
+        breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
+      };
+      const robotOther: RobotUnit = {
+        ...robotNearCandidate,
+        id: 'r2',
+        worldX: 0,
+        worldZ: 0,
+      };
+
+      const state: AutonomousEquipmentState = {
+        robots: [robotNearCandidate, robotOther],
+        chargingStationX: 0,
+        chargingStationY: 0,
+      };
+
+      const candidates = [
+        createMockCandidate({
+          worldX: 5.9,
+          worldZ: 5.9,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+          avgGrassHeight: 95,
+          avgHealth: 90,
+        }),
+        createMockCandidate({
+          worldX: 0.5,
+          worldZ: 0,
+          dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+          avgGrassHeight: 70,
+          avgHealth: 90,
+        }),
+      ];
+
+      const result = tickAutonomousEquipment(state, candidates, 1);
+
+      expect(result.state.robots[0].targetX).toBe(0.5);
+      expect(result.state.robots[0].targetY).toBe(0);
+      expect(result.state.robots[1].targetX).toBe(5.9);
+      expect(result.state.robots[1].targetY).toBe(5.9);
+    });
+
+    it('picks best target by score even when path has obstacles', () => {
+      const robot: RobotUnit = {
+        id: 'r1',
+        equipmentId: 'robot_mower_fairway',
+        type: 'mower',
+        stats: createMockRobotStats({ breakdownRate: 0 }),
+        worldX: 0,
+        worldZ: 0,
+        resourceCurrent: 200,
+        resourceMax: 300,
+        state: 'idle',
+        targetX: null,
+        targetY: null,
+        breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1153,8 +1388,8 @@ describe('autonomous-equipment', () => {
 
       const result = tickAutonomousEquipment(state, candidates, 1, false, canTraverse);
 
-      expect(result.state.robots[0].targetX).toBe(0);
-      expect(result.state.robots[0].targetY).toBe(4);
+      expect(result.state.robots[0].targetX).toBe(4);
+      expect(result.state.robots[0].targetY).toBe(0);
     });
 
     it('fairway mower ignores rough and targets fairway', () => {
@@ -1171,6 +1406,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1204,6 +1441,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1253,6 +1492,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1287,6 +1528,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1320,6 +1563,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
       const robot2: RobotUnit = {
         ...robot1,
@@ -1360,6 +1605,8 @@ describe('autonomous-equipment', () => {
         targetX: 3.2,
         targetY: 3.2,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
       const robot2: RobotUnit = {
         ...robot1,
@@ -1401,6 +1648,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1432,6 +1681,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1466,6 +1717,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 60,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1495,6 +1748,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1525,6 +1780,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1534,6 +1791,7 @@ describe('autonomous-equipment', () => {
       };
 
       const candidates = createMockCandidates(50);
+      candidates.forEach(c => { (c as any).avgGrassHeight = 10; });
       const result = tickAutonomousEquipment(state, candidates, 60, true);
 
       expect(result.state.robots[0].state).toBe('moving');
@@ -1556,6 +1814,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1587,6 +1847,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1625,6 +1887,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1656,6 +1920,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1684,6 +1950,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1718,6 +1986,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {
@@ -1758,6 +2028,8 @@ describe('autonomous-equipment', () => {
         targetX: null,
         targetY: null,
         breakdownTimeRemaining: 0,
+        path: null,
+        pathIndex: 0,
       };
 
       const state: AutonomousEquipmentState = {

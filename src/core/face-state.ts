@@ -81,6 +81,16 @@ export function simulateFaceGrowth(
   weather?: WeatherEffect
 ): FaceGrowthResult {
   const terrainType = getTerrainType(state.terrainCode);
+  if (terrainType === 'bunker') {
+    const BUNKER_HEALTH_DECAY_MINUTES = 24 * 60;
+    const decayRate = 100 / BUNKER_HEALTH_DECAY_MINUTES;
+    return {
+      grassHeight: state.grassHeight,
+      moisture: state.moisture,
+      nutrients: state.nutrients,
+      health: Math.max(0, state.health - decayRate * deltaMinutes),
+    };
+  }
   if (!isGrassTerrain(terrainType)) {
     return {
       grassHeight: state.grassHeight,
@@ -90,9 +100,9 @@ export function simulateFaceGrowth(
     };
   }
 
-  let growthRate = 0.1;
-  if (state.moisture > 50) growthRate += 0.02;
-  if (state.nutrients > 50) growthRate += 0.03;
+  let growthRate = 0.01;
+  if (state.moisture > 50) growthRate += 0.002;
+  if (state.nutrients > 50) growthRate += 0.003;
 
   const weatherEffect = getWeatherMoistureEffect(weather);
   const moistureLoss = 0.05 * deltaMinutes * weatherEffect.lossMultiplier;

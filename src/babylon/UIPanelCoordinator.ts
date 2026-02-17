@@ -19,6 +19,10 @@ import {
   IRRIGATION_INFO_PANEL_BOUNDS,
 } from "./ui/IrrigationInfoPanel";
 import {
+  EntityInspectorPanel,
+  ENTITY_INSPECTOR_BOUNDS,
+} from "./ui/EntityInspectorPanel";
+import {
   IrrigationSchedulePanel,
   IRRIGATION_SCHEDULE_PANEL_BOUNDS,
 } from "./ui/IrrigationSchedulePanel";
@@ -85,6 +89,7 @@ import {
 import {
   purchaseRobot,
   sellRobot,
+  RobotUnit,
 } from "../core/autonomous-equipment";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 
@@ -113,6 +118,7 @@ export class UIPanelCoordinator {
   private irrigationToolbar: IrrigationToolbar | null = null;
   private irrigationInfoPanel: IrrigationInfoPanel | null = null;
   private irrigationSchedulePanel: IrrigationSchedulePanel | null = null;
+  private entityInspectorPanel: EntityInspectorPanel | null = null;
   private irrigationTool: "pipe" | "sprinkler" | "delete" | "info" | null = null;
   private selectedPipeType: PipeType = "pvc";
   private selectedSprinklerType: SprinklerType = "fixed";
@@ -134,6 +140,7 @@ export class UIPanelCoordinator {
     this.setupWalkOnQueuePanel();
     this.setupCourseLayoutPanel();
     this.setupIrrigationUI();
+    this.setupEntityInspector();
     this.setupPriceCallback();
   }
 
@@ -567,6 +574,53 @@ export class UIPanelCoordinator {
       },
     });
     this.courseLayoutPanel.update(this.state.currentCourse?.holes ?? []);
+  }
+
+  private setupEntityInspector(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
+      "EntityInspectorUI",
+      true,
+      this.scene
+    );
+    this.entityInspectorPanel = new EntityInspectorPanel(uiTexture, () => {
+      this.entityInspectorPanel?.hide();
+    });
+  }
+
+  showRobotInspector(robot: RobotUnit): void {
+    this.entityInspectorPanel?.showRobot(robot);
+  }
+
+  hideEntityInspector(): void {
+    this.entityInspectorPanel?.hide();
+  }
+
+  updateEntityInspector(robot: RobotUnit): void {
+    this.entityInspectorPanel?.update(robot);
+  }
+
+  isEntityInspectorVisible(): boolean {
+    return this.entityInspectorPanel?.isVisible() ?? false;
+  }
+
+  getEntityInspectorTrackedRobotId(): string | null {
+    return this.entityInspectorPanel?.getTrackedRobotId() ?? null;
+  }
+
+  isEntityInspectorBlockingPointer(screenX: number, screenY: number): boolean {
+    if (!this.entityInspectorPanel?.isVisible()) return false;
+    const canvas = this.scene?.getEngine?.()?.getRenderingCanvas?.();
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const x = screenX - rect.left;
+    const y = screenY - rect.top;
+    const panelLeft = rect.width - (ENTITY_INSPECTOR_BOUNDS.width + ENTITY_INSPECTOR_BOUNDS.right);
+    return (
+      x >= panelLeft &&
+      x <= panelLeft + ENTITY_INSPECTOR_BOUNDS.width &&
+      y >= ENTITY_INSPECTOR_BOUNDS.top &&
+      y <= ENTITY_INSPECTOR_BOUNDS.top + ENTITY_INSPECTOR_BOUNDS.height
+    );
   }
 
   private setupIrrigationUI(): void {
@@ -1133,5 +1187,6 @@ export class UIPanelCoordinator {
     this.irrigationToolbar?.dispose();
     this.irrigationInfoPanel?.dispose();
     this.irrigationSchedulePanel?.dispose();
+    this.entityInspectorPanel?.dispose();
   }
 }

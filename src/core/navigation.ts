@@ -4,6 +4,11 @@ export type TraversalRule<TEntity = unknown> = (
   worldZ: number
 ) => boolean;
 
+export interface PathPoint {
+  readonly x: number;
+  readonly z: number;
+}
+
 export interface SegmentTraversalOptions {
   readonly sampleStep?: number;
   readonly maxSteps?: number;
@@ -272,4 +277,119 @@ export function advanceTowardPoint<TEntity>(
     moved: progressed,
     distanceMoved: maxDistance - remaining,
   };
+}
+
+const SQRT2 = Math.SQRT2;
+const PATH_GRID_STEP = 1;
+const PATH_MAX_NODES = 10000;
+
+export function findPath<TEntity>(
+  entity: TEntity,
+  startX: number,
+  startZ: number,
+  goalX: number,
+  goalZ: number,
+  canTraverse: TraversalRule<TEntity>,
+  gridStep: number = PATH_GRID_STEP,
+  maxNodes: number = PATH_MAX_NODES
+): PathPoint[] | null {
+  const gs = gridStep;
+  const snapX = (v: number) => Math.round(v / gs) * gs;
+  const snapZ = (v: number) => Math.round(v / gs) * gs;
+  const key = (x: number, z: number) => `${x},${z}`;
+
+  const sx = snapX(startX);
+  const sz = snapZ(startZ);
+  const gx = snapX(goalX);
+  const gz = snapZ(goalZ);
+
+  if (sx === gx && sz === gz) return [{ x: goalX, z: goalZ }];
+
+  const gCost = new Map<string, number>();
+  const fCost = new Map<string, number>();
+  const parent = new Map<string, string>();
+  const closed = new Set<string>();
+
+  const heuristic = (x: number, z: number) => {
+    const dx = Math.abs(x - gx);
+    const dz = Math.abs(z - gz);
+    return Math.max(dx, dz) + (SQRT2 - 1) * Math.min(dx, dz);
+  };
+
+  const openSet: Array<{ x: number; z: number; f: number }> = [];
+
+  const insertOpen = (x: number, z: number, f: number) => {
+    let lo = 0;
+    let hi = openSet.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (openSet[mid].f < f) hi = mid;
+      else lo = mid + 1;
+    }
+    openSet.splice(lo, 0, { x, z, f });
+  };
+
+  const startKey = key(sx, sz);
+  gCost.set(startKey, 0);
+  const startH = heuristic(sx, sz);
+  fCost.set(startKey, startH);
+  insertOpen(sx, sz, startH);
+
+  const neighbors: Array<[number, number, number]> = [
+    [gs, 0, gs], [-gs, 0, gs], [0, gs, gs], [0, -gs, gs],
+    [gs, gs, gs * SQRT2], [gs, -gs, gs * SQRT2],
+    [-gs, gs, gs * SQRT2], [-gs, -gs, gs * SQRT2],
+  ];
+
+  let nodesExpanded = 0;
+
+  while (openSet.length > 0) {
+    const current = openSet.pop()!;
+    const ck = key(current.x, current.z);
+
+    if (current.x === gx && current.z === gz) {
+      const waypoints: PathPoint[] = [];
+      let traceKey = ck;
+      while (traceKey !== startKey) {
+        const [wx, wz] = traceKey.split(',').map(Number);
+        waypoints.push({ x: wx, z: wz });
+        traceKey = parent.get(traceKey)!;
+      }
+      waypoints.reverse();
+      waypoints[waypoints.length - 1] = { x: goalX, z: goalZ };
+      return waypoints;
+    }
+
+    if (closed.has(ck)) continue;
+    closed.add(ck);
+
+    if (++nodesExpanded > maxNodes) return null;
+
+    const currentG = gCost.get(ck)!;
+
+    for (const [dx, dz, cost] of neighbors) {
+      const nx = current.x + dx;
+      const nz = current.z + dz;
+      const nk = key(nx, nz);
+      if (closed.has(nk)) continue;
+      if (!canTraverse(entity, nx, nz)) continue;
+
+      if (cost > gs) {
+        if (!canTraverse(entity, current.x + dx, current.z) ||
+            !canTraverse(entity, current.x, current.z + dz)) continue;
+      }
+
+      const tentativeG = currentG + cost;
+      const existingG = gCost.get(nk);
+      if (existingG !== undefined && tentativeG >= existingG) continue;
+
+      gCost.set(nk, tentativeG);
+      parent.set(nk, ck);
+      const f = tentativeG + heuristic(nx, nz);
+      fCost.set(nk, f);
+      insertOpen(nx, nz, f);
+    }
+  }
+
+  return null;
 }

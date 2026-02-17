@@ -614,36 +614,21 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
       state.researchState.completedResearch.includes("fleet_ai");
     const traverseCache = new Map<string, boolean>();
     const canRobotTraverse = (robot: RobotUnit, worldX: number, worldZ: number): boolean => {
-      const snappedX = Math.round(worldX * 4) / 4;
-      const snappedZ = Math.round(worldZ * 4) / 4;
-      const cacheKey = `${robot.equipmentId}:${robot.type}:${snappedX}:${snappedZ}`;
+      const cacheKey = `${robot.equipmentId}:${worldX.toFixed(3)}:${worldZ.toFixed(3)}`;
       const cached = traverseCache.get(cacheKey);
-      if (cached !== undefined) {
-        return cached;
-      }
+      if (cached !== undefined) return cached;
 
-      if (!systems.terrainSystem.isPositionWalkable(worldX, worldZ)) {
-        traverseCache.set(cacheKey, false);
-        return false;
-      }
+      const store = (val: boolean) => { traverseCache.set(cacheKey, val); return val; };
+
+      if (!systems.terrainSystem.isPositionWalkable(worldX, worldZ)) return store(false);
 
       const terrainType = systems.terrainSystem.getTerrainTypeAt(worldX, worldZ);
-      if (!terrainType) {
-        traverseCache.set(cacheKey, false);
-        return false;
-      }
-      if (terrainType === "water") {
-        traverseCache.set(cacheKey, false);
-        return false;
-      }
+      if (!terrainType) return store(false);
+      if (terrainType === "water") return store(false);
+      if (terrainType === "bunker" && robot.type !== "raker") return store(false);
+      if (terrainType === "green" && (robot.type === "raker" || robot.equipmentId.includes("mower_fairway"))) return store(false);
 
-      if (terrainType === "bunker" && robot.type !== "raker") {
-        traverseCache.set(cacheKey, false);
-        return false;
-      }
-
-      traverseCache.set(cacheKey, true);
-      return true;
+      return store(true);
     };
     const robotResult = coreTickAutonomousEquipment(
       state.autonomousState,
@@ -677,7 +662,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
         systems.terrainSystem.applyWorkEffect(
           effect.worldX,
           effect.worldZ,
-          1.0,
+          2.0,
           "mow",
           effect.efficiency,
           timestamp,
@@ -691,7 +676,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
         systems.terrainSystem.applyWorkEffect(
           effect.worldX,
           effect.worldZ,
-          1.5,
+          2.0,
           "rake",
           effect.efficiency,
           timestamp,
