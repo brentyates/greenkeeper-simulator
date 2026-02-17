@@ -138,15 +138,6 @@ vi.mock("../core/tee-times", () => ({
   cancelTeeTime: vi.fn(() => ({ cancelled: true })),
 }));
 
-vi.mock("../core/walk-ons", () => ({
-  getWalkOnSummary: vi.fn(() => ({ served: 5, turnedAway: 2, gaveUp: 1, averageWait: 10 })),
-  getQueueLength: vi.fn(() => 3),
-  getEstimatedWaitTime: vi.fn(() => 15),
-  updateWalkOnPolicy: vi.fn(() => ({ policy: {}, queue: [], metrics: { walkOnsServedToday: 0, walkOnsTurnedAwayToday: 0, walkOnsGaveUpToday: 0, averageWaitTime: 0, totalWaitTime: 0, reputationPenalty: 0 } })),
-  addWalkOnToQueue: vi.fn(() => ({ state: { policy: {}, queue: [], metrics: {} }, accepted: true })),
-  createWalkOnGolfer: vi.fn(() => ({ id: "walkon_1", name: "Test Walker" })),
-}));
-
 vi.mock("../core/tee-revenue", () => ({
   getRevenueSummary: vi.fn(() => ({
     today: { greenFees: 100, cartFees: 50, proShop: 30, foodAndBeverage: 20, grossRevenue: 200, netRevenue: 150 },
@@ -159,12 +150,6 @@ vi.mock("../core/tee-revenue", () => ({
   isWeekend: vi.fn(() => false),
   isPrimeMorning: vi.fn(() => true),
   isTwilightHour: vi.fn(() => false),
-}));
-
-vi.mock("../core/marketing", () => ({
-  startCampaign: vi.fn(() => null),
-  stopCampaign: vi.fn(() => ({ activeCampaigns: [], campaignHistory: [], cooldowns: {}, metrics: { totalSpent: 0, totalRevenueGenerated: 0, campaignsRun: 0, averageRoi: 0 }, baselineBookingsPerDay: 20, baselineRevenuePerDay: 2000 })),
-  canStartCampaign: vi.fn(() => ({ canStart: true })),
 }));
 
 vi.mock("../core/save-game", () => ({
@@ -230,8 +215,6 @@ import { hireEmployee, fireEmployee } from "../core/employees";
 import { startResearch, completeResearchInstantly, getPrerequisiteChain, getAvailableResearch } from "../core/research";
 import { getUpgradeCost } from "../core/amenities";
 import { bookTeeTime } from "../core/tee-times";
-import { addWalkOnToQueue } from "../core/walk-ons";
-import { startCampaign, canStartCampaign } from "../core/marketing";
 import { purchaseRobot, sellRobot, getAvailableRobotsToPurchase } from "../core/autonomous-equipment";
 import { getRevenueSummary } from "../core/tee-revenue";
 
@@ -253,9 +236,6 @@ const mockGetPrerequisiteChain = getPrerequisiteChain as Mock;
 const mockGetAvailableResearch = getAvailableResearch as Mock;
 const mockGetUpgradeCost = getUpgradeCost as Mock;
 const mockBookTeeTime = bookTeeTime as Mock;
-const mockAddWalkOnToQueue = addWalkOnToQueue as Mock;
-const mockStartCampaign = startCampaign as Mock;
-const mockCanStartCampaign = canStartCampaign as Mock;
 const mockPurchaseRobot = purchaseRobot as Mock;
 const mockSellRobot = sellRobot as Mock;
 const mockGetAvailableRobotsToPurchase = getAvailableRobotsToPurchase as Mock;
@@ -325,10 +305,6 @@ function createMockState(): GameState {
       teeTimes: new Map(), currentDay: 3,
       bookingMetrics: { totalBookingsToday: 10, cancellationsToday: 2, noShowsToday: 1, lateCancellationsToday: 0 },
     } as any,
-    walkOnState: {
-      policy: {}, queue: [{ id: "w1" }],
-      metrics: { walkOnsServedToday: 5, walkOnsTurnedAwayToday: 2, walkOnsGaveUpToday: 1, averageWaitTime: 10, totalWaitTime: 50, reputationPenalty: 0 },
-    } as any,
     revenueState: {
       greenFeeStructure: {}, cartFeeStructure: {}, availableAddOns: [], tipConfig: {},
       todaysRevenue: {
@@ -337,14 +313,6 @@ function createMockState(): GameState {
         eventFees: 0, grossRevenue: 200, operatingCosts: 50, netRevenue: 150,
       },
       revenueHistory: [],
-    } as any,
-    marketingState: {
-      activeCampaigns: [
-        { campaignId: "camp1", startDay: 1, plannedDuration: 7, elapsedDays: 3, status: "active", totalCostSoFar: 100, bookingsDuringCampaign: 5, revenueDuringCampaign: 500 },
-      ],
-      campaignHistory: [], cooldowns: {},
-      metrics: { totalSpent: 200, totalRevenueGenerated: 600, campaignsRun: 1, averageRoi: 200 },
-      baselineBookingsPerDay: 20, baselineRevenuePerDay: 2000,
     } as any,
     autonomousState: {
       robots: [
@@ -434,7 +402,6 @@ function createMockSystems(): GameSystems {
     handleEmployeePanel: vi.fn(),
     handleResearchPanel: vi.fn(),
     handleTeeSheetPanel: vi.fn(),
-    handleMarketingPanel: vi.fn(),
     handleOverlayCycle: vi.fn(),
     handleRefill: vi.fn(),
     handleMute: vi.fn(),
@@ -573,50 +540,6 @@ describe("GameAPI", () => {
     });
   });
 
-  describe("getMarketingStats", () => {
-    it("calculates ROI when totalSpent > 0", () => {
-      const result = api.getMarketingStats();
-      expect(result.activeCampaigns).toBe(1);
-      expect(result.totalSpent).toBe(200);
-      expect(result.totalROI).toBe(Math.round(((600 - 200) / 200) * 100));
-    });
-
-    it("returns 0 ROI when totalSpent is 0", () => {
-      state.marketingState.metrics.totalSpent = 0;
-      state.marketingState.metrics.totalRevenueGenerated = 0;
-      expect(api.getMarketingStats().totalROI).toBe(0);
-    });
-  });
-
-  describe("startMarketingCampaign", () => {
-    it("returns false when canStartCampaign returns false", () => {
-      mockCanStartCampaign.mockReturnValueOnce({ canStart: false });
-      expect(api.startMarketingCampaign("camp1")).toBe(false);
-    });
-
-    it("returns false when startCampaign returns null", () => {
-      mockStartCampaign.mockReturnValueOnce(null);
-      expect(api.startMarketingCampaign("camp1")).toBe(false);
-    });
-
-    it("returns true and applies expense when cost > 0", () => {
-      mockStartCampaign.mockReturnValueOnce({ state: state.marketingState, setupCost: 100 });
-      expect(api.startMarketingCampaign("camp1", 14)).toBe(true);
-    });
-
-    it("returns true without expense when cost is 0", () => {
-      mockStartCampaign.mockReturnValueOnce({ state: state.marketingState, setupCost: 0 });
-      const callsBefore = mockAddExpense.mock.calls.length;
-      expect(api.startMarketingCampaign("camp1")).toBe(true);
-      expect(mockAddExpense.mock.calls.length).toBe(callsBefore);
-    });
-
-    it("handles addExpense returning null", () => {
-      mockStartCampaign.mockReturnValueOnce({ state: state.marketingState, setupCost: 50 });
-      mockAddExpense.mockReturnValueOnce(null);
-      expect(api.startMarketingCampaign("camp1")).toBe(true);
-    });
-  });
 
   describe("getGameTime", () => {
     it("returns hours and minutes", () => {
@@ -1007,7 +930,6 @@ describe("GameAPI", () => {
     it("toggleEmployeePanel", () => { api.toggleEmployeePanel(); expect(sys.handleEmployeePanel).toHaveBeenCalled(); });
     it("toggleResearchPanel", () => { api.toggleResearchPanel(); expect(sys.handleResearchPanel).toHaveBeenCalled(); });
     it("toggleTeeSheetPanel", () => { api.toggleTeeSheetPanel(); expect(sys.handleTeeSheetPanel).toHaveBeenCalled(); });
-    it("toggleMarketingPanel", () => { api.toggleMarketingPanel(); expect(sys.handleMarketingPanel).toHaveBeenCalled(); });
     it("cycleOverlay", () => { api.cycleOverlay(); expect(sys.handleOverlayCycle).toHaveBeenCalled(); });
     it("refillEquipment", () => { api.refillEquipment(); expect(sys.handleRefill).toHaveBeenCalled(); });
     it("toggleMute", () => { api.toggleMute(); expect(sys.handleMute).toHaveBeenCalled(); });
@@ -1304,20 +1226,6 @@ describe("GameAPI", () => {
   describe("checkInTeeTime", () => { it("always returns true", () => { expect(api.checkInTeeTime("tt1")).toBe(true); }); });
   describe("cancelTeeTimeBooking", () => { it("always returns true", () => { expect(api.cancelTeeTimeBooking("tt1")).toBe(true); }); });
 
-  describe("getActiveCampaigns", () => {
-    it("returns active campaigns", () => {
-      const result = api.getActiveCampaigns();
-      expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ campaignId: "camp1", daysRemaining: 4 });
-    });
-
-    it("filters non-active", () => {
-      state.marketingState.activeCampaigns = [{ campaignId: "camp1", status: "completed", plannedDuration: 7, elapsedDays: 7 } as any];
-      expect(api.getActiveCampaigns()).toHaveLength(0);
-    });
-  });
-
-  describe("endMarketingCampaign", () => { it("returns true", () => { expect(api.endMarketingCampaign("camp1")).toBe(true); }); });
 
   describe("getAvailableAmenities", () => {
     it("returns available amenities", () => {
@@ -1405,12 +1313,6 @@ describe("GameAPI", () => {
 
   describe("getAvailableRobots", () => { it("delegates", () => { expect(api.getAvailableRobots()).toEqual([]); }); });
 
-  describe("getWalkOnState", () => {
-    it("returns walk-on state", () => {
-      expect(api.getWalkOnState()).toEqual({ queueLength: 1, totalServed: 5, totalTurnedAway: 2 });
-    });
-  });
-
   describe("getRevenueState", () => {
     it("returns revenue", () => {
       expect(api.getRevenueState()).toEqual({ greenFees: 100, cartFees: 50, proShopSales: 30, foodBeverage: 20 });
@@ -1456,28 +1358,7 @@ describe("GameAPI", () => {
     it("trackTurnAwayForReputation", () => { api.trackTurnAwayForReputation(); });
   });
 
-  describe("getWalkOnSummary", () => {
-    it("returns summary", () => {
-      const result = api.getWalkOnSummary();
-      expect(result).toEqual({ queueLength: 3, served: 5, turnedAway: 2, gaveUp: 1, avgWait: 10, estimatedWait: 15 });
-    });
-  });
 
-  describe("updateWalkOnPolicy", () => {
-    it("updates with maxWaitMinutes", () => { api.updateWalkOnPolicy(30); });
-    it("updates with maxQueueSize", () => { api.updateWalkOnPolicy(undefined, 10); });
-    it("updates with both", () => { api.updateWalkOnPolicy(30, 10); });
-    it("updates with neither", () => { api.updateWalkOnPolicy(); });
-  });
-
-  describe("addWalkOnGolfer", () => {
-    it("returns accepted", () => { expect(api.addWalkOnGolfer()).toBe(true); });
-
-    it("returns false when not accepted", () => {
-      mockAddWalkOnToQueue.mockReturnValueOnce({ state: state.walkOnState, accepted: false });
-      expect(api.addWalkOnGolfer()).toBe(false);
-    });
-  });
 
   describe("getRevenueSummaryData", () => {
     it("returns summary with top source", () => {

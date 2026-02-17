@@ -39,7 +39,6 @@ export interface ReservationDemand {
   weatherMultiplier: number;
   prestigeMultiplier: number;
   pricingMultiplier: number;
-  marketingMultiplier: number;
   finalDemand: number;
   bookingProbability: number;
 }
@@ -657,7 +656,6 @@ export interface DemandFactors {
   prestigeScore?: number;
   weatherCondition?: 'perfect' | 'good' | 'fair' | 'poor' | 'bad';
   pricingRatio?: number;
-  marketingBonus?: number;
 }
 
 const WEATHER_MULTIPLIERS: Record<string, number> = {
@@ -678,7 +676,6 @@ export function calculateSlotDemand(
     prestigeScore = 500,
     weatherCondition = 'good',
     pricingRatio = 1.0,
-    marketingBonus = 0,
   } = factors;
 
   const dayOfWeek = getDayOfWeek(day);
@@ -688,7 +685,6 @@ export function calculateSlotDemand(
   const weatherMultiplier = WEATHER_MULTIPLIERS[weatherCondition] ?? 1.0;
   const prestigeMultiplier = 0.5 + (prestigeScore / 1000);
   const pricingMultiplier = pricingRatio <= 1.0 ? 1.0 : Math.max(0.3, 1.5 - pricingRatio * 0.5);
-  const marketingMultiplier = 1.0 + marketingBonus;
 
   const finalDemand = baseDemand
     * dayOfWeekMultiplier
@@ -696,8 +692,7 @@ export function calculateSlotDemand(
     * seasonMultiplier
     * weatherMultiplier
     * prestigeMultiplier
-    * pricingMultiplier
-    * marketingMultiplier;
+    * pricingMultiplier;
 
   const bookingProbability = Math.min(1.0, Math.max(0, finalDemand));
 
@@ -709,7 +704,6 @@ export function calculateSlotDemand(
     weatherMultiplier,
     prestigeMultiplier,
     pricingMultiplier,
-    marketingMultiplier,
     finalDemand,
     bookingProbability,
   };

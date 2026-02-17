@@ -115,12 +115,11 @@ You hire your first groundskeepers. Now the dynamic shifts:
 Your course is growing. You have a small team:
 - Multiple groundskeepers handling different areas
 - A mechanic keeping equipment running
-- Maybe an irrigator managing water systems
 
 **Your role evolves:**
-- Train and supervise employees
+- Assign employees to areas and let them work
 - Handle the critical jobs yourself (greens, problem areas)
-- Step in when someone calls in sick or equipment breaks
+- Step in when equipment breaks or areas need attention
 - Start thinking about efficiency and coverage
 
 **The tension:**
@@ -132,9 +131,8 @@ Your course is growing. You have a small team:
 *"The course runs, but you're watching everything."*
 
 You've built a competent team:
-- Experienced employees who know their jobs
-- Specialists handling specific systems
-- A manager or two boosting efficiency
+- Experienced groundskeepers who know their areas
+- Mechanics keeping equipment and robots running
 
 **Your role shifts:**
 - Morning walk-through inspection
@@ -439,7 +437,6 @@ The game supports keyboard, mouse, and touch input. All menus and UI elements ca
 | H | Employee panel |
 | Y | Research panel |
 | G | Tee sheet panel |
-| K | Marketing panel |
 | B | Equipment store |
 | U | Amenities panel |
 | T | Toggle terrain editor |

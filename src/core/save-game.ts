@@ -5,9 +5,7 @@ import { GolferPoolState } from './golfers';
 import { ResearchState } from './research';
 import { PrestigeState } from './prestige';
 import { TeeTimeSystemState } from './tee-times';
-import { WalkOnState } from './walk-ons';
 import { RevenueState } from './tee-revenue';
-import { MarketingState } from './marketing';
 import { FaceState } from './face-state';
 import { ApplicationState } from './employees';
 import { ScenarioProgress } from './scenario';
@@ -34,9 +32,7 @@ export interface SaveGameState {
   researchState: ResearchState;
   prestigeState: PrestigeState;
   teeTimeState: TeeTimeSystemState;
-  walkOnState: WalkOnState;
   revenueState: RevenueState;
-  marketingState: MarketingState;
   applicationState: ApplicationState;
   scenarioProgress: ScenarioProgress;
   autonomousState: AutonomousEquipmentState;
@@ -64,9 +60,7 @@ export function createSaveState(
   researchState: ResearchState,
   prestigeState: PrestigeState,
   teeTimeState: TeeTimeSystemState,
-  walkOnState: WalkOnState,
   revenueState: RevenueState,
-  marketingState: MarketingState,
   applicationState: ApplicationState,
   scenarioProgress: ScenarioProgress,
   autonomousState: AutonomousEquipmentState,
@@ -91,9 +85,7 @@ export function createSaveState(
     researchState,
     prestigeState,
     teeTimeState,
-    walkOnState,
     revenueState,
-    marketingState,
     applicationState,
     scenarioProgress,
     autonomousState,

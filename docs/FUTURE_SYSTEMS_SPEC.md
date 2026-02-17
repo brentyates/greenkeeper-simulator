@@ -504,34 +504,11 @@ Facility prestige is weighted as part of the total prestige calculation:
 
 ## Missing Documentation for Existing Systems
 
-### 1. Staff Scheduling & Management (Mentioned but Not Detailed)
+### 1. Staff Scheduling & Management
 
-**Current State:** Staff exists in ECONOMY_SYSTEM_SPEC.md and SCENARIOS.md but lacks operational detail.
-
-**Needed Documentation:**
-- **Shift Scheduling:** Morning crew vs. day crew vs. night crew
-- **Skill Development:** Employee training and expertise growth
-- **Morale & Retention:** Factors affecting turnover
-- **Task Assignment:** How to assign specific zones/tasks to specific employees
-- **Break Periods:** Rest requirements, efficiency decay over shift
-- **Overtime Costs:** When to pay overtime vs. hire more staff
-
-**Example Structure:**
-```typescript
-interface EmployeeState {
-  id: string;
-  name: string;
-  role: "Greenkeeper" | "Equipment Operator" | "Mechanic" | "Assistant";
-  skill: number;           // 1-10, affects work speed and quality
-  morale: number;          // 0-100, affects efficiency
-  hoursWorked: number;     // This week
-  fatigueLevel: number;    // 0-100, increases with hours, decreases with rest
-  specializations: string[]; // e.g., ["Greens Specialist", "Irrigation Expert"]
-}
-
-// Work efficiency calculation
-efficiency = baseEfficiency * (skill/5) * (morale/100) * (1 - fatigue/200)
-```
+> **DESIGN DECISION:** Complex employee management (morale systems, retention mechanics, shift scheduling, overtime, specializations) was consciously rejected. Employees are a scaling tool for course maintenance, not a people management minigame. See `EMPLOYEE_SYSTEM_V2.md` for the rationale.
+>
+> The employee system is fully documented in `EMPLOYEE_SYSTEM_SPEC.md`. Employees are hired, paid, assigned to areas, and they work. Happiness is a simple linear efficiency modifier. If happiness drops to 0, they quit. No sick days, no events, no personality traits.
 
 ---
 
@@ -621,9 +598,9 @@ interface MembershipManagement {
 - No crisis management or contingency planning needed
 - Limited replay variability
 
-**Social/Political Strategy (Missing):**
+**Social/Political Strategy (Intentionally Thin):**
 - Members are revenue sources, not characters with needs
-- No employee management beyond hiring/firing
+- Employee management is intentionally simple (hire, pay, assign) -- see EMPLOYEE_SYSTEM_V2.md
 - No community relations or reputation management
 
 **Long-term Strategy (Weak):**
@@ -678,10 +655,7 @@ interface MembershipManagement {
    - **Effort:** High (leverages existing terrain editor)
    - **Impact:** Endgame content and course personality
 
-6. **Staff Scheduling Detail**
-   - **Why:** Operational depth for management sim fans
-   - **Effort:** Medium (extends existing staff system)
-   - **Impact:** More engaging employee management
+6. ~~Staff Scheduling Detail~~ **(REMOVED - employees are intentionally simple)**
 
 ### Tier 3: Nice-to-Have, Lower Priority
 

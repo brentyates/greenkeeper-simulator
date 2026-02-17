@@ -249,9 +249,7 @@ describe('GameState', () => {
       expect(state.researchState).toBeDefined();
       expect(state.prestigeState).toBeDefined();
       expect(state.teeTimeState).toBeDefined();
-      expect(state.walkOnState).toBeDefined();
       expect(state.revenueState).toBeDefined();
-      expect(state.marketingState).toBeDefined();
       expect(state.autonomousState).toBeDefined();
       expect(state.weatherState).toBeDefined();
       expect(state.irrigationSystem).toBeDefined();

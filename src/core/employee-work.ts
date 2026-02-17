@@ -193,8 +193,15 @@ function isInArea(x: number, y: number, area: CourseArea | null): boolean {
   return x >= area.minX && x <= area.maxX && y >= area.minY && y <= area.maxY;
 }
 
-function getTaskPriorityForRole(_role: EmployeeRole): EmployeeTask[] {
-  return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
+function getTaskPriorityForRole(role: EmployeeRole): EmployeeTask[] {
+  switch (role) {
+    case 'mechanic':
+      // Mechanics prioritize bunker raking (equipment-adjacent) and patrol
+      return ['rake_bunker', 'patrol'];
+    case 'groundskeeper':
+    default:
+      return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
+  }
 }
 
 function getTaskNeedFromSample(
@@ -411,7 +418,8 @@ export function tickEmployeeWork(
       return { ...worker, currentTask: 'idle' as EmployeeTask, path: [], moveProgress: 0 };
     }
 
-    if (employee.role !== 'groundskeeper') {
+    // Only groundskeepers and mechanics have autonomous field work
+    if (employee.role !== 'groundskeeper' && employee.role !== 'mechanic') {
       return worker;
     }
 
@@ -612,23 +620,26 @@ export function tickEmployeeWork(
   };
 }
 
+/** Roles that have autonomous field work (pathfinding-based) */
+const FIELD_WORK_ROLES: readonly EmployeeRole[] = ['groundskeeper', 'mechanic'];
+
 export function syncWorkersWithRoster(
   state: EmployeeWorkSystemState,
   employees: readonly Employee[]
 ): EmployeeWorkSystemState {
-  const groundskeepers = employees.filter(
-    e => e.role === 'groundskeeper'
+  const fieldWorkers = employees.filter(
+    e => FIELD_WORK_ROLES.includes(e.role)
   );
 
   let newState = state;
 
-  for (const emp of groundskeepers) {
+  for (const emp of fieldWorkers) {
     if (!state.workers.find(w => w.employeeId === emp.id)) {
       newState = addWorker(newState, emp);
     }
   }
 
-  const validIds = new Set(groundskeepers.map(e => e.id));
+  const validIds = new Set(fieldWorkers.map(e => e.id));
   newState = {
     ...newState,
     workers: newState.workers.filter(w => validIds.has(w.employeeId)),

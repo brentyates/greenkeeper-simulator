@@ -41,8 +41,6 @@ declare global {
       pinPositions: number;
       yardages: Record<string, number>;
     }>;
-    getMarketingStats: () => { activeCampaigns: number; totalSpent: number; totalROI: number } | null;
-    startMarketingCampaign: (campaignId: string, days?: number) => boolean;
     setCash: (amount: number) => void;
     advanceDay: () => void;
     getGameDay: () => number | null;
@@ -434,20 +432,6 @@ window.getCourseHoles = () => {
     pinPositions: hole.pinPositions.length,
     yardages: hole.yardages,
   }));
-};
-
-window.getMarketingStats = () => {
-  if (window.game) {
-    return window.game.getMarketingStats();
-  }
-  return null;
-};
-
-window.startMarketingCampaign = (campaignId: string, days?: number) => {
-  if (window.game) {
-    return window.game.startMarketingCampaign(campaignId, days);
-  }
-  return false;
 };
 
 window.setCash = (amount: number) => {

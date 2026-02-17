@@ -654,16 +654,6 @@ describe('employee-work', () => {
       expect(newState.workers).toHaveLength(1);
       expect(newState.workers[0].employeeId).toBe(emp1.id);
     });
-
-    it('ignores non-maintenance employees', () => {
-      const state = createInitialWorkSystemState();
-      const mechanic = createEmployee('mechanic', 'novice', 0);
-      const manager = createEmployee('manager', 'novice', 0);
-
-      const newState = syncWorkersWithRoster(state, [mechanic, manager]);
-
-      expect(newState.workers).toHaveLength(0);
-    });
   });
 
   describe('getActiveWorkerCount', () => {

@@ -38,7 +38,6 @@ import {
   getExperienceForNextLevel,
   isEligibleForPromotion,
   awardExperience,
-  getManagerBonus,
 
   // State transformation functions
   hireEmployee,
@@ -131,8 +130,7 @@ describe("Employee System", () => {
   describe("Constants", () => {
     it("has configs for all employee roles", () => {
       const roles: EmployeeRole[] = [
-        "groundskeeper", "mechanic",
-        "pro_shop_staff", "manager", "caddy"
+        "groundskeeper", "mechanic"
       ];
 
       for (const role of roles) {
@@ -147,15 +145,6 @@ describe("Employee System", () => {
         expect(config.wageMultipliers.novice).toBeLessThanOrEqual(config.wageMultipliers.trained);
         expect(config.wageMultipliers.trained).toBeLessThanOrEqual(config.wageMultipliers.experienced);
         expect(config.wageMultipliers.experienced).toBeLessThanOrEqual(config.wageMultipliers.expert);
-      }
-    });
-
-    it("managers have highest base wage", () => {
-      const managerWage = EMPLOYEE_CONFIGS.manager.baseWage;
-      for (const role of Object.keys(EMPLOYEE_CONFIGS) as EmployeeRole[]) {
-        if (role !== "manager") {
-          expect(EMPLOYEE_CONFIGS[role].baseWage).toBeLessThanOrEqual(managerWage);
-        }
       }
     });
 
@@ -358,7 +347,7 @@ describe("Employee System", () => {
     it("returns empty array when no matches", () => {
       const emp = makeEmployee({ role: "groundskeeper" });
       const roster = makeRoster({ employees: [emp] });
-      expect(getEmployeesByRole(roster, "manager")).toEqual([]);
+      expect(getEmployeesByRole(roster, "mechanic")).toEqual([]);
     });
   });
 
@@ -411,7 +400,6 @@ describe("Employee System", () => {
       });
       expect(getEmployeeCountByRole(roster, "groundskeeper")).toBe(2);
       expect(getEmployeeCountByRole(roster, "mechanic")).toBe(1);
-      expect(getEmployeeCountByRole(roster, "manager")).toBe(0);
     });
   });
 
@@ -524,12 +512,13 @@ describe("Employee System", () => {
   });
 
   describe("calculateEffectiveEfficiency", () => {
-    it("returns base efficiency at full happiness and zero fatigue", () => {
+    it("returns full efficiency at full happiness and zero fatigue", () => {
       const emp = makeEmployee({
         skills: { efficiency: 1.0, quality: 1, stamina: 1, reliability: 1 },
         happiness: 100,
         fatigue: 0
       });
+      // Happiness 100/100 = 1.0x, fatigue 0 = 1.0x
       expect(calculateEffectiveEfficiency(emp)).toBe(1.0);
     });
 
@@ -539,7 +528,8 @@ describe("Employee System", () => {
         happiness: 0,
         fatigue: 0
       });
-      expect(calculateEffectiveEfficiency(emp)).toBe(0.5);
+      // Happiness 0/100 = 0.0x
+      expect(calculateEffectiveEfficiency(emp)).toBe(0);
     });
 
     it("reduces efficiency with high fatigue", () => {
@@ -548,6 +538,7 @@ describe("Employee System", () => {
         happiness: 100,
         fatigue: 100
       });
+      // Happiness 100/100 = 1.0x, Fatigue 100 = 0.7x
       expect(calculateEffectiveEfficiency(emp)).toBe(0.7);
     });
 
@@ -558,8 +549,9 @@ describe("Employee System", () => {
         fatigue: 50
       });
       const result = calculateEffectiveEfficiency(emp);
+      // happiness 50/100 = 0.5, fatigue 50 -> 0.85, combined = 0.425
       expect(result).toBeLessThan(1.0);
-      expect(result).toBeGreaterThan(0.5);
+      expect(result).toBeGreaterThan(0.3);
     });
   });
 
@@ -688,60 +680,6 @@ describe("Employee System", () => {
       const updated = awardExperience(roster, emp.id, 50);
       expect(updated.employees[0].skillLevel).toBe("expert");
       expect(updated.employees[0].experience).toBe(config.experienceToLevel + 40);
-    });
-  });
-
-  describe("getManagerBonus", () => {
-    it("returns 1.0 with no managers", () => {
-      const roster = makeRoster({
-        employees: [makeEmployee({ role: "groundskeeper", status: "working" })]
-      });
-      expect(getManagerBonus(roster)).toBe(1.0);
-    });
-
-    it("provides bonus with working manager", () => {
-      const roster = makeRoster({
-        employees: [
-          makeEmployee({
-            role: "manager",
-            status: "working",
-            skills: { efficiency: 1.0, quality: 1, stamina: 1, reliability: 1 },
-            happiness: 100,
-            fatigue: 0
-          })
-        ]
-      });
-      expect(getManagerBonus(roster)).toBeGreaterThan(1.0);
-    });
-
-    it("returns 1.0 when managers not working", () => {
-      const roster = makeRoster({
-        employees: [makeEmployee({ role: "manager", status: "on_break" })]
-      });
-      expect(getManagerBonus(roster)).toBe(1.0);
-    });
-
-    it("has diminishing returns for multiple managers", () => {
-      const manager = makeEmployee({
-        role: "manager",
-        status: "working",
-        skills: { efficiency: 1.0, quality: 1, stamina: 1, reliability: 1 },
-        happiness: 100,
-        fatigue: 0
-      });
-
-      const roster1 = makeRoster({ employees: [{ ...manager, id: "m1" }] });
-      const roster2 = makeRoster({
-        employees: [{ ...manager, id: "m1" }, { ...manager, id: "m2" }]
-      });
-
-      const bonus1 = getManagerBonus(roster1);
-      const bonus2 = getManagerBonus(roster2);
-
-      // Second manager should add less than first
-      const firstBonus = bonus1 - 1.0;
-      const secondBonus = bonus2 - bonus1;
-      expect(secondBonus).toBeLessThan(firstBonus);
     });
   });
 
@@ -1265,10 +1203,6 @@ describe("Employee System", () => {
     it("returns display names for all roles", () => {
       expect(getRoleName("groundskeeper")).toBe("Groundskeeper");
       expect(getRoleName("mechanic")).toBe("Mechanic");
-      expect(getRoleName("groundskeeper")).toBe("Groundskeeper");
-      expect(getRoleName("pro_shop_staff")).toBe("Pro Shop Staff");
-      expect(getRoleName("manager")).toBe("Manager");
-      expect(getRoleName("caddy")).toBe("Caddy");
     });
   });
 

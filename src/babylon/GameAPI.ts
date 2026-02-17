@@ -89,14 +89,6 @@ import {
   type GameTime,
 } from "../core/tee-times";
 import {
-  getWalkOnSummary,
-  getQueueLength,
-  getEstimatedWaitTime,
-  updateWalkOnPolicy,
-  addWalkOnToQueue,
-  createWalkOnGolfer,
-} from "../core/walk-ons";
-import {
   getRevenueSummary,
   calculateGreenFee,
   calculateCartFee,
@@ -105,11 +97,6 @@ import {
   isPrimeMorning,
   isTwilightHour,
 } from "../core/tee-revenue";
-import {
-  startCampaign,
-  stopCampaign,
-  canStartCampaign,
-} from "../core/marketing";
 import {
   deleteSave,
   getSaveInfo,
@@ -151,7 +138,6 @@ export interface GameSystems {
   handleEmployeePanel(): void;
   handleResearchPanel(): void;
   handleTeeSheetPanel(): void;
-  handleMarketingPanel(): void;
   handleOverlayCycle(): void;
   handleRefill(): void;
   handleMute(): void;
@@ -282,61 +268,6 @@ export class GameAPI {
   } {
     const holes = this.state.currentCourse.holes ?? [];
     return summarizeHoleGameplay(holes);
-  }
-
-  public getMarketingStats(): {
-    activeCampaigns: number;
-    totalSpent: number;
-    totalROI: number;
-  } {
-    const totalSpent = this.state.marketingState.metrics.totalSpent;
-    const totalRevenue = this.state.marketingState.metrics.totalRevenueGenerated;
-    const roi =
-      totalSpent > 0 ? ((totalRevenue - totalSpent) / totalSpent) * 100 : 0;
-
-    return {
-      activeCampaigns: this.state.marketingState.activeCampaigns.length,
-      totalSpent,
-      totalROI: Math.round(roi),
-    };
-  }
-
-  public startMarketingCampaign(campaignId: string, days: number = 7): boolean {
-    const canStart = canStartCampaign(
-      this.state.marketingState,
-      campaignId,
-      this.state.economyState.cash
-    );
-    if (!canStart.canStart) {
-      return false;
-    }
-
-    const result = startCampaign(
-      this.state.marketingState,
-      campaignId,
-      this.state.gameDay,
-      days
-    );
-    if (result) {
-      this.state.marketingState = result.state;
-      const cost = result.setupCost;
-      if (cost > 0) {
-        const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
-        const expenseResult = addExpense(
-          this.state.economyState,
-          cost,
-          "marketing",
-          `Campaign: ${campaignId}`,
-          timestamp,
-          false
-        );
-        if (expenseResult) {
-          this.state.economyState = expenseResult;
-        }
-      }
-      return true;
-    }
-    return false;
   }
 
   public getGameTime(): { hours: number; minutes: number } {
@@ -711,10 +642,6 @@ export class GameAPI {
 
   public toggleTeeSheetPanel(): void {
     this.systems.handleTeeSheetPanel();
-  }
-
-  public toggleMarketingPanel(): void {
-    this.systems.handleMarketingPanel();
   }
 
   public cycleOverlay(): void {
@@ -1125,24 +1052,6 @@ export class GameAPI {
     return true;
   }
 
-  public getActiveCampaigns(): Array<{
-    campaignId: string;
-    daysRemaining: number;
-  }> {
-    return this.state.marketingState.activeCampaigns
-      .filter(c => c.status === 'active')
-      .map((c) => ({
-        campaignId: c.campaignId,
-        daysRemaining: c.plannedDuration - c.elapsedDays,
-      }));
-  }
-
-  public endMarketingCampaign(campaignId: string): boolean {
-    const result = stopCampaign(this.state.marketingState, campaignId, this.state.gameDay);
-    this.state.marketingState = result;
-    return true;
-  }
-
   public getAvailableAmenities(): Array<{
     id: string;
     name: string;
@@ -1294,18 +1203,6 @@ export class GameAPI {
     return getAvailableRobotsToPurchase(this.state.researchState, this.state.autonomousState);
   }
 
-  public getWalkOnState(): {
-    queueLength: number;
-    totalServed: number;
-    totalTurnedAway: number;
-  } {
-    return {
-      queueLength: this.state.walkOnState.queue.length,
-      totalServed: this.state.walkOnState.metrics.walkOnsServedToday,
-      totalTurnedAway: this.state.walkOnState.metrics.walkOnsTurnedAwayToday,
-    };
-  }
-
   public getRevenueState(): {
     greenFees: number;
     cartFees: number;
@@ -1432,48 +1329,6 @@ export class GameAPI {
 
   public trackTurnAwayForReputation(): void {
     this.state.reputationState = trackTurnAway(this.state.reputationState);
-  }
-
-  public getWalkOnSummary(): {
-    queueLength: number;
-    served: number;
-    turnedAway: number;
-    gaveUp: number;
-    avgWait: number;
-    estimatedWait: number;
-  } {
-    const summary = getWalkOnSummary(this.state.walkOnState);
-    return {
-      queueLength: getQueueLength(this.state.walkOnState),
-      served: summary.served,
-      turnedAway: summary.turnedAway,
-      gaveUp: summary.gaveUp,
-      avgWait: summary.averageWait,
-      estimatedWait: getEstimatedWaitTime(this.state.walkOnState),
-    };
-  }
-
-  public updateWalkOnPolicy(maxWaitMinutes?: number, maxQueueSize?: number): void {
-    const updates: Partial<{ maxWaitMinutes: number; maxQueueSize: number }> = {};
-    if (maxWaitMinutes !== undefined) updates.maxWaitMinutes = maxWaitMinutes;
-    if (maxQueueSize !== undefined) updates.maxQueueSize = maxQueueSize;
-    this.state.walkOnState = updateWalkOnPolicy(this.state.walkOnState, updates);
-  }
-
-  public addWalkOnGolfer(): boolean {
-    const currentTime: GameTime = {
-      day: this.state.gameDay,
-      hour: Math.floor(this.state.gameTime / 60),
-      minute: this.state.gameTime % 60,
-    };
-    const golfer = createWalkOnGolfer(
-      `walkon_${Date.now()}`,
-      `Walk-On ${Date.now() % 1000}`,
-      currentTime
-    );
-    const result = addWalkOnToQueue(this.state.walkOnState, golfer);
-    this.state.walkOnState = result.state;
-    return result.accepted;
   }
 
   public getRevenueSummaryData(): {
