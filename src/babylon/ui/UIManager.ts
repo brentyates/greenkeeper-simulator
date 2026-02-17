@@ -1540,11 +1540,8 @@ export class UIManager {
     workersIdle: number;
     bookedTeeTimes: number;
     totalTeeTimes: number;
-    walkOnQueue: number;
-    walkOnsTurnedAway: number;
     researchName: string | null;
     researchProgress: number;
-    activeCampaigns: number;
     robotsWorking: number;
     robotsBroken: number;
     sprinklersPumping: number;
@@ -1554,8 +1551,7 @@ export class UIManager {
     this.operationsCrewText.text =
       `👷 Crew: ${summary.workersActive} active / ${summary.workersIdle} idle`;
     this.operationsDemandText.text =
-      `⛳ Tee: ${summary.bookedTeeTimes}/${summary.totalTeeTimes} | Queue: ${summary.walkOnQueue}`;
-    this.operationsDemandText.color = summary.walkOnQueue >= 6 ? '#ffaa44' : '#aaaaaa';
+      `⛳ Tee: ${summary.bookedTeeTimes}/${summary.totalTeeTimes}`;
 
     if (summary.researchName) {
       this.operationsResearchText.text =
@@ -1563,12 +1559,12 @@ export class UIManager {
       this.operationsResearchText.color = UI_THEME.colors.legacy.c_88ff88;
     } else {
       this.operationsResearchText.text =
-        `🔬 Research: idle (${summary.activeCampaigns} campaign${summary.activeCampaigns === 1 ? '' : 's'})`;
+        `🔬 Research: idle`;
       this.operationsResearchText.color = UI_THEME.colors.legacy.c_888888;
     }
 
     this.operationsAutomationText.text =
-      `🤖 Work:${summary.robotsWorking} Down:${summary.robotsBroken} Camp:${summary.activeCampaigns}`;
+      `🤖 Work:${summary.robotsWorking} Down:${summary.robotsBroken}`;
     this.operationsAutomationText.color = summary.robotsBroken > 0 ? '#ff8844' : '#aaaaaa';
 
     this.operationsIrrigationText.text =
