@@ -5,7 +5,7 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
-import { POPUP_COLORS } from './PopupUtils';
+import { POPUP_COLORS, createPanelSection } from './PopupUtils';
 import { renderDialog } from './DialogRenderer';
 
 import { RobotUnit } from '../../core/autonomous-equipment';
@@ -24,14 +24,8 @@ export class EntityInspectorPanel {
   private contentHost: StackPanel | null = null;
   private trackedRobotId: string | null = null;
 
-  private typeText: TextBlock | null = null;
-  private stateText: TextBlock | null = null;
-  private batteryText: TextBlock | null = null;
-  private positionText: TextBlock | null = null;
-  private targetText: TextBlock | null = null;
-  private speedText: TextBlock | null = null;
-  private efficiencyText: TextBlock | null = null;
-  private breakdownText: TextBlock | null = null;
+  // Field refs removed since we now dynamically render
+
 
   constructor(advancedTexture: AdvancedDynamicTexture, onClose: () => void) {
     this.advancedTexture = advancedTexture;
@@ -69,27 +63,6 @@ export class EntityInspectorPanel {
     this.contentHost = new StackPanel('inspectorContent');
     this.contentHost.width = '250px';
     parent.addControl(this.contentHost);
-
-    this.typeText = this.addRow('inspType', 'Type: —');
-    this.stateText = this.addRow('inspState', 'State: —');
-    this.batteryText = this.addRow('inspBattery', 'Battery: —');
-    this.positionText = this.addRow('inspPos', 'Position: —');
-    this.targetText = this.addRow('inspTarget', 'Target: —');
-    this.speedText = this.addRow('inspSpeed', 'Speed: —');
-    this.efficiencyText = this.addRow('inspEff', 'Efficiency: —');
-    this.breakdownText = this.addRow('inspBreak', '');
-  }
-
-  private addRow(name: string, text: string): TextBlock {
-    const tb = new TextBlock(name);
-    tb.text = text;
-    tb.color = UI_THEME.colors.legacy.c_aaaaaa;
-    tb.fontSize = UI_THEME.typography.scale.s12;
-    tb.height = '22px';
-    tb.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    tb.paddingLeft = '4px';
-    this.contentHost!.addControl(tb);
-    return tb;
   }
 
   showRobot(robot: RobotUnit): void {
@@ -103,50 +76,121 @@ export class EntityInspectorPanel {
     this.updateFromRobot(robot);
   }
 
+  private clearContent(): void {
+    if (!this.contentHost) return;
+    const controls = this.contentHost.children.slice();
+    for (const control of controls) {
+      this.contentHost.removeControl(control);
+    }
+  }
+
   private updateFromRobot(robot: RobotUnit): void {
-    if (!this.typeText) return;
+    if (!this.contentHost) return;
+    this.clearContent();
 
     const batteryPct = Math.round((robot.resourceCurrent / robot.resourceMax) * 100);
+    const speed = robot.stats.speed.toFixed(1);
+    const efficiency = Math.round(robot.stats.efficiency * 100);
 
-    this.typeText.text = `Type: ${robot.type.toUpperCase()}`;
-    this.typeText.color = UI_THEME.colors.legacy.c_88ccff;
+    const isBroken = robot.state === 'broken';
+    const isWorking = robot.state === 'working';
 
-    this.stateText!.text = `State: ${robot.state}`;
-    this.stateText!.color = robot.state === 'broken'
-      ? UI_THEME.colors.legacy.c_ff7f7f
-      : robot.state === 'working'
-        ? UI_THEME.colors.legacy.c_7fff7f
-        : UI_THEME.colors.legacy.c_aaaaaa;
+    let diagnosis = isBroken 
+      ? `Unit has experienced a critical breakdown. Repair cycle in progress (${Math.ceil(robot.breakdownTimeRemaining)}s remaining).`
+      : isWorking
+        ? 'Unit is actively performing assigned tasks. Telemetry shows stable operation.'
+        : 'Unit is currently offline or waiting for assignment.';
 
-    this.batteryText!.text = `Battery: ${batteryPct}%`;
-    this.batteryText!.color = batteryPct > 50
-      ? UI_THEME.colors.legacy.c_7fff7f
-      : batteryPct > 20
-        ? UI_THEME.colors.legacy.c_ffdd88
-        : UI_THEME.colors.legacy.c_ff7f7f;
+    this.addHeadline(`${robot.type.toUpperCase()} UNIT`, diagnosis);
+    
+    this.addSection('Condition', 84, (section) => {
+      this.addMetricLine(section, 'Status', robot.state.toUpperCase(), isBroken ? UI_THEME.colors.text.danger : isWorking ? UI_THEME.colors.text.success : UI_THEME.colors.text.secondary);
+      this.addMetricLine(section, 'Battery', `${batteryPct}%`, batteryPct > 50 ? UI_THEME.colors.text.success : batteryPct > 20 ? UI_THEME.colors.legacy.c_ffdd88 : UI_THEME.colors.text.danger);
+      this.addMetricLine(section, 'Efficiency', `${efficiency}%`, UI_THEME.colors.text.info);
+    });
 
-    this.positionText!.text = `Position: (${Math.round(robot.worldX)}, ${Math.round(robot.worldZ)})`;
-    this.positionText!.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.addSection('Telemetry', 70, (section) => {
+      this.addMetricLine(section, 'World Position', `X: ${Math.round(robot.worldX)}, Z: ${Math.round(robot.worldZ)}`, UI_THEME.colors.text.secondary);
+      this.addMetricLine(section, 'Active Target', robot.targetX !== null ? `X: ${Math.round(robot.targetX)}, Z: ${Math.round(robot.targetY!)}` : 'None', UI_THEME.colors.text.secondary);
+      this.addMetricLine(section, 'Travel Speed', `${speed} units/s`, UI_THEME.colors.text.secondary);
+    });
+  }
 
-    this.targetText!.text = robot.targetX !== null
-      ? `Target: (${Math.round(robot.targetX!)}, ${Math.round(robot.targetY!)})`
-      : 'Target: none';
-    this.targetText!.color = UI_THEME.colors.legacy.c_aaaaaa;
+  private addHeadline(titleText: string, description: string): void {
+    if (!this.contentHost) return;
 
-    this.speedText!.text = `Speed: ${robot.stats.speed.toFixed(1)}`;
-    this.speedText!.color = UI_THEME.colors.legacy.c_aaaaaa;
+    const title = new TextBlock(`headline_${titleText}`);
+    title.text = titleText;
+    title.color = '#88ccff';
+    title.fontSize = UI_THEME.typography.scale.s16;
+    title.fontWeight = 'bold';
+    title.height = '22px';
+    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.contentHost.addControl(title);
 
-    this.efficiencyText!.text = `Efficiency: ${Math.round(robot.stats.efficiency * 100)}%`;
-    this.efficiencyText!.color = UI_THEME.colors.legacy.c_aaaaaa;
+    const descriptionText = new TextBlock(`headlineDesc_${titleText}`);
+    descriptionText.text = description;
+    descriptionText.color = UI_THEME.colors.text.secondary;
+    descriptionText.fontSize = UI_THEME.typography.scale.s11;
+    descriptionText.height = '34px';
+    descriptionText.textWrapping = true;
+    descriptionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.contentHost.addControl(descriptionText);
+  }
 
-    if (robot.state === 'broken' && robot.breakdownTimeRemaining > 0) {
-      this.breakdownText!.text = `Repair: ${Math.ceil(robot.breakdownTimeRemaining)}s remaining`;
-      this.breakdownText!.color = UI_THEME.colors.legacy.c_ff7f7f;
-      this.breakdownText!.height = '22px';
-    } else {
-      this.breakdownText!.text = '';
-      this.breakdownText!.height = '0px';
-    }
+  private addSection(titleText: string, height: number, render: (section: StackPanel) => void): void {
+    if (!this.contentHost) return;
+
+    const section = createPanelSection(this.contentHost, {
+      name: `EntityInfo_${titleText}`,
+      width: 250,
+      height,
+      theme: 'blue',
+      background: 'rgba(24, 40, 51, 0.84)',
+      borderColor: '#3f586a',
+      cornerRadius: 4,
+      paddingTop: 4,
+      paddingBottom: 4,
+      marginTop: 6,
+    });
+
+    const stack = new StackPanel(`${titleText}_stack`);
+    stack.width = '234px';
+    section.addControl(stack);
+
+    const label = new TextBlock(`${titleText}_label`);
+    label.text = titleText.toUpperCase();
+    label.color = UI_THEME.colors.text.info;
+    label.fontSize = UI_THEME.typography.scale.s10;
+    label.fontWeight = 'bold';
+    label.height = '18px';
+    label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(label);
+
+    render(stack);
+  }
+
+  private addMetricLine(parent: StackPanel, label: string, value: string, valueColor: string): void {
+    const row = new StackPanel(`${label}_row`);
+    row.isVertical = false;
+    row.height = '18px';
+    parent.addControl(row);
+
+    const labelText = new TextBlock(`${label}_label`);
+    labelText.text = `${label}`;
+    labelText.color = UI_THEME.colors.text.secondary;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
+    labelText.width = '100px';
+    labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    row.addControl(labelText);
+
+    const valueText = new TextBlock(`${label}_value`);
+    valueText.text = value;
+    valueText.color = valueColor;
+    valueText.fontSize = UI_THEME.typography.scale.s11;
+    valueText.width = '134px';
+    valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    row.addControl(valueText);
   }
 
   getTrackedRobotId(): string | null {

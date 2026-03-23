@@ -40,6 +40,9 @@ export class LaunchScreen {
   private quickPlayButton: AccessibleButton | null = null;
   private guideButton: AccessibleButton | null = null;
   private focusManager: FocusManager;
+  private selectionTitleText: TextBlock | null = null;
+  private selectionMetaText: TextBlock | null = null;
+  private selectionObjectiveText: TextBlock | null = null;
 
   constructor(_engine: Engine, scene: Scene, callbacks: LaunchScreenCallbacks, sharedTexture?: AdvancedDynamicTexture) {
     this.callbacks = callbacks;
@@ -56,7 +59,7 @@ export class LaunchScreen {
     this.container = new Rectangle('launchContainer');
     this.container.width = '100%';
     this.container.height = '100%';
-    this.container.background = UI_THEME.colors.legacy.c_0d1f15;
+    this.container.background = UI_THEME.colors.surfaces.launchBackdrop;
     this.container.thickness = 0;
 
     this.buildUI();
@@ -66,34 +69,26 @@ export class LaunchScreen {
   }
 
   private buildUI(): void {
-    // Main layout using Grid for proper height distribution
     const mainGrid = new Grid('mainGrid');
     mainGrid.width = '100%';
     mainGrid.height = '100%';
-    mainGrid.paddingTop = '20px';
-    mainGrid.paddingBottom = '10px';
+    mainGrid.paddingTop = '18px';
+    mainGrid.paddingBottom = '12px';
 
-    // Define rows: title (120px), header (40px), scenarios (flex), custom courses (120px), action bar (80px)
-    mainGrid.addRowDefinition(120, true);
-    mainGrid.addRowDefinition(40, true);
+    mainGrid.addRowDefinition(150, true);
+    mainGrid.addRowDefinition(72, true);
     mainGrid.addRowDefinition(1.0);
-    mainGrid.addRowDefinition(130, true);
-    mainGrid.addRowDefinition(80, true);
+    mainGrid.addRowDefinition(108, true);
+    mainGrid.addRowDefinition(92, true);
     mainGrid.addColumnDefinition(1.0);
 
     this.container.addControl(mainGrid);
 
-    // Title section
     this.createTitleSection(mainGrid);
-
-    // Scenario selection area
     this.createScenarioSection(mainGrid);
-
-    // Custom courses section
     this.createCustomCoursesSection(mainGrid);
-
-    // Bottom action bar
     this.createActionBar(mainGrid);
+    this.ensureDefaultSelection();
   }
 
   private createTitleSection(parent: Grid): void {
@@ -104,37 +99,55 @@ export class LaunchScreen {
     titleContainer.background = 'transparent';
     parent.addControl(titleContainer, 0, 0);
 
-    const titleStack = new StackPanel('titleStack');
-    titleContainer.addControl(titleStack);
+    const heroCard = new Rectangle('launchHeroCard');
+    heroCard.width = '760px';
+    heroCard.height = '120px';
+    heroCard.cornerRadius = UI_THEME.radii.panel;
+    heroCard.background = UI_THEME.colors.surfaces.heroSoft;
+    heroCard.color = UI_THEME.colors.launch.cardBorder;
+    heroCard.thickness = 2;
+    heroCard.shadowColor = UI_THEME.colors.effects.shadow;
+    heroCard.shadowBlur = 18;
+    heroCard.shadowOffsetY = 6;
+    titleContainer.addControl(heroCard);
 
-    // Game icon
+    const titleStack = new StackPanel('titleStack');
+    titleStack.paddingTop = '9px';
+    heroCard.addControl(titleStack);
+
+    const eyebrow = new TextBlock('launchEyebrow');
+    eyebrow.text = 'COURSE OPERATIONS SIMULATION';
+    eyebrow.color = UI_THEME.colors.text.secondary;
+    eyebrow.fontSize = UI_THEME.typography.scale.s11;
+    eyebrow.fontFamily = UI_THEME.typography.fontFamily;
+    eyebrow.height = '18px';
+    titleStack.addControl(eyebrow);
+
     const icon = new TextBlock('gameIcon');
     icon.text = '🌿';
-    icon.fontSize = UI_THEME.typography.scale.s40;
-    icon.height = '50px';
+    icon.fontSize = UI_THEME.typography.scale.s28;
+    icon.height = '34px';
     titleStack.addControl(icon);
 
-    // Game title
     const title = new TextBlock('gameTitle');
     title.text = 'GREENKEEPER SIMULATOR';
     title.color = UI_THEME.colors.editor.buttonTextActive;
     title.fontSize = UI_THEME.typography.scale.s32;
     title.fontFamily = UI_THEME.typography.fontFamily;
-    title.height = '45px';
+    title.height = '38px';
     titleStack.addControl(title);
 
-    // Subtitle
     const subtitle = new TextBlock('subtitle');
-    subtitle.text = 'Master the Art of Course Maintenance';
-    subtitle.color = UI_THEME.colors.legacy.c_4a8a5a;
+    subtitle.text = 'Master the art of course maintenance. Pick a scenario, jump into the round, or head straight to the designer.';
+    subtitle.color = UI_THEME.colors.text.secondary;
     subtitle.fontSize = UI_THEME.typography.scale.s14;
     subtitle.fontFamily = UI_THEME.typography.fontFamily;
-    subtitle.height = '20px';
+    subtitle.height = '32px';
+    subtitle.textWrapping = true;
     titleStack.addControl(subtitle);
   }
 
   private createScenarioSection(parent: Grid): void {
-    // Section header in row 1
     const headerContainer = new Rectangle('headerContainer');
     headerContainer.width = '100%';
     headerContainer.height = '100%';
@@ -142,14 +155,68 @@ export class LaunchScreen {
     headerContainer.background = 'transparent';
     parent.addControl(headerContainer, 1, 0);
 
+    const headerStack = new StackPanel('scenarioHeaderStack');
+    headerStack.paddingTop = '4px';
+    headerContainer.addControl(headerStack);
+
     const header = new TextBlock('scenarioHeader');
-    header.text = 'SELECT SCENARIO';
-    header.color = UI_THEME.colors.legacy.c_7a9a7a;
+    header.text = 'SELECT A SCENARIO';
+    header.color = UI_THEME.colors.text.secondary;
     header.fontSize = UI_THEME.typography.scale.s14;
     header.fontFamily = UI_THEME.typography.fontFamily;
-    headerContainer.addControl(header);
+    header.height = '18px';
+    headerStack.addControl(header);
 
-    // Scrollable scenario container in row 2 (flexible height)
+    const subheader = new TextBlock('scenarioSubheader');
+    subheader.text = 'Unlocked scenarios can be started immediately. Completing goals unlocks tougher contracts.';
+    subheader.color = UI_THEME.colors.text.muted;
+    subheader.fontSize = UI_THEME.typography.scale.s11;
+    subheader.fontFamily = UI_THEME.typography.fontFamily;
+    subheader.height = '18px';
+    headerStack.addControl(subheader);
+
+    const selectionPanel = new Rectangle('scenarioSelectionPanel');
+    selectionPanel.width = '820px';
+    selectionPanel.height = '34px';
+    selectionPanel.cornerRadius = UI_THEME.radii.section;
+    selectionPanel.background = UI_THEME.colors.surfaces.hudInset;
+    selectionPanel.color = UI_THEME.colors.launch.cardBorder;
+    selectionPanel.thickness = 1;
+    selectionPanel.paddingTop = '6px';
+    selectionPanel.paddingBottom = '6px';
+    headerStack.addControl(selectionPanel);
+
+    const selectionGrid = new Grid('scenarioSelectionGrid');
+    selectionGrid.addColumnDefinition(0.36);
+    selectionGrid.addColumnDefinition(0.28);
+    selectionGrid.addColumnDefinition(0.36);
+    selectionPanel.addControl(selectionGrid);
+
+    this.selectionTitleText = new TextBlock('selectionTitle');
+    this.selectionTitleText.text = 'Choose any unlocked scenario';
+    this.selectionTitleText.color = UI_THEME.colors.text.primary;
+    this.selectionTitleText.fontSize = UI_THEME.typography.scale.s12;
+    this.selectionTitleText.fontFamily = UI_THEME.typography.fontFamily;
+    this.selectionTitleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.selectionTitleText.paddingLeft = '10px';
+    selectionGrid.addControl(this.selectionTitleText, 0, 0);
+
+    this.selectionMetaText = new TextBlock('selectionMeta');
+    this.selectionMetaText.text = 'Quick Play starts the best available challenge';
+    this.selectionMetaText.color = UI_THEME.colors.text.secondary;
+    this.selectionMetaText.fontSize = UI_THEME.typography.scale.s10;
+    this.selectionMetaText.fontFamily = UI_THEME.typography.fontFamily;
+    selectionGrid.addControl(this.selectionMetaText, 0, 1);
+
+    this.selectionObjectiveText = new TextBlock('selectionObjective');
+    this.selectionObjectiveText.text = 'Pick one to review its objective here';
+    this.selectionObjectiveText.color = UI_THEME.colors.text.info;
+    this.selectionObjectiveText.fontSize = UI_THEME.typography.scale.s10;
+    this.selectionObjectiveText.fontFamily = UI_THEME.typography.fontFamily;
+    this.selectionObjectiveText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.selectionObjectiveText.paddingRight = '10px';
+    selectionGrid.addControl(this.selectionObjectiveText, 0, 2);
+
     const scrollContainer = new Rectangle('scrollContainer');
     scrollContainer.width = '100%';
     scrollContainer.height = '100%';
@@ -161,18 +228,15 @@ export class LaunchScreen {
     scrollViewer.width = '95%';
     scrollViewer.height = '100%';
     configureDialogScrollViewer(scrollViewer, {
-      barColor: '#4a8a5a',
-      barBackground: UI_THEME.colors.editor.buttonBase,
+      barColor: UI_THEME.colors.border.strong,
+      barBackground: UI_THEME.colors.surfaces.hudInset,
     });
     scrollContainer.addControl(scrollViewer);
 
-    // Hide horizontal scrollbar area after it's created (it's created lazily on first render)
     const hideHorizontalBar = () => {
-      // Hide the scrollbar itself
       if (scrollViewer.horizontalBar) {
         scrollViewer.horizontalBar.isVisible = false;
       }
-      // Hide the scrollbar track/container (private property, access via any)
       const viewer = scrollViewer as unknown as { _horizontalBarSpace?: { isVisible: boolean } };
       if (viewer._horizontalBarSpace) {
         viewer._horizontalBarSpace.isVisible = false;
@@ -184,10 +248,9 @@ export class LaunchScreen {
     const grid = new Grid('scenarioGrid');
     grid.width = '100%';
 
-    // Calculate rows needed (3 cards per row)
     const cardsPerRow = 3;
     const numRows = Math.ceil(SCENARIOS.length / cardsPerRow);
-    const rowHeight = 140;
+    const rowHeight = 152;
     grid.height = `${numRows * rowHeight}px`;
 
     for (let i = 0; i < cardsPerRow; i++) {
@@ -199,7 +262,6 @@ export class LaunchScreen {
 
     scrollViewer.addControl(grid);
 
-    // Create scenario cards
     SCENARIOS.forEach((scenario, index) => {
       const row = Math.floor(index / cardsPerRow);
       const col = index % cardsPerRow;
@@ -214,42 +276,43 @@ export class LaunchScreen {
     const isCompleted = status === 'completed';
 
     const card = new Rectangle(`card_${scenario.id}`);
-    card.width = '180px';
-    card.height = '125px';
-    card.cornerRadius = UI_THEME.radii.scale.r8;
+    card.width = '212px';
+    card.height = '138px';
+    card.cornerRadius = UI_THEME.radii.panel;
     card.thickness = 2;
-    card.paddingTop = '5px';
-    card.paddingBottom = '5px';
+    card.paddingTop = '6px';
+    card.paddingBottom = '6px';
+    card.shadowColor = UI_THEME.colors.effects.shadow;
+    card.shadowBlur = 10;
+    card.shadowOffsetY = 4;
 
     if (isLocked) {
-      card.background = UI_THEME.colors.miscButton.neutralBase;
-      card.color = UI_THEME.colors.legacy.c_2a3a30;
-      card.alpha = 0.7;
+      card.background = UI_THEME.colors.launch.cardLocked;
+      card.color = UI_THEME.colors.border.muted;
+      card.alpha = 0.58;
     } else if (isCompleted) {
-      card.background = UI_THEME.colors.editor.buttonBase;
-      card.color = UI_THEME.colors.legacy.c_4a8a5a;
+      card.background = UI_THEME.colors.launch.card;
+      card.color = UI_THEME.colors.border.strong;
     } else {
-      card.background = UI_THEME.colors.editor.buttonBase;
-      card.color = UI_THEME.colors.editor.buttonBorder;
+      card.background = UI_THEME.colors.launch.card;
+      card.color = UI_THEME.colors.launch.cardBorder;
     }
 
     const stack = new StackPanel();
-    stack.paddingTop = '8px';
-    stack.paddingLeft = '10px';
-    stack.paddingRight = '10px';
+    stack.paddingTop = '10px';
+    stack.paddingLeft = '12px';
+    stack.paddingRight = '12px';
     card.addControl(stack);
 
-    // Status badge
     const badgeRow = new StackPanel();
     badgeRow.isVertical = false;
-    badgeRow.height = '22px';
+    badgeRow.height = '24px';
     badgeRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(badgeRow);
 
-    // Difficulty badge
     const diffBadge = new Rectangle('diffBadge');
-    diffBadge.width = '70px';
-    diffBadge.height = '18px';
+    diffBadge.width = '76px';
+    diffBadge.height = '20px';
     diffBadge.cornerRadius = UI_THEME.radii.scale.r3;
     diffBadge.thickness = 0;
     diffBadge.background = this.getDifficultyColor(scenario.difficulty);
@@ -258,11 +321,10 @@ export class LaunchScreen {
     const diffText = new TextBlock();
     diffText.text = scenario.difficulty.toUpperCase();
     diffText.color = 'white';
-    diffText.fontSize = UI_THEME.typography.scale.s9;
+    diffText.fontSize = UI_THEME.typography.scale.s10;
     diffText.fontFamily = UI_THEME.typography.fontFamily;
     diffBadge.addControl(diffText);
 
-    // Status icons
     const hasSavedGame = hasSave(scenario.id);
 
     if (isLocked) {
@@ -290,33 +352,30 @@ export class LaunchScreen {
       badgeRow.addControl(saveIcon);
     }
 
-    // Scenario name
     const name = new TextBlock('scenarioName');
     name.text = scenario.name;
-    name.color = isLocked ? '#4a5a50' : 'white';
-    name.fontSize = UI_THEME.typography.scale.s12;
+    name.color = isLocked ? '#5b685f' : UI_THEME.colors.text.primary;
+    name.fontSize = UI_THEME.typography.scale.s13;
     name.fontFamily = UI_THEME.typography.fontFamily;
-    name.height = '20px';
+    name.height = '32px';
     name.textWrapping = true;
     name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    name.paddingTop = '4px';
+    name.paddingTop = '6px';
     stack.addControl(name);
 
-    // Course info
     const course = getCourseById(scenario.courseId);
     const courseInfo = new TextBlock('courseInfo');
     courseInfo.text = course ? `${course.name} (Par ${course.par})` : scenario.courseId;
-    courseInfo.color = isLocked ? '#3a4a40' : '#88aa88';
+    courseInfo.color = isLocked ? '#4c5a52' : UI_THEME.colors.text.secondary;
     courseInfo.fontSize = UI_THEME.typography.scale.s10;
     courseInfo.fontFamily = UI_THEME.typography.fontFamily;
-    courseInfo.height = '16px';
+    courseInfo.height = '18px';
     courseInfo.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(courseInfo);
 
-    // Objective icon
     const objRow = new StackPanel();
     objRow.isVertical = false;
-    objRow.height = '18px';
+    objRow.height = '22px';
     objRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(objRow);
 
@@ -328,20 +387,19 @@ export class LaunchScreen {
 
     const objText = new TextBlock('objText');
     objText.text = this.getObjectiveShortText(scenario);
-    objText.color = isLocked ? '#3a4a40' : UI_THEME.colors.editor.buttonText;
+    objText.color = isLocked ? '#4c5a52' : UI_THEME.colors.text.info;
     objText.fontSize = UI_THEME.typography.scale.s10;
     objText.fontFamily = UI_THEME.typography.fontFamily;
-    objText.width = '200px';
+    objText.width = '176px';
     objText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     objRow.addControl(objText);
 
-    // Best score if completed
     if (isCompleted) {
       const bestScore = this.progressManager.getBestScore(scenario.id);
       if (bestScore !== null) {
         const scoreText = new TextBlock('scoreText');
         scoreText.text = `Best: ${bestScore.toLocaleString()}`;
-        scoreText.color = UI_THEME.colors.legacy.c_ffcc00;
+        scoreText.color = UI_THEME.colors.text.accent;
         scoreText.fontSize = UI_THEME.typography.scale.s10;
         scoreText.fontFamily = UI_THEME.typography.fontFamily;
         scoreText.height = '16px';
@@ -350,36 +408,34 @@ export class LaunchScreen {
       }
     }
 
-    // Interaction
     if (!isLocked) {
       card.onPointerEnterObservable.add(() => {
         if (this.selectedScenario?.id !== scenario.id) {
-          card.background = UI_THEME.colors.miscButton.customPlay;
+          card.background = UI_THEME.colors.launch.cardHover;
         }
       });
 
       card.onPointerOutObservable.add(() => {
         if (this.selectedScenario?.id !== scenario.id) {
-          card.background = isCompleted ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
+          card.background = UI_THEME.colors.launch.card;
         }
       });
 
-      // Register with focus manager for keyboard navigation
       this.focusManager.register({
         control: card,
         onActivate: () => this.selectScenario(scenario),
         onFocus: () => {
           if (this.selectedScenario?.id !== scenario.id) {
-            card.background = UI_THEME.colors.miscButton.customPlay;
+            card.background = UI_THEME.colors.launch.cardHover;
           }
         },
         onBlur: () => {
           if (this.selectedScenario?.id !== scenario.id) {
-            card.background = isCompleted ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
+            card.background = UI_THEME.colors.launch.card;
           }
         },
         isEnabled: () => !isLocked,
-        group: 'launch-scenarios'
+        group: 'launch-shell'
       });
     }
 
@@ -388,28 +444,36 @@ export class LaunchScreen {
   }
 
   private selectScenario(scenario: ScenarioDefinition): void {
-    // Deselect previous
     if (this.selectedScenario) {
       const prevCard = this.scenarioCards.get(this.selectedScenario.id);
       if (prevCard) {
         const prevStatus = this.progressManager.getScenarioStatus(this.selectedScenario.id);
-        prevCard.background = prevStatus === 'completed' ? UI_THEME.colors.editor.buttonBase : UI_THEME.colors.editor.buttonBase;
-        prevCard.color = prevStatus === 'completed' ? '#4a8a5a' : UI_THEME.colors.editor.buttonBorder;
+        prevCard.background = UI_THEME.colors.launch.card;
+        prevCard.color = prevStatus === 'completed' ? UI_THEME.colors.border.strong : UI_THEME.colors.launch.cardBorder;
       }
     }
 
-    // Select new
     this.selectedScenario = scenario;
     const card = this.scenarioCards.get(scenario.id);
     if (card) {
-      card.background = UI_THEME.colors.editor.buttonActive;
-      card.color = UI_THEME.colors.editor.buttonTextActive;
+      card.background = UI_THEME.colors.launch.cardSelected;
+      card.color = UI_THEME.colors.launch.selectedBorder;
     }
 
-    // Show/hide continue button based on saved game
     if (this.continueButton) {
       const hasSavedGame = hasSave(scenario.id);
       this.continueButton.control.isVisible = hasSavedGame;
+    }
+
+    const course = getCourseById(scenario.courseId);
+    if (this.selectionTitleText) {
+      this.selectionTitleText.text = scenario.name;
+    }
+    if (this.selectionMetaText) {
+      this.selectionMetaText.text = `${scenario.difficulty.toUpperCase()} • ${course ? `${course.name} (Par ${course.par})` : scenario.courseId}`;
+    }
+    if (this.selectionObjectiveText) {
+      this.selectionObjectiveText.text = this.getObjectiveShortText(scenario);
     }
   }
 
@@ -418,30 +482,29 @@ export class LaunchScreen {
     actionBar.width = '100%';
     actionBar.height = '100%';
     actionBar.thickness = 0;
-    actionBar.background = 'rgba(26, 58, 42, 0.5)';
+    actionBar.background = UI_THEME.colors.surfaces.heroSoft;
     parent.addControl(actionBar, 4, 0);
 
     const buttonRow = new StackPanel('buttonRow');
     buttonRow.isVertical = false;
-    buttonRow.height = '50px';
+    buttonRow.height = '56px';
     actionBar.addControl(buttonRow);
 
-    // Continue button (only visible when saved game exists)
     this.continueButton = createAccessibleButton({
       label: '▶ CONTINUE',
-      backgroundColor: '#4a6a7a',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.info,
       onClick: () => {
         if (this.selectedScenario && this.callbacks.onContinueScenario) {
           this.callbacks.onContinueScenario(this.selectedScenario);
         }
       },
       isEnabled: () => this.selectedScenario !== null && hasSave(this.selectedScenario!.id),
-      focusGroup: 'launch-buttons'
+      focusGroup: 'launch-shell'
     }, this.focusManager);
     this.continueButton.control.isVisible = false;
     buttonRow.addControl(this.continueButton.control);
 
-    // Spacer after continue
     const spacer1 = new Rectangle('spacer1');
     spacer1.width = '10px';
     spacer1.height = '1px';
@@ -449,20 +512,20 @@ export class LaunchScreen {
     spacer1.background = 'transparent';
     buttonRow.addControl(spacer1);
 
-    // Start button (new game)
     this.startButton = createAccessibleButton({
       label: '▶ NEW GAME',
+      backgroundColor: UI_THEME.colors.action.primary.normal,
+      borderColor: UI_THEME.colors.launch.selectedBorder,
       onClick: () => {
         if (this.selectedScenario) {
           this.callbacks.onStartScenario(this.selectedScenario);
         }
       },
       isEnabled: () => this.selectedScenario !== null,
-      focusGroup: 'launch-buttons'
+      focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.startButton.control);
 
-    // Spacer
     const spacer2 = new Rectangle('spacer2');
     spacer2.width = '20px';
     spacer2.height = '1px';
@@ -470,10 +533,10 @@ export class LaunchScreen {
     spacer2.background = 'transparent';
     buttonRow.addControl(spacer2);
 
-    // Quick play button (auto-select first unlocked)
     this.quickPlayButton = createAccessibleButton({
       label: '🎮 QUICK PLAY',
-      backgroundColor: '#4a7a5a',
+      backgroundColor: UI_THEME.colors.action.success.normal,
+      borderColor: UI_THEME.colors.border.strong,
       onClick: () => {
         const unlocked = this.progressManager.getUnlockedScenarios();
         const lastPlayed = this.progressManager.getLastPlayedScenario();
@@ -491,11 +554,10 @@ export class LaunchScreen {
           this.callbacks.onStartScenario(scenario);
         }
       },
-      focusGroup: 'launch-buttons'
+      focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.quickPlayButton.control);
 
-    // Spacer
     const spacer3 = new Rectangle('spacer3');
     spacer3.width = '20px';
     spacer3.height = '1px';
@@ -503,20 +565,19 @@ export class LaunchScreen {
     spacer3.background = 'transparent';
     buttonRow.addControl(spacer3);
 
-    // Guide button
     this.guideButton = createAccessibleButton({
       label: '📖 GUIDE',
-      backgroundColor: '#5a6a7a',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.info,
       onClick: () => {
         if (this.callbacks.onOpenManual) {
           this.callbacks.onOpenManual();
         }
       },
-      focusGroup: 'launch-buttons'
+      focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.guideButton.control);
 
-    // Spacer
     const spacer4 = new Rectangle('spacer4');
     spacer4.width = '20px';
     spacer4.height = '1px';
@@ -524,16 +585,16 @@ export class LaunchScreen {
     spacer4.background = 'transparent';
     buttonRow.addControl(spacer4);
 
-    // Course Designer button
     const designerButton = createAccessibleButton({
       label: '🎨 DESIGNER',
-      backgroundColor: '#5a5a7a',
+      backgroundColor: UI_THEME.colors.miscButton.customEdit,
+      borderColor: UI_THEME.colors.border.info,
       onClick: () => {
         if (this.callbacks.onOpenDesigner) {
           this.callbacks.onOpenDesigner();
         }
       },
-      focusGroup: 'launch-buttons'
+      focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(designerButton.control);
   }
@@ -544,7 +605,7 @@ export class LaunchScreen {
     container.width = '100%';
     container.height = '100%';
     container.thickness = 0;
-    container.background = 'rgba(26, 42, 32, 0.4)';
+    container.background = 'rgba(16, 34, 26, 0.58)';
     parent.addControl(container, 3, 0);
 
     const stack = new StackPanel('customStack');
@@ -554,7 +615,7 @@ export class LaunchScreen {
 
     const header = new TextBlock('customHeader');
     header.text = 'CUSTOM COURSES';
-    header.color = UI_THEME.colors.legacy.c_7a9a7a;
+    header.color = UI_THEME.colors.text.secondary;
     header.fontSize = UI_THEME.typography.scale.s12;
     header.fontFamily = UI_THEME.typography.fontFamily;
     header.height = '24px';
@@ -565,8 +626,8 @@ export class LaunchScreen {
     scrollViewer.width = '95%';
     scrollViewer.height = '95px';
     configureDialogScrollViewer(scrollViewer, {
-      barColor: '#4a8a5a',
-      barBackground: UI_THEME.colors.editor.buttonBase,
+      barColor: UI_THEME.colors.border.strong,
+      barBackground: UI_THEME.colors.surfaces.hudInset,
     });
     stack.addControl(scrollViewer);
 
@@ -583,12 +644,13 @@ export class LaunchScreen {
 
     if (courses.length === 0) {
       const empty = new TextBlock('emptyCustom');
-      empty.text = 'No custom courses yet';
-      empty.color = UI_THEME.colors.miscButton.mutedGreen;
+      empty.text = 'No custom courses yet. Open Designer to build your own layout.';
+      empty.color = UI_THEME.colors.text.muted;
       empty.fontSize = UI_THEME.typography.scale.s11;
       empty.fontFamily = UI_THEME.typography.fontFamily;
-      empty.width = '200px';
-      empty.height = '30px';
+      empty.width = '360px';
+      empty.height = '38px';
+      empty.textWrapping = true;
       cardRow.addControl(empty);
     }
   }
@@ -726,9 +788,9 @@ export class LaunchScreen {
   public show(): void {
     this.advancedTexture.addControl(this.container);
     this.container.isVisible = true;
+    this.ensureDefaultSelection();
     this.refreshCards();
-    // Enable keyboard navigation - start with scenario selection
-    this.focusManager.enableForGroup('launch-scenarios', 0);
+    this.focusManager.enableForGroup('launch-shell', 0);
   }
 
   public hide(): void {
@@ -742,7 +804,6 @@ export class LaunchScreen {
   }
 
   private refreshCards(): void {
-    // Update card states based on current progress
     for (const [scenarioId, card] of this.scenarioCards) {
       const status = this.progressManager.getScenarioStatus(scenarioId);
       const isLocked = status === 'locked';
@@ -750,22 +811,40 @@ export class LaunchScreen {
       const isSelected = this.selectedScenario?.id === scenarioId;
 
       if (isSelected) {
-        card.background = UI_THEME.colors.editor.buttonActive;
-        card.color = UI_THEME.colors.editor.buttonTextActive;
+        card.background = UI_THEME.colors.launch.cardSelected;
+        card.color = UI_THEME.colors.launch.selectedBorder;
         card.alpha = 1;
       } else if (isLocked) {
-        card.background = UI_THEME.colors.miscButton.neutralBase;
-        card.color = UI_THEME.colors.legacy.c_2a3a30;
-        card.alpha = 0.7;
+        card.background = UI_THEME.colors.launch.cardLocked;
+        card.color = UI_THEME.colors.border.muted;
+        card.alpha = 0.58;
       } else if (isCompleted) {
-        card.background = UI_THEME.colors.editor.buttonBase;
-        card.color = UI_THEME.colors.legacy.c_4a8a5a;
+        card.background = UI_THEME.colors.launch.card;
+        card.color = UI_THEME.colors.border.strong;
         card.alpha = 1;
       } else {
-        card.background = UI_THEME.colors.editor.buttonBase;
-        card.color = UI_THEME.colors.editor.buttonBorder;
+        card.background = UI_THEME.colors.launch.card;
+        card.color = UI_THEME.colors.launch.cardBorder;
         card.alpha = 1;
       }
+    }
+  }
+
+  private ensureDefaultSelection(): void {
+    if (this.selectedScenario) {
+      this.selectScenario(this.selectedScenario);
+      return;
+    }
+
+    const lastPlayed = this.progressManager.getLastPlayedScenario();
+    const unlocked = this.progressManager.getUnlockedScenarios();
+    const scenario =
+      unlocked.find((candidate) => candidate.id === lastPlayed)
+      ?? unlocked[0]
+      ?? SCENARIOS.find((candidate) => this.progressManager.getScenarioStatus(candidate.id) !== 'locked');
+
+    if (scenario) {
+      this.selectScenario(scenario);
     }
   }
 

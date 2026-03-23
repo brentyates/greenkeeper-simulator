@@ -5,8 +5,11 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { Slider } from '@babylonjs/gui/2D/controls/sliders/slider';
 
+import { Button } from '@babylonjs/gui/2D/controls/button';
 import { UIParent } from './UIParent';
 import { createActionButton, createDockedPanel, createPopupHeader, POPUP_COLORS } from './PopupUtils';
+import { addUniformButtons, createHorizontalRow, UI_SPACING } from './LayoutUtils';
+import { addDialogSectionLabel } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
 import { EditorTool, EditorMode, TopologyMode, InteractionMode, isSculptTool, isTerrainBrush } from '../../core/terrain-editor-logic';
 import { degreesToRadians } from '../../core/transform-ops';
@@ -41,8 +44,8 @@ export class TerrainEditorUI {
   private callbacks: TerrainEditorUICallbacks;
 
   private panel: Rectangle | null = null;
-  private toolButtons: Map<EditorTool, Rectangle> = new Map();
-  private modeButtons: Map<EditorMode, Rectangle> = new Map();
+  private toolButtons: Map<EditorTool, Button> = new Map();
+  private modeButtons: Map<EditorMode, Button> = new Map();
   private axisButtons: Map<string, Rectangle> = new Map();
   // coordsText removed
   private brushSizeText: TextBlock | null = null;
@@ -58,12 +61,12 @@ export class TerrainEditorUI {
   private activeMode: EditorMode = 'sculpt';
   private activeAxis: AxisConstraint = 'xz';
   private activeTopologyMode: TopologyMode = 'vertex';
-  private topologyButtons: Map<TopologyMode, Rectangle> = new Map();
+  private topologyButtons: Map<TopologyMode, Button> = new Map();
 
   private sculptToolsPanel: StackPanel | null = null;
   private paintToolsPanel: StackPanel | null = null;
   private activeInteractionMode: InteractionMode = 'brush';
-  private interactionButtons: Map<InteractionMode, Rectangle> = new Map();
+  private interactionButtons: Map<InteractionMode, Button> = new Map();
   private brushSizeContainer: StackPanel | null = null;
   private brushStrengthContainer: StackPanel | null = null;
   private interactionToggleContainer: StackPanel | null = null;
@@ -126,23 +129,21 @@ export class TerrainEditorUI {
   }
 
   private createModeToggle(parent: StackPanel): void {
-    const grid = new Grid('modeGrid');
-    grid.height = '40px';
-    grid.width = '316px';
-    grid.paddingTop = '8px';
-    grid.addColumnDefinition(1 / 3);
-    grid.addColumnDefinition(1 / 3);
-    grid.addColumnDefinition(1 / 3);
-    parent.addControl(grid);
-
-    const sculptBtn = this.createModeButton('sculpt', 'SCULPT');
-    grid.addControl(sculptBtn, 0, 0);
-
-    const paintBtn = this.createModeButton('paint', 'PAINT');
-    grid.addControl(paintBtn, 0, 1);
-
-    const stampBtn = this.createModeButton('stamp', 'STAMP');
-    grid.addControl(stampBtn, 0, 2);
+    const modeRow = createHorizontalRow(parent, { name: 'modeRow', widthPx: 316, heightPx: 32 });
+    modeRow.paddingTop = '8px';
+    const [sculptBtn, paintBtn, stampBtn] = addUniformButtons(modeRow, {
+      rowWidthPx: 316,
+      rowHeightPx: 32,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'sculptBtn', label: 'SCULPT', onClick: () => { this.setMode('sculpt'); this.callbacks.onModeChange('sculpt'); } },
+        { id: 'paintBtn', label: 'PAINT', onClick: () => { this.setMode('paint'); this.callbacks.onModeChange('paint'); } },
+        { id: 'stampBtn', label: 'STAMP', onClick: () => { this.setMode('stamp'); this.callbacks.onModeChange('stamp'); } },
+      ],
+    });
+    if (sculptBtn) this.modeButtons.set('sculpt', sculptBtn);
+    if (paintBtn) this.modeButtons.set('paint', paintBtn);
+    if (stampBtn) this.modeButtons.set('stamp', stampBtn);
 
     this.updateModeButtonStyles();
   }
@@ -152,111 +153,25 @@ export class TerrainEditorUI {
     this.interactionToggleContainer.width = '316px';
     parent.addControl(this.interactionToggleContainer);
 
-    const grid = new Grid('interactionGrid');
-    grid.height = '36px';
-    grid.width = '316px';
-    grid.paddingTop = '4px';
-    grid.addColumnDefinition(0.5);
-    grid.addColumnDefinition(0.5);
-    this.interactionToggleContainer.addControl(grid);
+    const interactionRow = createHorizontalRow(this.interactionToggleContainer, { name: 'interactionRow', widthPx: 316, heightPx: 28 });
+    interactionRow.paddingTop = '4px';
 
-    const brushBtn = this.createInteractionButton('brush', 'BRUSH (B)');
-    grid.addControl(brushBtn, 0, 0);
-
-    const selectBtn = this.createInteractionButton('select', 'SELECT (S)');
-    grid.addControl(selectBtn, 0, 1);
+    const [brushBtn, selectBtn] = addUniformButtons(interactionRow, {
+      rowWidthPx: 316,
+      rowHeightPx: 28,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'brushBtn', label: 'BRUSH (B)', onClick: () => { this.setInteractionMode('brush'); this.callbacks.onInteractionModeChange?.('brush'); } },
+        { id: 'selectBtn', label: 'SELECT (S)', onClick: () => { this.setInteractionMode('select'); this.callbacks.onInteractionModeChange?.('select'); } },
+      ],
+    });
+    if (brushBtn) this.interactionButtons.set('brush', brushBtn);
+    if (selectBtn) this.interactionButtons.set('select', selectBtn);
 
     this.updateInteractionButtonStyles();
   }
 
-  private createInteractionButton(mode: InteractionMode, label: string): Rectangle {
-    const container = new Rectangle(`interaction_${mode}`);
-    container.width = '95%';
-    container.height = '28px';
-    container.cornerRadius = UI_THEME.radii.scale.r4;
-    container.background = UI_THEME.colors.editor.buttonBase;
-    container.color = UI_THEME.colors.editor.buttonBorder;
-    container.thickness = 2;
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = UI_THEME.colors.editor.buttonText;
-    text.fontSize = UI_THEME.typography.scale.s11;
-    text.fontWeight = 'bold';
-    container.addControl(text);
-
-    container.onPointerEnterObservable.add(() => {
-      if (this.activeInteractionMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonHover;
-      }
-    });
-
-    container.onPointerOutObservable.add(() => {
-      if (this.activeInteractionMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonBase;
-      }
-    });
-
-    container.onPointerUpObservable.add(() => {
-      this.setInteractionMode(mode);
-      this.callbacks.onInteractionModeChange?.(mode);
-    });
-
-    this.interactionButtons.set(mode, container);
-    return container;
-  }
-
-  private updateInteractionButtonStyles(): void {
-    for (const [mode, btn] of this.interactionButtons) {
-      const text = btn.children[0] as TextBlock;
-      if (mode === this.activeInteractionMode) {
-        btn.background = UI_THEME.colors.editor.buttonActive;
-        btn.color = UI_THEME.colors.editor.buttonTextActive;
-        if (text) text.color = UI_THEME.colors.editor.buttonTextActive;
-      } else {
-        btn.background = UI_THEME.colors.editor.buttonBase;
-        btn.color = UI_THEME.colors.editor.buttonBorder;
-        if (text) text.color = UI_THEME.colors.editor.buttonText;
-      }
-    }
-  }
-
-  private createModeButton(mode: EditorMode, label: string): Rectangle {
-    const container = new Rectangle(`mode_${mode}`);
-    container.width = '95%';
-    container.height = '32px';
-    container.cornerRadius = UI_THEME.radii.scale.r4;
-    container.background = UI_THEME.colors.editor.buttonBase;
-    container.color = UI_THEME.colors.editor.buttonBorder;
-    container.thickness = 2;
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = UI_THEME.colors.editor.buttonText;
-    text.fontSize = UI_THEME.typography.scale.s12;
-    text.fontWeight = 'bold';
-    container.addControl(text);
-
-    container.onPointerEnterObservable.add(() => {
-      if (this.activeMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonHover;
-      }
-    });
-
-    container.onPointerOutObservable.add(() => {
-      if (this.activeMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonBase;
-      }
-    });
-
-    container.onPointerUpObservable.add(() => {
-      this.setMode(mode);
-      this.callbacks.onModeChange(mode);
-    });
-
-    this.modeButtons.set(mode, container);
-    return container;
-  }
+  // removed createInteractionButton and createModeButton 
 
   public setMode(mode: EditorMode): void {
     this.activeMode = mode;
@@ -270,18 +185,21 @@ export class TerrainEditorUI {
     }
   }
 
+  private updateInteractionButtonStyles(): void {
+    for (const [mode, btn] of this.interactionButtons) {
+      btn.background = mode === this.activeInteractionMode ? UI_THEME.colors.action.neutral.hover : UI_THEME.colors.editor.buttonBase;
+      btn.color = mode === this.activeInteractionMode ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
+      const tblock = btn.children[0] as TextBlock;
+      if (tblock) tblock.color = btn.color;
+    }
+  }
+
   private updateModeButtonStyles(): void {
     for (const [mode, btn] of this.modeButtons) {
-      const text = btn.children[0] as TextBlock;
-      if (mode === this.activeMode) {
-        btn.background = UI_THEME.colors.editor.buttonActive;
-        btn.color = UI_THEME.colors.editor.buttonTextActive;
-        if (text) text.color = UI_THEME.colors.editor.buttonTextActive;
-      } else {
-        btn.background = UI_THEME.colors.editor.buttonBase;
-        btn.color = UI_THEME.colors.editor.buttonBorder;
-        if (text) text.color = UI_THEME.colors.editor.buttonText;
-      }
+      btn.background = mode === this.activeMode ? UI_THEME.colors.editor.buttonActive : UI_THEME.colors.editor.buttonBase;
+      btn.color = mode === this.activeMode ? UI_THEME.colors.editor.buttonTextActive : UI_THEME.colors.text.secondary;
+      const tblock = btn.children[0] as TextBlock;
+      if (tblock) tblock.color = btn.color;
     }
   }
 
@@ -290,35 +208,27 @@ export class TerrainEditorUI {
     this.sculptToolsPanel.width = '316px';
     parent.addControl(this.sculptToolsPanel);
 
-    const sectionLabel = new TextBlock('sculptLabel');
-    sectionLabel.text = 'SCULPT TOOLS';
-    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
-    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
-    sectionLabel.height = '28px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    this.sculptToolsPanel.addControl(sectionLabel);
+    addDialogSectionLabel(this.sculptToolsPanel, { id: 'sculptLabel', text: 'SCULPT TOOLS', tone: 'info', fontSize: 10, fontWeight: 'bold' });
 
-    const grid = new Grid('sculptGrid');
-    grid.height = '55px';
-    grid.width = '316px';
-    grid.addColumnDefinition(1 / 4);
-    grid.addColumnDefinition(1 / 4);
-    grid.addColumnDefinition(1 / 4);
-    grid.addColumnDefinition(1 / 4);
-    this.sculptToolsPanel.addControl(grid);
+    const sculptRow = createHorizontalRow(this.sculptToolsPanel, { name: 'sculptRow', widthPx: 316, heightPx: 36 });
+    sculptRow.paddingTop = '4px';
 
-    const tools: { tool: EditorTool; label: string; key: string; color: string }[] = [
-      { tool: 'raise', label: 'Raise', key: '1', color: UI_THEME.colors.editor.buttonTextActive },
-      { tool: 'lower', label: 'Lower', key: '2', color: '#FF7F7F' },
-      { tool: 'smooth', label: 'Smooth', key: '3', color: '#7F7FFF' },
-      { tool: 'flatten', label: 'Flatten', key: '4', color: '#FFFF7F' },
-    ];
-
-    tools.forEach((t, i) => {
-      const btn = this.createToolButton(t.tool, t.label, t.key, t.color);
-      grid.addControl(btn, 0, i);
+    const btns = addUniformButtons(sculptRow, {
+      rowWidthPx: 316,
+      rowHeightPx: 36,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'raiseBtn', label: 'Raise (1)', onClick: () => this.callbacks.onToolSelect('raise') },
+        { id: 'lowerBtn', label: 'Lower (2)', onClick: () => this.callbacks.onToolSelect('lower') },
+        { id: 'smoothBtn', label: 'Smooth (3)', onClick: () => this.callbacks.onToolSelect('smooth') },
+        { id: 'flattenBtn', label: 'Flatten (4)', onClick: () => this.callbacks.onToolSelect('flatten') },
+      ]
     });
+
+    if (btns[0]) this.toolButtons.set('raise', btns[0]!);
+    if (btns[1]) this.toolButtons.set('lower', btns[1]!);
+    if (btns[2]) this.toolButtons.set('smooth', btns[2]!);
+    if (btns[3]) this.toolButtons.set('flatten', btns[3]!);
   }
 
   private createTerrainBrushes(parent: StackPanel): void {
@@ -326,90 +236,32 @@ export class TerrainEditorUI {
     this.paintToolsPanel.width = '316px';
     parent.addControl(this.paintToolsPanel);
 
-    const sectionLabel = new TextBlock('terrainLabel');
-    sectionLabel.text = 'TERRAIN TYPE';
-    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
-    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
-    sectionLabel.height = '28px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '8px';
-    this.paintToolsPanel.addControl(sectionLabel);
+    addDialogSectionLabel(this.paintToolsPanel, { id: 'terrainLabel', text: 'TERRAIN TYPE', tone: 'info', fontSize: 10, fontWeight: 'bold' });
+    
+    const row1 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow1', widthPx: 316, heightPx: 36 });
+    row1.paddingBottom = '4px';
+    const row2 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow2', widthPx: 316, heightPx: 36 });
 
-    const grid = new Grid('terrainGrid');
-    grid.height = '55px';
-    grid.width = '316px';
-    grid.addColumnDefinition(1 / 6);
-    grid.addColumnDefinition(1 / 6);
-    grid.addColumnDefinition(1 / 6);
-    grid.addColumnDefinition(1 / 6);
-    grid.addColumnDefinition(1 / 6);
-    grid.addColumnDefinition(1 / 6);
-    this.paintToolsPanel.addControl(grid);
-
-    const brushes: { tool: EditorTool; label: string; key: string; color: string }[] = [
-      { tool: 'terrain_fairway', label: 'Fairway', key: 'Q', color: '#5a9a5a' },
-      { tool: 'terrain_rough', label: 'Rough', key: 'W', color: '#4a7a4a' },
-      { tool: 'terrain_green', label: 'Green', key: 'E', color: '#4aca5a' },
-      { tool: 'terrain_bunker', label: 'Bunker', key: 'R', color: '#c4a44a' },
-      { tool: 'terrain_water', label: 'Water', key: 'F', color: '#4a7aca' },
-      { tool: 'terrain_tee', label: 'Tee', key: 'T', color: '#7a9a7a' },
-    ];
-
-    brushes.forEach((b, i) => {
-      const btn = this.createToolButton(b.tool, b.label, b.key, b.color);
-      grid.addControl(btn, 0, i);
-    });
+    const btns1 = addUniformButtons(row1, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+      { id: 'fairwayBtn', label: 'Fairway (Q)', onClick: () => this.callbacks.onToolSelect('terrain_fairway') },
+      { id: 'roughBtn', label: 'Rough (W)', onClick: () => this.callbacks.onToolSelect('terrain_rough') },
+      { id: 'greenBtn', label: 'Green (E)', onClick: () => this.callbacks.onToolSelect('terrain_green') }
+    ]});
+    const btns2 = addUniformButtons(row2, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+      { id: 'bunkerBtn', label: 'Bunker (R)', onClick: () => this.callbacks.onToolSelect('terrain_bunker') },
+      { id: 'waterBtn', label: 'Water (F)', onClick: () => this.callbacks.onToolSelect('terrain_water') },
+      { id: 'teeBtn', label: 'Tee (T)', onClick: () => this.callbacks.onToolSelect('terrain_tee') }
+    ]});
+    
+    if (btns1[0]) this.toolButtons.set('terrain_fairway', btns1[0]!);
+    if (btns1[1]) this.toolButtons.set('terrain_rough', btns1[1]!);
+    if (btns1[2]) this.toolButtons.set('terrain_green', btns1[2]!);
+    if (btns2[0]) this.toolButtons.set('terrain_bunker', btns2[0]!);
+    if (btns2[1]) this.toolButtons.set('terrain_water', btns2[1]!);
+    if (btns2[2]) this.toolButtons.set('terrain_tee', btns2[2]!);
   }
 
-  private createToolButton(tool: EditorTool, label: string, keyHint: string, accentColor?: string): Rectangle {
-    const container = new Rectangle(`btn_${tool}`);
-    container.width = '95%';
-    container.height = '50px';
-    container.cornerRadius = UI_THEME.radii.scale.r6;
-    container.background = UI_THEME.colors.editor.buttonBase;
-    container.color = UI_THEME.colors.editor.buttonBorder;
-    container.thickness = 2;
-
-    const stack = new StackPanel();
-    stack.paddingTop = '4px';
-    container.addControl(stack);
-
-    const keyBadge = new TextBlock();
-    keyBadge.text = keyHint;
-    keyBadge.color = accentColor ?? '#6a9a7a';
-    keyBadge.fontSize = UI_THEME.typography.scale.s10;
-    keyBadge.height = '14px';
-    keyBadge.fontWeight = 'bold';
-    stack.addControl(keyBadge);
-
-    const labelText = new TextBlock();
-    labelText.text = label;
-    labelText.color = UI_THEME.colors.legacy.c_ccddcc;
-    labelText.fontSize = UI_THEME.typography.scale.s11;
-    labelText.height = '16px';
-    stack.addControl(labelText);
-
-    container.onPointerEnterObservable.add(() => {
-      if (this.activeTool !== tool) {
-        container.background = UI_THEME.colors.editor.buttonHover;
-        container.color = UI_THEME.colors.legacy.c_5a8a6a;
-      }
-    });
-
-    container.onPointerOutObservable.add(() => {
-      if (this.activeTool !== tool) {
-        container.background = UI_THEME.colors.editor.buttonBase;
-        container.color = UI_THEME.colors.editor.buttonBorder;
-      }
-    });
-
-    container.onPointerUpObservable.add(() => {
-      this.callbacks.onToolSelect(tool);
-    });
-
-    this.toolButtons.set(tool, container);
-    return container;
-  }
+  // removed createToolButton
 
   private createBrushSizeControl(parent: StackPanel): void {
     this.brushSizeContainer = new StackPanel('brushSizeContainer');
@@ -515,34 +367,25 @@ export class TerrainEditorUI {
     this.topologyToggleContainer.width = '316px';
     parent.addControl(this.topologyToggleContainer);
 
-    const sectionLabel = new TextBlock('topologyLabel');
-    sectionLabel.text = 'TOPOLOGY MODE';
-    sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
-    sectionLabel.fontSize = UI_THEME.typography.scale.s11;
-    sectionLabel.height = '24px';
-    sectionLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    sectionLabel.paddingTop = '4px';
-    this.topologyToggleContainer.addControl(sectionLabel);
+    addDialogSectionLabel(this.topologyToggleContainer, { id: 'topologyLabel', text: 'TOPOLOGY MODE', tone: 'info', fontSize: 10, fontWeight: 'bold' });
+    
+    const row = createHorizontalRow(this.topologyToggleContainer, { name: 'topologyRow', widthPx: 316, heightPx: 32 });
+    row.paddingTop = '4px';
 
-    const grid = new Grid('topologyGrid');
-    grid.height = '32px';
-    grid.width = '316px';
-    grid.addColumnDefinition(0.33);
-    grid.addColumnDefinition(0.33);
-    grid.addColumnDefinition(0.33);
-    this.topologyToggleContainer.addControl(grid);
+    const btns = addUniformButtons(row, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+      { id: 'vertexBtn', label: 'Vertex (V)', onClick: () => this.callbacks.onTopologyModeChange?.('vertex') },
+      { id: 'edgeBtn', label: 'Edge (E)', onClick: () => this.callbacks.onTopologyModeChange?.('edge') },
+      { id: 'faceBtn', label: 'Face', onClick: () => this.callbacks.onTopologyModeChange?.('face') }
+    ]});
 
-    const vertexBtn = this.createTopologyButton('vertex', 'Vertex (V)', '#6a9a7a');
-    grid.addControl(vertexBtn, 0, 0);
-
-    const edgeBtn = this.createTopologyButton('edge', 'Edge (E)', '#00cccc');
-    grid.addControl(edgeBtn, 0, 1);
-
-    const faceBtn = this.createTopologyButton('face', 'Face', '#ffcc44');
-    grid.addControl(faceBtn, 0, 2);
+    if (btns[0]) this.topologyButtons.set('vertex', btns[0]!);
+    if (btns[1]) this.topologyButtons.set('edge', btns[1]!);
+    if (btns[2]) this.topologyButtons.set('face', btns[2]!);
 
     this.updateTopologyModeStyles();
   }
+
+  // removed createTopologyButton
 
   private createEdgeActionsSection(parent: StackPanel): void {
     this.edgeActionsContainer = new StackPanel('edgeActionsContainer');
@@ -592,59 +435,13 @@ export class TerrainEditorUI {
     grid.addControl(flipBtn, 0, 1);
   }
 
-  private createTopologyButton(mode: TopologyMode, label: string, accentColor: string): Rectangle {
-    const container = new Rectangle(`topology_${mode}`);
-    container.width = '95%';
-    container.height = '28px';
-    container.cornerRadius = UI_THEME.radii.scale.r4;
-    container.background = UI_THEME.colors.editor.buttonBase;
-    container.color = UI_THEME.colors.editor.buttonBorder;
-    container.thickness = 2;
-    container.metadata = { accentColor };
-
-    const text = new TextBlock();
-    text.text = label;
-    text.color = UI_THEME.colors.editor.buttonText;
-    text.fontSize = UI_THEME.typography.scale.s11;
-    text.fontWeight = 'bold';
-    container.addControl(text);
-
-    container.onPointerEnterObservable.add(() => {
-      if (this.activeTopologyMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonHover;
-      }
-    });
-
-    container.onPointerOutObservable.add(() => {
-      if (this.activeTopologyMode !== mode) {
-        container.background = UI_THEME.colors.editor.buttonBase;
-      }
-    });
-
-    container.onPointerUpObservable.add(() => {
-      this.callbacks.onTopologyModeChange?.(mode);
-    });
-
-    this.topologyButtons.set(mode, container);
-    return container;
-  }
-
   private updateTopologyModeStyles(): void {
     for (const [mode, btn] of this.topologyButtons) {
-      const text = btn.children[0] as TextBlock;
-      const accent = btn.metadata?.accentColor ?? UI_THEME.colors.editor.buttonTextActive;
-
-      if (mode === this.activeTopologyMode) {
-        btn.background = UI_THEME.colors.editor.buttonActive;
-        btn.color = accent;
-        if (text) text.color = accent;
-      } else {
-        btn.background = UI_THEME.colors.editor.buttonBase;
-        btn.color = UI_THEME.colors.editor.buttonBorder;
-        if (text) text.color = UI_THEME.colors.editor.buttonText;
-      }
+      btn.background = mode === this.activeTopologyMode ? UI_THEME.colors.editor.buttonActive : UI_THEME.colors.editor.buttonBase;
+      btn.color = mode === this.activeTopologyMode ? UI_THEME.colors.editor.buttonTextActive : UI_THEME.colors.text.secondary;
+      const tblock = btn.children[0] as TextBlock;
+      if (tblock) tblock.color = btn.color;
     }
-
   }
 
   private createSelectionSection(parent: StackPanel): void {

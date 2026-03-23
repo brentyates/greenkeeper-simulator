@@ -217,6 +217,13 @@ export class PlayerController {
     const dir = this.getHeldDirectionVector();
     const hasKeyInput = dir.dx !== 0 || dir.dz !== 0;
 
+    if (!hasKeyInput && this.player.pendingDirection !== null && this.clickToMoveWaypoints.length === 0) {
+      const pendingWaypoint = this.consumePendingDirectionWaypoint();
+      if (pendingWaypoint) {
+        this.clickToMoveWaypoints = [pendingWaypoint];
+      }
+    }
+
     if (hasKeyInput) {
       this.clickToMoveWaypoints = [];
 
@@ -241,6 +248,7 @@ export class PlayerController {
       const dist = Math.sqrt(dx * dx + dz * dz);
 
       if (dist < 0.1) {
+        this.movePlayerTo(wp.x, wp.z);
         this.clickToMoveWaypoints.shift();
       } else {
         const ndx = dx / dist;
@@ -462,6 +470,32 @@ export class PlayerController {
     if (this.input.isDirectionKeyHeld('left')) dz -= 1;
     if (this.input.isDirectionKeyHeld('right')) dz += 1;
     return { dx, dz };
+  }
+
+  private consumePendingDirectionWaypoint(): { x: number; z: number } | null {
+    const direction = this.player.pendingDirection;
+    this.player = { ...this.player, pendingDirection: null };
+
+    if (!direction) {
+      return null;
+    }
+
+    const offsets: Record<typeof direction, { dx: number; dz: number }> = {
+      up: { dx: -1, dz: 0 },
+      down: { dx: 1, dz: 0 },
+      left: { dx: 0, dz: -1 },
+      right: { dx: 0, dz: 1 },
+    };
+
+    const offset = offsets[direction];
+    const targetX = this.player.gridX + offset.dx + 0.5;
+    const targetZ = this.player.gridY + offset.dz + 0.5;
+
+    if (!this.canTraversePlayerPosition(targetX, targetZ)) {
+      return null;
+    }
+
+    return { x: targetX, z: targetZ };
   }
 
   private movePlayerTo(targetX: number, targetZ: number): void {

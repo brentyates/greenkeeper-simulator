@@ -21,8 +21,8 @@ import {
 } from '../../core/irrigation';
 
 export const IRRIGATION_TOOLBAR_BOUNDS = {
-  width: 300,
-  height: 290,
+  width: 340,
+  height: 332,
   left: 10,
   top: 10,
 };
@@ -79,29 +79,30 @@ export class IrrigationToolbar {
     this.panel = panel;
 
     createPopupHeader(stack, {
-      title: 'IRRIGATION CONTROL',
-      titleColor: '#b8f0d0',
-      width: 276,
+      title: 'IRRIGATION',
+      titleColor: UI_THEME.colors.text.info,
+      width: 316,
       onClose: () => this.callbacks.onClose(),
     });
 
     const subtitle = new TextBlock('toolbarSubtitle');
-    subtitle.text = 'Select a tool, then click terrain';
-    subtitle.color = UI_THEME.colors.legacy.c_87b8a0;
+    subtitle.text = 'Pick a mode, then click the course to lay lines, place heads, or inspect the network.';
+    subtitle.color = UI_THEME.colors.text.secondary;
     subtitle.fontSize = UI_THEME.typography.scale.s10;
-    subtitle.height = '16px';
+    subtitle.height = '30px';
+    subtitle.textWrapping = true;
     subtitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(subtitle);
 
     addVerticalSpacer(stack, UI_SPACING.xs, 'irrigationToolbarTitleGap');
     const toolRow = createHorizontalRow(stack, {
       name: 'toolRow',
-      widthPx: 276,
-      heightPx: 30,
+      widthPx: 316,
+      heightPx: 34,
     });
     const [pipeBtn, sprinklerBtn, deleteBtn, infoBtn] = addUniformButtons(toolRow, {
-      rowWidthPx: 276,
-      rowHeightPx: 30,
+      rowWidthPx: 316,
+      rowHeightPx: 34,
       gapPx: UI_SPACING.xs,
       specs: [
         {
@@ -118,7 +119,7 @@ export class IrrigationToolbar {
         },
         {
           id: 'sprinklerBtn',
-          label: 'Sprink',
+          label: 'Heads',
           onClick: () => {
             this.activeTool = this.activeTool === 'sprinkler' ? null : 'sprinkler';
             this.callbacks.onToolSelect(this.activeTool);
@@ -130,7 +131,7 @@ export class IrrigationToolbar {
         },
         {
           id: 'deleteBtn',
-          label: 'Delete',
+          label: 'Erase',
           onClick: () => {
             this.activeTool = this.activeTool === 'delete' ? null : 'delete';
             this.callbacks.onToolSelect(this.activeTool);
@@ -142,7 +143,7 @@ export class IrrigationToolbar {
         },
         {
           id: 'infoBtn',
-          label: 'Info',
+          label: 'Inspect',
           onClick: () => {
             this.activeTool = this.activeTool === 'info' ? null : 'info';
             this.callbacks.onToolSelect(this.activeTool);
@@ -162,8 +163,8 @@ export class IrrigationToolbar {
     this.toolSummaryText = new TextBlock('toolSummary');
     const summaryContainer = createPanelSection(stack, {
       name: 'irrigationSummaryContainer',
-      width: 276,
-      height: 48,
+      width: 316,
+      height: 56,
       theme: 'green',
       cornerRadius: 4,
       background: 'rgba(24, 51, 40, 0.85)',
@@ -173,7 +174,7 @@ export class IrrigationToolbar {
     });
 
     const summaryStack = new StackPanel('irrigationSummaryStack');
-    summaryStack.width = '264px';
+    summaryStack.width = '300px';
     summaryContainer.addControl(summaryStack);
 
     this.toolSummaryText.color = UI_THEME.colors.legacy.c_b6deef;
@@ -192,7 +193,7 @@ export class IrrigationToolbar {
 
     addDialogSectionLabel(stack, {
       id: 'pipeLabel',
-      text: 'Pipe Type',
+      text: 'Pipe Material',
       tone: 'info',
       fontSize: 10,
       fontWeight: 'bold',
@@ -201,12 +202,12 @@ export class IrrigationToolbar {
 
     this.pipeTypeRow = createHorizontalRow(stack, {
       name: 'pipeTypeRow',
-      widthPx: 276,
-      heightPx: 26,
+      widthPx: 316,
+      heightPx: 28,
     });
     const [pvcBtn, metalBtn, industrialBtn] = addUniformButtons(this.pipeTypeRow, {
-      rowWidthPx: 276,
-      rowHeightPx: 26,
+      rowWidthPx: 316,
+      rowHeightPx: 28,
       gapPx: UI_SPACING.sm,
       specs: [
         {
@@ -253,7 +254,7 @@ export class IrrigationToolbar {
 
     addDialogSectionLabel(stack, {
       id: 'sprinklerLabel',
-      text: 'Sprinkler Type',
+      text: 'Head Type',
       tone: 'info',
       fontSize: 10,
       fontWeight: 'bold',
@@ -262,12 +263,12 @@ export class IrrigationToolbar {
 
     this.sprinklerTypeRow = createHorizontalRow(stack, {
       name: 'sprinklerTypeRow',
-      widthPx: 276,
-      heightPx: 26,
+      widthPx: 316,
+      heightPx: 28,
     });
     const [fixedBtn, rotaryBtn, impactBtn, precisionBtn] = addUniformButtons(this.sprinklerTypeRow, {
-      rowWidthPx: 276,
-      rowHeightPx: 26,
+      rowWidthPx: 316,
+      rowHeightPx: 28,
       gapPx: UI_SPACING.xs,
       specs: [
         {
@@ -332,26 +333,26 @@ export class IrrigationToolbar {
     const setToolStyle = (
       button: Button | null,
       selected: boolean,
-      selectedBackground: string = '#2f8f66'
+      selectedBackground: string = UI_THEME.colors.action.primary.normal
     ): void => {
       if (!button) return;
-      button.background = selected ? selectedBackground : '#223e34';
-      button.color = selected ? '#f4fffa' : '#d4e7dd';
+      button.background = selected ? selectedBackground : UI_THEME.colors.action.neutral.normal;
+      button.color = selected ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
       button.thickness = selected ? 2 : 1;
       button.cornerRadius = UI_THEME.radii.chip;
     };
     const setTypeStyle = (button: Button | null, selected: boolean): void => {
       if (!button) return;
-      button.background = selected ? '#2f7fa1' : '#263a47';
-      button.color = selected ? '#ecf8ff' : '#c7d8e2';
+      button.background = selected ? UI_THEME.colors.action.primary.normal : UI_THEME.colors.action.neutral.normal;
+      button.color = selected ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
       button.thickness = selected ? 2 : 1;
       button.cornerRadius = UI_THEME.radii.chip;
     };
 
-    setToolStyle(this.pipeBtn, this.activeTool === 'pipe', '#2f8f66');
-    setToolStyle(this.sprinklerBtn, this.activeTool === 'sprinkler', '#3b7fd0');
-    setToolStyle(this.deleteBtn, this.activeTool === 'delete', '#a14a4a');
-    setToolStyle(this.infoBtn, this.activeTool === 'info', '#5378a8');
+    setToolStyle(this.pipeBtn, this.activeTool === 'pipe', UI_THEME.colors.action.primary.normal);
+    setToolStyle(this.sprinklerBtn, this.activeTool === 'sprinkler', UI_THEME.colors.action.success.normal);
+    setToolStyle(this.deleteBtn, this.activeTool === 'delete', UI_THEME.colors.action.danger.normal);
+    setToolStyle(this.infoBtn, this.activeTool === 'info', UI_THEME.colors.action.warning.normal);
 
     setTypeStyle(this.pvcBtn, this.selectedPipeType === 'pvc');
     setTypeStyle(this.metalBtn, this.selectedPipeType === 'metal');

@@ -67,6 +67,11 @@ const FUNDING_LABELS: Record<FundingLevel, string> = {
   maximum: 'Maximum',
 };
 
+const RESEARCH_DIALOG_WIDTH = 456;
+const RESEARCH_DIALOG_HEIGHT = 536;
+const RESEARCH_CONTENT_WIDTH = 432;
+const RESEARCH_SCROLL_WIDTH = 416;
+
 export class ResearchPanel {
   private advancedTexture: AdvancedDynamicTexture;
   private callbacks: ResearchPanelCallbacks;
@@ -93,8 +98,8 @@ export class ResearchPanel {
   private createPanel(): void {
     const { panel, stack } = createDirectPopup(this.advancedTexture, {
       name: 'research',
-      width: 420,
-      height: 500,
+      width: RESEARCH_DIALOG_WIDTH,
+      height: RESEARCH_DIALOG_HEIGHT,
       colors: POPUP_COLORS.green,
       padding: 12,
     });
@@ -103,7 +108,7 @@ export class ResearchPanel {
 
     createPopupHeader(stack, {
       title: '🔬 RESEARCH LAB',
-      width: 396,
+      width: RESEARCH_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
     });
     this.createCurrentResearchSection(stack);
@@ -115,8 +120,8 @@ export class ResearchPanel {
   private createCurrentResearchSection(parent: StackPanel): void {
     const container = createPanelSection(parent, {
       name: 'currentResearchContainer',
-      width: 396,
-      height: 70,
+      width: RESEARCH_CONTENT_WIDTH,
+      height: 76,
       theme: 'green',
       paddingTop: 8,
     });
@@ -142,18 +147,18 @@ export class ResearchPanel {
 
     this.currentResearchText = new TextBlock('currentResearchText');
     this.currentResearchText.text = 'None';
-    this.currentResearchText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.currentResearchText.color = UI_THEME.colors.text.primary;
     this.currentResearchText.fontSize = UI_THEME.typography.scale.s12;
     this.currentResearchText.width = '260px';
     this.currentResearchText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     titleRow.addControl(this.currentResearchText);
 
     this.progressBar = new Rectangle('progressBar');
-    this.progressBar.width = '370px';
+    this.progressBar.width = '404px';
     this.progressBar.height = '16px';
     this.progressBar.cornerRadius = UI_THEME.radii.scale.r3;
-    this.progressBar.background = UI_THEME.colors.legacy.c_1a3a2a;
-    this.progressBar.color = UI_THEME.colors.legacy.c_3a5a4a;
+    this.progressBar.background = UI_THEME.colors.surfaces.panelInset;
+    this.progressBar.color = UI_THEME.colors.border.muted;
     this.progressBar.thickness = 1;
     this.progressBar.paddingTop = '6px';
     stack.addControl(this.progressBar);
@@ -167,7 +172,7 @@ export class ResearchPanel {
 
     this.progressText = new TextBlock('progressText');
     this.progressText.text = '0 / 0';
-    this.progressText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.progressText.color = UI_THEME.colors.text.primary;
     this.progressText.fontSize = UI_THEME.typography.scale.s10;
     this.progressBar.addControl(this.progressText);
   }
@@ -175,8 +180,8 @@ export class ResearchPanel {
   private createFundingControls(parent: StackPanel): void {
     const container = createPanelSection(parent, {
       name: 'fundingContainer',
-      width: 396,
-      height: 50,
+      width: RESEARCH_CONTENT_WIDTH,
+      height: 56,
       theme: 'green',
       paddingTop: 6,
     });
@@ -202,7 +207,7 @@ export class ResearchPanel {
 
     this.fundingText = new TextBlock('fundingText');
     this.fundingText.text = 'Normal';
-    this.fundingText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.fundingText.color = UI_THEME.colors.text.primary;
     this.fundingText.fontSize = UI_THEME.typography.scale.s11;
     this.fundingText.width = '60px';
     this.fundingText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -210,7 +215,7 @@ export class ResearchPanel {
 
     this.costText = new TextBlock('costText');
     this.costText.text = '($150/min)';
-    this.costText.color = UI_THEME.colors.legacy.c_ff8844;
+    this.costText.color = UI_THEME.colors.text.warning;
     this.costText.fontSize = UI_THEME.typography.scale.s10;
     this.costText.width = '80px';
     this.costText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -229,15 +234,15 @@ export class ResearchPanel {
       const btn = createSelectableButton({
         id: `funding_${level}`,
         label: FUNDING_LABELS[level],
-        width: 85,
-        height: 22,
+        width: 92,
+        height: 24,
         fontSize: 10,
         style: {
-          selectedBackground: '#4a8a5a',
-          selectedColor: '#ffffff',
-          unselectedBackground: '#3a5a4a',
-          unselectedColor: '#aaaaaa',
-          hoverBackground: '#4a6a5a',
+          selectedBackground: UI_THEME.colors.action.primary.normal,
+          selectedColor: UI_THEME.colors.text.primary,
+          unselectedBackground: UI_THEME.colors.action.neutral.normal,
+          unselectedColor: UI_THEME.colors.text.secondary,
+          hoverBackground: UI_THEME.colors.action.neutral.hover,
         },
         onClick: () => this.callbacks.onSetFunding(level),
       });
@@ -249,16 +254,16 @@ export class ResearchPanel {
   private createCategoryTabs(parent: StackPanel): void {
     const { scrollViewer: container } = addDialogScrollBlock(parent, {
       id: 'categorySection',
-      width: 396,
-      height: 35,
+      width: RESEARCH_CONTENT_WIDTH,
+      height: 38,
       theme: 'neutral',
       thickness: 0,
       cornerRadius: 0,
       paddingTop: 6,
       scroll: {
         name: 'categoryScroll',
-        width: 396,
-        height: 35,
+        width: RESEARCH_CONTENT_WIDTH,
+        height: 38,
         contentName: 'categoryScrollContent',
         contentWidth: '100%',
         options: {
@@ -271,7 +276,7 @@ export class ResearchPanel {
 
     const tabRow = new StackPanel('tabRow');
     tabRow.isVertical = false;
-    tabRow.height = '28px';
+    tabRow.height = '30px';
     container.addControl(tabRow);
 
     const categories: ResearchCategory[] = ['equipment', 'fertilizers', 'irrigation', 'landscaping', 'facilities', 'management', 'robotics'];
@@ -280,15 +285,15 @@ export class ResearchPanel {
       const btn = createSelectableButton({
         id: `cat_${cat}`,
         label: `${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]}`,
-        width: 95,
-        height: 26,
+        width: 102,
+        height: 28,
         fontSize: 10,
         style: {
-          selectedBackground: '#3a6a5a',
-          selectedColor: '#ffffff',
-          unselectedBackground: '#2a4a3a',
+          selectedBackground: UI_THEME.colors.action.primary.normal,
+          selectedColor: UI_THEME.colors.text.primary,
+          unselectedBackground: UI_THEME.colors.action.neutral.normal,
           unselectedColor: CATEGORY_COLORS[cat],
-          hoverBackground: '#345746',
+          hoverBackground: UI_THEME.colors.action.neutral.hover,
         },
         onClick: () => {
           this.selectedCategory = this.selectedCategory === cat ? null : cat;
@@ -311,20 +316,20 @@ export class ResearchPanel {
   private createResearchList(parent: StackPanel): void {
     const { content } = addDialogScrollBlock(parent, {
       id: 'listContainer',
-      width: 396,
-      height: 280,
+      width: RESEARCH_CONTENT_WIDTH,
+      height: 314,
       theme: 'green',
       paddingTop: 6,
       scroll: {
         name: 'researchScroll',
-        width: 380,
-        height: 270,
+        width: RESEARCH_SCROLL_WIDTH,
+        height: 302,
         contentName: 'researchListStack',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#4a8a5a',
-          barBackground: 'rgba(0,0,0,0.3)',
+          barColor: UI_THEME.colors.border.strong,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -338,28 +343,28 @@ export class ResearchPanel {
 
     const row = createListRowCard({
       name: `research_${item.id}`,
-      width: 360,
-      height: 60,
-      background: isCompleted ? 'rgba(40, 90, 55, 0.6)' :
+      width: 392,
+      height: 66,
+      background: isCompleted ? 'rgba(40, 90, 55, 0.72)' :
                   isLocked ? 'rgba(40, 40, 40, 0.6)' :
-                  isResearching ? 'rgba(60, 90, 70, 0.7)' :
-                  'rgba(40, 70, 55, 0.6)',
-      borderColor: isResearching ? '#88ff88' : '#3a5a4a',
+                  isResearching ? 'rgba(60, 90, 70, 0.76)' :
+                  UI_THEME.colors.surfaces.sectionAlt,
+      borderColor: isResearching ? UI_THEME.colors.text.success : UI_THEME.colors.border.default,
     });
 
     if (!isLocked && !isCompleted) {
       row.onPointerEnterObservable.add(() => {
-        row.background = 'rgba(50, 90, 70, 0.7)';
+        row.background = UI_THEME.colors.surfaces.section;
       });
       row.onPointerOutObservable.add(() => {
-        row.background = isResearching ? 'rgba(60, 90, 70, 0.7)' : 'rgba(40, 70, 55, 0.6)';
+        row.background = isResearching ? 'rgba(60, 90, 70, 0.76)' : UI_THEME.colors.surfaces.sectionAlt;
       });
     }
 
     const grid = new Grid('researchRowGrid');
     grid.addColumnDefinition(35, true);
-    grid.addColumnDefinition(200, true);
-    grid.addColumnDefinition(60, true);
+    grid.addColumnDefinition(230, true);
+    grid.addColumnDefinition(62, true);
     grid.addColumnDefinition(65, true);
     row.addControl(grid);
 
@@ -375,15 +380,15 @@ export class ResearchPanel {
 
     const nameText = new TextBlock('researchName');
     nameText.text = item.name;
-    nameText.color = isLocked ? '#666666' : isCompleted ? '#88ff88' : '#ffffff';
+    nameText.color = isLocked ? UI_THEME.colors.text.muted : isCompleted ? UI_THEME.colors.text.success : UI_THEME.colors.text.primary;
     nameText.fontSize = UI_THEME.typography.scale.s11;
     nameText.height = '15px';
     nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(nameText);
 
     const descText = new TextBlock('researchDesc');
-    descText.text = item.description.substring(0, 35) + (item.description.length > 35 ? '...' : '');
-    descText.color = UI_THEME.colors.legacy.c_888888;
+    descText.text = item.description.substring(0, 42) + (item.description.length > 42 ? '...' : '');
+    descText.color = UI_THEME.colors.text.secondary;
     descText.fontSize = UI_THEME.typography.scale.s9;
     descText.height = '12px';
     descText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -391,10 +396,10 @@ export class ResearchPanel {
 
     if (isResearching && progress > 0) {
       const miniProgress = new Rectangle('miniProgress');
-      miniProgress.width = '180px';
+      miniProgress.width = '208px';
       miniProgress.height = '8px';
       miniProgress.cornerRadius = UI_THEME.radii.scale.r2;
-      miniProgress.background = UI_THEME.colors.legacy.c_1a3a2a;
+      miniProgress.background = UI_THEME.colors.surfaces.panelInset;
       miniProgress.thickness = 0;
       miniProgress.paddingTop = '4px';
       miniProgress.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -403,14 +408,14 @@ export class ResearchPanel {
       const miniFill = new Rectangle('miniFill');
       miniFill.width = `${progress}%`;
       miniFill.height = '100%';
-      miniFill.background = UI_THEME.colors.legacy.c_44aa44;
+      miniFill.background = UI_THEME.colors.action.primary.normal;
       miniFill.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
       miniProgress.addControl(miniFill);
     }
 
     const costText = new TextBlock('researchCost');
     costText.text = isCompleted ? '✓' : `${item.baseCost}`;
-    costText.color = isCompleted ? '#88ff88' : isLocked ? '#666666' : '#ff8844';
+    costText.color = isCompleted ? UI_THEME.colors.text.success : isLocked ? UI_THEME.colors.text.muted : UI_THEME.colors.text.warning;
     costText.fontSize = UI_THEME.typography.scale.s11;
     grid.addControl(costText, 0, 2);
 

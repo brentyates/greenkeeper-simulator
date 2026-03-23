@@ -6,9 +6,9 @@ import { Grid } from '@babylonjs/gui/2D/controls/grid';
 
 import { UIParent } from './UIParent';
 import { createActionButton, createDockedPanel, createPopupHeader, POPUP_COLORS } from './PopupUtils';
-import { addDialogActionBar } from './DialogBlueprint';
-import { addVerticalSpacer } from './LayoutUtils';
+import { addDialogSectionLabel } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
+import { addUniformButtons, createHorizontalRow, addVerticalSpacer, UI_SPACING } from './LayoutUtils';
 
 export interface OverlayPanelCallbacks {
   onLoadImage: () => void;
@@ -53,19 +53,21 @@ export class OverlayPanelUI {
   private createPanel(): Rectangle {
     const { panel, stack } = createDockedPanel(this.parent, {
       name: 'overlay',
-      width: 220,
-      height: 420,
+      width: 250,
+      height: 480,
       colors: POPUP_COLORS.green,
       horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_RIGHT,
-      verticalAlignment: Control.VERTICAL_ALIGNMENT_TOP,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_BOTTOM,
       left: -10,
-      top: 10,
-      padding: 10,
+      top: -10,
+      padding: 12,
     });
 
     this.createHeader(stack);
     this.createLoadButton(stack);
-    this.createSpacer(stack, 8);
+    this.createSpacer(stack, 12);
+
+    addDialogSectionLabel(stack, { id: 'adjustmentLabel', text: 'TRANSFORMS', tone: 'info', fontSize: 10, fontWeight: 'bold' });
     this.opacityText = this.createAdjustRow(stack, 'Opacity', `${this.opacityValue}%`, -5, 5, (delta) => {
       this.opacityValue = Math.max(0, Math.min(100, this.opacityValue + delta));
       this.opacityText!.text = `${this.opacityValue}%`;
@@ -86,9 +88,17 @@ export class OverlayPanelUI {
       this.offsetZText!.text = `${this.offsetZValue.toFixed(0)}`;
       this.callbacks.onOffsetZChange(this.offsetZValue);
     });
-    this.createSpacer(stack, 8);
+    this.offsetZText = this.createAdjustRow(stack, 'Offset Z', `${this.offsetZValue.toFixed(0)}`, -1, 1, (delta) => {
+      this.offsetZValue += delta;
+      this.offsetZText!.text = `${this.offsetZValue.toFixed(0)}`;
+      this.callbacks.onOffsetZChange(this.offsetZValue);
+    });
+
+    this.createSpacer(stack, 12);
+    addDialogSectionLabel(stack, { id: 'orientationLabel', text: 'ORIENTATION', tone: 'info', fontSize: 10, fontWeight: 'bold' });
     this.createOrientationControls(stack);
-    this.createSpacer(stack, 8);
+
+    this.createSpacer(stack, 16);
     this.createActionButtons(stack);
 
     return panel;
@@ -106,10 +116,10 @@ export class OverlayPanelUI {
   private createLoadButton(parent: StackPanel): void {
     const btn = createActionButton({
       id: 'loadImageBtn',
-      label: 'Load Image',
+      label: '📂 Load Blueprint Image',
       tone: 'primary',
-      width: 180,
-      height: 30,
+      width: 210,
+      height: 34,
       fontSize: 12,
       onClick: () => this.callbacks.onLoadImage(),
     });
@@ -125,12 +135,13 @@ export class OverlayPanelUI {
     onChange: (delta: number) => void
   ): TextBlock {
     const row = new Grid(`overlay_${label}_row`);
-    row.width = '200px';
-    row.height = '28px';
-    row.addColumnDefinition(70, true);
-    row.addColumnDefinition(30, true);
+    row.width = '210px';
+    row.height = '32px';
+    row.paddingTop = '4px';
+    row.addColumnDefinition(80, true);
+    row.addColumnDefinition(32, true);
     row.addColumnDefinition(1);
-    row.addColumnDefinition(30, true);
+    row.addColumnDefinition(32, true);
     parent.addControl(row);
 
     const labelText = new TextBlock(`overlay_${label}_label`, label);
@@ -181,67 +192,55 @@ export class OverlayPanelUI {
   private createOrientationControls(parent: StackPanel): void {
     const ROTATION_LABELS = ['0°', '90°', '180°', '270°'];
 
-    const row = new StackPanel('overlayOrientation');
-    row.isVertical = false;
-    row.width = '200px';
-    row.height = '28px';
-    parent.addControl(row);
+    const row = createHorizontalRow(parent, { name: 'overlayOrientation', widthPx: 210, heightPx: 32 });
+    row.paddingTop = '4px';
 
-    const makeToggle = (name: string, label: string, onClick: () => void): TextBlock => {
-      const btn = createActionButton({
-        id: `overlay_${name}`,
-        label,
-        tone: 'neutral',
-        width: 60,
-        height: 24,
-        fontSize: 10,
-        cornerRadius: 3,
-        onClick,
-      });
-      btn.color = UI_THEME.colors.editor.buttonText;
-      btn.background = UI_THEME.colors.miscButton.neutralBase;
-      btn.paddingLeft = '2px';
-      btn.paddingRight = '2px';
-      row.addControl(btn);
-      const textControl = btn.children[0] as TextBlock;
-      return textControl;
-    };
-
-    this.flipXText = makeToggle('flipX', 'Flip X', () => {
-      this.flipX = !this.flipX;
-      this.flipXText!.text = this.flipX ? 'Flip X ✓' : 'Flip X';
-      this.callbacks.onFlipX();
+    const btns = addUniformButtons(row, {
+      rowWidthPx: 210,
+      rowHeightPx: 28,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'overlay_flipX', label: 'Flip X', onClick: () => {
+          this.flipX = !this.flipX;
+          if (this.flipXText) this.flipXText.text = this.flipX ? 'Flip X ✓' : 'Flip X';
+          this.callbacks.onFlipX();
+        }},
+        { id: 'overlay_flipY', label: 'Flip Y', onClick: () => {
+          this.flipY = !this.flipY;
+          if (this.flipYText) this.flipYText.text = this.flipY ? 'Flip Y ✓' : 'Flip Y';
+          this.callbacks.onFlipY();
+        }},
+        { id: 'overlay_rotate', label: 'Rot 0°', onClick: () => {
+          this.rotationSteps = (this.rotationSteps + 1) % 4;
+          if (this.rotationText) this.rotationText.text = `Rot ${ROTATION_LABELS[this.rotationSteps]}`;
+          this.callbacks.onRotate();
+        }}
+      ]
     });
 
-    this.flipYText = makeToggle('flipY', 'Flip Y', () => {
-      this.flipY = !this.flipY;
-      this.flipYText!.text = this.flipY ? 'Flip Y ✓' : 'Flip Y';
-      this.callbacks.onFlipY();
-    });
-
-    this.rotationText = makeToggle('rotate', 'Rot 0°', () => {
-      this.rotationSteps = (this.rotationSteps + 1) % 4;
-      this.rotationText!.text = `Rot ${ROTATION_LABELS[this.rotationSteps]}`;
-      this.callbacks.onRotate();
-    });
+    if (btns[0]) this.flipXText = btns[0].children[0] as TextBlock;
+    if (btns[1]) this.flipYText = btns[1].children[0] as TextBlock;
+    if (btns[2]) this.rotationText = btns[2].children[0] as TextBlock;
   }
 
   private createActionButtons(parent: StackPanel): void {
-    const { buttons } = addDialogActionBar(parent, {
-      id: 'overlayActions',
-      width: 200,
-      height: 44,
-      theme: 'neutral',
-      actions: [
-        { id: 'overlayToggleBtn', label: 'Toggle', tone: 'neutral', onClick: () => this.callbacks.onToggle(), fontSize: 11 },
-        { id: 'overlayClearBtn', label: 'Clear', tone: 'danger', onClick: () => this.callbacks.onClear(), fontSize: 11 },
-      ],
+    const row = createHorizontalRow(parent, { name: 'overlayActions', widthPx: 210, heightPx: 36 });
+    
+    addUniformButtons(row, {
+      rowWidthPx: 210,
+      rowHeightPx: 32,
+      gapPx: UI_SPACING.sm,
+      specs: [
+        { id: 'overlayToggleBtn', label: 'Toggle View', onClick: () => this.callbacks.onToggle() },
+        { 
+          id: 'overlayClearBtn', 
+          label: 'Clear Target', 
+          onClick: () => this.callbacks.onClear(), 
+          background: UI_THEME.colors.action.danger.normal, 
+          hoverBackground: UI_THEME.colors.action.danger.hover 
+        }
+      ]
     });
-    const toggleBtn = buttons[0];
-    if (toggleBtn) {
-      toggleBtn.color = UI_THEME.colors.editor.buttonText;
-      toggleBtn.background = UI_THEME.colors.editor.buttonBase;
-    }
   }
 
   private createSpacer(parent: StackPanel, height: number): void {

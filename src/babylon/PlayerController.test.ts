@@ -628,6 +628,28 @@ describe("PlayerController", () => {
     });
 
     describe("click-to-move waypoints", () => {
+      it("converts pendingDirection into a one-tile waypoint move", () => {
+        const ctrl = new PlayerController(
+          {} as any,
+          terrain,
+          equipment,
+          engine,
+          input,
+          { editor, startX: 25, startY: 25 }
+        );
+        ctrl.createPlayer();
+
+        ctrl.handleMove("right");
+        const startZ = ctrl.getPlayer().worldZ;
+
+        ctrl.updateMovement(100);
+        ctrl.updateMovement(100);
+
+        expect(ctrl.getPlayer().pendingDirection).toBeNull();
+        expect(ctrl.getPlayer().worldZ).toBeGreaterThan(startZ);
+        expect(ctrl.getPlayer().worldZ).toBeCloseTo(26.5, 3);
+      });
+
       it("follows waypoints when no key input", () => {
         controller.setClickToMoveWaypoints([{ x: 10, z: 10 }]);
         const startX = controller.getPlayer().worldX;
@@ -642,6 +664,17 @@ describe("PlayerController", () => {
         ]);
         controller.updateMovement(16);
         expect(controller.getClickToMoveWaypoints().length).toBeLessThanOrEqual(1);
+      });
+
+      it("snaps to waypoint center when close enough", () => {
+        const targetX = controller.getPlayer().worldX + 0.05;
+        const targetZ = controller.getPlayer().worldZ;
+        controller.setClickToMoveWaypoints([{ x: targetX, z: targetZ }]);
+
+        controller.updateMovement(16);
+
+        expect(controller.getPlayer().worldX).toBeCloseTo(targetX, 5);
+        expect(controller.getPlayer().worldZ).toBeCloseTo(targetZ, 5);
       });
 
       it("clears waypoints when path is blocked", () => {

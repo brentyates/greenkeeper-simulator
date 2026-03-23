@@ -15,19 +15,19 @@ export interface PopupColors {
 
 export const POPUP_COLORS = {
   green: {
-    border: '#5a9a6a',
-    background: 'rgba(20, 45, 35, 0.95)',
-    title: '#ffcc00',
+    border: UI_THEME.colors.border.strong,
+    background: UI_THEME.colors.surfaces.panel,
+    title: UI_THEME.colors.text.accent,
   },
   blue: {
-    border: '#4a7a9a',
-    background: 'rgba(20, 35, 55, 0.95)',
-    title: '#ffcc00',
+    border: UI_THEME.colors.border.info,
+    background: UI_THEME.colors.surfaces.panelAlt,
+    title: UI_THEME.colors.text.info,
   },
   purple: {
-    border: '#6a5a8a',
-    background: 'rgba(35, 25, 55, 0.95)',
-    title: '#ffcc00',
+    border: '#8f7e64',
+    background: 'rgba(40, 33, 24, 0.97)',
+    title: UI_THEME.colors.text.accent,
   },
 } as const;
 
@@ -72,7 +72,7 @@ export function createOverlayPopup(
   const overlay = new Rectangle(`${config.name}Overlay`);
   overlay.width = '100%';
   overlay.height = '100%';
-  overlay.background = 'rgba(0, 0, 0, 0.6)';
+  overlay.background = UI_THEME.colors.surfaces.overlay;
   overlay.thickness = 0;
   overlay.isVisible = false;
   overlay.isPointerBlocker = true;
@@ -81,12 +81,13 @@ export function createOverlayPopup(
   const panel = new Rectangle(`${config.name}Panel`);
   panel.width = `${config.width}px`;
   panel.height = `${config.height}px`;
-  panel.cornerRadius = UI_THEME.radii.scale.r10;
+  panel.cornerRadius = UI_THEME.radii.panel;
   panel.color = config.colors.border;
   panel.thickness = 2;
   panel.background = config.colors.background;
-  panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  panel.shadowBlur = 15;
+  panel.shadowColor = UI_THEME.colors.effects.overlayShadow;
+  panel.shadowBlur = 18;
+  panel.shadowOffsetY = 8;
   overlay.addControl(panel);
 
   const stack = new StackPanel(`${config.name}Stack`);
@@ -107,7 +108,7 @@ export function createDirectPopup(
   const panel = new Rectangle(`${config.name}Panel`);
   panel.width = `${config.width}px`;
   panel.height = `${config.height}px`;
-  panel.cornerRadius = UI_THEME.radii.scale.r8;
+  panel.cornerRadius = UI_THEME.radii.panel;
   panel.color = config.colors.border;
   panel.thickness = 2;
   panel.background = config.colors.background;
@@ -115,10 +116,9 @@ export function createDirectPopup(
   panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
   panel.isVisible = false;
   panel.isPointerBlocker = true;
-  panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  panel.shadowBlur = 10;
-  panel.shadowOffsetX = 3;
-  panel.shadowOffsetY = 3;
+  panel.shadowColor = UI_THEME.colors.effects.overlayShadow;
+  panel.shadowBlur = 18;
+  panel.shadowOffsetY = 8;
   texture.addControl(panel);
 
   const stack = new StackPanel(`${config.name}Stack`);
@@ -140,7 +140,7 @@ export function createDockedPanel(
   const panel = new Rectangle(`${config.name}Panel`);
   panel.width = `${config.width}px`;
   panel.height = `${config.height}px`;
-  panel.cornerRadius = UI_THEME.radii.scale.r8;
+  panel.cornerRadius = UI_THEME.radii.panel;
   panel.color = config.colors.border;
   panel.thickness = 2;
   panel.background = config.colors.background;
@@ -150,10 +150,9 @@ export function createDockedPanel(
   panel.top = `${config.top ?? 0}px`;
   panel.isVisible = false;
   panel.isPointerBlocker = true;
-  panel.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  panel.shadowBlur = 10;
-  panel.shadowOffsetX = 3;
-  panel.shadowOffsetY = 3;
+  panel.shadowColor = UI_THEME.colors.effects.shadow;
+  panel.shadowBlur = 14;
+  panel.shadowOffsetY = 6;
   parent.addControl(panel);
 
   const stack = new StackPanel(`${config.name}Stack`);
@@ -230,9 +229,13 @@ export function createActionButton(config: ActionButtonConfig): Button {
   button.cornerRadius = config.cornerRadius ?? UI_THEME.radii.button;
   button.background = palette.normal;
   button.color = palette.text;
-  button.thickness = config.thickness ?? 1;
+  button.thickness = config.thickness ?? 2;
   button.fontSize = config.fontSize ?? UI_THEME.typography.bodySize;
+  button.fontFamily = UI_THEME.typography.fontFamily;
   button.isEnabled = config.isEnabled ?? true;
+  button.shadowColor = UI_THEME.colors.effects.shadow;
+  button.shadowBlur = 8;
+  button.shadowOffsetY = 3;
   button.onPointerClickObservable.add(config.onClick);
   button.onPointerEnterObservable.add(() => {
     if (button.isEnabled) {
@@ -240,8 +243,12 @@ export function createActionButton(config: ActionButtonConfig): Button {
     }
   });
   button.onPointerOutObservable.add(() => {
-    button.background = palette.normal;
+    button.background = button.isEnabled ? palette.normal : UI_THEME.colors.surfaces.buttonDisabled;
   });
+  if (!button.isEnabled) {
+    button.alpha = 0.55;
+    button.background = UI_THEME.colors.surfaces.buttonDisabled;
+  }
   return button;
 }
 
@@ -308,9 +315,18 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
   const container = new Rectangle('headerContainer');
   container.height = `${UI_THEME.sizing.headerHeight}px`;
   container.width = `${config.width}px`;
+  container.cornerRadius = UI_THEME.radii.section;
   container.thickness = 0;
-  container.background = 'transparent';
+  container.background = UI_THEME.colors.surfaces.stripe;
   parent.addControl(container);
+
+  const divider = new Rectangle('headerDivider');
+  divider.width = `${config.width}px`;
+  divider.height = '1px';
+  divider.background = UI_THEME.colors.border.muted;
+  divider.thickness = 0;
+  divider.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+  container.addControl(divider);
 
   const title = new TextBlock('title');
   title.text = config.title;
@@ -319,7 +335,7 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
   title.fontWeight = 'bold';
   title.fontFamily = UI_THEME.typography.fontFamily;
   title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-  title.left = '0px';
+  title.left = '12px';
   container.addControl(title);
 
   const closeLabel = config.closeLabel ?? '✕';
@@ -327,7 +343,7 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
   const colors = isBackButton ? UI_THEME.colors.headerButton.back : UI_THEME.colors.headerButton.close;
 
   const closeBtn = Button.CreateSimpleButton('closeBtn', closeLabel);
-  closeBtn.width = isBackButton ? '70px' : '28px';
+  closeBtn.width = isBackButton ? '78px' : '30px';
   closeBtn.height = `${UI_THEME.sizing.closeButtonSize}px`;
   closeBtn.cornerRadius = UI_THEME.radii.chip;
   closeBtn.background = colors.normal;
@@ -336,6 +352,10 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
   closeBtn.fontSize = isBackButton ? UI_THEME.typography.bodySize : 14;
   closeBtn.fontFamily = UI_THEME.typography.fontFamily;
   closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+  closeBtn.left = '-4px';
+  closeBtn.shadowColor = UI_THEME.colors.effects.shadow;
+  closeBtn.shadowBlur = 8;
+  closeBtn.shadowOffsetY = 2;
   closeBtn.onPointerClickObservable.add(config.onClose);
   closeBtn.onPointerEnterObservable.add(() => {
     closeBtn.background = colors.hover;
@@ -357,10 +377,10 @@ export function createSection(
   const container = new Rectangle('section');
   container.height = `${height}px`;
   container.width = `${width}px`;
-  container.cornerRadius = UI_THEME.radii.scale.r4;
-  container.background = 'rgba(30, 60, 45, 0.8)';
+  container.cornerRadius = UI_THEME.radii.section;
+  container.background = UI_THEME.colors.surfaces.section;
   container.thickness = 1;
-  container.color = UI_THEME.colors.legacy.c_3a5a4a;
+  container.color = UI_THEME.colors.border.default;
   container.paddingTop = `${marginTop}px`;
   parent.addControl(container);
   return container;
@@ -369,9 +389,9 @@ export function createSection(
 export type SectionTheme = 'green' | 'blue' | 'purple' | 'neutral';
 
 const SECTION_THEMES: Record<SectionTheme, { background: string; border: string }> = {
-  green: { background: 'rgba(30, 60, 45, 0.8)', border: '#3a5a4a' },
-  blue: { background: 'rgba(30, 50, 70, 0.8)', border: '#3a5a7a' },
-  purple: { background: 'rgba(50, 40, 70, 0.8)', border: '#5a4a7a' },
+  green: { background: UI_THEME.colors.surfaces.section, border: UI_THEME.colors.border.default },
+  blue: { background: 'rgba(27, 47, 62, 0.84)', border: UI_THEME.colors.border.info },
+  purple: { background: 'rgba(55, 44, 31, 0.82)', border: '#8f7e64' },
   neutral: { background: 'transparent', border: 'transparent' },
 };
 
@@ -394,10 +414,13 @@ export function createPanelSection(parent: UIParent, config: PanelSectionConfig)
   const container = new Rectangle(config.name);
   container.height = `${config.height}px`;
   container.width = `${config.width}px`;
-  container.cornerRadius = config.cornerRadius ?? 6;
+  container.cornerRadius = config.cornerRadius ?? UI_THEME.radii.section;
   container.background = config.background ?? theme.background;
   container.thickness = config.thickness ?? 1;
   container.color = config.borderColor ?? theme.border;
+  container.shadowColor = UI_THEME.colors.effects.shadow;
+  container.shadowBlur = 6;
+  container.shadowOffsetY = 2;
   container.paddingTop = `${config.paddingTop ?? 6}px`;
   container.paddingBottom = `${config.paddingBottom ?? 4}px`;
   if ((config.marginTop ?? 0) > 0) {

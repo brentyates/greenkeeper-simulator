@@ -8,17 +8,17 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
-import { createActionButton, POPUP_COLORS } from './PopupUtils';
+import { createActionButton, createPanelSection, POPUP_COLORS } from './PopupUtils';
 import { renderDialog } from './DialogRenderer';
 import { buildIrrigationInfoNodes } from './schemas/IrrigationSchemas';
 
 import { PipeTile, SprinklerHead } from '../../core/irrigation';
 
 export const IRRIGATION_INFO_PANEL_BOUNDS = {
-  width: 280,
-  height: 350,
-  right: 10,
-  top: 10,
+  width: 340,
+  height: 430,
+  right: 12,
+  top: 12,
 };
 
 export interface IrrigationInfoPanelCallbacks {
@@ -54,9 +54,9 @@ export class IrrigationInfoPanel {
         left: -IRRIGATION_INFO_PANEL_BOUNDS.right,
         top: IRRIGATION_INFO_PANEL_BOUNDS.top,
       },
-      title: 'IRRIGATION DETAILS',
-      titleColor: '#b8f0d0',
-      headerWidth: 250,
+      title: 'NETWORK INSPECTOR',
+      titleColor: UI_THEME.colors.text.info,
+      headerWidth: 312,
       onClose: () => this.callbacks.onClose(),
       nodes: buildIrrigationInfoNodes((parent) => this.renderInfoContent(parent)),
     });
@@ -65,7 +65,7 @@ export class IrrigationInfoPanel {
 
   private renderInfoContent(parent: StackPanel): void {
     this.contentHost = new StackPanel('irrigationInfoContent');
-    this.contentHost.width = '250px';
+    this.contentHost.width = '308px';
     parent.addControl(this.contentHost);
   }
 
@@ -73,43 +73,31 @@ export class IrrigationInfoPanel {
     if (!this.contentHost || !this.panel) return;
     this.clearContent();
 
-    const title = new TextBlock('title');
-    title.text = `${pipe.pipeType.toUpperCase()} Pipe`;
-    title.color = UI_THEME.colors.legacy.c_7fff7f;
-    title.fontSize = UI_THEME.typography.scale.s14;
-    title.fontWeight = 'bold';
-    this.contentHost.addControl(title);
+    this.addHeadline(`${pipe.pipeType.toUpperCase()} PIPE`, pipe.isLeaking ? 'Fault detected on this line. Repair should be the next action.' : 'Line is stable. Use pressure and durability to decide whether it should be upgraded.');
+    this.addSection('Condition', 84, (section) => {
+      this.addMetricLine(section, 'Status', pipe.isLeaking ? 'Leaking' : 'Stable', pipe.isLeaking ? UI_THEME.colors.text.danger : UI_THEME.colors.text.success);
+      this.addMetricLine(section, 'Pressure', `${pipe.pressureLevel.toFixed(0)}%`, getPressureColor(pipe.pressureLevel));
+      this.addMetricLine(section, 'Durability', `${pipe.durability.toFixed(0)}%`, getDurabilityColor(pipe.durability));
+    });
+    this.addSection('Operator Read', 70, (section) => {
+      const diagnosis = pipe.isLeaking
+        ? 'This run is actively losing water. Fix the leak before adding more heads downstream.'
+        : pipe.pressureLevel < 40
+          ? 'Water is reaching this run, but pressure is weak. Check upstream supply before expanding coverage.'
+          : 'This line is healthy enough to support nearby heads and future routing.';
+      this.addBodyText(section, diagnosis, pipe.isLeaking ? UI_THEME.colors.legacy.c_ffcc88 : UI_THEME.colors.text.secondary, 38);
+    });
 
-    const durability = new TextBlock('durability');
-    durability.text = `Durability: ${pipe.durability.toFixed(0)}%`;
-    durability.color = UI_THEME.colors.legacy.c_aaaaaa;
-    durability.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(durability);
-
-    const pressure = new TextBlock('pressure');
-    pressure.text = `Pressure: ${pipe.pressureLevel.toFixed(0)}%`;
-    pressure.color = pipe.pressureLevel >= 80 ? UI_THEME.colors.legacy.c_7fff7f : pipe.pressureLevel >= 40 ? UI_THEME.colors.legacy.c_ffdd88 : UI_THEME.colors.legacy.c_ff7f7f;
-    pressure.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(pressure);
-
-    if (pipe.isLeaking) {
-      const leak = new TextBlock('leak');
-      leak.text = '⚠️ LEAKING';
-      leak.color = UI_THEME.colors.legacy.c_ff7f7f;
-      leak.fontSize = UI_THEME.typography.scale.s12;
-      this.contentHost.addControl(leak);
-
-      if (this.callbacks.onRepair) {
-        const repairBtn = createActionButton({
-          id: 'repairBtn',
-          label: 'Repair Leak',
-          tone: 'warning',
-          width: 244,
-          height: 30,
-          onClick: () => this.callbacks.onRepair!(pipe.gridX, pipe.gridY),
-        });
-        this.contentHost.addControl(repairBtn);
-      }
+    if (pipe.isLeaking && this.callbacks.onRepair) {
+      const repairBtn = createActionButton({
+        id: 'repairBtn',
+        label: 'Dispatch Repair Crew',
+        tone: 'warning',
+        width: 300,
+        height: 34,
+        onClick: () => this.callbacks.onRepair!(pipe.gridX, pipe.gridY),
+      });
+      this.contentHost.addControl(repairBtn);
     }
 
     this.panel.isVisible = true;
@@ -119,106 +107,41 @@ export class IrrigationInfoPanel {
     if (!this.contentHost || !this.panel) return;
     this.clearContent();
 
-    const title = new TextBlock('title');
-    title.text = `${head.sprinklerType.toUpperCase()} Sprinkler`;
-    title.color = UI_THEME.colors.legacy.c_7fff7f;
-    title.fontSize = UI_THEME.typography.scale.s14;
-    title.fontWeight = 'bold';
-    this.contentHost.addControl(title);
-
-    const status = new TextBlock('status');
-    if (head.isActive && pressureLevel > 0) {
-      status.text = 'Status: Active (Pumping)';
-      status.color = UI_THEME.colors.legacy.c_7fff7f;
-    } else if (head.isActive) {
-      status.text = 'Status: Scheduled (No Pressure)';
-      status.color = UI_THEME.colors.legacy.c_ffcc88;
-    } else {
-      status.text = 'Status: Inactive';
-      status.color = UI_THEME.colors.legacy.c_aaaaaa;
-    }
-    status.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(status);
-
-    const connected = new TextBlock('connected');
-    connected.text = `Connected: ${head.connectedToPipe ? 'Yes' : 'No'}`;
-    connected.color = head.connectedToPipe ? UI_THEME.colors.text.success : UI_THEME.colors.legacy.c_ffb4b4;
-    connected.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(connected);
-
-    const pressure = new TextBlock('pressure');
-    pressure.text = `Pressure: ${pressureLevel.toFixed(0)}%`;
-    pressure.color =
-      pressureLevel >= 80
-        ? UI_THEME.colors.legacy.c_7fff7f
-        : pressureLevel >= 40
-          ? UI_THEME.colors.legacy.c_ffdd88
-          : pressureLevel > 0
-            ? UI_THEME.colors.legacy.c_ffcc88
-            : UI_THEME.colors.legacy.c_ffb4b4;
-    pressure.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(pressure);
-
-    if (!head.connectedToPipe) {
-      const connectedHint = new TextBlock('connectedHint');
-      connectedHint.text = 'Install a pipe on this tile to supply water pressure.';
-      connectedHint.color = UI_THEME.colors.legacy.c_ffcc88;
-      connectedHint.fontSize = UI_THEME.typography.scale.s10;
-      connectedHint.height = '22px';
-      connectedHint.textWrapping = true;
-      this.contentHost.addControl(connectedHint);
-    } else if (pressureLevel <= 0) {
-      const pressureHint = new TextBlock('pressureHint');
-      pressureHint.text = 'Pipe has no pressure. Connect this line to a water source.';
-      pressureHint.color = UI_THEME.colors.legacy.c_ffcc88;
-      pressureHint.fontSize = UI_THEME.typography.scale.s10;
-      pressureHint.height = '22px';
-      pressureHint.textWrapping = true;
-      this.contentHost.addControl(pressureHint);
-    }
-
-    const coverage = new TextBlock('coverage');
-    coverage.text = `Coverage: ${head.coverageTiles.length} tiles`;
-    coverage.color = UI_THEME.colors.legacy.c_aaaaaa;
-    coverage.fontSize = UI_THEME.typography.scale.s12;
-    this.contentHost.addControl(coverage);
-
-    const zone = new TextBlock('zone');
-    zone.text = `Zone: ${head.schedule.zone}`;
-    zone.color = UI_THEME.colors.legacy.c_aaaaaa;
-    zone.fontSize = UI_THEME.typography.scale.s11;
-    this.contentHost.addControl(zone);
-
-    const schedule = new TextBlock('schedule');
-    if (!head.schedule.enabled) {
-      schedule.text = 'Schedule: Disabled';
-    } else if (head.schedule.timeRanges.length > 0) {
-      const windows = head.schedule.timeRanges
-        .map((range) => `${formatClock(range.start)}-${formatClock(range.end)}`)
-        .join(', ');
-      schedule.text = `Schedule: ${windows}`;
-    } else {
-      schedule.text = 'Schedule: Enabled (no time windows set)';
-    }
-    schedule.color = head.schedule.enabled && head.schedule.timeRanges.length === 0 ? UI_THEME.colors.legacy.c_ffcc88 : UI_THEME.colors.legacy.c_88ccff;
-    schedule.fontSize = UI_THEME.typography.scale.s11;
-    schedule.textWrapping = true;
-    schedule.height = '42px';
-    this.contentHost.addControl(schedule);
-
-    const skipRain = new TextBlock('skipRain');
-    skipRain.text = `Skip rain: ${head.schedule.skipRain ? 'Yes' : 'No'}`;
-    skipRain.color = UI_THEME.colors.legacy.c_88ccff;
-    skipRain.fontSize = UI_THEME.typography.scale.s11;
-    this.contentHost.addControl(skipRain);
+    const activityLabel = getSprinklerActivityLabel(head, pressureLevel);
+    this.addHeadline(`${head.sprinklerType.toUpperCase()} HEAD`, activityLabel.text);
+    this.addSection('Condition', 94, (section) => {
+      this.addMetricLine(section, 'Network', head.connectedToPipe ? 'Connected' : 'Offline', head.connectedToPipe ? UI_THEME.colors.text.success : UI_THEME.colors.text.danger);
+      this.addMetricLine(section, 'Pressure', `${pressureLevel.toFixed(0)}%`, getPressureColor(pressureLevel));
+      this.addMetricLine(section, 'Coverage', `${head.coverageTiles.length} tiles`, UI_THEME.colors.text.secondary);
+      this.addMetricLine(section, 'Zone', head.schedule.zone, UI_THEME.colors.text.info);
+    });
+    this.addSection('Program', 78, (section) => {
+      const scheduleText = !head.schedule.enabled
+        ? 'Program is disabled.'
+        : head.schedule.timeRanges.length > 0
+          ? `Runs ${head.schedule.timeRanges.map((range) => `${formatClock(range.start)}-${formatClock(range.end)}`).join(', ')}.`
+          : 'Program is enabled but no watering windows are set.';
+      this.addBodyText(section, scheduleText, head.schedule.enabled && head.schedule.timeRanges.length === 0 ? UI_THEME.colors.legacy.c_ffcc88 : UI_THEME.colors.text.secondary, 38);
+      this.addMetricLine(section, 'Rain Skip', head.schedule.skipRain ? 'Enabled' : 'Disabled', UI_THEME.colors.text.info);
+    });
+    this.addSection('Recommended Action', 74, (section) => {
+      const recommendation = !head.connectedToPipe
+        ? 'Run pipe to this tile before adjusting the schedule.'
+        : pressureLevel <= 0
+          ? 'Restore pressure upstream. Scheduling alone will not make this head water.'
+          : !head.schedule.enabled || head.schedule.timeRanges.length === 0
+            ? 'Give this head a real watering window so it can contribute to coverage.'
+            : 'This head is configured well. Use Inspect on neighboring heads to validate overlap and balance.';
+      this.addBodyText(section, recommendation, UI_THEME.colors.legacy.c_ffcc88, 42);
+    });
 
     if (this.callbacks.onManageSchedule) {
       const scheduleBtn = createActionButton({
         id: 'scheduleBtn',
-        label: 'Edit Schedule',
+        label: 'Open Watering Program',
         tone: 'neutral',
-        width: 244,
-        height: 30,
+        width: 300,
+        height: 34,
         onClick: () => this.callbacks.onManageSchedule?.(head.id),
       });
       this.contentHost.addControl(scheduleBtn);
@@ -251,6 +174,94 @@ export class IrrigationInfoPanel {
       this.panel.dispose();
     }
   }
+
+  private addHeadline(titleText: string, description: string): void {
+    if (!this.contentHost) return;
+
+    const title = new TextBlock(`headline_${titleText}`);
+    title.text = titleText;
+    title.color = UI_THEME.colors.text.success;
+    title.fontSize = UI_THEME.typography.scale.s16;
+    title.fontWeight = 'bold';
+    title.height = '22px';
+    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.contentHost.addControl(title);
+
+    const descriptionText = new TextBlock(`headlineDesc_${titleText}`);
+    descriptionText.text = description;
+    descriptionText.color = UI_THEME.colors.text.secondary;
+    descriptionText.fontSize = UI_THEME.typography.scale.s11;
+    descriptionText.height = '34px';
+    descriptionText.textWrapping = true;
+    descriptionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.contentHost.addControl(descriptionText);
+  }
+
+  private addSection(titleText: string, height: number, render: (section: StackPanel) => void): void {
+    if (!this.contentHost) return;
+
+    const section = createPanelSection(this.contentHost, {
+      name: `irrigationInfo_${titleText}`,
+      width: 308,
+      height,
+      theme: 'green',
+      background: 'rgba(24, 51, 40, 0.84)',
+      borderColor: '#3f6a58',
+      cornerRadius: 4,
+      paddingTop: 4,
+      paddingBottom: 4,
+      marginTop: 6,
+    });
+
+    const stack = new StackPanel(`${titleText}_stack`);
+    stack.width = '292px';
+    section.addControl(stack);
+
+    const label = new TextBlock(`${titleText}_label`);
+    label.text = titleText.toUpperCase();
+    label.color = UI_THEME.colors.text.info;
+    label.fontSize = UI_THEME.typography.scale.s10;
+    label.fontWeight = 'bold';
+    label.height = '18px';
+    label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(label);
+
+    render(stack);
+  }
+
+  private addMetricLine(parent: StackPanel, label: string, value: string, valueColor: string): void {
+    const row = new StackPanel(`${label}_row`);
+    row.isVertical = false;
+    row.height = '18px';
+    parent.addControl(row);
+
+    const labelText = new TextBlock(`${label}_label`);
+    labelText.text = `${label}`;
+    labelText.color = UI_THEME.colors.text.secondary;
+    labelText.fontSize = UI_THEME.typography.scale.s11;
+    labelText.width = '110px';
+    labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    row.addControl(labelText);
+
+    const valueText = new TextBlock(`${label}_value`);
+    valueText.text = value;
+    valueText.color = valueColor;
+    valueText.fontSize = UI_THEME.typography.scale.s11;
+    valueText.width = '176px';
+    valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    row.addControl(valueText);
+  }
+
+  private addBodyText(parent: StackPanel, text: string, color: string, height: number): void {
+    const body = new TextBlock(`body_${text.slice(0, 10)}`);
+    body.text = text;
+    body.color = color;
+    body.fontSize = UI_THEME.typography.scale.s11;
+    body.height = `${height}px`;
+    body.textWrapping = true;
+    body.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    parent.addControl(body);
+  }
 }
 
 function formatClock(minutes: number): string {
@@ -261,3 +272,25 @@ function formatClock(minutes: number): string {
   return `${hour12}:${minute.toString().padStart(2, '0')} ${period}`;
 }
 
+function getPressureColor(pressureLevel: number): string {
+  if (pressureLevel >= 80) return UI_THEME.colors.text.success;
+  if (pressureLevel >= 40) return UI_THEME.colors.legacy.c_ffdd88;
+  if (pressureLevel > 0) return UI_THEME.colors.legacy.c_ffcc88;
+  return UI_THEME.colors.text.danger;
+}
+
+function getDurabilityColor(durability: number): string {
+  if (durability >= 75) return UI_THEME.colors.text.success;
+  if (durability >= 40) return UI_THEME.colors.legacy.c_ffdd88;
+  return UI_THEME.colors.text.danger;
+}
+
+function getSprinklerActivityLabel(head: SprinklerHead, pressureLevel: number): { text: string } {
+  if (head.isActive && pressureLevel > 0) {
+    return { text: 'Head is currently pressurized and capable of watering.' };
+  }
+  if (head.isActive) {
+    return { text: 'Head is scheduled, but the line has no usable pressure.' };
+  }
+  return { text: 'Head is idle. Review the controller program if this area should be watering.' };
+}

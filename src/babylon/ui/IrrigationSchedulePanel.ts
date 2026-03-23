@@ -14,8 +14,8 @@ import { buildIrrigationScheduleNodes } from './schemas/IrrigationSchemas';
 import { SprinklerHead, WateringSchedule } from '../../core/irrigation';
 
 export const IRRIGATION_SCHEDULE_PANEL_BOUNDS = {
-  width: 350,
-  height: 400,
+  width: 404,
+  height: 468,
 };
 
 export interface IrrigationSchedulePanelCallbacks {
@@ -60,9 +60,9 @@ export class IrrigationSchedulePanel {
       height: IRRIGATION_SCHEDULE_PANEL_BOUNDS.height,
       colors: POPUP_COLORS.green,
       padding: 12,
-      title: 'IRRIGATION SCHEDULE',
+      title: 'WATERING PROGRAM',
       titleColor: UI_THEME.colors.text.success,
-      headerWidth: 330,
+      headerWidth: 380,
       onClose: () => this.callbacks.onClose(),
       nodes: buildIrrigationScheduleNodes({
         onToggleEnabled: () => {
@@ -158,18 +158,19 @@ export class IrrigationSchedulePanel {
   private refreshTexts(): void {
     if (!this.enabledText || !this.skipRainText || !this.windowsText) return;
 
-    this.enabledText.text = `Enabled: ${this.currentSchedule.enabled ? 'Yes' : 'No'}`;
+    this.enabledText.text = this.currentSchedule.enabled ? 'System: Armed and ready to run' : 'System: Disarmed, no watering will run';
     this.enabledText.color = this.currentSchedule.enabled ? UI_THEME.colors.text.success : UI_THEME.colors.legacy.c_ffb4b4;
 
-    this.skipRainText.text = `Skip rain: ${this.currentSchedule.skipRain ? 'Yes' : 'No'}`;
+    this.skipRainText.text = this.currentSchedule.skipRain ? 'Rain Skip: On, pauses when rain is detected' : 'Rain Skip: Off, runs regardless of rainfall';
+    this.skipRainText.color = this.currentSchedule.skipRain ? UI_THEME.colors.text.info : UI_THEME.colors.text.secondary;
 
     if (this.currentSchedule.timeRanges.length === 0) {
-      this.windowsText.text = 'Windows: none';
+      this.windowsText.text = 'Watering windows: none. This head has no active run times.';
       this.windowsText.color = UI_THEME.colors.legacy.c_ffcc88;
     } else {
-      this.windowsText.text = `Windows: ${this.currentSchedule.timeRanges
-        .map((range) => `${formatClock(range.start)}-${formatClock(range.end)}`)
-        .join(', ')}`;
+      this.windowsText.text = `Watering windows: ${this.currentSchedule.timeRanges
+        .map((range) => `${formatClock(range.start)} to ${formatClock(range.end)}`)
+        .join('  |  ')}`;
       this.windowsText.color = UI_THEME.colors.legacy.c_dddddd;
     }
 
@@ -178,18 +179,18 @@ export class IrrigationSchedulePanel {
     if (this.saveBtn) {
       this.saveBtn.isEnabled = hasTarget && isDirty;
       this.saveBtn.alpha = this.saveBtn.isEnabled ? 1 : 0.55;
-      this.saveBtn.background = this.saveBtn.isEnabled ? UI_THEME.colors.legacy.c_3a6a4a : UI_THEME.colors.legacy.c_3a5a4a;
+      this.saveBtn.background = this.saveBtn.isEnabled ? UI_THEME.colors.action.primary.normal : UI_THEME.colors.surfaces.buttonDisabled;
     }
 
     if (this.saveStateText) {
       if (!hasTarget) {
-        this.saveStateText.text = 'Select a sprinkler to edit';
+        this.saveStateText.text = 'Select a sprinkler head to edit';
         this.saveStateText.color = UI_THEME.colors.legacy.c_aaaaaa;
       } else if (isDirty) {
-        this.saveStateText.text = 'Unsaved changes';
+        this.saveStateText.text = 'Draft changed: apply to publish this program';
         this.saveStateText.color = UI_THEME.colors.legacy.c_ffcc88;
       } else {
-        this.saveStateText.text = 'No pending changes';
+        this.saveStateText.text = 'Draft matches the live controller program';
         this.saveStateText.color = UI_THEME.colors.legacy.c_88ff88;
       }
     }
@@ -205,7 +206,7 @@ export class IrrigationSchedulePanel {
     });
     this.savedSchedule = cloneSchedule(this.currentSchedule);
     if (this.targetText) {
-      this.targetText.text = `Editing ${head.sprinklerType.toUpperCase()} @ (${head.gridX}, ${head.gridY})`;
+      this.targetText.text = `${head.sprinklerType.toUpperCase()} head at (${head.gridX}, ${head.gridY}) in zone ${head.schedule.zone}`;
     }
     this.refreshTexts();
     this.show();

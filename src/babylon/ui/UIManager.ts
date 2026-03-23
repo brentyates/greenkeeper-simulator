@@ -108,6 +108,7 @@ export class UIManager {
 
     this.createCourseStatusPanel();
     this.createEquipmentSelector();
+    this.createStatusRailBackdrop();
     this.createTimePanel();
     this.createEconomyPanel();
     this.createPrestigePanel();
@@ -115,6 +116,7 @@ export class UIManager {
     this.createOperationsPanel();
     this.createResourcesPanel();
     this.createScorePanel();
+    this.createUtilityDockBackdrop();
     this.createMinimap();
     this.createNotificationArea();
     this.createControlsHelp();
@@ -122,31 +124,74 @@ export class UIManager {
     this.createOverlayLegend();
   }
 
+  private applyHudPanelStyle(panel: Rectangle, elevated: boolean = false): void {
+    panel.cornerRadius = UI_THEME.radii.panel;
+    panel.color = elevated ? UI_THEME.colors.border.strong : UI_THEME.colors.border.default;
+    panel.thickness = 2;
+    panel.background = elevated ? UI_THEME.colors.surfaces.hudElevated : UI_THEME.colors.surfaces.hud;
+    panel.shadowColor = UI_THEME.colors.effects.shadow;
+    panel.shadowBlur = 12;
+    panel.shadowOffsetY = 4;
+  }
+
+  private createStatusRailBackdrop(): void {
+    const rail = new Rectangle('statusRailBackdrop');
+    rail.width = '244px';
+    rail.height = '528px';
+    rail.cornerRadius = UI_THEME.radii.panel;
+    rail.color = UI_THEME.colors.border.muted;
+    rail.thickness = 1;
+    rail.background = 'rgba(9, 22, 17, 0.34)';
+    rail.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    rail.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    rail.left = '-6px';
+    rail.top = '6px';
+    rail.shadowColor = UI_THEME.colors.effects.shadow;
+    rail.shadowBlur = 14;
+    rail.shadowOffsetY = 6;
+    this.advancedTexture.addControl(rail);
+  }
+
+  private createUtilityDockBackdrop(): void {
+    const dock = new Rectangle('utilityDockBackdrop');
+    dock.width = '392px';
+    dock.height = '170px';
+    dock.cornerRadius = UI_THEME.radii.panel;
+    dock.color = UI_THEME.colors.border.muted;
+    dock.thickness = 1;
+    dock.background = 'rgba(9, 22, 17, 0.3)';
+    dock.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    dock.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    dock.left = '-6px';
+    dock.top = '-6px';
+    dock.shadowColor = UI_THEME.colors.effects.shadow;
+    dock.shadowBlur = 14;
+    dock.shadowOffsetY = 6;
+    this.advancedTexture.addControl(dock);
+  }
+
   private createCourseStatusPanel(): void {
     const panel = new Rectangle('courseStatusPanel');
-    panel.width = '200px';
-    panel.height = '100px';
-    panel.cornerRadius = UI_THEME.radii.scale.r5;
-    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    panel.thickness = 2;
-    panel.background = 'rgba(26, 58, 42, 0.95)';
+    panel.width = '232px';
+    panel.height = '114px';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     panel.left = '10px';
     panel.top = '10px';
+    this.applyHudPanelStyle(panel, true);
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel('courseStack');
-    stack.paddingTop = '8px';
-    stack.paddingLeft = '10px';
+    stack.paddingTop = '9px';
+    stack.paddingLeft = '12px';
     panel.addControl(stack);
 
     const title = new TextBlock('courseTitle');
     title.text = 'COURSE STATUS';
-    title.color = UI_THEME.colors.legacy.c_7a9a7a;
-    title.fontSize = UI_THEME.typography.scale.s10;
-    title.fontFamily = 'Arial, sans-serif';
-    title.height = '16px';
+    title.color = UI_THEME.colors.text.secondary;
+    title.fontSize = UI_THEME.typography.scale.s11;
+    title.fontFamily = UI_THEME.typography.fontFamily;
+    title.height = '18px';
     title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(title);
 
@@ -168,7 +213,7 @@ export class UIManager {
 
   private createStatBar(name: string, color: string): { bar: Rectangle; text: TextBlock } {
     const bar = new Rectangle(`${name}Bar`);
-    bar.width = '70px';
+    bar.width = '82px';
     bar.height = '10px';
     bar.cornerRadius = UI_THEME.radii.scale.r2;
     bar.background = color;
@@ -178,19 +223,19 @@ export class UIManager {
     text.text = '100%';
     text.color = color;
     text.fontSize = UI_THEME.typography.scale.s11;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
 
     return { bar, text };
   }
 
   private createStatRow(icon: string, label: string, bar: Rectangle, text: TextBlock, labelColor: string): Grid {
     const grid = new Grid(`${label}Row`);
-    grid.height = '22px';
-    grid.width = '180px';
+    grid.height = '24px';
+    grid.width = '210px';
     grid.addColumnDefinition(20, true);
-    grid.addColumnDefinition(55, true);
-    grid.addColumnDefinition(75, true);
-    grid.addColumnDefinition(35, true);
+    grid.addColumnDefinition(60, true);
+    grid.addColumnDefinition(88, true);
+    grid.addColumnDefinition(42, true);
 
     const iconText = new TextBlock();
     iconText.text = icon;
@@ -201,16 +246,16 @@ export class UIManager {
     labelText.text = label;
     labelText.color = labelColor;
     labelText.fontSize = UI_THEME.typography.scale.s11;
-    labelText.fontFamily = 'Arial, sans-serif';
+    labelText.fontFamily = UI_THEME.typography.fontFamily;
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     grid.addControl(labelText, 0, 1);
 
     const barContainer = new Rectangle();
-    barContainer.width = '70px';
+    barContainer.width = '82px';
     barContainer.height = '10px';
     barContainer.cornerRadius = UI_THEME.radii.scale.r2;
-    barContainer.background = UI_THEME.colors.legacy.c_1a3a2a;
-    barContainer.color = UI_THEME.colors.legacy.c_3a5a4a;
+    barContainer.background = UI_THEME.colors.surfaces.hudInset;
+    barContainer.color = UI_THEME.colors.border.muted;
     barContainer.thickness = 1;
     barContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     barContainer.addControl(bar);
@@ -322,16 +367,13 @@ export class UIManager {
 
   private createTimePanel(): void {
     const panel = new Rectangle('timePanel');
-    panel.width = '110px';
-    panel.height = '90px';
-    panel.cornerRadius = UI_THEME.radii.scale.r5;
-    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    panel.thickness = 2;
-    panel.background = 'rgba(26, 58, 42, 0.95)';
+    panel.width = '118px';
+    panel.height = '92px';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     panel.left = '-10px';
     panel.top = '10px';
+    this.applyHudPanelStyle(panel, true);
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel();
@@ -351,26 +393,26 @@ export class UIManager {
 
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1';
-    this.dayText.color = 'white';
+    this.dayText.color = UI_THEME.colors.text.primary;
     this.dayText.fontSize = UI_THEME.typography.scale.s12;
-    this.dayText.fontFamily = 'Arial, sans-serif';
+    this.dayText.fontFamily = UI_THEME.typography.fontFamily;
     this.dayText.width = '80px';
     this.dayText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     dayRow.addControl(this.dayText);
 
     this.timeText = new TextBlock('timeText');
     this.timeText.text = '6:00 AM';
-    this.timeText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.timeText.color = UI_THEME.colors.text.accent;
     this.timeText.fontSize = UI_THEME.typography.scale.s14;
-    this.timeText.fontFamily = 'Arial, sans-serif';
+    this.timeText.fontFamily = UI_THEME.typography.fontFamily;
     this.timeText.height = '20px';
     stack.addControl(this.timeText);
 
     this.weatherText = new TextBlock('weatherText');
     this.weatherText.text = 'Sunny 72°F';
-    this.weatherText.color = UI_THEME.colors.legacy.c_aaccff;
+    this.weatherText.color = UI_THEME.colors.text.info;
     this.weatherText.fontSize = UI_THEME.typography.scale.s10;
-    this.weatherText.fontFamily = 'Arial, sans-serif';
+    this.weatherText.fontFamily = UI_THEME.typography.fontFamily;
     this.weatherText.height = '16px';
     stack.addControl(this.weatherText);
 
@@ -378,30 +420,27 @@ export class UIManager {
     speedBg.width = '40px';
     speedBg.height = '18px';
     speedBg.cornerRadius = UI_THEME.radii.scale.r3;
-    speedBg.background = UI_THEME.colors.legacy.c_2a5a3a;
-    speedBg.color = UI_THEME.colors.legacy.c_4a8a5a;
+    speedBg.background = UI_THEME.colors.surfaces.hudInset;
+    speedBg.color = UI_THEME.colors.border.default;
     speedBg.thickness = 1;
     stack.addControl(speedBg);
 
     const speedText = new TextBlock();
     speedText.text = '1x';
-    speedText.color = UI_THEME.colors.legacy.c_88ff88;
+    speedText.color = UI_THEME.colors.text.success;
     speedText.fontSize = UI_THEME.typography.scale.s11;
     speedBg.addControl(speedText);
   }
 
   private createEconomyPanel(): void {
     this.economyPanel = new Rectangle('economyPanel');
-    this.economyPanel.width = '140px';
-    this.economyPanel.height = '85px';
-    this.economyPanel.cornerRadius = UI_THEME.radii.scale.r5;
-    this.economyPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    this.economyPanel.thickness = 2;
-    this.economyPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.economyPanel.width = '152px';
+    this.economyPanel.height = '88px';
     this.economyPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.economyPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.economyPanel.left = '-10px';
     this.economyPanel.top = '110px';
+    this.applyHudPanelStyle(this.economyPanel);
     this.advancedTexture.addControl(this.economyPanel);
 
     const stack = new StackPanel();
@@ -422,10 +461,10 @@ export class UIManager {
 
     this.cashText = new TextBlock('cashText');
     this.cashText.text = '$10,000';
-    this.cashText.color = UI_THEME.colors.legacy.c_44ff44;
+    this.cashText.color = UI_THEME.colors.text.success;
     this.cashText.fontSize = UI_THEME.typography.scale.s14;
-    this.cashText.fontFamily = 'Arial Black, sans-serif';
-    this.cashText.width = '100px';
+    this.cashText.fontFamily = UI_THEME.typography.fontFamily;
+    this.cashText.width = '112px';
     this.cashText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     cashRow.addControl(this.cashText);
 
@@ -442,10 +481,10 @@ export class UIManager {
 
     this.golfersText = new TextBlock('golfersText');
     this.golfersText.text = '0 golfers';
-    this.golfersText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.golfersText.color = UI_THEME.colors.text.secondary;
     this.golfersText.fontSize = UI_THEME.typography.scale.s11;
-    this.golfersText.fontFamily = 'Arial, sans-serif';
-    this.golfersText.width = '100px';
+    this.golfersText.fontFamily = UI_THEME.typography.fontFamily;
+    this.golfersText.width = '112px';
     this.golfersText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     golfersRow.addControl(this.golfersText);
 
@@ -462,26 +501,23 @@ export class UIManager {
 
     this.satisfactionText = new TextBlock('satisfactionText');
     this.satisfactionText.text = '-- rating';
-    this.satisfactionText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.satisfactionText.color = UI_THEME.colors.text.warning;
     this.satisfactionText.fontSize = UI_THEME.typography.scale.s11;
-    this.satisfactionText.fontFamily = 'Arial, sans-serif';
-    this.satisfactionText.width = '100px';
+    this.satisfactionText.fontFamily = UI_THEME.typography.fontFamily;
+    this.satisfactionText.width = '112px';
     this.satisfactionText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     satisfactionRow.addControl(this.satisfactionText);
   }
 
   private createPrestigePanel(): void {
     this.prestigePanel = new Rectangle('prestigePanel');
-    this.prestigePanel.width = '140px';
-    this.prestigePanel.height = '115px';
-    this.prestigePanel.cornerRadius = UI_THEME.radii.scale.r5;
-    this.prestigePanel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    this.prestigePanel.thickness = 2;
-    this.prestigePanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.prestigePanel.width = '152px';
+    this.prestigePanel.height = '120px';
     this.prestigePanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.prestigePanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.prestigePanel.left = '-10px';
     this.prestigePanel.top = '205px';
+    this.applyHudPanelStyle(this.prestigePanel);
     this.advancedTexture.addControl(this.prestigePanel);
 
     const stack = new StackPanel();
@@ -496,15 +532,15 @@ export class UIManager {
 
     const titleLabel = new TextBlock();
     titleLabel.text = 'PRESTIGE';
-    titleLabel.color = UI_THEME.colors.legacy.c_7a9a7a;
-    titleLabel.fontSize = UI_THEME.typography.scale.s9;
+    titleLabel.color = UI_THEME.colors.text.secondary;
+    titleLabel.fontSize = UI_THEME.typography.scale.s10;
     titleLabel.width = '120px';
     titleLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     titleRow.addControl(titleLabel);
 
     this.prestigeStarsText = new TextBlock('prestigeStars');
     this.prestigeStarsText.text = '★☆☆☆☆';
-    this.prestigeStarsText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.prestigeStarsText.color = UI_THEME.colors.text.accent;
     this.prestigeStarsText.fontSize = UI_THEME.typography.scale.s14;
     this.prestigeStarsText.height = '20px';
     this.prestigeStarsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -512,7 +548,7 @@ export class UIManager {
 
     this.prestigeTierText = new TextBlock('prestigeTier');
     this.prestigeTierText.text = 'Municipal';
-    this.prestigeTierText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.prestigeTierText.color = UI_THEME.colors.text.secondary;
     this.prestigeTierText.fontSize = UI_THEME.typography.scale.s11;
     this.prestigeTierText.height = '16px';
     this.prestigeTierText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -520,7 +556,7 @@ export class UIManager {
 
     this.prestigeScoreText = new TextBlock('prestigeScore');
     this.prestigeScoreText.text = '100 / 1000';
-    this.prestigeScoreText.color = UI_THEME.colors.legacy.c_888888;
+    this.prestigeScoreText.color = UI_THEME.colors.text.muted;
     this.prestigeScoreText.fontSize = UI_THEME.typography.scale.s9;
     this.prestigeScoreText.height = '14px';
     this.prestigeScoreText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -528,7 +564,7 @@ export class UIManager {
 
     this.prestigePriceWarning = new TextBlock('prestigePriceWarning');
     this.prestigePriceWarning.text = '';
-    this.prestigePriceWarning.color = UI_THEME.colors.legacy.c_ffaa44;
+    this.prestigePriceWarning.color = UI_THEME.colors.text.warning;
     this.prestigePriceWarning.fontSize = UI_THEME.typography.scale.s9;
     this.prestigePriceWarning.height = '14px';
     this.prestigePriceWarning.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -544,18 +580,18 @@ export class UIManager {
     minusBtn.width = '22px';
     minusBtn.height = '18px';
     minusBtn.cornerRadius = UI_THEME.radii.scale.r3;
-    minusBtn.background = UI_THEME.colors.legacy.c_4a5a4a;
-    minusBtn.color = 'white';
+    minusBtn.background = UI_THEME.colors.action.neutral.normal;
+    minusBtn.color = UI_THEME.colors.text.primary;
     minusBtn.fontSize = UI_THEME.typography.scale.s12;
     minusBtn.thickness = 0;
     minusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(-5));
-    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = UI_THEME.colors.legacy.c_5a6a5a; });
-    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = UI_THEME.colors.legacy.c_4a5a4a; });
+    minusBtn.onPointerEnterObservable.add(() => { minusBtn.background = UI_THEME.colors.action.neutral.hover; });
+    minusBtn.onPointerOutObservable.add(() => { minusBtn.background = UI_THEME.colors.action.neutral.normal; });
     priceRow.addControl(minusBtn);
 
     this.currentPriceText = new TextBlock('currentPrice');
     this.currentPriceText.text = '$25';
-    this.currentPriceText.color = UI_THEME.colors.legacy.c_88dd88;
+    this.currentPriceText.color = UI_THEME.colors.text.success;
     this.currentPriceText.fontSize = UI_THEME.typography.scale.s11;
     this.currentPriceText.width = '50px';
     this.currentPriceText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
@@ -565,18 +601,18 @@ export class UIManager {
     plusBtn.width = '22px';
     plusBtn.height = '18px';
     plusBtn.cornerRadius = UI_THEME.radii.scale.r3;
-    plusBtn.background = UI_THEME.colors.legacy.c_4a5a4a;
-    plusBtn.color = 'white';
+    plusBtn.background = UI_THEME.colors.action.neutral.normal;
+    plusBtn.color = UI_THEME.colors.text.primary;
     plusBtn.fontSize = UI_THEME.typography.scale.s12;
     plusBtn.thickness = 0;
     plusBtn.onPointerClickObservable.add(() => this.onPriceChange?.(5));
-    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = UI_THEME.colors.legacy.c_5a6a5a; });
-    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = UI_THEME.colors.legacy.c_4a5a4a; });
+    plusBtn.onPointerEnterObservable.add(() => { plusBtn.background = UI_THEME.colors.action.neutral.hover; });
+    plusBtn.onPointerOutObservable.add(() => { plusBtn.background = UI_THEME.colors.action.neutral.normal; });
     priceRow.addControl(plusBtn);
 
     const feeLabel = new TextBlock();
     feeLabel.text = '/18';
-    feeLabel.color = UI_THEME.colors.legacy.c_7a9a7a;
+    feeLabel.color = UI_THEME.colors.text.secondary;
     feeLabel.fontSize = UI_THEME.typography.scale.s9;
     feeLabel.width = '22px';
     feeLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -585,17 +621,14 @@ export class UIManager {
 
   private createScenarioPanel(): void {
     this.scenarioPanel = new Rectangle('scenarioPanel');
-    this.scenarioPanel.width = '200px';
-    this.scenarioPanel.height = '75px';
-    this.scenarioPanel.cornerRadius = UI_THEME.radii.scale.r5;
-    this.scenarioPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    this.scenarioPanel.thickness = 2;
-    this.scenarioPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.scenarioPanel.width = '208px';
+    this.scenarioPanel.height = '80px';
     this.scenarioPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.scenarioPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.scenarioPanel.left = '-10px';
     this.scenarioPanel.top = '325px';
     this.scenarioPanel.isVisible = false;
+    this.applyHudPanelStyle(this.scenarioPanel);
     this.advancedTexture.addControl(this.scenarioPanel);
 
     const stack = new StackPanel();
@@ -606,27 +639,27 @@ export class UIManager {
 
     this.scenarioTitleText = new TextBlock('scenarioTitle');
     this.scenarioTitleText.text = 'OBJECTIVE';
-    this.scenarioTitleText.color = UI_THEME.colors.legacy.c_7a9a7a;
-    this.scenarioTitleText.fontSize = UI_THEME.typography.scale.s9;
+    this.scenarioTitleText.color = UI_THEME.colors.text.secondary;
+    this.scenarioTitleText.fontSize = UI_THEME.typography.scale.s10;
     this.scenarioTitleText.height = '14px';
     this.scenarioTitleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.scenarioTitleText);
 
     this.scenarioProgressText = new TextBlock('scenarioProgress');
     this.scenarioProgressText.text = 'Earn $50,000';
-    this.scenarioProgressText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.scenarioProgressText.color = UI_THEME.colors.text.primary;
     this.scenarioProgressText.fontSize = UI_THEME.typography.scale.s11;
     this.scenarioProgressText.height = '18px';
     this.scenarioProgressText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.scenarioProgressText);
 
     this.scenarioProgressBar = new Rectangle('scenarioProgressBar');
-    this.scenarioProgressBar.width = '180px';
+    this.scenarioProgressBar.width = '188px';
     this.scenarioProgressBar.height = '12px';
     this.scenarioProgressBar.cornerRadius = UI_THEME.radii.scale.r2;
-    this.scenarioProgressBar.color = UI_THEME.colors.legacy.c_3a5a4a;
+    this.scenarioProgressBar.color = UI_THEME.colors.border.muted;
     this.scenarioProgressBar.thickness = 1;
-    this.scenarioProgressBar.background = UI_THEME.colors.legacy.c_1a3a2a;
+    this.scenarioProgressBar.background = UI_THEME.colors.surfaces.hudInset;
     stack.addControl(this.scenarioProgressBar);
 
     this.scenarioProgressFill = new Rectangle('scenarioProgressFill');
@@ -638,7 +671,7 @@ export class UIManager {
 
     this.daysRemainingText = new TextBlock('daysRemaining');
     this.daysRemainingText.text = '';
-    this.daysRemainingText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.daysRemainingText.color = UI_THEME.colors.text.secondary;
     this.daysRemainingText.fontSize = UI_THEME.typography.scale.s10;
     this.daysRemainingText.height = '16px';
     this.daysRemainingText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -647,16 +680,13 @@ export class UIManager {
 
   private createOperationsPanel(): void {
     this.operationsPanel = new Rectangle('operationsPanel');
-    this.operationsPanel.width = '210px';
-    this.operationsPanel.height = '122px';
-    this.operationsPanel.cornerRadius = UI_THEME.radii.scale.r5;
-    this.operationsPanel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    this.operationsPanel.thickness = 2;
-    this.operationsPanel.background = 'rgba(26, 58, 42, 0.95)';
+    this.operationsPanel.width = '224px';
+    this.operationsPanel.height = '126px';
     this.operationsPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.operationsPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.operationsPanel.left = '-10px';
     this.operationsPanel.top = '405px';
+    this.applyHudPanelStyle(this.operationsPanel);
     this.advancedTexture.addControl(this.operationsPanel);
 
     const stack = new StackPanel('operationsStack');
@@ -667,15 +697,15 @@ export class UIManager {
 
     const title = new TextBlock('operationsTitle');
     title.text = 'OPERATIONS';
-    title.color = UI_THEME.colors.legacy.c_7a9a7a;
-    title.fontSize = UI_THEME.typography.scale.s9;
+    title.color = UI_THEME.colors.text.secondary;
+    title.fontSize = UI_THEME.typography.scale.s10;
     title.height = '14px';
     title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(title);
 
     this.operationsCrewText = new TextBlock('operationsCrew');
     this.operationsCrewText.text = '👷 Crew: 0 active / 0 idle';
-    this.operationsCrewText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsCrewText.color = UI_THEME.colors.text.secondary;
     this.operationsCrewText.fontSize = UI_THEME.typography.scale.s10;
     this.operationsCrewText.height = '16px';
     this.operationsCrewText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -683,7 +713,7 @@ export class UIManager {
 
     this.operationsDemandText = new TextBlock('operationsDemand');
     this.operationsDemandText.text = '⛳ Tee: 0/0 | Queue: 0';
-    this.operationsDemandText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsDemandText.color = UI_THEME.colors.text.secondary;
     this.operationsDemandText.fontSize = UI_THEME.typography.scale.s10;
     this.operationsDemandText.height = '16px';
     this.operationsDemandText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -691,7 +721,7 @@ export class UIManager {
 
     this.operationsResearchText = new TextBlock('operationsResearch');
     this.operationsResearchText.text = '🔬 Research: None';
-    this.operationsResearchText.color = UI_THEME.colors.legacy.c_888888;
+    this.operationsResearchText.color = UI_THEME.colors.text.muted;
     this.operationsResearchText.fontSize = UI_THEME.typography.scale.s10;
     this.operationsResearchText.height = '16px';
     this.operationsResearchText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -699,7 +729,7 @@ export class UIManager {
 
     this.operationsAutomationText = new TextBlock('operationsAutomation');
     this.operationsAutomationText.text = '🤖 Robots: 0 active, 0 broken';
-    this.operationsAutomationText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.operationsAutomationText.color = UI_THEME.colors.text.secondary;
     this.operationsAutomationText.fontSize = UI_THEME.typography.scale.s10;
     this.operationsAutomationText.height = '16px';
     this.operationsAutomationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -707,7 +737,7 @@ export class UIManager {
 
     this.operationsIrrigationText = new TextBlock('operationsIrrigation');
     this.operationsIrrigationText.text = '💧 Heads: 0 | Leaks: 0';
-    this.operationsIrrigationText.color = UI_THEME.colors.legacy.c_88ccff;
+    this.operationsIrrigationText.color = UI_THEME.colors.text.info;
     this.operationsIrrigationText.fontSize = UI_THEME.typography.scale.s10;
     this.operationsIrrigationText.height = '16px';
     this.operationsIrrigationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -716,16 +746,13 @@ export class UIManager {
 
   private createResourcesPanel(): void {
     const panel = new Rectangle('resourcesPanel');
-    panel.width = '420px';
-    panel.height = '55px';
-    panel.cornerRadius = UI_THEME.radii.scale.r5;
-    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    panel.thickness = 2;
-    panel.background = 'rgba(26, 58, 42, 0.95)';
+    panel.width = '432px';
+    panel.height = '58px';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     panel.left = '10px';
     panel.top = '-10px';
+    this.applyHudPanelStyle(panel);
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel();
@@ -735,9 +762,9 @@ export class UIManager {
 
     const title = new TextBlock();
     title.text = 'RESOURCES';
-    title.color = UI_THEME.colors.legacy.c_7a9a7a;
+    title.color = UI_THEME.colors.text.secondary;
     title.fontSize = UI_THEME.typography.scale.s10;
-    title.fontFamily = 'Arial, sans-serif';
+    title.fontFamily = UI_THEME.typography.fontFamily;
     title.height = '14px';
     title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(title);
@@ -781,7 +808,7 @@ export class UIManager {
     labelText.text = label;
     labelText.color = color;
     labelText.fontSize = UI_THEME.typography.scale.s11;
-    labelText.fontFamily = 'Arial, sans-serif';
+    labelText.fontFamily = UI_THEME.typography.fontFamily;
     labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     container.addControl(labelText, 0, 1);
 
@@ -789,8 +816,8 @@ export class UIManager {
     barBg.width = '45px';
     barBg.height = '10px';
     barBg.cornerRadius = UI_THEME.radii.scale.r2;
-    barBg.background = UI_THEME.colors.legacy.c_1a3a2a;
-    barBg.color = UI_THEME.colors.legacy.c_3a5a4a;
+    barBg.background = UI_THEME.colors.surfaces.hudInset;
+    barBg.color = UI_THEME.colors.border.muted;
     barBg.thickness = 1;
     barBg.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
 
@@ -808,7 +835,7 @@ export class UIManager {
     text.text = '100%';
     text.color = color;
     text.fontSize = UI_THEME.typography.scale.s10;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
     text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     container.addControl(text, 0, 3);
 
@@ -817,15 +844,12 @@ export class UIManager {
 
   private createScorePanel(): void {
     const panel = new Rectangle('scorePanel');
-    panel.width = '110px';
-    panel.height = '40px';
-    panel.cornerRadius = UI_THEME.radii.scale.r5;
-    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    panel.thickness = 2;
-    panel.background = 'rgba(42, 90, 58, 0.95)';
+    panel.width = '120px';
+    panel.height = '42px';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     panel.top = '-10px';
+    this.applyHudPanelStyle(panel, true);
     this.advancedTexture.addControl(panel);
 
     const row = new StackPanel();
@@ -840,31 +864,28 @@ export class UIManager {
 
     this.scoreText = new TextBlock('scoreText');
     this.scoreText.text = '0';
-    this.scoreText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.scoreText.color = UI_THEME.colors.text.accent;
     this.scoreText.fontSize = UI_THEME.typography.scale.s18;
-    this.scoreText.fontFamily = 'Arial Black, sans-serif';
+    this.scoreText.fontFamily = UI_THEME.typography.fontFamily;
     this.scoreText.width = '80px';
     row.addControl(this.scoreText);
   }
 
   private createMinimap(): void {
     this.minimapContainer = new Rectangle('minimapContainer');
-    this.minimapContainer.width = '160px';
-    this.minimapContainer.height = '130px';
-    this.minimapContainer.cornerRadius = UI_THEME.radii.scale.r5;
-    this.minimapContainer.color = UI_THEME.colors.legacy.c_4a8a5a;
-    this.minimapContainer.thickness = 2;
-    this.minimapContainer.background = 'rgba(13, 31, 21, 0.95)';
+    this.minimapContainer.width = '170px';
+    this.minimapContainer.height = '134px';
     this.minimapContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     this.minimapContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     this.minimapContainer.left = '-10px';
     this.minimapContainer.top = '-10px';
+    this.applyHudPanelStyle(this.minimapContainer, true);
     this.advancedTexture.addControl(this.minimapContainer);
 
     const header = new Rectangle();
     header.width = '150px';
     header.height = '18px';
-    header.background = UI_THEME.colors.legacy.c_2a5a3a;
+    header.background = UI_THEME.colors.surfaces.hudInset;
     header.cornerRadius = UI_THEME.radii.scale.r3;
     header.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     header.top = '5px';
@@ -872,15 +893,15 @@ export class UIManager {
 
     const headerText = new TextBlock();
     headerText.text = '📍 MINIMAP';
-    headerText.color = 'white';
+    headerText.color = UI_THEME.colors.text.primary;
     headerText.fontSize = UI_THEME.typography.scale.s10;
-    headerText.fontFamily = 'Arial, sans-serif';
+    headerText.fontFamily = UI_THEME.typography.fontFamily;
     header.addControl(headerText);
 
     this.minimapMapArea = new Rectangle('mapArea');
     this.minimapMapArea.width = '140px';
     this.minimapMapArea.height = '96px';
-    this.minimapMapArea.background = UI_THEME.colors.legacy.c_228b22;
+    this.minimapMapArea.background = '#2a8f2a';
     this.minimapMapArea.cornerRadius = UI_THEME.radii.scale.r3;
     this.minimapMapArea.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
     this.minimapMapArea.top = '-8px';
@@ -914,16 +935,13 @@ export class UIManager {
 
   private createControlsHelp(): void {
     const panel = new Rectangle('helpPanel');
-    panel.width = '160px';
-    panel.height = '170px';
-    panel.cornerRadius = UI_THEME.radii.scale.r5;
-    panel.color = UI_THEME.colors.legacy.c_3a5a4a;
-    panel.thickness = 1;
-    panel.background = 'rgba(26, 58, 42, 0.8)';
+    panel.width = '188px';
+    panel.height = '176px';
     panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    panel.left = '-180px';
+    panel.left = '-198px';
     panel.top = '-10px';
+    this.applyHudPanelStyle(panel);
     this.advancedTexture.addControl(panel);
 
     const stack = new StackPanel('helpStack');
@@ -931,23 +949,23 @@ export class UIManager {
     panel.addControl(stack);
 
     const lines = [
-      'WASD/Arrows: Move',
-      '1/2/3: Equipment',
-      'Space: Toggle | E: Refill',
-      '[ / ]: Zoom | P: Pause',
-      '─ Management ─',
-      'H: Employees | Y: Research',
-      'G: TeeSheet | I: Irrigation',
-      'J: Hole Builder | L: Layout',
-      'B: Equipment | U: Amenities',
+      'Move  WASD / Arrows',
+      'Tools  1 / 2 / 3',
+      'Use  Space / E',
+      'View  [ / ] zoom, P pause',
+      'MANAGEMENT',
+      'H Crew   Y Research',
+      'G Tee    I Water',
+      'B Store  U Amenities',
+      'J Holes  L Layout',
     ];
 
     for (const line of lines) {
       const text = new TextBlock();
       text.text = line;
-      text.color = line.startsWith('─') ? '#6a8a6a' : '#aaa';
+      text.color = line === 'MANAGEMENT' ? UI_THEME.colors.text.secondary : UI_THEME.colors.text.muted;
       text.fontSize = UI_THEME.typography.scale.s10;
-      text.fontFamily = 'Arial, sans-serif';
+      text.fontFamily = UI_THEME.typography.fontFamily;
       text.height = '16px';
       text.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
       text.paddingLeft = '8px';
@@ -959,205 +977,274 @@ export class UIManager {
     this.pauseOverlay = new Rectangle('pauseOverlay');
     this.pauseOverlay.width = '100%';
     this.pauseOverlay.height = '100%';
-    this.pauseOverlay.background = 'rgba(0, 0, 0, 0.7)';
+    this.pauseOverlay.background = UI_THEME.colors.surfaces.overlay;
     this.pauseOverlay.thickness = 0;
     this.pauseOverlay.isVisible = false;
     this.pauseOverlay.isPointerBlocker = true;
     this.advancedTexture.addControl(this.pauseOverlay);
 
     const panel = new Rectangle('pausePanel');
-    panel.width = '300px';
-    panel.height = '850px';
-    panel.cornerRadius = UI_THEME.radii.scale.r10;
-    panel.background = 'rgba(26, 58, 42, 0.95)';
-    panel.color = UI_THEME.colors.legacy.c_4a8a5a;
-    panel.thickness = 3;
+    panel.width = '424px';
+    panel.height = '544px';
+    this.applyHudPanelStyle(panel, true);
+    panel.background = UI_THEME.colors.surfaces.panel;
+    panel.color = UI_THEME.colors.border.strong;
+    panel.thickness = 2;
+    panel.shadowBlur = 22;
+    panel.shadowOffsetY = 8;
     this.pauseOverlay.addControl(panel);
 
     const stack = new StackPanel('pauseStack');
-    stack.paddingTop = '15px';
+    stack.width = '384px';
+    stack.paddingTop = '18px';
     panel.addControl(stack);
 
     const title = new TextBlock('pauseTitle');
-    title.text = '⏸️ PAUSED';
-    title.color = UI_THEME.colors.legacy.c_ffcc00;
+    title.text = 'PAUSED';
+    title.color = UI_THEME.colors.text.accent;
     title.fontSize = UI_THEME.typography.scale.s28;
-    title.fontFamily = 'Arial Black, sans-serif';
-    title.height = '45px';
+    title.fontFamily = UI_THEME.typography.fontFamily;
+    title.height = '34px';
     stack.addControl(title);
 
-    // Create accessible buttons for pause menu
+    const subtitle = new TextBlock('pauseSubtitle');
+    subtitle.text = 'Resume play, manage operations, or jump back to setup screens.';
+    subtitle.color = UI_THEME.colors.text.secondary;
+    subtitle.fontSize = UI_THEME.typography.scale.s11;
+    subtitle.fontFamily = UI_THEME.typography.fontFamily;
+    subtitle.height = '18px';
+    stack.addControl(subtitle);
+
+    const topActions = new Grid('pauseTopActions');
+    topActions.width = '384px';
+    topActions.height = '92px';
+    topActions.paddingTop = '14px';
+    topActions.addColumnDefinition(0.5);
+    topActions.addColumnDefinition(0.5);
+    topActions.addRowDefinition(0.5);
+    topActions.addRowDefinition(0.5);
+    stack.addControl(topActions);
+
+    const makePauseButton = (
+      label: string,
+      options: {
+        backgroundColor?: string;
+        borderColor?: string;
+        onClick: () => void;
+      }
+    ): AccessibleButton => {
+      const button = createAccessibleButton({
+        label,
+        width: '178px',
+        height: '36px',
+        fontSize: 15,
+        backgroundColor: options.backgroundColor,
+        borderColor: options.borderColor,
+        onClick: options.onClick,
+        focusGroup: 'pause-menu',
+      }, this.focusManager);
+      this.pauseMenuButtons.push(button);
+      return button;
+    };
+
     const resumeBtn = createAccessibleButton({
-      label: '▶️ Resume',
+      label: '▶ Resume',
+      width: '178px',
+      height: '36px',
+      fontSize: 15,
+      backgroundColor: UI_THEME.colors.action.primary.normal,
+      borderColor: UI_THEME.colors.launch.selectedBorder,
       onClick: () => this.onResume?.(),
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    resumeBtn.control.paddingTop = '10px';
-    stack.addControl(resumeBtn.control);
+    topActions.addControl(resumeBtn.control, 0, 0);
     this.pauseMenuButtons.push(resumeBtn);
 
-    const saveBtn = createAccessibleButton({
-      label: '💾 Quick Save',
+    const saveBtn = makePauseButton('💾 Quick Save', {
+      backgroundColor: UI_THEME.colors.action.success.normal,
+      borderColor: UI_THEME.colors.border.strong,
       onClick: () => {
         this.onSave?.();
         this.showNotification('Game saved!');
       },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    saveBtn.control.paddingTop = '10px';
-    stack.addControl(saveBtn.control);
-    this.pauseMenuButtons.push(saveBtn);
+    });
+    topActions.addControl(saveBtn.control, 0, 1);
 
-    const restartBtn = createAccessibleButton({
-      label: '🔄 Restart',
+    const restartBtn = makePauseButton('↺ Restart', {
+      backgroundColor: UI_THEME.colors.action.warning.normal,
+      borderColor: UI_THEME.colors.text.warning,
       onClick: () => this.onRestart?.(),
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    restartBtn.control.paddingTop = '10px';
-    stack.addControl(restartBtn.control);
-    this.pauseMenuButtons.push(restartBtn);
+    });
+    topActions.addControl(restartBtn.control, 1, 0);
 
-    const mainMenuBtn = createAccessibleButton({
-      label: '🏠 Main Menu',
+    const mainMenuBtn = makePauseButton('⌂ Main Menu', {
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.info,
       onClick: () => this.onMainMenu?.(),
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    mainMenuBtn.control.paddingTop = '10px';
-    stack.addControl(mainMenuBtn.control);
-    this.pauseMenuButtons.push(mainMenuBtn);
+    });
+    topActions.addControl(mainMenuBtn.control, 1, 1);
 
     const divider = new Rectangle('divider');
-    divider.width = '200px';
-    divider.height = '2px';
-    divider.background = UI_THEME.colors.legacy.c_3a6a4a;
+    divider.width = '384px';
+    divider.height = '1px';
+    divider.background = UI_THEME.colors.border.muted;
     divider.thickness = 0;
-    divider.paddingTop = '10px';
-    divider.paddingBottom = '5px';
+    divider.paddingTop = '8px';
+    divider.paddingBottom = '8px';
     stack.addControl(divider);
 
     const mgmtLabel = new TextBlock('mgmtLabel');
     mgmtLabel.text = 'MANAGEMENT';
-    mgmtLabel.color = UI_THEME.colors.legacy.c_88ccff;
+    mgmtLabel.color = UI_THEME.colors.text.secondary;
     mgmtLabel.fontSize = UI_THEME.typography.scale.s12;
-    mgmtLabel.height = '25px';
+    mgmtLabel.fontFamily = UI_THEME.typography.fontFamily;
+    mgmtLabel.height = '20px';
     stack.addControl(mgmtLabel);
+
+    const managementGrid = new Grid('pauseManagementGrid');
+    managementGrid.width = '384px';
+    managementGrid.height = '184px';
+    managementGrid.paddingTop = '8px';
+    managementGrid.addColumnDefinition(0.5);
+    managementGrid.addColumnDefinition(0.5);
+    managementGrid.addRowDefinition(0.25);
+    managementGrid.addRowDefinition(0.25);
+    managementGrid.addRowDefinition(0.25);
+    managementGrid.addRowDefinition(0.25);
+    stack.addControl(managementGrid);
 
     const employeesBtn = createAccessibleButton({
       label: '👥 Employees',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onEmployees?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    employeesBtn.control.paddingTop = '10px';
-    stack.addControl(employeesBtn.control);
+    managementGrid.addControl(employeesBtn.control, 0, 0);
     this.pauseMenuButtons.push(employeesBtn);
 
     const researchBtn = createAccessibleButton({
       label: '🔬 Research',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onResearch?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    researchBtn.control.paddingTop = '10px';
-    stack.addControl(researchBtn.control);
+    managementGrid.addControl(researchBtn.control, 0, 1);
     this.pauseMenuButtons.push(researchBtn);
 
     const teeSheetBtn = createAccessibleButton({
       label: '📋 Tee Sheet',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onTeeSheet?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    teeSheetBtn.control.paddingTop = '10px';
-    stack.addControl(teeSheetBtn.control);
+    managementGrid.addControl(teeSheetBtn.control, 1, 0);
     this.pauseMenuButtons.push(teeSheetBtn);
 
     const irrigationBtn = createAccessibleButton({
       label: '💧 Irrigation',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onIrrigation?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    irrigationBtn.control.paddingTop = '10px';
-    stack.addControl(irrigationBtn.control);
+    managementGrid.addControl(irrigationBtn.control, 1, 1);
     this.pauseMenuButtons.push(irrigationBtn);
 
     const equipmentStoreBtn = createAccessibleButton({
       label: '🛒 Equipment Store',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onEquipmentStore?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    equipmentStoreBtn.control.paddingTop = '10px';
-    stack.addControl(equipmentStoreBtn.control);
+    managementGrid.addControl(equipmentStoreBtn.control, 2, 0);
     this.pauseMenuButtons.push(equipmentStoreBtn);
 
     const amenitiesBtn = createAccessibleButton({
       label: '🏛️ Amenities',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onAmenityPanel?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    amenitiesBtn.control.paddingTop = '10px';
-    stack.addControl(amenitiesBtn.control);
+    managementGrid.addControl(amenitiesBtn.control, 2, 1);
     this.pauseMenuButtons.push(amenitiesBtn);
 
     const holeBuilderBtn = createAccessibleButton({
       label: '🛠 Hole Builder',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onHoleBuilder?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    holeBuilderBtn.control.paddingTop = '10px';
-    stack.addControl(holeBuilderBtn.control);
+    managementGrid.addControl(holeBuilderBtn.control, 3, 0);
     this.pauseMenuButtons.push(holeBuilderBtn);
 
     const courseLayoutBtn = createAccessibleButton({
       label: '⛳ Course Layout',
-      fontSize: 16,
-      height: '36px',
+      fontSize: 14,
+      width: '178px',
+      height: '34px',
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.hidePauseMenu();
         this.onCourseLayout?.();
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    courseLayoutBtn.control.paddingTop = '10px';
-    stack.addControl(courseLayoutBtn.control);
+    managementGrid.addControl(courseLayoutBtn.control, 3, 1);
     this.pauseMenuButtons.push(courseLayoutBtn);
 
     const speedDivider = new Rectangle('speedDivider');
-    speedDivider.width = '200px';
-    speedDivider.height = '2px';
-    speedDivider.background = UI_THEME.colors.legacy.c_3a6a4a;
+    speedDivider.width = '384px';
+    speedDivider.height = '1px';
+    speedDivider.background = UI_THEME.colors.border.muted;
     speedDivider.thickness = 0;
     speedDivider.paddingTop = '8px';
     speedDivider.paddingBottom = '3px';
@@ -1165,23 +1252,28 @@ export class UIManager {
 
     const speedLabel = new TextBlock('speedLabel');
     speedLabel.text = 'GAME SPEED';
-    speedLabel.color = UI_THEME.colors.legacy.c_ffcc00;
+    speedLabel.color = UI_THEME.colors.text.secondary;
     speedLabel.fontSize = UI_THEME.typography.scale.s11;
+    speedLabel.fontFamily = UI_THEME.typography.fontFamily;
     speedLabel.height = '20px';
     stack.addControl(speedLabel);
 
     const speedContainer = new Rectangle('speedContainer');
-    speedContainer.height = '35px';
-    speedContainer.width = '200px';
-    speedContainer.thickness = 0;
+    speedContainer.height = '54px';
+    speedContainer.width = '384px';
+    speedContainer.cornerRadius = UI_THEME.radii.section;
+    speedContainer.background = UI_THEME.colors.surfaces.hudInset;
+    speedContainer.color = UI_THEME.colors.border.muted;
+    speedContainer.thickness = 1;
     stack.addControl(speedContainer);
 
-    // Speed control buttons - smaller size
     const slowBtn = createAccessibleButton({
       label: '◀',
-      width: '50px',
+      width: '56px',
       height: '30px',
       fontSize: 14,
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.onSpeedChange?.(-1);
         this.updateSpeedDisplay();
@@ -1189,22 +1281,25 @@ export class UIManager {
       focusGroup: 'pause-menu'
     }, this.focusManager);
     slowBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    slowBtn.control.left = '10px';
+    slowBtn.control.left = '18px';
     speedContainer.addControl(slowBtn.control);
     this.pauseMenuButtons.push(slowBtn);
 
     this.speedText = new TextBlock('speedText');
     this.speedText.text = '1x';
-    this.speedText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.speedText.color = UI_THEME.colors.text.primary;
     this.speedText.fontSize = UI_THEME.typography.scale.s16;
     this.speedText.fontWeight = 'bold';
+    this.speedText.fontFamily = UI_THEME.typography.fontFamily;
     speedContainer.addControl(this.speedText);
 
     const fastBtn = createAccessibleButton({
       label: '▶',
-      width: '50px',
+      width: '56px',
       height: '30px',
       fontSize: 14,
+      backgroundColor: UI_THEME.colors.action.neutral.normal,
+      borderColor: UI_THEME.colors.border.default,
       onClick: () => {
         this.onSpeedChange?.(1);
         this.updateSpeedDisplay();
@@ -1212,17 +1307,17 @@ export class UIManager {
       focusGroup: 'pause-menu'
     }, this.focusManager);
     fastBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    fastBtn.control.left = '-10px';
+    fastBtn.control.left = '-18px';
     speedContainer.addControl(fastBtn.control);
     this.pauseMenuButtons.push(fastBtn);
 
     const hint = new TextBlock('pauseHint');
-    hint.text = 'Press P, ESC, or Tab+Enter to navigate';
-    hint.color = UI_THEME.colors.legacy.c_888888;
+    hint.text = 'Press P or ESC to return. Use Tab or arrows to move between buttons.';
+    hint.color = UI_THEME.colors.text.muted;
     hint.fontSize = UI_THEME.typography.scale.s11;
-    hint.fontFamily = 'Arial, sans-serif';
-    hint.height = '20px';
-    hint.paddingTop = '3px';
+    hint.fontFamily = UI_THEME.typography.fontFamily;
+    hint.height = '22px';
+    hint.paddingTop = '8px';
     stack.addControl(hint);
   }
 

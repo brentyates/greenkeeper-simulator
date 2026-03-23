@@ -51,8 +51,8 @@ export class AmenityPanel {
   private createPanel(): void {
     const { panel, stack } = createDirectPopup(this.advancedTexture, {
       name: 'amenity',
-      width: 480,
-      height: 500,
+      width: 520,
+      height: 570,
       colors: POPUP_COLORS.purple,
       padding: 12,
     });
@@ -67,8 +67,8 @@ export class AmenityPanel {
   private createHeader(parent: StackPanel): void {
     const headerContainer = createPopupHeader(parent, {
       title: '🏛️ AMENITIES & UPGRADES',
-      titleColor: '#cc99ff',
-      width: 456,
+      titleColor: UI_THEME.colors.text.accent,
+      width: 496,
       onClose: () => this.callbacks.onClose(),
     });
 
@@ -84,8 +84,8 @@ export class AmenityPanel {
   private createScoreDisplay(parent: StackPanel): void {
     const container = createPanelSection(parent, {
       name: 'scoreContainer',
-      width: 456,
-      height: 50,
+      width: 496,
+      height: 56,
       theme: 'purple',
       paddingTop: 4,
       paddingBottom: 4,
@@ -104,7 +104,7 @@ export class AmenityPanel {
     addDialogSectionLabel(parent, {
       id: 'upgradeLabel',
       text: '📦 Available Upgrades',
-      tone: 'muted',
+      tone: 'default',
       fontSize: 13,
       fontWeight: 'bold',
       height: 24,
@@ -113,19 +113,19 @@ export class AmenityPanel {
 
     const { content } = addDialogScrollBlock(parent, {
       id: 'upgradeListSection',
-      width: 456,
-      height: 340,
+      width: 496,
+      height: 410,
       theme: 'purple',
       scroll: {
         name: 'upgradeScroll',
-        width: 456,
-        height: 340,
+        width: 496,
+        height: 410,
         contentName: 'upgradeList',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#6a5a8a',
-          barBackground: 'rgba(50, 40, 70, 0.5)',
+          barColor: UI_THEME.colors.text.accent,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -144,8 +144,8 @@ export class AmenityPanel {
 
     const row = createListRowCard({
       name: `upgrade_${upgrade.type}_${Date.now()}`,
-      width: 440,
-      height: 65,
+      width: 480,
+      height: 72,
       background: canAfford ? 'rgba(60, 50, 80, 0.8)' : 'rgba(50, 50, 50, 0.6)',
       borderColor: canAfford ? '#7a6a9a' : '#555555',
     });
@@ -226,9 +226,9 @@ export class AmenityPanel {
     if (upgrades.length === 0) {
       const emptyText = new TextBlock('emptyUpgrades');
       emptyText.text = 'All amenities purchased! Your course is fully upgraded.';
-      emptyText.color = UI_THEME.colors.legacy.c_88dd88;
+      emptyText.color = UI_THEME.colors.text.success;
       emptyText.fontSize = UI_THEME.typography.scale.s12;
-      emptyText.height = '40px';
+      emptyText.height = '44px';
       emptyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
       this.upgradeListContainer.addControl(emptyText);
     } else {

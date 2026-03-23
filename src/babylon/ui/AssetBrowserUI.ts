@@ -8,7 +8,7 @@ import { Image } from '@babylonjs/gui/2D/controls/image';
 import { Scene } from '@babylonjs/core/scene';
 
 import { UIParent } from './UIParent';
-import { createPanelSection, createPopupHeader } from './PopupUtils';
+import { createPanelSection, createPopupHeader, createDockedPanel, POPUP_COLORS } from './PopupUtils';
 import { addDialogActionBar, addDialogScrollBlock, addDialogSectionLabel } from './DialogBlueprint';
 import { addVerticalSpacer, UI_SPACING } from './LayoutUtils';
 import { UI_THEME } from './UITheme';
@@ -47,30 +47,28 @@ export class AssetBrowserUI {
     this.callbacks = callbacks;
     this.previewRenderer = new AssetPreviewRenderer(scene.getEngine());
 
-    this.container = new Rectangle('assetBrowserShell');
-    this.container.width = '220px';
-    this.container.height = '100%';
-    this.container.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    this.container.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.container.background = UI_THEME.colors.editor.buttonBase;
-    this.container.color = UI_THEME.colors.editor.buttonBorder;
-    this.container.thickness = 1;
+    const { panel, stack } = createDockedPanel(this.parent, {
+      name: 'assetBrowser',
+      width: 250,
+      height: 650,
+      colors: POPUP_COLORS.green,
+      horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_RIGHT,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_TOP,
+      padding: 12,
+      left: -10,
+      top: 10,
+    });
+    this.container = panel;
     this.container.isVisible = false;
 
-    this.buildUI();
-    this.parent.addControl(this.container);
+    this.buildUI(stack);
   }
 
-  private buildUI(): void {
-    const mainStack = new StackPanel('assetBrowserStack');
-    mainStack.width = '100%';
-    mainStack.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.container.addControl(mainStack);
-
+  private buildUI(mainStack: StackPanel): void {
     createPopupHeader(mainStack, {
       title: 'ASSET BROWSER',
       titleColor: UI_THEME.colors.editor.buttonTextActive,
-      width: 200,
+      width: 226,
       onClose: () => this.hide(),
     });
 
@@ -184,7 +182,7 @@ export class AssetBrowserUI {
   private buildActionPanel(parent: StackPanel): void {
     this.actionPanel = createPanelSection(parent, {
       name: 'assetActionBlock',
-      width: 220,
+      width: 226,
       height: 86,
       theme: 'green',
       paddingTop: 4,
@@ -193,7 +191,7 @@ export class AssetBrowserUI {
     this.actionPanel.isVisible = false;
 
     const actionStack = new StackPanel();
-    actionStack.width = '208px';
+    actionStack.width = '214px';
     this.actionPanel.addControl(actionStack);
 
     addDialogSectionLabel(actionStack, {
@@ -207,7 +205,7 @@ export class AssetBrowserUI {
 
     const { buttons } = addDialogActionBar(actionStack, {
       id: 'assetActions',
-      width: 208,
+      width: 214,
       height: 44,
       theme: 'neutral',
       paddingTop: 2,

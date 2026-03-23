@@ -10,8 +10,8 @@ import { addUniformButtons, createHorizontalRow, UI_SPACING } from './LayoutUtil
 import { UI_THEME } from './UITheme';
 
 export const HOLE_BUILDER_TOOLBAR_BOUNDS = {
-  width: 320,
-  height: 300,
+  width: 352,
+  height: 322,
   left: 10,
   top: 10,
 };
@@ -89,23 +89,23 @@ export class HoleBuilderToolbar {
     this.panel = panel;
 
     createPopupHeader(stack, {
-      title: 'HOLE BUILDER',
-      titleColor: '#aaddff',
-      width: 296,
+      title: 'HOLE DESIGNER',
+      titleColor: UI_THEME.colors.text.info,
+      width: 328,
       onClose: () => this.callbacks.onClose(),
     });
 
     const toolHelp = new TextBlock('holeBuilderToolHelp');
-    toolHelp.text = 'Select a tool, then click terrain to place or remove markers';
-    toolHelp.color = UI_THEME.colors.legacy.c_9fb9c8;
+    toolHelp.text = 'Place tee sets and the pin, switch holes, and shape a complete playable route.';
+    toolHelp.color = UI_THEME.colors.text.secondary;
     toolHelp.fontSize = UI_THEME.typography.scale.s10;
-    toolHelp.height = '24px';
+    toolHelp.height = '30px';
     toolHelp.textWrapping = true;
     stack.addControl(toolHelp);
 
     addDialogSectionLabel(stack, {
       id: 'holeBuilderTeeLabel',
-      text: 'Tee Markers',
+      text: 'Tee Sets',
       tone: 'info',
       fontSize: 11,
       height: 18,
@@ -113,11 +113,11 @@ export class HoleBuilderToolbar {
 
     const teeRow = createHorizontalRow(stack, {
       name: 'holeBuilderTeeRow',
-      widthPx: 300,
-      heightPx: 30,
+      widthPx: 332,
+      heightPx: 32,
     });
     const teeButtons = addUniformButtons(teeRow, {
-      rowWidthPx: 300,
+      rowWidthPx: 332,
       rowHeightPx: 28,
       gapPx: UI_SPACING.xs,
       specs: [
@@ -158,11 +158,11 @@ export class HoleBuilderToolbar {
 
     const actionRow = createHorizontalRow(stack, {
       name: 'holeBuilderActionRow',
-      widthPx: 300,
-      heightPx: 30,
+      widthPx: 332,
+      heightPx: 32,
     });
     const actionButtons = addUniformButtons(actionRow, {
-      rowWidthPx: 200,
+      rowWidthPx: 220,
       rowHeightPx: 28,
       gapPx: UI_SPACING.sm,
       specs: [
@@ -221,8 +221,8 @@ export class HoleBuilderToolbar {
     holeRow.addControl(plusBtn);
 
     const hotkeyText = new TextBlock('holeBuilderHotkey');
-    hotkeyText.text = 'J: toggle builder';
-    hotkeyText.color = UI_THEME.colors.legacy.c_7fa0b2;
+    hotkeyText.text = 'J toggles the designer';
+    hotkeyText.color = UI_THEME.colors.text.info;
     hotkeyText.fontSize = UI_THEME.typography.scale.s10;
     hotkeyText.height = '18px';
     hotkeyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -230,8 +230,8 @@ export class HoleBuilderToolbar {
     stack.addControl(hotkeyText);
 
     this.holeMetricsText = new TextBlock('holeBuilderMetrics');
-    this.holeMetricsText.text = 'Hole 1: add tees and a pin to calculate distance + par.';
-    this.holeMetricsText.color = UI_THEME.colors.legacy.c_d7e7f4;
+    this.holeMetricsText.text = 'Hole 1: place a tee set and a pin to establish yardage, par, and playability.';
+    this.holeMetricsText.color = UI_THEME.colors.text.secondary;
     this.holeMetricsText.fontSize = UI_THEME.typography.scale.s10;
     this.holeMetricsText.height = '44px';
     this.holeMetricsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -258,8 +258,8 @@ export class HoleBuilderToolbar {
     this.toolButtons.forEach((button, tool) => {
       const selected = this.activeTool === tool;
       const activeColor = (button.metadata as { activeColor: string }).activeColor;
-      button.background = selected ? activeColor : '#2a3f35';
-      button.color = selected ? '#f7fbff' : '#ffffff';
+      button.background = selected ? activeColor : UI_THEME.colors.action.neutral.normal;
+      button.color = selected ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
       button.thickness = selected ? 2 : 1;
     });
   }

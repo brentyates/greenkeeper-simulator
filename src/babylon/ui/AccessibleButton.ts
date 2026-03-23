@@ -10,9 +10,9 @@ export interface AccessibleButtonOptions {
   width?: string;
   /** Button height (default: '45px') */
   height?: string;
-  /** Background color (default: '#2a5a3a') */
+  /** Background color (default: theme primary) */
   backgroundColor?: string;
-  /** Border color (default: '#7FFF7F') */
+  /** Border color (default: theme strong border) */
   borderColor?: string;
   /** Text color (default: 'white') */
   textColor?: string;
@@ -40,13 +40,13 @@ export class AccessibleButton {
 
   constructor(options: AccessibleButtonOptions) {
     this.options = {
-      width: '180px',
-      height: '45px',
-      backgroundColor: '#2a5a3a',
-      borderColor: '#7FFF7F',
-      textColor: 'white',
+      width: '184px',
+      height: '44px',
+      backgroundColor: UI_THEME.colors.action.primary.normal,
+      borderColor: UI_THEME.colors.border.strong,
+      textColor: UI_THEME.colors.text.primary,
       fontSize: 14,
-      cornerRadius: 8,
+      cornerRadius: UI_THEME.radii.button,
       ...options
     };
 
@@ -64,6 +64,9 @@ export class AccessibleButton {
     btn.background = this.options.backgroundColor!;
     btn.color = this.options.borderColor!;
     btn.thickness = 2;
+    btn.shadowColor = UI_THEME.colors.effects.shadow;
+    btn.shadowBlur = 8;
+    btn.shadowOffsetY = 3;
     return btn;
   }
 
@@ -72,7 +75,7 @@ export class AccessibleButton {
     text.text = this.options.label;
     text.color = this.options.textColor!;
     text.fontSize = this.options.fontSize!;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
     text.isPointerBlocker = false;
     return text;
   }
@@ -105,20 +108,23 @@ export class AccessibleButton {
     const isEnabled = this.options.isEnabled?.() !== false;
 
     if (!isEnabled) {
-      this.control.alpha = 0.5;
-      this.control.background = this.options.backgroundColor!;
+      this.control.alpha = 0.55;
+      this.control.background = UI_THEME.colors.surfaces.buttonDisabled;
+      this.control.color = UI_THEME.colors.border.muted;
+      this.control.thickness = 1;
       return;
     }
 
     this.control.alpha = 1;
 
     if (this.isFocused || this.isHovered) {
-      // Brighten background when hovered or focused
-      this.control.background = this.lightenColor(this.options.backgroundColor!, 0.3);
-      this.control.color = UI_THEME.colors.legacy.c_ffffff;
+      this.control.background = this.lightenColor(this.options.backgroundColor!, 0.14);
+      this.control.color = UI_THEME.colors.text.primary;
+      this.control.thickness = 3;
     } else {
       this.control.background = this.options.backgroundColor!;
       this.control.color = this.options.borderColor!;
+      this.control.thickness = 2;
     }
   }
 

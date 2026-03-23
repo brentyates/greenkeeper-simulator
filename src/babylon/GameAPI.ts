@@ -127,6 +127,13 @@ export interface GameSystems {
   playerVisual: EntityVisualState | null;
   clickToMoveWaypoints: Array<{ x: number; z: number }>;
   lastEquipmentFaceId: number | null;
+  getPlayer(): PlayerEntity;
+  setPlayer(player: PlayerEntity): void;
+  getPlayerVisual(): EntityVisualState | null;
+  getClickToMoveWaypoints(): Array<{ x: number; z: number }>;
+  setClickToMoveWaypoints(waypoints: Array<{ x: number; z: number }>): void;
+  getLastEquipmentFaceId(): number | null;
+  setLastEquipmentFaceId(faceId: number | null): void;
   equipmentManager: EquipmentManager;
   terrainSystem: TerrainSystem;
   terrainEditorSystem: TerrainEditorSystem | null;
@@ -162,20 +169,21 @@ export class GameAPI {
       return;
     }
 
-    this.systems.player = {
-      ...teleportEntity(this.systems.player, x, y),
+    this.systems.setPlayer({
+      ...teleportEntity(this.systems.getPlayer(), x, y),
       worldX: x + 0.5,
       worldZ: y + 0.5,
-    };
-    this.systems.clickToMoveWaypoints = [];
-    this.systems.lastEquipmentFaceId = null;
+    });
+    this.systems.setClickToMoveWaypoints([]);
+    this.systems.setLastEquipmentFaceId(null);
 
-    if (this.systems.playerVisual) {
-      this.systems.playerVisual.lastGridX = x;
-      this.systems.playerVisual.lastGridY = y;
-      this.systems.playerVisual.targetGridX = x;
-      this.systems.playerVisual.targetGridY = y;
-      this.systems.playerVisual.visualProgress = 1;
+    const playerVisual = this.systems.getPlayerVisual();
+    if (playerVisual) {
+      playerVisual.lastGridX = x;
+      playerVisual.lastGridY = y;
+      playerVisual.targetGridX = x;
+      playerVisual.targetGridY = y;
+      playerVisual.visualProgress = 1;
     }
 
     this.systems.updatePlayerPosition();
@@ -385,7 +393,8 @@ export class GameAPI {
   }
 
   public getPlayerPosition(): { x: number; y: number } {
-    return { x: this.systems.player.worldX, y: this.systems.player.worldZ };
+    const player = this.systems.getPlayer();
+    return { x: player.gridX, y: player.gridY };
   }
 
   public selectEquipment(slot: 1 | 2 | 3): void {
@@ -696,10 +705,11 @@ export class GameAPI {
     editorEnabled: boolean;
   } {
     const dims = this.systems.terrainSystem.getWorldDimensions();
+    const player = this.systems.getPlayer();
     return {
       player: {
-        x: this.systems.player.worldX,
-        y: this.systems.player.worldZ,
+        x: player.worldX,
+        y: player.worldZ,
         isMoving: this.systems.isPlayerMoving(),
       },
       equipment: this.getEquipmentState(),
@@ -1125,7 +1135,8 @@ export class GameAPI {
   }
 
   public refillAtCurrentPosition(): { success: boolean; cost: number } {
-    const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
+    const player = this.systems.getPlayer();
+    const playerPos = { x: player.gridX, y: player.gridY };
     const isAtStation = this.getResolvedRefillStations().some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );
@@ -1152,7 +1163,8 @@ export class GameAPI {
   }
 
   public isAtRefillStation(): boolean {
-    const playerPos = { x: this.systems.player.gridX, y: this.systems.player.gridY };
+    const player = this.systems.getPlayer();
+    const playerPos = { x: player.gridX, y: player.gridY };
     return this.getResolvedRefillStations().some(
       (station) => station.x === playerPos.x && station.y === playerPos.y
     );

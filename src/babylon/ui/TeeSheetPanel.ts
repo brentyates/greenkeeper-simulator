@@ -29,6 +29,11 @@ export interface TeeSheetPanelCallbacks {
   onClose: () => void;
 }
 
+const TEE_SHEET_WIDTH = 540;
+const TEE_SHEET_HEIGHT = 720;
+const TEE_SHEET_CONTENT_WIDTH = 510;
+const TEE_SHEET_ROW_WIDTH = 470;
+
 export class TeeSheetPanel {
   private advancedTexture: AdvancedDynamicTexture;
   private callbacks: TeeSheetPanelCallbacks;
@@ -50,8 +55,8 @@ export class TeeSheetPanel {
   private createPanel(): void {
     const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
       name: 'teeSheet',
-      width: 500,
-      height: 700,
+      width: TEE_SHEET_WIDTH,
+      height: TEE_SHEET_HEIGHT,
       colors: POPUP_COLORS.green,
       padding: 15,
     });
@@ -60,8 +65,8 @@ export class TeeSheetPanel {
 
     createPopupHeader(stack, {
       title: '📋 TEE SHEET',
-      titleColor: '#88ccff',
-      width: 470,
+      titleColor: UI_THEME.colors.text.info,
+      width: TEE_SHEET_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
     });
     this.createDayNavigation(stack);
@@ -74,11 +79,10 @@ export class TeeSheetPanel {
   private createDayNavigation(parent: StackPanel): void {
     const navContainer = createPanelSection(parent, {
       name: 'navContainer',
-      width: 470,
-      height: 40,
-      theme: 'neutral',
-      thickness: 0,
-      cornerRadius: 0,
+      width: TEE_SHEET_CONTENT_WIDTH,
+      height: 48,
+      theme: 'green',
+      paddingTop: 4,
     });
 
     const prevBtn = createActionButton({
@@ -95,7 +99,7 @@ export class TeeSheetPanel {
 
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1';
-    this.dayText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.dayText.color = UI_THEME.colors.text.accent;
     this.dayText.fontSize = UI_THEME.typography.scale.s18;
     this.dayText.fontWeight = 'bold';
     navContainer.addControl(this.dayText);
@@ -116,25 +120,26 @@ export class TeeSheetPanel {
   private createStatsSection(parent: StackPanel): void {
     const statsContainer = createPanelSection(parent, {
       name: 'statsContainer',
-      width: 470,
-      height: 60,
+      width: TEE_SHEET_CONTENT_WIDTH,
+      height: 66,
       theme: 'green',
       paddingTop: 5,
     });
 
     this.statsText = new TextBlock('statsText');
     this.statsText.text = 'Loading...';
-    this.statsText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.statsText.color = UI_THEME.colors.text.secondary;
     this.statsText.fontSize = UI_THEME.typography.scale.s12;
     this.statsText.textWrapping = true;
+    this.statsText.lineSpacing = '2px';
     statsContainer.addControl(this.statsText);
   }
 
   private createSpacingSection(parent: StackPanel): void {
     const spacingContainer = createPanelSection(parent, {
       name: 'spacingContainer',
-      width: 470,
-      height: 85,
+      width: TEE_SHEET_CONTENT_WIDTH,
+      height: 112,
       theme: 'green',
       paddingTop: 5,
     });
@@ -161,13 +166,13 @@ export class TeeSheetPanel {
     spacingRows.forEach((rowOptions, index) => {
       const row = createHorizontalRow(spacingStack, {
         name: `spacingRow_${index}`,
-        widthPx: 450,
-        heightPx: 26,
+        widthPx: 488,
+        heightPx: 28,
         paddingTopPx: index === 0 ? 2 : UI_SPACING.xs,
       });
       const created = addUniformButtons(row, {
-        rowWidthPx: 450,
-        rowHeightPx: 26,
+        rowWidthPx: 488,
+        rowHeightPx: 28,
         gapPx: UI_SPACING.sm,
         specs: rowOptions.map((spacing) => ({
           id: `spacing_${spacing}`,
@@ -179,8 +184,8 @@ export class TeeSheetPanel {
             this.updateSpacingImpact();
           },
           fontSize: 10,
-          background: '#2a4a3a',
-          hoverBackground: '#355e4a',
+          background: UI_THEME.colors.action.neutral.normal,
+          hoverBackground: UI_THEME.colors.action.neutral.hover,
         })),
       });
       rowOptions.forEach((spacing, i) => {
@@ -194,10 +199,10 @@ export class TeeSheetPanel {
 
     this.spacingImpactText = new TextBlock('spacingImpact');
     this.spacingImpactText.text = '';
-    this.spacingImpactText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.spacingImpactText.color = UI_THEME.colors.text.secondary;
     this.spacingImpactText.fontSize = UI_THEME.typography.scale.s10;
     this.spacingImpactText.textWrapping = true;
-    this.spacingImpactText.height = '22px';
+    this.spacingImpactText.height = '34px';
     this.spacingImpactText.paddingTop = '3px';
     spacingStack.addControl(this.spacingImpactText);
     this.updateSpacingImpact();
@@ -206,8 +211,8 @@ export class TeeSheetPanel {
   private updateSpacingButtons(): void {
     this.spacingButtons.forEach((button, spacing) => {
       const selected = spacing === this.currentSpacing;
-      button.background = selected ? '#4a8a5a' : '#2a4a3a';
-      button.color = selected ? '#ffffff' : '#aaaaaa';
+      button.background = selected ? UI_THEME.colors.action.primary.normal : UI_THEME.colors.action.neutral.normal;
+      button.color = selected ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
       button.thickness = selected ? 2 : 1;
     });
   }
@@ -232,19 +237,19 @@ export class TeeSheetPanel {
   private createTeeTimeList(parent: StackPanel): void {
     const { content } = addDialogScrollBlock(parent, {
       id: 'listContainer',
-      width: 470,
-      height: 290,
+      width: TEE_SHEET_CONTENT_WIDTH,
+      height: 360,
       theme: 'green',
       paddingTop: 8,
       scroll: {
         name: 'teeTimeScroll',
-        width: 460,
-        height: 280,
+        width: TEE_SHEET_CONTENT_WIDTH,
+        height: 348,
         contentName: 'teeTimeList',
-        contentWidth: '440px',
+        contentWidth: `${TEE_SHEET_ROW_WIDTH}px`,
         options: {
           barSize: 10,
-          barColor: '#4a8a5a',
+          barColor: UI_THEME.colors.border.strong,
         },
       },
     });
@@ -253,11 +258,12 @@ export class TeeSheetPanel {
 
   private createFooter(parent: StackPanel): void {
     const footer = new TextBlock('footer');
-    footer.text = 'Click time slots to manage bookings';
-    footer.color = UI_THEME.colors.legacy.c_666666;
+    footer.text = 'Adjust spacing to trade off pace, revenue, and reputation. Open slots fill automatically over time.';
+    footer.color = UI_THEME.colors.text.muted;
     footer.fontSize = UI_THEME.typography.scale.s11;
-    footer.height = '30px';
+    footer.height = '34px';
     footer.paddingTop = '8px';
+    footer.textWrapping = true;
     parent.addControl(footer);
   }
 
@@ -275,8 +281,8 @@ export class TeeSheetPanel {
     const colors = statusColors[teeTime.status] || statusColors.available;
     const row = createListRowCard({
       name: `row_${teeTime.id}`,
-      width: 430,
-      height: 50,
+      width: TEE_SHEET_ROW_WIDTH,
+      height: 56,
       background: colors.bg,
       borderColor: colors.border,
       paddingTop: 3,
@@ -287,7 +293,7 @@ export class TeeSheetPanel {
     grid.addColumnDefinition(70, true);
     grid.addColumnDefinition(0.5);
     grid.addColumnDefinition(0.3);
-    grid.addColumnDefinition(90, true);
+    grid.addColumnDefinition(96, true);
     row.addControl(grid);
 
     const timeText = new TextBlock('time');
@@ -306,7 +312,7 @@ export class TeeSheetPanel {
 
     const statusText = new TextBlock('status');
     statusText.text = this.getStatusLabel(teeTime.status);
-    statusText.color = UI_THEME.colors.legacy.c_cccccc;
+    statusText.color = UI_THEME.colors.text.primary;
     statusText.fontSize = UI_THEME.typography.scale.s11;
     statusText.height = '18px';
     statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -314,7 +320,7 @@ export class TeeSheetPanel {
 
     const groupText = new TextBlock('group');
     groupText.text = teeTime.groupSize > 0 ? `${teeTime.groupSize} golfer${teeTime.groupSize > 1 ? 's' : ''}` : 'Open';
-    groupText.color = UI_THEME.colors.legacy.c_888888;
+    groupText.color = UI_THEME.colors.text.secondary;
     groupText.fontSize = UI_THEME.typography.scale.s10;
     groupText.height = '16px';
     groupText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -322,7 +328,7 @@ export class TeeSheetPanel {
 
     const revenueText = new TextBlock('revenue');
     revenueText.text = teeTime.totalRevenue > 0 ? `$${teeTime.totalRevenue.toFixed(0)}` : '-';
-    revenueText.color = teeTime.totalRevenue > 0 ? '#88ff88' : '#666666';
+    revenueText.color = teeTime.totalRevenue > 0 ? UI_THEME.colors.text.success : UI_THEME.colors.text.muted;
     revenueText.fontSize = UI_THEME.typography.scale.s12;
     grid.addControl(revenueText, 0, 2);
 
@@ -415,10 +421,11 @@ export class TeeSheetPanel {
 
       if (teeTimes.length === 0) {
         const emptyText = new TextBlock('empty');
-        emptyText.text = 'No tee times for this day';
-        emptyText.color = UI_THEME.colors.legacy.c_666666;
+        emptyText.text = 'No tee times generated for this day yet. Try a tighter spacing to open more bookings.';
+        emptyText.color = UI_THEME.colors.text.secondary;
         emptyText.fontSize = UI_THEME.typography.scale.s14;
-        emptyText.height = '40px';
+        emptyText.height = '56px';
+        emptyText.textWrapping = true;
         this.teeTimeList.addControl(emptyText);
       }
     }

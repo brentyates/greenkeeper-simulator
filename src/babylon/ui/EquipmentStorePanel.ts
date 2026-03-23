@@ -33,6 +33,11 @@ interface AvailableRobot {
   stats: EquipmentStats;
 }
 
+const EQUIPMENT_STORE_WIDTH = 560;
+const EQUIPMENT_STORE_HEIGHT = 600;
+const EQUIPMENT_CONTENT_WIDTH = 536;
+const EQUIPMENT_ROW_WIDTH = 520;
+
 const ROBOT_ICONS: Record<string, string> = {
   fairway: '🌿',
   bunker: '🏝️',
@@ -67,8 +72,8 @@ export class EquipmentStorePanel {
   private createPanel(): void {
     const { panel, stack } = createDirectPopup(this.advancedTexture, {
       name: 'equipmentStore',
-      width: 500,
-      height: 520,
+      width: EQUIPMENT_STORE_WIDTH,
+      height: EQUIPMENT_STORE_HEIGHT,
       colors: POPUP_COLORS.blue,
       padding: 12,
     });
@@ -84,8 +89,8 @@ export class EquipmentStorePanel {
   private createHeader(parent: StackPanel): void {
     const headerContainer = createPopupHeader(parent, {
       title: '🤖 EQUIPMENT STORE',
-      titleColor: '#66ccff',
-      width: 476,
+      titleColor: UI_THEME.colors.text.info,
+      width: EQUIPMENT_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
     });
 
@@ -101,8 +106,8 @@ export class EquipmentStorePanel {
   private createFleetStats(parent: StackPanel): void {
     const container = createPanelSection(parent, {
       name: 'fleetStatsContainer',
-      width: 476,
-      height: 50,
+      width: EQUIPMENT_CONTENT_WIDTH,
+      height: 56,
       theme: 'blue',
       paddingTop: 4,
       paddingBottom: 4,
@@ -122,25 +127,25 @@ export class EquipmentStorePanel {
       id: 'availableSection',
       title: {
         text: '📦 Available for Purchase',
-        color: '#88cc88',
+        color: UI_THEME.colors.text.success,
         fontSize: 13,
         fontWeight: 'bold',
         height: 24,
         paddingTop: 8,
       },
-      width: 476,
-      height: 160,
+      width: EQUIPMENT_CONTENT_WIDTH,
+      height: 210,
       theme: 'blue',
       scroll: {
         name: 'availableScroll',
-        width: 476,
-        height: 160,
+        width: EQUIPMENT_CONTENT_WIDTH,
+        height: 210,
         contentName: 'availableList',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#4a7a9a',
-          barBackground: 'rgba(30, 50, 70, 0.5)',
+          barColor: UI_THEME.colors.border.info,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -152,25 +157,25 @@ export class EquipmentStorePanel {
       id: 'ownedSection',
       title: {
         text: '🔧 Your Fleet',
-        color: '#88aacc',
+        color: UI_THEME.colors.text.info,
         fontSize: 13,
         fontWeight: 'bold',
         height: 24,
         paddingTop: 8,
       },
-      width: 476,
-      height: 160,
+      width: EQUIPMENT_CONTENT_WIDTH,
+      height: 210,
       theme: 'blue',
       scroll: {
         name: 'ownedScroll',
-        width: 476,
-        height: 160,
+        width: EQUIPMENT_CONTENT_WIDTH,
+        height: 210,
         contentName: 'ownedList',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#4a7a9a',
-          barBackground: 'rgba(30, 50, 70, 0.5)',
+          barColor: UI_THEME.colors.border.info,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -180,8 +185,8 @@ export class EquipmentStorePanel {
   private createAvailableItem(robot: AvailableRobot, canAfford: boolean): Rectangle {
     const row = createListRowCard({
       name: `available_${robot.equipmentId}`,
-      width: 460,
-      height: 70,
+      width: EQUIPMENT_ROW_WIDTH,
+      height: 76,
       background: canAfford ? 'rgba(40, 70, 100, 0.8)' : 'rgba(60, 60, 60, 0.6)',
       borderColor: canAfford ? '#5588aa' : '#555555',
     });
@@ -206,7 +211,7 @@ export class EquipmentStorePanel {
 
     const descText = new TextBlock('desc');
     descText.text = `Speed: ${robot.stats.speed.toFixed(1)}x | Efficiency: ${(robot.stats.efficiency * 100).toFixed(0)}% | Fuel: ${robot.stats.fuelCapacity}`;
-    descText.color = canAfford ? '#aaccee' : '#666666';
+    descText.color = canAfford ? UI_THEME.colors.text.info : UI_THEME.colors.text.muted;
     descText.fontSize = UI_THEME.typography.scale.s11;
     descText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     descText.left = '52px';
@@ -215,7 +220,7 @@ export class EquipmentStorePanel {
 
     const costText = new TextBlock('cost');
     costText.text = `$${(robot.stats.purchaseCost ?? 0).toLocaleString()}/hr: $${(robot.stats.operatingCostPerHour ?? 0).toFixed(2)}`;
-    costText.color = canAfford ? '#88dd88' : '#aa6666';
+    costText.color = canAfford ? UI_THEME.colors.text.success : UI_THEME.colors.text.danger;
     costText.fontSize = UI_THEME.typography.scale.s11;
     costText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     costText.left = '52px';
@@ -245,7 +250,7 @@ export class EquipmentStorePanel {
   private createOwnedItem(robot: RobotUnit): Rectangle {
     const row = createListRowCard({
       name: `owned_${robot.id}`,
-      width: 460,
+      width: EQUIPMENT_ROW_WIDTH,
       height: 55,
       background: robot.state === 'broken'
         ? 'rgba(100, 50, 50, 0.8)'
@@ -350,11 +355,13 @@ export class EquipmentStorePanel {
 
     if (availableRobots.length === 0) {
       const emptyText = new TextBlock('emptyAvailable');
-      emptyText.text = 'Research robotics to unlock autonomous equipment';
-      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.text = 'No robots are available yet.\nResearch robotics projects to unlock autonomous equipment for purchase.';
+      emptyText.color = UI_THEME.colors.text.secondary;
       emptyText.fontSize = UI_THEME.typography.scale.s12;
-      emptyText.height = '40px';
+      emptyText.height = '58px';
       emptyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+      emptyText.textWrapping = true;
+      emptyText.lineSpacing = '4px';
       this.availableListContainer.addControl(emptyText);
     } else {
       for (const robot of availableRobots) {
@@ -365,11 +372,12 @@ export class EquipmentStorePanel {
 
     if (autonomousState.robots.length === 0) {
       const emptyText = new TextBlock('emptyOwned');
-      emptyText.text = 'No robots owned yet';
-      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.text = 'Your fleet is empty.\nPurchase robots here once they are unlocked.';
+      emptyText.color = UI_THEME.colors.text.secondary;
       emptyText.fontSize = UI_THEME.typography.scale.s12;
-      emptyText.height = '40px';
+      emptyText.height = '52px';
       emptyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+      emptyText.textWrapping = true;
       this.ownedListContainer.addControl(emptyText);
     } else {
       for (const robot of autonomousState.robots) {

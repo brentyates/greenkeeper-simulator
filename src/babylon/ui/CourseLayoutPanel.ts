@@ -37,8 +37,8 @@ export class CourseLayoutPanel {
   private createPanel(): void {
     const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
       name: 'courseLayout',
-      width: 560,
-      height: 650,
+      width: 620,
+      height: 700,
       colors: POPUP_COLORS.blue,
       padding: 15,
     });
@@ -47,8 +47,8 @@ export class CourseLayoutPanel {
 
     createPopupHeader(stack, {
       title: 'COURSE LAYOUT',
-      titleColor: '#88ccff',
-      width: 530,
+      titleColor: UI_THEME.colors.text.info,
+      width: 590,
       onClose: () => this.callbacks.onClose(),
     });
     this.createSummarySection(stack);
@@ -59,36 +59,37 @@ export class CourseLayoutPanel {
   private createSummarySection(parent: StackPanel): void {
     const summaryContainer = createPanelSection(parent, {
       name: 'courseSummaryContainer',
-      width: 530,
-      height: 78,
+      width: 590,
+      height: 90,
       theme: 'blue',
       paddingTop: 6,
     });
 
     this.summaryText = new TextBlock('courseSummaryText');
     this.summaryText.text = 'No hole layout has been defined yet.';
-    this.summaryText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    this.summaryText.color = UI_THEME.colors.text.secondary;
     this.summaryText.fontSize = UI_THEME.typography.scale.s12;
     this.summaryText.textWrapping = true;
+    this.summaryText.lineSpacing = '3px';
     summaryContainer.addControl(this.summaryText);
   }
 
   private createHoleList(parent: StackPanel): void {
     const { content } = addDialogScrollBlock(parent, {
       id: 'courseHoleListContainer',
-      width: 530,
-      height: 475,
+      width: 590,
+      height: 505,
       theme: 'blue',
       paddingTop: 6,
       scroll: {
         name: 'courseHoleScroll',
-        width: 520,
-        height: 465,
+        width: 580,
+        height: 495,
         contentName: 'courseHoleList',
-        contentWidth: '500px',
+        contentWidth: '556px',
         options: {
           barSize: 10,
-          barColor: '#4a6f90',
+          barColor: UI_THEME.colors.border.info,
         },
       },
     });
@@ -98,9 +99,9 @@ export class CourseLayoutPanel {
   private createFooter(parent: StackPanel): void {
     const footer = new TextBlock('courseLayoutFooter');
     footer.text = 'Use Course Designer to place tee boxes and pins for each hole.';
-    footer.color = UI_THEME.colors.legacy.c_7f99ad;
+    footer.color = UI_THEME.colors.text.secondary;
     footer.fontSize = UI_THEME.typography.scale.s11;
-    footer.height = '28px';
+    footer.height = '30px';
     footer.paddingTop = '6px';
     parent.addControl(footer);
   }
@@ -108,8 +109,8 @@ export class CourseLayoutPanel {
   private createHoleRow(hole: CourseHoleDefinition): Rectangle {
     const row = createListRowCard({
       name: `courseHole_${hole.holeNumber}`,
-      width: 492,
-      height: 94,
+      width: 548,
+      height: 102,
       background: hole.validationIssues.length > 0
         ? 'rgba(82, 46, 46, 0.75)'
         : 'rgba(36, 62, 46, 0.75)',
@@ -118,7 +119,7 @@ export class CourseLayoutPanel {
     });
 
     const stack = new StackPanel(`courseHoleStack_${hole.holeNumber}`);
-    stack.width = '474px';
+    stack.width = '528px';
     stack.paddingTop = '5px';
     stack.paddingLeft = '8px';
     row.addControl(stack);
@@ -184,10 +185,11 @@ export class CourseLayoutPanel {
 
     if (sorted.length === 0) {
       const empty = new TextBlock('courseHoleEmpty');
-      empty.text = 'No hole definitions found on this course yet.';
-      empty.color = UI_THEME.colors.legacy.c_8f9dab;
+      empty.text = 'No hole definitions found on this course yet.\nOpen Course Designer and place tee boxes plus pin positions to build a playable route.';
+      empty.color = UI_THEME.colors.text.secondary;
       empty.fontSize = UI_THEME.typography.scale.s13;
-      empty.height = '34px';
+      empty.height = '60px';
+      empty.textWrapping = true;
       this.holeList.addControl(empty);
       return;
     }

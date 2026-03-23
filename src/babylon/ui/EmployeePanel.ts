@@ -42,6 +42,11 @@ const SKILL_COLORS: Record<SkillLevel, string> = {
   expert: '#ffaa00',
 };
 
+const EMPLOYEE_DIALOG_WIDTH = 408;
+const EMPLOYEE_DIALOG_HEIGHT = 492;
+const EMPLOYEE_CONTENT_WIDTH = 384;
+const EMPLOYEE_SCROLL_WIDTH = 368;
+
 export class EmployeePanel {
   private advancedTexture: AdvancedDynamicTexture;
   private callbacks: EmployeePanelCallbacks;
@@ -74,12 +79,12 @@ export class EmployeePanel {
     const mainDialog = renderDialog(this.advancedTexture, {
       name: 'employee',
       shell: 'direct',
-      width: 360,
-      height: 450,
+      width: EMPLOYEE_DIALOG_WIDTH,
+      height: EMPLOYEE_DIALOG_HEIGHT,
       padding: 12,
       colors: POPUP_COLORS.green,
       title: '👥 EMPLOYEE MANAGEMENT',
-      headerWidth: 336,
+      headerWidth: EMPLOYEE_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
       nodes: [
         { type: 'custom', id: 'summary', render: (parent) => this.createSummaryRow(parent) },
@@ -94,8 +99,8 @@ export class EmployeePanel {
   private createSummaryRow(parent: StackPanel): void {
     const summaryContainer = createPanelSection(parent, {
       name: 'summaryContainer',
-      width: 336,
-      height: 50,
+      width: EMPLOYEE_CONTENT_WIDTH,
+      height: 56,
       theme: 'green',
       paddingTop: 8,
     });
@@ -148,20 +153,20 @@ export class EmployeePanel {
   private createEmployeeList(parent: StackPanel): void {
     const { content } = addDialogScrollBlock(parent, {
       id: 'listContainer',
-      width: 336,
-      height: 280,
+      width: EMPLOYEE_CONTENT_WIDTH,
+      height: 304,
       theme: 'green',
       paddingTop: 8,
       scroll: {
         name: 'employeeScroll',
-        width: 320,
-        height: 270,
+        width: EMPLOYEE_SCROLL_WIDTH,
+        height: 290,
         contentName: 'employeeListStack',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#4a8a5a',
-          barBackground: 'rgba(0,0,0,0.3)',
+          barColor: UI_THEME.colors.border.strong,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -173,10 +178,10 @@ export class EmployeePanel {
 
     const row = createListRowCard({
       name: `emp_${employee.id}`,
-      width: 300,
-      height: 55,
-      background: isSelected ? 'rgba(70, 120, 90, 0.8)' : 'rgba(40, 70, 55, 0.6)',
-      borderColor: isSelected ? UI_THEME.colors.editor.buttonTextActive : UI_THEME.colors.editor.buttonBorder,
+      width: 348,
+      height: 62,
+      background: isSelected ? 'rgba(74, 126, 96, 0.9)' : UI_THEME.colors.surfaces.sectionAlt,
+      borderColor: isSelected ? UI_THEME.colors.launch.selectedBorder : UI_THEME.colors.editor.buttonBorder,
       thickness: isSelected ? 2 : 1,
     });
 
@@ -187,17 +192,17 @@ export class EmployeePanel {
       this.updateMainActionState();
     });
     row.onPointerEnterObservable.add(() => {
-      if (!isSelected) row.background = 'rgba(50, 90, 70, 0.7)';
+      if (!isSelected) row.background = UI_THEME.colors.surfaces.section;
     });
     row.onPointerOutObservable.add(() => {
-      if (!isSelected) row.background = 'rgba(40, 70, 55, 0.6)';
+      if (!isSelected) row.background = UI_THEME.colors.surfaces.sectionAlt;
     });
 
     const grid = new Grid('empRowGrid');
     grid.addColumnDefinition(35, true);
-    grid.addColumnDefinition(130, true);
-    grid.addColumnDefinition(75, true);
-    grid.addColumnDefinition(60, true);
+    grid.addColumnDefinition(166, true);
+    grid.addColumnDefinition(84, true);
+    grid.addColumnDefinition(63, true);
     row.addControl(grid);
 
     const icon = new TextBlock('empIcon');
@@ -219,7 +224,7 @@ export class EmployeePanel {
 
     const roleText = new TextBlock('empRole');
     roleText.text = EMPLOYEE_ROLE_INFO[employee.role].name;
-    roleText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    roleText.color = UI_THEME.colors.text.secondary;
     roleText.fontSize = UI_THEME.typography.scale.s10;
     roleText.height = '14px';
     roleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -242,11 +247,12 @@ export class EmployeePanel {
     skillText.color = SKILL_COLORS[employee.skillLevel];
     skillText.fontSize = UI_THEME.typography.scale.s11;
     skillText.height = '16px';
-    infoStack.addControl(skillText);
+    skillText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    skillStack.addControl(skillText);
 
     const wageText = new TextBlock('empWage');
     wageText.text = `$${employee.hourlyWage}/hr`;
-    wageText.color = UI_THEME.colors.legacy.c_ff8844;
+    wageText.color = UI_THEME.colors.text.warning;
     wageText.fontSize = UI_THEME.typography.scale.s12;
     grid.addControl(wageText, 0, 3);
 
@@ -256,7 +262,7 @@ export class EmployeePanel {
   private createActionButtons(parent: StackPanel): void {
     const { buttons } = addDialogActionBar(parent, {
       id: 'employeeMainActions',
-      width: 336,
+      width: EMPLOYEE_CONTENT_WIDTH,
       height: 56,
       theme: 'green',
       actions: [
@@ -315,12 +321,12 @@ export class EmployeePanel {
     const dialog = renderDialog(this.advancedTexture, {
       name: 'employeeApplications',
       shell: 'direct',
-      width: 360,
-      height: 450,
+      width: EMPLOYEE_DIALOG_WIDTH,
+      height: EMPLOYEE_DIALOG_HEIGHT,
       padding: 12,
       colors: POPUP_COLORS.green,
       title: '📋 JOB APPLICATIONS',
-      headerWidth: 336,
+      headerWidth: EMPLOYEE_CONTENT_WIDTH,
       onClose: () => this.hideApplicationsView(),
       nodes: [
         { type: 'custom', id: 'applicationsContent', render: (stack) => this.renderApplicationsContent(stack) },
@@ -335,7 +341,7 @@ export class EmployeePanel {
     // Status info
     const statusContainer = createPanelSection(stack, {
       name: 'statusContainer',
-      width: 336,
+      width: EMPLOYEE_CONTENT_WIDTH,
       height: 60,
       theme: 'green',
       paddingTop: 8,
@@ -356,7 +362,7 @@ export class EmployeePanel {
 
     this.nextApplicationText = new TextBlock('nextApplicationText');
     this.nextApplicationText.text = 'Loading...';
-    this.nextApplicationText.color = UI_THEME.colors.legacy.c_ffcc00;
+    this.nextApplicationText.color = UI_THEME.colors.text.accent;
     this.nextApplicationText.fontSize = UI_THEME.typography.scale.s14;
     this.nextApplicationText.height = '18px';
     this.nextApplicationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -364,7 +370,7 @@ export class EmployeePanel {
 
     this.postingCountText = new TextBlock('postingCountText');
     this.postingCountText.text = 'No active job postings';
-    this.postingCountText.color = UI_THEME.colors.legacy.c_888888;
+    this.postingCountText.color = UI_THEME.colors.text.muted;
     this.postingCountText.fontSize = UI_THEME.typography.scale.s10;
     this.postingCountText.height = '16px';
     this.postingCountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -375,20 +381,20 @@ export class EmployeePanel {
 
     const { content } = addDialogScrollBlock(stack, {
       id: 'applicationsListContainer',
-      width: 336,
-      height: 215,
+      width: EMPLOYEE_CONTENT_WIDTH,
+      height: 218,
       theme: 'green',
       paddingTop: 8,
       scroll: {
         name: 'applicationsScroll',
-        width: 320,
-        height: 205,
+        width: EMPLOYEE_SCROLL_WIDTH,
+        height: 206,
         contentName: 'applicationsListStack',
         contentWidth: '100%',
         options: {
           barSize: 8,
-          barColor: '#4a8a5a',
-          barBackground: 'rgba(0,0,0,0.3)',
+          barColor: UI_THEME.colors.border.strong,
+          barBackground: UI_THEME.colors.surfaces.panelInset,
         },
       },
     });
@@ -398,10 +404,10 @@ export class EmployeePanel {
       id: 'postJobBtn',
       label: '📢 Post Job Opening ($500)',
       tone: 'neutral',
-      width: 336,
+      width: EMPLOYEE_CONTENT_WIDTH,
       height: 35,
       fontSize: 14,
-      cornerRadius: 6,
+      cornerRadius: UI_THEME.radii.button,
       thickness: 2,
       onClick: () => this.callbacks.onPostJobOpening(this.selectedPostingRole),
     });
@@ -420,7 +426,7 @@ export class EmployeePanel {
   private createRoleSelectionRow(parent: StackPanel): void {
     const container = createPanelSection(parent, {
       name: 'roleSelectionContainer',
-      width: 336,
+      width: EMPLOYEE_CONTENT_WIDTH,
       height: 65,
       theme: 'blue',
       paddingTop: 8,
@@ -443,7 +449,7 @@ export class EmployeePanel {
 
     const buttonRow = new Grid('roleButtonRow');
     buttonRow.height = '40px';
-    buttonRow.width = '320px';
+    buttonRow.width = `${EMPLOYEE_SCROLL_WIDTH}px`;
     roles.forEach(() => buttonRow.addColumnDefinition(1 / roles.length));
     innerStack.addControl(buttonRow);
     roles.forEach((role, index) => {
@@ -490,24 +496,24 @@ export class EmployeePanel {
   private createCandidateRow(candidate: Employee): Rectangle {
     const row = createListRowCard({
       name: `cand_${candidate.id}`,
-      width: 300,
+      width: 348,
       height: 65,
-      background: 'rgba(40, 70, 55, 0.6)',
+      background: UI_THEME.colors.surfaces.sectionAlt,
       borderColor: UI_THEME.colors.editor.buttonBorder,
     });
 
     row.onPointerEnterObservable.add(() => {
-      row.background = 'rgba(50, 90, 70, 0.7)';
+      row.background = UI_THEME.colors.surfaces.section;
     });
     row.onPointerOutObservable.add(() => {
-      row.background = 'rgba(40, 70, 55, 0.6)';
+      row.background = UI_THEME.colors.surfaces.sectionAlt;
     });
 
     const grid = new Grid('candRowGrid');
     grid.addColumnDefinition(35, true);
-    grid.addColumnDefinition(140, true);
-    grid.addColumnDefinition(60, true);
-    grid.addColumnDefinition(65, true);
+    grid.addColumnDefinition(178, true);
+    grid.addColumnDefinition(72, true);
+    grid.addColumnDefinition(63, true);
     row.addControl(grid);
 
     const icon = new TextBlock('candIcon');
@@ -529,7 +535,7 @@ export class EmployeePanel {
 
     const roleText = new TextBlock('candRole');
     roleText.text = EMPLOYEE_ROLE_INFO[candidate.role].name;
-    roleText.color = UI_THEME.colors.legacy.c_aaaaaa;
+    roleText.color = UI_THEME.colors.text.secondary;
     roleText.fontSize = UI_THEME.typography.scale.s10;
     roleText.height = '14px';
     roleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -545,7 +551,7 @@ export class EmployeePanel {
 
     const wageText = new TextBlock('candWage');
     wageText.text = `$${candidate.hourlyWage}/hr`;
-    wageText.color = UI_THEME.colors.legacy.c_ff8844;
+    wageText.color = UI_THEME.colors.text.warning;
     wageText.fontSize = UI_THEME.typography.scale.s11;
     grid.addControl(wageText, 0, 2);
 
@@ -610,11 +616,12 @@ export class EmployeePanel {
 
     if (roster.employees.length === 0) {
       const emptyText = new TextBlock('emptyText');
-      emptyText.text = 'No employees hired yet.\nClick "Hire" to browse candidates.';
-      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.text = 'No crew hired yet.\nOpen Applications to review candidates and start building your staff.';
+      emptyText.color = UI_THEME.colors.text.secondary;
       emptyText.fontSize = UI_THEME.typography.scale.s12;
-      emptyText.height = '60px';
+      emptyText.height = '72px';
       emptyText.textWrapping = true;
+      emptyText.lineSpacing = '4px';
       this.employeeListContainer.addControl(emptyText);
     }
 
@@ -647,7 +654,7 @@ export class EmployeePanel {
 
     if (postingCount === 0) {
       this.postingCountText!.text = 'No active job postings';
-      this.postingCountText!.color = UI_THEME.colors.legacy.c_888888;
+      this.postingCountText!.color = UI_THEME.colors.text.muted;
       this.updatePostJobButtonText();
       this.postJobButton!.background = UI_THEME.colors.miscButton.blueAction;
       this.postJobButton!.color = UI_THEME.colors.miscButton.blueActionText;
@@ -661,7 +668,7 @@ export class EmployeePanel {
         ? `${expiresInHours.toFixed(1)}h left`
         : `${Math.ceil(expiresInMinutes)}m left`;
       this.postingCountText!.text = `✓ Hiring ${roleInfo.name} (${expiresText})`;
-      this.postingCountText!.color = UI_THEME.colors.legacy.c_44ff44;
+      this.postingCountText!.color = UI_THEME.colors.text.success;
       this.postJobButton!.textBlock!.text = `⏳ ${roleInfo.icon} Posting Active`;
       this.postJobButton!.background = UI_THEME.colors.legacy.c_444444;
       this.postJobButton!.color = UI_THEME.colors.legacy.c_888888;
@@ -683,7 +690,7 @@ export class EmployeePanel {
       const emptyText = new TextBlock('emptyApplicationsText');
       const tierName = prestigeTier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
       emptyText.text = `No applications yet.\n\n${tierName} courses receive applications every ${config.applicationRate} hours.\n\nPost a job opening to speed up the process!`;
-      emptyText.color = UI_THEME.colors.legacy.c_888888;
+      emptyText.color = UI_THEME.colors.text.secondary;
       emptyText.fontSize = UI_THEME.typography.scale.s11;
       emptyText.height = '100px';
       emptyText.textWrapping = true;

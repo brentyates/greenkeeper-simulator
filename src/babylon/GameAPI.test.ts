@@ -360,6 +360,27 @@ function createMockSystems(): GameSystems {
     playerVisual: null,
     clickToMoveWaypoints: [],
     lastEquipmentFaceId: null,
+    getPlayer() {
+      return this.player;
+    },
+    setPlayer(player: any) {
+      this.player = player;
+    },
+    getPlayerVisual() {
+      return this.playerVisual;
+    },
+    getClickToMoveWaypoints() {
+      return this.clickToMoveWaypoints;
+    },
+    setClickToMoveWaypoints(waypoints: any[]) {
+      this.clickToMoveWaypoints = waypoints;
+    },
+    getLastEquipmentFaceId() {
+      return this.lastEquipmentFaceId;
+    },
+    setLastEquipmentFaceId(faceId: number | null) {
+      this.lastEquipmentFaceId = faceId;
+    },
     equipmentManager: {
       handleSlot: vi.fn(),
       getSelected: vi.fn(() => null),
@@ -627,7 +648,7 @@ describe("GameAPI", () => {
   });
 
   describe("getPlayerPosition", () => {
-    it("returns world position", () => { expect(api.getPlayerPosition()).toEqual({ x: 5.5, y: 5.5 }); });
+    it("returns grid position", () => { expect(api.getPlayerPosition()).toEqual({ x: 5, y: 5 }); });
   });
 
   describe("selectEquipment", () => {
