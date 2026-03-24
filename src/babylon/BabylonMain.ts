@@ -26,6 +26,10 @@ import {
 } from "./assets/AssetLoader";
 import { UIManager } from "./ui/UIManager";
 import { DaySummaryData } from "./ui/DaySummaryPopup";
+import { findRegionAtPosition } from "../core/named-region";
+import { computeRegionStats } from "../core/standing-orders";
+import { getJobForRegion } from "../core/job";
+import { createPlayerJob } from "../core/player-job";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import { Control } from "@babylonjs/gui/2D/controls/control";
 import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
@@ -233,6 +237,18 @@ export class BabylonMain {
         pauseGame: () => this.pauseGame(),
       }
     );
+
+    this.uiPanelCoordinator.setOnRegionTaskAssigned((region, taskType) => {
+      const ok = createPlayerJob(
+        this.state.jobSystemState, region, taskType,
+        this.state.gameTime, this.state.currentCourse.topology
+      );
+      if (ok) {
+        this.uiManager.showNotification(`${taskType} job started on ${region.name}`);
+      } else {
+        this.uiManager.showNotification('Cannot start job — region busy or player busy');
+      }
+    });
 
     this.holePlacementSystem = new AssetPlacementSystem(
       this.babylonEngine.getScene(),
@@ -1103,6 +1119,10 @@ export class BabylonMain {
       return;
     }
 
+    if (this.handleRegionClick(screenX, screenY)) {
+      return;
+    }
+
     this.uiPanelCoordinator.hideEntityInspector();
     this.playerController.handleClick(screenX, screenY);
   }
@@ -1156,6 +1176,30 @@ export class BabylonMain {
     }
 
     return false;
+  }
+
+  private handleRegionClick(screenX: number, screenY: number): boolean {
+    if (this.equipmentManager.getSelected()) return false;
+    if (this.state.namedRegions.length === 0) return false;
+
+    const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
+    if (!world) return false;
+
+    const region = findRegionAtPosition(this.state.namedRegions, world.x, world.z);
+    if (!region) return false;
+
+    const sampler = {
+      getFaceState: (fid: number) => {
+        const fs = this.terrainSystem.getAllFaceStates().get(fid);
+        return fs ? { grassHeight: fs.grassHeight, moisture: fs.moisture, nutrients: fs.nutrients, health: fs.health } : undefined;
+      },
+    };
+
+    const stats = computeRegionStats(region, sampler);
+    const hasActiveJob = getJobForRegion(this.state.jobSystemState, region.id) !== null;
+
+    this.uiPanelCoordinator.showRegionInfo(region, stats, hasActiveJob);
+    return true;
   }
 
   private applyEquipmentEffect(x: number, y: number): void {

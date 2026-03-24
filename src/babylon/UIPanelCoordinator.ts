@@ -25,6 +25,7 @@ import {
   IRRIGATION_SCHEDULE_PANEL_BOUNDS,
 } from "./ui/IrrigationSchedulePanel";
 import { UIManager } from "./ui/UIManager";
+import { RegionInfoPanel } from "./ui/RegionInfoPanel";
 import { GameState, getRuntimeRefillStationsFromState } from "./GameState";
 
 import {
@@ -111,6 +112,7 @@ export class UIPanelCoordinator {
   private irrigationInfoPanel: IrrigationInfoPanel | null = null;
   private irrigationSchedulePanel: IrrigationSchedulePanel | null = null;
   private entityInspectorPanel: EntityInspectorPanel | null = null;
+  private regionInfoPanel: RegionInfoPanel | null = null;
   private irrigationTool: "pipe" | "sprinkler" | "delete" | "info" | null = null;
   private selectedPipeType: PipeType = "pvc";
   private selectedSprinklerType: SprinklerType = "fixed";
@@ -131,6 +133,7 @@ export class UIPanelCoordinator {
     this.setupCourseLayoutPanel();
     this.setupIrrigationUI();
     this.setupEntityInspector();
+    this.setupRegionInfoPanel();
     this.setupPriceCallback();
   }
 
@@ -638,6 +641,39 @@ export class UIPanelCoordinator {
         this.systems.uiManager.showNotification("Updated sprinkler schedule");
       },
     });
+  }
+
+  private onRegionTaskAssigned: ((region: import('../core/named-region').NamedRegion, taskType: import('../core/job').JobTaskType) => void) | null = null;
+
+  setOnRegionTaskAssigned(cb: (region: import('../core/named-region').NamedRegion, taskType: import('../core/job').JobTaskType) => void): void {
+    this.onRegionTaskAssigned = cb;
+  }
+
+  private setupRegionInfoPanel(): void {
+    const uiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
+      "RegionInfoUI",
+      true,
+      this.scene
+    );
+
+    this.regionInfoPanel = new RegionInfoPanel(uiTexture, {
+      onAssignTask: (region, taskType) => {
+        this.onRegionTaskAssigned?.(region, taskType);
+      },
+      onClose: () => {},
+    });
+  }
+
+  showRegionInfo(region: import('../core/named-region').NamedRegion, stats: import('../core/standing-orders').RegionStats, hasActiveJob: boolean): void {
+    this.regionInfoPanel?.show(region, stats, hasActiveJob);
+  }
+
+  hideRegionInfo(): void {
+    this.regionInfoPanel?.hide();
+  }
+
+  isRegionInfoVisible(): boolean {
+    return this.regionInfoPanel?.isVisible() ?? false;
   }
 
   private setupPriceCallback(): void {
