@@ -4,10 +4,9 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
+import { Button } from '@babylonjs/gui/2D/controls/button';
 import {
-  createOverlayPopup,
-  createPopupHeader,
-  createSectionDivider,
+  createDockedPanel,
   createActionButton,
   POPUP_COLORS,
 } from './PopupUtils';
@@ -22,13 +21,13 @@ export interface RegionInfoPanelCallbacks {
   onClose: () => void;
 }
 
-const POPUP_W = 360;
-const CONTENT_W = POPUP_W - 32;
+const PANEL_W = 240;
+const CONTENT_W = PANEL_W - 24;
 
 const TASK_LABELS: Record<JobTaskType, string> = {
   mow: '🌿 Mow',
   water: '💧 Water',
-  fertilize: '🧪 Fertilize',
+  fertilize: '🧪 Fert',
   rake: '⛱ Rake',
 };
 
@@ -40,13 +39,11 @@ function isTaskValidForTerrain(taskType: JobTaskType, terrainCode: number): bool
 export class RegionInfoPanel {
   private advancedTexture: AdvancedDynamicTexture;
   private callbacks: RegionInfoPanelCallbacks;
-  private overlay: Rectangle | null = null;
+  private panel: Rectangle | null = null;
   private nameText: TextBlock | null = null;
   private terrainText: TextBlock | null = null;
   private statsGrid: Grid | null = null;
-  private statsContainer: Rectangle | null = null;
   private taskStack: StackPanel | null = null;
-  private taskContainer: Rectangle | null = null;
   private activeRegion: NamedRegion | null = null;
   private statusText: TextBlock | null = null;
 
@@ -57,77 +54,72 @@ export class RegionInfoPanel {
   }
 
   private createPanel(): void {
-    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+    const { panel, stack } = createDockedPanel(this.advancedTexture, {
       name: 'regionInfo',
-      width: POPUP_W,
-      height: 380,
+      width: PANEL_W,
+      height: 310,
       colors: POPUP_COLORS.green,
-      padding: 16,
+      horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_LEFT,
+      verticalAlignment: Control.VERTICAL_ALIGNMENT_CENTER,
+      left: 8,
+      padding: 12,
     });
-    this.overlay = overlay;
-
-    createPopupHeader(stack, {
-      title: '📍 REGION INFO',
-      width: CONTENT_W,
-      onClose: () => { this.hide(); this.callbacks.onClose(); },
-    });
+    this.panel = panel;
 
     this.nameText = new TextBlock('regionName');
     this.nameText.color = UI_THEME.colors.legacy.c_ffcc00;
-    this.nameText.fontSize = 18;
+    this.nameText.fontSize = 15;
     this.nameText.fontWeight = 'bold';
-    this.nameText.height = '28px';
-    this.nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.nameText.height = '22px';
+    this.nameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.nameText);
 
     this.terrainText = new TextBlock('terrainType');
     this.terrainText.color = UI_THEME.colors.text.secondary;
-    this.terrainText.fontSize = 12;
-    this.terrainText.height = '20px';
-    this.terrainText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.terrainText.fontSize = 10;
+    this.terrainText.height = '16px';
+    this.terrainText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.terrainText);
 
-    this.statsContainer = new Rectangle('statsContainer');
-    this.statsContainer.height = '100px';
-    this.statsContainer.width = `${CONTENT_W}px`;
-    this.statsContainer.cornerRadius = 6;
-    this.statsContainer.background = UI_THEME.colors.surfaces.section;
-    this.statsContainer.thickness = 1;
-    this.statsContainer.color = UI_THEME.colors.border.default;
-    this.statsContainer.paddingTop = '6px';
-    stack.addControl(this.statsContainer);
-
     this.statsGrid = new Grid('statsGrid');
-    this.statsGrid.width = `${CONTENT_W - 16}px`;
-    this.statsGrid.height = '88px';
-    this.statsGrid.addColumnDefinition(0.55);
-    this.statsGrid.addColumnDefinition(0.45);
-    this.statsGrid.addRowDefinition(22, true);
-    this.statsGrid.addRowDefinition(22, true);
-    this.statsGrid.addRowDefinition(22, true);
-    this.statsGrid.addRowDefinition(22, true);
-    this.statsContainer.addControl(this.statsGrid);
-
-    createSectionDivider(stack, 'ASSIGN TASK', CONTENT_W);
+    this.statsGrid.width = `${CONTENT_W}px`;
+    this.statsGrid.height = '96px';
+    this.statsGrid.paddingTop = '6px';
+    this.statsGrid.addColumnDefinition(0.6);
+    this.statsGrid.addColumnDefinition(0.4);
+    this.statsGrid.addRowDefinition(24, true);
+    this.statsGrid.addRowDefinition(24, true);
+    this.statsGrid.addRowDefinition(24, true);
+    this.statsGrid.addRowDefinition(24, true);
+    stack.addControl(this.statsGrid);
 
     this.statusText = new TextBlock('statusText');
     this.statusText.color = UI_THEME.colors.text.secondary;
-    this.statusText.fontSize = 11;
+    this.statusText.fontSize = 10;
     this.statusText.height = '18px';
-    this.statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.statusText.paddingTop = '4px';
+    this.statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     stack.addControl(this.statusText);
-
-    this.taskContainer = new Rectangle('taskContainer');
-    this.taskContainer.height = '44px';
-    this.taskContainer.width = `${CONTENT_W}px`;
-    this.taskContainer.thickness = 0;
-    this.taskContainer.paddingTop = '4px';
-    stack.addControl(this.taskContainer);
 
     this.taskStack = new StackPanel('taskBtns');
     this.taskStack.isVertical = false;
-    this.taskStack.height = '40px';
-    this.taskContainer.addControl(this.taskStack);
+    this.taskStack.height = '34px';
+    this.taskStack.paddingTop = '4px';
+    stack.addControl(this.taskStack);
+
+    const closeBtn = Button.CreateSimpleButton('closeRegion', '✕');
+    closeBtn.width = '20px';
+    closeBtn.height = '20px';
+    closeBtn.fontSize = 12;
+    closeBtn.color = '#aaaaaa';
+    closeBtn.thickness = 0;
+    closeBtn.background = 'transparent';
+    closeBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    closeBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    closeBtn.top = '4px';
+    closeBtn.left = '-4px';
+    closeBtn.onPointerClickObservable.add(() => { this.hide(); this.callbacks.onClose(); });
+    panel.addControl(closeBtn);
   }
 
   private addStatCell(row: number, col: number, text: string, color?: string): void {
@@ -137,13 +129,13 @@ export class RegionInfoPanel {
     tb.color = color ?? '#aaaaaa';
     tb.fontSize = 11;
     tb.textHorizontalAlignment = col === 0 ? Control.HORIZONTAL_ALIGNMENT_LEFT : Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    tb.paddingLeft = '8px';
-    tb.paddingRight = '8px';
+    tb.paddingLeft = '2px';
+    tb.paddingRight = '2px';
     this.statsGrid.addControl(tb, row, col);
   }
 
   public show(region: NamedRegion, stats: RegionStats, hasActiveJob: boolean): void {
-    if (!this.overlay || !this.nameText || !this.terrainText || !this.statsGrid || !this.taskStack || !this.statusText) return;
+    if (!this.panel || !this.nameText || !this.terrainText || !this.statsGrid || !this.taskStack || !this.statusText) return;
 
     this.activeRegion = region;
     this.nameText.text = region.name;
@@ -154,7 +146,7 @@ export class RegionInfoPanel {
     for (const child of [...this.statsGrid.children]) this.statsGrid.removeControl(child);
 
     const healthColor = stats.avgHealth >= 70 ? '#44ff44' : stats.avgHealth >= 40 ? '#ffaa44' : '#ff4444';
-    this.addStatCell(0, 0, '🌿 Grass Height');
+    this.addStatCell(0, 0, '🌿 Grass');
     this.addStatCell(0, 1, `${stats.avgGrassHeight.toFixed(0)}%`);
     this.addStatCell(1, 0, '💧 Moisture');
     this.addStatCell(1, 1, `${stats.avgMoisture.toFixed(0)}%`);
@@ -166,16 +158,16 @@ export class RegionInfoPanel {
     for (const child of [...this.taskStack.children]) this.taskStack.removeControl(child);
 
     if (hasActiveJob) {
-      this.statusText.text = 'Job in progress on this region';
+      this.statusText.text = 'Job in progress';
       this.statusText.color = '#ffaa44';
     } else {
-      this.statusText.text = 'Select a maintenance task:';
+      this.statusText.text = 'Assign task:';
       this.statusText.color = UI_THEME.colors.text.secondary;
 
       const validTasks: JobTaskType[] = (['mow', 'water', 'fertilize', 'rake'] as JobTaskType[])
         .filter(t => isTaskValidForTerrain(t, region.terrainCode));
 
-      const btnW = Math.floor((CONTENT_W - 8 * (validTasks.length - 1)) / validTasks.length);
+      const btnW = Math.floor((CONTENT_W - 4 * (validTasks.length - 1)) / validTasks.length);
 
       for (const task of validTasks) {
         const btn = createActionButton({
@@ -183,8 +175,8 @@ export class RegionInfoPanel {
           label: TASK_LABELS[task],
           tone: 'primary',
           width: btnW,
-          height: 36,
-          fontSize: 13,
+          height: 30,
+          fontSize: 11,
           onClick: () => {
             if (this.activeRegion) {
               this.callbacks.onAssignTask(this.activeRegion, task);
@@ -192,24 +184,24 @@ export class RegionInfoPanel {
             this.hide();
           },
         });
-        btn.paddingRight = '4px';
+        btn.paddingRight = '2px';
         this.taskStack.addControl(btn);
       }
     }
 
-    this.overlay.isVisible = true;
+    this.panel.isVisible = true;
   }
 
   public hide(): void {
-    if (this.overlay) this.overlay.isVisible = false;
+    if (this.panel) this.panel.isVisible = false;
     this.activeRegion = null;
   }
 
   public isVisible(): boolean {
-    return this.overlay?.isVisible ?? false;
+    return this.panel?.isVisible ?? false;
   }
 
   public dispose(): void {
-    if (this.overlay) this.advancedTexture.removeControl(this.overlay);
+    if (this.panel) this.advancedTexture.removeControl(this.panel);
   }
 }

@@ -22,6 +22,10 @@ import {
   createInitialRoster,
   ApplicationState,
   createInitialApplicationState,
+  hireEmployee,
+  generateRandomName,
+  generateRandomSkills,
+  type Employee,
 } from "../core/employees";
 import {
   EmployeeWorkSystemState,
@@ -267,6 +271,23 @@ export class GameState {
     const startingCash = options.scenario?.conditions.startingCash ?? 10000;
     state.economyState = createInitialEconomyState(startingCash);
     state.employeeRoster = createInitialRoster();
+
+    const starterEmployee: Employee = {
+      id: 'starter_gk',
+      name: generateRandomName(0.42),
+      role: 'groundskeeper',
+      skillLevel: 'novice',
+      skills: generateRandomSkills('novice', 0.42),
+      hireDate: 0,
+      hourlyWage: 12,
+      experience: 0,
+      happiness: 80,
+      fatigue: 0,
+      status: 'working',
+      assignedArea: null,
+    };
+    const rosterWithStarter = hireEmployee(state.employeeRoster, starterEmployee);
+    if (rosterWithStarter) state.employeeRoster = rosterWithStarter;
 
     const refillAnchor = resolveRefillAnchor(course);
     const maintenanceShedX = refillAnchor.x;
