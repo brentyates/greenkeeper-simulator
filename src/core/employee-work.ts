@@ -13,6 +13,7 @@ import {
   scoreNeedWithDistance,
 } from './work-priority';
 import { findPath as findPathJS } from './navigation';
+import { getAvailableJobs, assignJob, startJob, type JobSystemState } from './job';
 import { findPathWasm } from './navigation-wasm';
 import { isWasmAvailable } from './navigation-backend';
 import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainSystemInterface';
@@ -400,7 +401,8 @@ export function tickEmployeeWork(
   employees: readonly Employee[],
   terrainSystem: TerrainSystem,
   deltaMinutes: number,
-  gameTime: number = 0
+  gameTime: number = 0,
+  jobSystemState?: JobSystemState,
 ): EmployeeWorkTickResult {
   const effects: WorkEffect[] = [];
   const completions: TaskCompletion[] = [];
@@ -580,7 +582,31 @@ export function tickEmployeeWork(
       return { ...worker, moveProgress: 0.01, currentTask: 'patrol' as EmployeeTask };
     }
 
-    // Find new work target
+    // Groundskeepers: check job queue first
+    if (employee.role === 'groundskeeper' && jobSystemState) {
+      const available = getAvailableJobs(jobSystemState, 'groundskeeper');
+      if (available.length > 0) {
+        const job = available[0];
+        assignJob(jobSystemState, job.id, worker.employeeId, 'groundskeeper');
+        startJob(jobSystemState, job.id, gameTime);
+        const firstWp = job.waypoints[0];
+        if (firstWp) {
+          const waypoints = generateWaypointsToTarget(
+            worker.worldX, worker.worldZ, firstWp.x, firstWp.z, terrainSystem
+          );
+          return {
+            ...worker,
+            currentTask: 'mow_grass' as EmployeeTask,
+            targetX: firstWp.x,
+            targetZ: firstWp.z,
+            path: waypoints.length > 0 ? waypoints : [{ x: Math.floor(firstWp.x), y: Math.floor(firstWp.z) }],
+            moveProgress: 0.01,
+          };
+        }
+      }
+    }
+
+    // Mechanics and fallback: autonomous work finding
     const target = findBestWorkTarget(
       terrainSystem,
       worker.worldX,

@@ -30,6 +30,7 @@ import {
 import {
   EmployeeWorkSystemState,
   createInitialWorkSystemState,
+  syncWorkersWithRoster,
 } from "../core/employee-work";
 import {
   GolferPoolState,
@@ -272,6 +273,14 @@ export class GameState {
     state.economyState = createInitialEconomyState(startingCash);
     state.employeeRoster = createInitialRoster();
 
+    const refillAnchor = resolveRefillAnchor(course);
+    const maintenanceShedX = refillAnchor.x;
+    const maintenanceShedY = refillAnchor.y;
+    state.employeeWorkState = createInitialWorkSystemState(
+      maintenanceShedX,
+      maintenanceShedY
+    );
+
     const starterEmployee: Employee = {
       id: 'starter_gk',
       name: generateRandomName(0.42),
@@ -287,15 +296,13 @@ export class GameState {
       assignedArea: null,
     };
     const rosterWithStarter = hireEmployee(state.employeeRoster, starterEmployee);
-    if (rosterWithStarter) state.employeeRoster = rosterWithStarter;
-
-    const refillAnchor = resolveRefillAnchor(course);
-    const maintenanceShedX = refillAnchor.x;
-    const maintenanceShedY = refillAnchor.y;
-    state.employeeWorkState = createInitialWorkSystemState(
-      maintenanceShedX,
-      maintenanceShedY
-    );
+    if (rosterWithStarter) {
+      state.employeeRoster = rosterWithStarter;
+      state.employeeWorkState = syncWorkersWithRoster(
+        state.employeeWorkState,
+        state.employeeRoster.employees
+      );
+    }
 
     if (course.layout) {
       state.namedRegions = deriveNamedRegions(course.layout, course.topology);

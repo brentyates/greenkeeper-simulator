@@ -5,7 +5,8 @@ import { UIManager } from "./ui/UIManager";
 import { GameState } from "./GameState";
 import { resolveServiceHubAnchorFromState } from "./GameState";
 import { evaluateStandingOrders, type FaceStateSampler } from "../core/standing-orders";
-import { cleanupCompletedJobs } from "../core/job";
+import { cleanupCompletedJobs, advanceJobProgress } from "../core/job";
+import { tickJobExecution } from "../core/job-execution";
 
 import {
   addIncome,
@@ -417,9 +418,38 @@ function tickEmployees(
     state.employeeRoster.employees,
     systems.terrainSystem,
     gameMinutes,
-    absoluteGameTime
+    absoluteGameTime,
+    state.jobSystemState,
   );
   state.employeeWorkState = workResult.state;
+
+  if (state.jobSystemState) {
+    const workerPositions = new Map<string, { x: number; z: number }>();
+    for (const w of state.employeeWorkState.workers) {
+      workerPositions.set(w.employeeId, { x: w.worldX, z: w.worldZ ?? w.worldY });
+    }
+    const jobExecResult = tickJobExecution(state.jobSystemState, workerPositions, gameMinutes, absoluteGameTime);
+    for (const effect of jobExecResult.effects) {
+      const affected = systems.terrainSystem.applyWorkEffect(
+        effect.worldX, effect.worldZ, effect.radius, effect.type, effect.efficiency, absoluteGameTime
+      );
+      for (const job of state.jobSystemState.jobs) {
+        if (job.status === 'in_progress') {
+          advanceJobProgress(state.jobSystemState, job.id, affected);
+        }
+      }
+      if (effect.type === 'mow') state.dailyStats.maintenance.tilesMowed += affected.length;
+      else if (effect.type === 'water') state.dailyStats.maintenance.tilesWatered += affected.length;
+      else if (effect.type === 'fertilize') state.dailyStats.maintenance.tilesFertilized += affected.length;
+    }
+    for (const move of jobExecResult.workerMoves) {
+      const worker = state.employeeWorkState.workers.find(w => w.employeeId === move.workerId);
+      if (worker) {
+        (worker as any).worldX = move.worldX;
+        (worker as any).worldZ = move.worldZ;
+      }
+    }
+  }
 
   for (const effect of workResult.effects) {
     const affected = systems.terrainSystem.applyWorkEffect(
