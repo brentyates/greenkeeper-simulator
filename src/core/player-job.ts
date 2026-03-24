@@ -101,6 +101,12 @@ export function tickPlayerJob(
   };
 }
 
+export function reportPlayerJobProgress(jobState: JobSystemState, affectedFaceIds: number[]): void {
+  const job = getActivePlayerJob(jobState);
+  if (!job) return;
+  advanceJobProgress(jobState, job.id, affectedFaceIds);
+}
+
 export function cancelPlayerJob(jobState: JobSystemState): boolean {
   const job = getActivePlayerJob(jobState);
   if (!job) return false;
