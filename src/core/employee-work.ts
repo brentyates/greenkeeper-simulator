@@ -12,7 +12,9 @@ import {
   isExtremeNeed,
   scoreNeedWithDistance,
 } from './work-priority';
-import { findPath } from './navigation';
+import { findPath as findPathJS } from './navigation';
+import { findPathWasm } from './navigation-wasm';
+import { isWasmAvailable } from './navigation-backend';
 import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainSystemInterface';
 
 export type { EmployeeTask } from './movable-entity';
@@ -352,7 +354,8 @@ export function generateWaypointsToTarget(
 
   const entity = {};
   const canWalk = (_e: unknown, x: number, z: number) => terrainSystem.isPositionWalkable(x, z);
-  const pathPoints = findPath(entity, startWorldX, startWorldZ, targetWorldX, targetWorldZ, canWalk);
+  const findPathFn = isWasmAvailable() ? findPathWasm : findPathJS;
+  const pathPoints = findPathFn(entity, startWorldX, startWorldZ, targetWorldX, targetWorldZ, canWalk);
 
   if (pathPoints) {
     return pathPoints.map(p => ({ x: p.x, y: p.z }));

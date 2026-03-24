@@ -235,6 +235,8 @@ export class GameState {
   lastPrestigeUpdateHour: number = -1;
   lastTeeTimeUpdateHour: number = -1;
 
+  useWasmPathfinding: boolean = false;
+
   shownTutorialHints: Set<string> = new Set();
 
   private constructor() {}

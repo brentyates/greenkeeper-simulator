@@ -57,6 +57,7 @@ import {
 import {
   syncWorkersWithRoster,
 } from "../core/employee-work";
+import { initWasmPathfinding } from "../core/navigation-backend";
 import {
   getActiveGolferCount,
   getAverageSatisfaction,
@@ -127,6 +128,8 @@ export class BabylonMain {
 
   constructor(canvasId: string, options: GameOptions = {}) {
     this.state = GameState.createGameState(options);
+
+    initWasmPathfinding().then(ok => { this.state.useWasmPathfinding = ok; });
 
     const course = this.state.currentCourse;
 

@@ -13,7 +13,9 @@
     "test:e2e": "playwright test",
     "test:e2e:coverage": "COVERAGE=1 playwright test",
     "lint:e2e": "eslint tests/**/*.spec.ts",
-    "assets:manifest": "tsx tools/scripts/generate-asset-manifest.ts"
+    "assets:manifest": "tsx tools/scripts/generate-asset-manifest.ts",
+    "wasm:build": "cd crates/pathfinding && wasm-pack build --target web --out-dir ../../src/wasm/pathfinding",
+    "wasm:dev": "npm run wasm:build -- --dev"
   },
   "dependencies": {
     "@babylonjs/core": "8.49.6",
@@ -32,6 +34,8 @@
     "tsx": "^4.19.0",
     "typescript": "^5.3.0",
     "vite": "^5.0.0",
+    "vite-plugin-top-level-await": "^1.4.4",
+    "vite-plugin-wasm": "^3.3.0",
     "vitest": "^4.0.16"
   }
 }

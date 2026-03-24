@@ -16,3 +16,7 @@ coverage-e2e/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# WASM build artifacts
+src/wasm/
+crates/pathfinding/target/

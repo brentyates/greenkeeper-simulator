@@ -10,10 +10,12 @@ import {
 } from './work-priority';
 import {
   advanceTowardPoint,
-  findPath,
+  findPath as findPathJS,
   type PathPoint,
   type TraversalRule,
 } from './navigation';
+import { findPathWasm } from './navigation-wasm';
+import { isWasmAvailable } from './navigation-backend';
 
 export type RobotType = 'mower' | 'sprayer' | 'spreader' | 'raker';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
@@ -491,7 +493,8 @@ function findReachableWork(
   for (let i = 0; i < limit; i++) {
     const target = pool[i];
     const gridStep = target.distance > LONG_RANGE_DISTANCE ? LONG_RANGE_GRID_STEP : undefined;
-    const path = findPath(robot, currentX, currentZ, target.x, target.z, canTraverse, gridStep);
+    const findPathFn = isWasmAvailable() ? findPathWasm : findPathJS;
+    const path = findPathFn(robot, currentX, currentZ, target.x, target.z, canTraverse, gridStep);
     if (path) return { x: target.x, z: target.z, path };
   }
   return null;
@@ -745,7 +748,8 @@ function tickRobot(
     const isChargingTarget = robot.targetX === chargingX && robot.targetY === chargingZ;
 
     if (!chargePath && canTraverse) {
-      const found = findPath(robot, robot.worldX, robot.worldZ, chargingX, chargingZ, canTraverse);
+      const findPathFn = isWasmAvailable() ? findPathWasm : findPathJS;
+      const found = findPathFn(robot, robot.worldX, robot.worldZ, chargingX, chargingZ, canTraverse);
       if (found) {
         chargePath = found;
         chargePathIndex = 0;
@@ -1148,7 +1152,8 @@ function tickRobot(
   }
 
   if (canTraverse) {
-    const repath = findPath(robot, robot.worldX, robot.worldZ, robot.targetX, robot.targetY, canTraverse);
+    const findPathFn = isWasmAvailable() ? findPathWasm : findPathJS;
+    const repath = findPathFn(robot, robot.worldX, robot.worldZ, robot.targetX, robot.targetY, canTraverse);
     if (repath) {
       const repathedRobot: RobotUnit = { ...robot, path: repath, pathIndex: 0 };
       const result = followPath(
