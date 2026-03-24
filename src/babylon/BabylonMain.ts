@@ -27,10 +27,9 @@ import {
 import { UIManager } from "./ui/UIManager";
 import { DaySummaryData } from "./ui/DaySummaryPopup";
 import { findRegionAtPosition } from "../core/named-region";
-import { computeRegionStats, evaluateStandingOrders, type FaceStateSampler } from "../core/standing-orders";
-import { getJobForRegion, getActivePlayerJob, cleanupCompletedJobs } from "../core/job";
-import { createPlayerJob, tickPlayerJob, reportPlayerJobProgress, hasActivePlayerJob } from "../core/player-job";
-import { tickJobExecution } from "../core/job-execution";
+import { computeRegionStats } from "../core/standing-orders";
+import { getJobForRegion, isRegionLocked, createJob, getPatternForTask } from "../core/job";
+import { generateWaypoints } from "../core/movement-patterns";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import { Control } from "@babylonjs/gui/2D/controls/control";
 import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
@@ -210,15 +209,9 @@ export class BabylonMain {
       getTerrainMeshSystem: () => this.terrainMeshSystem,
       getCourseWidth: () => this.state.currentCourse.width,
       getCourseHeight: () => this.state.currentCourse.height,
-      getPlayerVisual: () => this.playerController.getPlayerVisual(),
-      getPlayerWorldPosition: () => {
-        const p = this.playerController.getPlayer();
-        return { worldX: p.gridX, worldZ: p.gridY };
-      },
-      setPlayerVisualEnabled: (enabled) => {
-        const pv = this.playerController.getPlayerVisual();
-        if (pv) pv.container.setEnabled(enabled);
-      },
+      getPlayerVisual: () => null,
+      getPlayerWorldPosition: () => ({ worldX: 0, worldZ: 0 }),
+      setPlayerVisualEnabled: () => {},
       setEmployeeVisualSystemVisible: (visible) => {
         this.employeeVisualSystem?.setVisible(visible);
         this.robotVisualSystem?.setVisible(visible);
@@ -240,14 +233,25 @@ export class BabylonMain {
     );
 
     this.uiPanelCoordinator.setOnRegionTaskAssigned((region, taskType) => {
-      const ok = createPlayerJob(
-        this.state.jobSystemState, region, taskType,
-        this.state.gameTime, this.state.currentCourse.topology
+      if (isRegionLocked(this.state.jobSystemState, region.id)) {
+        this.uiManager.showNotification('Region already has an active job');
+        return;
+      }
+
+      const pattern = getPatternForTask(taskType, region.terrainCode);
+      const waypoints = generateWaypoints(pattern, region, this.state.currentCourse.topology);
+      if (waypoints.length === 0) {
+        this.uiManager.showNotification('Cannot generate work pattern for this region');
+        return;
+      }
+
+      const job = createJob(
+        this.state.jobSystemState, region.id, taskType,
+        region.faceIds, pattern, waypoints,
+        this.state.gameDay * 1440 + this.state.gameTime
       );
-      if (ok) {
-        this.uiManager.showNotification(`${taskType} job started on ${region.name}`);
-      } else {
-        this.uiManager.showNotification('Cannot start job — region busy or player busy');
+      if (job) {
+        this.uiManager.showNotification(`${taskType} job queued on ${region.name}`);
       }
     });
 
@@ -1003,8 +1007,12 @@ export class BabylonMain {
     this.terrainSystem.build(this.state.currentCourse);
     this.buildObstacles();
     this.buildRefillStations();
-    this.playerController.createPlayer();
-    this.playerController.updatePlayerPosition();
+    const course = this.state.currentCourse;
+    this.babylonEngine.setCameraTargetGrid(
+      Math.floor(course.width / 2),
+      Math.floor(course.height / 2),
+      this.terrainSystem.getElevationAt(course.width / 2, course.height / 2)
+    );
   }
 
   private buildObstacles(): void {
@@ -1120,12 +1128,8 @@ export class BabylonMain {
       return;
     }
 
-    if (this.handleRegionClick(screenX, screenY)) {
-      return;
-    }
-
     this.uiPanelCoordinator.hideEntityInspector();
-    this.playerController.handleClick(screenX, screenY);
+    this.handleRegionClick(screenX, screenY);
   }
 
   private handleIrrigationClick(screenX: number, screenY: number): boolean {
@@ -1180,8 +1184,7 @@ export class BabylonMain {
   }
 
   private handleRegionClick(screenX: number, screenY: number): boolean {
-    if (this.equipmentManager.getSelected()) return false;
-    if (this.state.namedRegions.length === 0) return false;
+    if (this.state.namedRegions.length === 0 && this.terrainSystem.getAllFaceStates().size === 0) return false;
 
     const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
     if (!world) return false;
@@ -1425,14 +1428,6 @@ export class BabylonMain {
       stats.moisture,
       stats.nutrients
     );
-    const initPlayer = this.playerController.getPlayer();
-    this.uiManager.updateMinimapPlayerPosition(
-      initPlayer.gridX,
-      initPlayer.gridY,
-      course.width,
-      course.height
-    );
-
     this.babylonEngine.getScene().onBeforeRenderObservable.add(() => {
       const now = performance.now();
       const deltaMs = now - this.lastTime;
@@ -1457,56 +1452,12 @@ export class BabylonMain {
         return;
       }
 
-      if (this.terrainEditorController.isEnabled()) {
-        this.terrainSystem.update(0, this.state.gameDay * 1440 + this.state.gameTime, this.state.weather);
-        this.playerController.updateEditorCamera(deltaMs);
-        return;
-      }
-
-      this.playerController.updateMovement(deltaMs);
-
-      if (hasActivePlayerJob(this.state.jobSystemState)) {
-        const p = this.playerController.getPlayer();
-        const gameMinutes = (deltaMs / 1000) * 2 * this.state.timeScale;
-        const absoluteTime = this.state.gameDay * 1440 + this.state.gameTime;
-        const result = tickPlayerJob(
-          this.state.jobSystemState, p.worldX, p.worldZ ?? p.worldY,
-          gameMinutes, absoluteTime
-        );
-        if (result.moved) {
-          this.playerController.movePlayerTo(result.newX, result.newZ);
-        }
-        if (result.effect) {
-          const affected = this.terrainSystem.applyWorkEffect(
-            result.effect.worldX, result.effect.worldZ,
-            result.effect.radius, result.effect.type,
-            result.effect.efficiency, absoluteTime
-          );
-          reportPlayerJobProgress(this.state.jobSystemState, affected);
-          if (result.effect.type === 'mow') this.state.dailyStats.maintenance.tilesMowed += affected.length;
-          else if (result.effect.type === 'water') this.state.dailyStats.maintenance.tilesWatered += affected.length;
-          else if (result.effect.type === 'fertilize') this.state.dailyStats.maintenance.tilesFertilized += affected.length;
-        }
-        if (result.completed) {
-          this.uiManager.showNotification('Job complete!');
-        }
-      }
-
-      const pv = this.playerController.getPlayerVisual();
-      if (pv) {
-        const wasDeactivated = this.equipmentManager.update(
-          deltaMs,
-          pv.container.position
-        );
-        if (wasDeactivated) {
-          if (this.state.overlayAutoSwitched) {
-            this.terrainSystem.setOverlayMode("normal");
-            this.uiManager.updateOverlayLegend("normal");
-            this.state.overlayAutoSwitched = false;
-            this.updateIrrigationVisibility();
-          }
-        }
-      }
+      this.babylonEngine.updateCameraPan(deltaMs, {
+        up: this.inputManager.isDirectionKeyHeld('up'),
+        down: this.inputManager.isDirectionKeyHeld('down'),
+        left: this.inputManager.isDirectionKeyHeld('left'),
+        right: this.inputManager.isDirectionKeyHeld('right'),
+      });
 
       this.state.gameTime += (deltaMs / 1000) * 2 * this.state.timeScale;
       if (this.state.gameTime >= 24 * 60) {
@@ -1681,13 +1632,6 @@ export class BabylonMain {
         );
       }
 
-      const p = this.playerController.getPlayer();
-      this.uiManager.updateMinimapPlayerPosition(
-        p.gridX,
-        p.gridY,
-        course.width,
-        course.height
-      );
     });
   }
 

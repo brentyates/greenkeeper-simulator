@@ -950,10 +950,10 @@ export class UIManager {
     panel.addControl(stack);
 
     const lines = [
-      'Move  WASD / Arrows',
-      'Tools  1 / 2 / 3',
-      'Use  Space / E',
-      'View  [ / ] zoom, P pause',
+      'Pan  WASD / Arrows',
+      'Zoom  [ / ]',
+      'Click  Terrain to assign tasks',
+      'P  Pause',
       'MANAGEMENT',
       'H Crew   Y Research',
       'G Tee    I Water',
