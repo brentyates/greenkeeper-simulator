@@ -3,6 +3,7 @@ import { SerializedTopology } from '../core/mesh-topology';
 import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 import type { CourseHoleDefinition } from '../core/hole-construction';
+import type { CourseLayout } from '../core/course-layout';
 
 export type { TerrainType, ObstacleType };
 
@@ -20,6 +21,7 @@ export interface CourseData {
   obstacles?: ObstacleData[];
   holes?: CourseHoleDefinition[];
   topology: SerializedTopology;
+  layout?: CourseLayout;
 }
 
 const F = 0;
@@ -133,151 +135,149 @@ function course3Elevation(x: number, z: number): number {
 }
 
 // ============================================================================
-// 3-HOLE COURSE (REDESIGNED)
+// 3-HOLE COURSE — Spline-based layout
 // ============================================================================
 // World: 100 wide × 110 tall (at 10 yards/unit = 1000 × 1100 yards)
 //
-// Hole 1 (Par 4, ~380 yds): left corridor, uphill into elevated green.
-// Hole 2 (Par 3, ~190 yds): central-right corridor, pond carry to raised target.
-// Hole 3 (Par 3, ~180 yds): upper corridor, right-to-left shot to plateau green.
+// Hole 1 (Par 4, ~380 yds): Dogleg left with wide landing zone, bunker-guarded green.
+// Hole 2 (Par 3, ~170 yds): Pond carry to an angled green tucked behind bunkers.
+// Hole 3 (Par 4, ~350 yds): Sweeping dogleg right through tree-lined corridor.
 // ============================================================================
 
-function generate3HoleTopology(): SerializedTopology {
-  const elev = course3Elevation;
-  const regions: TerrainRegion[] = [];
+import { courseLayoutToCourseData } from '../core/layout-to-regions';
 
-  // ========== HOLE 1: Par 4, left corridor ==========
-  regions.push({ terrainCode: F, boundary: makeEllipse(15, 90, 6.5, 8.5), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(18.5, 80, 7.4, 9.2), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(24, 70, 8.6, 10.2), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(30, 61, 9.4, 8.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(26.5, 56.5, 3.2, 2.4), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(41.5, 56.8, 3.0, 2.3), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(34.2, 49, 3.8, 2.5), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(34, 56, 7.4, 5.6), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(37.7, 55.2, 3.2, 2.8), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(30.2, 57.1, 3.0, 2.6), elevationFn: elev });
-  regions.push({ terrainCode: T, boundary: makeRect(10.5, 93, 17.5, 97.5), elevationFn: elev });
-
-  // ========== HOLE 2: Par 3, center-right corridor ==========
-  regions.push({ terrainCode: F, boundary: makeEllipse(45, 86, 6.0, 7.5), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(51, 77, 7.2, 8.3), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(58, 68, 8.2, 8.8), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(63, 61, 9.0, 7.2), elevationFn: elev });
-  regions.push({ terrainCode: W, boundary: makeEllipse(52.5, 69.5, 5.5, 6.5), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(56.2, 59.2, 2.8, 2.1), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(75.0, 59.0, 2.8, 2.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(66.2, 49.2, 3.0, 2.1), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(66, 58, 7.2, 5.4), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(69.8, 58.9, 2.8, 2.4), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(62.7, 57, 2.8, 2.2), elevationFn: elev });
-  regions.push({ terrainCode: T, boundary: makeRect(42, 87, 48, 91), elevationFn: elev });
-
-  // ========== HOLE 3: Par 3, upper right-to-left corridor ==========
-  regions.push({ terrainCode: F, boundary: makeEllipse(82, 33, 6.4, 4.8), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(74, 35, 7.5, 5.2), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(66, 37.5, 8.4, 5.8), elevationFn: elev });
-  regions.push({ terrainCode: F, boundary: makeEllipse(58, 40, 9.0, 6.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(41.0, 41.0, 2.8, 2.1), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(59.4, 44.7, 2.7, 2.2), elevationFn: elev });
-  regions.push({ terrainCode: B, boundary: makeEllipse(50.8, 50.0, 3.0, 2.2), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(51, 42, 7.2, 5.2), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(54.4, 41.4, 2.8, 2.2), elevationFn: elev });
-  regions.push({ terrainCode: G, boundary: makeEllipse(47.8, 43.1, 2.6, 2.1), elevationFn: elev });
-  regions.push({ terrainCode: T, boundary: makeRect(82, 30, 88, 34), elevationFn: elev });
-
-  return buildDelaunayTopology({
-    worldWidth: 100,
-    worldHeight: 110,
-    regions,
-    backgroundTerrainCode: R,
-    backgroundElevationFn: elev,
-    boundaryPointSpacing: 1.0,
-    fillPointSpacing: 2.5,
-  });
-}
-
-const course3Topology = generate3HoleTopology();
-
-export const COURSE_3_HOLE: CourseData = {
+const SUNRISE_VALLEY_3_LAYOUT: CourseLayout = {
+  id: 'sunrise_valley_3',
   name: 'Sunrise Valley - 3 Hole',
-  width: 100,
-  height: 110,
-  par: 10,
-  topology: course3Topology,
+  worldWidth: 100,
+  worldHeight: 110,
+  backgroundTerrainCode: R,
+  backgroundElevationFn: course3Elevation,
+  holes: [],
+  features: [
+    // ====== Hole 1: SVG-traced dogleg par 4 ======
+    // Fairway outline traced from Wikipedia Par 4/5 dogleg diagram
+    { id: 'h1_fairway', holeNumber: 1, terrainCode: F,
+      center: { x: 40, z: 45 },
+      params: { type: 'freeform', boundary: [
+        { x: 22.5, z: 85.0 }, { x: 16.5, z: 82.4 }, { x: 15.0, z: 76.5 },
+        { x: 19.7, z: 72.9 }, { x: 23.9, z: 68.7 }, { x: 29.4, z: 61.1 },
+        { x: 36.4, z: 55.2 }, { x: 42.0, z: 50.2 }, { x: 44.8, z: 43.3 },
+        { x: 45.3, z: 35.2 }, { x: 45.8, z: 27.0 }, { x: 45.6, z: 16.0 },
+        { x: 44.5, z: 4.9 }, { x: 48.4, z: 0.0 }, { x: 55.1, z: 0.1 },
+        { x: 58.6, z: 5.7 }, { x: 59.4, z: 12.6 }, { x: 61.6, z: 24.6 },
+        { x: 62.7, z: 36.6 }, { x: 61.1, z: 42.0 }, { x: 58.9, z: 47.3 },
+        { x: 52.5, z: 57.9 }, { x: 44.7, z: 67.7 }, { x: 37.5, z: 74.7 },
+        { x: 30.4, z: 81.9 }, { x: 26.8, z: 84.4 },
+      ] } },
+    // Green — freeform from SVG
+    { id: 'h1_green', holeNumber: 1, terrainCode: G,
+      center: { x: 20.7, z: 79.0 },
+      params: { type: 'freeform', boundary: [
+        { x: 18.6, z: 81.8 }, { x: 17.4, z: 80.9 }, { x: 16.7, z: 79.5 },
+        { x: 16.6, z: 77.6 }, { x: 17.2, z: 75.9 }, { x: 18.4, z: 75.4 },
+        { x: 19.8, z: 75.3 }, { x: 21.8, z: 75.7 }, { x: 23.6, z: 77.0 },
+        { x: 24.0, z: 77.7 }, { x: 24.6, z: 78.3 }, { x: 25.2, z: 80.3 },
+        { x: 24.4, z: 82.2 }, { x: 23.8, z: 82.8 }, { x: 23.0, z: 83.1 },
+        { x: 21.1, z: 83.0 }, { x: 19.4, z: 82.5 }, { x: 19.0, z: 82.2 },
+      ] } },
+    // Greenside bunker — freeform from SVG
+    { id: 'h1_bunker_gs', holeNumber: 1, terrainCode: B,
+      center: { x: 31.0, z: 76.3 },
+      params: { type: 'freeform', boundary: [
+        { x: 29.0, z: 78.7 }, { x: 28.9, z: 78.1 }, { x: 28.7, z: 77.5 },
+        { x: 28.3, z: 76.7 }, { x: 28.3, z: 75.8 }, { x: 28.4, z: 75.4 },
+        { x: 28.7, z: 75.1 }, { x: 28.8, z: 74.7 }, { x: 29.1, z: 73.9 },
+        { x: 29.6, z: 73.8 }, { x: 30.3, z: 73.7 }, { x: 31.8, z: 73.6 },
+        { x: 33.1, z: 73.6 }, { x: 33.6, z: 73.8 }, { x: 33.9, z: 74.2 },
+        { x: 33.9, z: 75.4 }, { x: 33.5, z: 76.0 }, { x: 32.5, z: 76.9 },
+        { x: 31.6, z: 77.8 }, { x: 30.5, z: 78.8 }, { x: 29.2, z: 78.9 },
+      ] } },
+    // Fairway bunker — freeform from SVG
+    { id: 'h1_bunker_fw', holeNumber: 1, terrainCode: B,
+      center: { x: 48.7, z: 45.8 },
+      params: { type: 'freeform', boundary: [
+        { x: 47.4, z: 49.2 }, { x: 46.8, z: 48.4 }, { x: 46.4, z: 47.5 },
+        { x: 46.3, z: 45.9 }, { x: 46.6, z: 45.5 }, { x: 47.1, z: 45.1 },
+        { x: 47.5, z: 44.4 }, { x: 47.0, z: 43.1 }, { x: 47.1, z: 42.4 },
+        { x: 47.6, z: 42.0 }, { x: 48.2, z: 41.8 }, { x: 49.3, z: 42.0 },
+        { x: 50.4, z: 42.5 }, { x: 51.0, z: 43.4 }, { x: 51.2, z: 44.8 },
+        { x: 50.9, z: 45.7 }, { x: 49.9, z: 46.7 }, { x: 49.4, z: 47.7 },
+        { x: 49.3, z: 48.9 }, { x: 48.2, z: 49.3 },
+      ] } },
+    { id: 'h1_tee', holeNumber: 1, terrainCode: T,
+      center: { x: 22.5, z: 88 },
+      params: { type: 'rectangle', width: 5, height: 3, rotation: 0.2 } },
+
+    // ====== Hole 2: Par 3, pond carry ======
+    { id: 'h2_fairway', holeNumber: 2, terrainCode: F,
+      center: { x: 80, z: 70 },
+      params: { type: 'freeform', boundary: [
+        { x: 74, z: 90 }, { x: 72, z: 84 }, { x: 73, z: 78 },
+        { x: 75, z: 72 }, { x: 76, z: 66 }, { x: 76, z: 60 },
+        { x: 82, z: 56 }, { x: 88, z: 60 }, { x: 88, z: 66 },
+        { x: 87, z: 72 }, { x: 86, z: 78 }, { x: 84, z: 84 },
+        { x: 82, z: 90 },
+      ] } },
+    { id: 'h2_tee', holeNumber: 2, terrainCode: T,
+      center: { x: 78, z: 92 },
+      params: { type: 'rectangle', width: 5, height: 3, rotation: 0 } },
+    { id: 'h2_water', holeNumber: 2, terrainCode: W,
+      center: { x: 80, z: 74 },
+      params: { type: 'ellipse', radiusX: 4, radiusZ: 3 } },
+    { id: 'h2_green', holeNumber: 2, terrainCode: G,
+      center: { x: 82, z: 60 },
+      params: { type: 'ellipse', radiusX: 5, radiusZ: 4 } },
+    { id: 'h2_bunker_l', holeNumber: 2, terrainCode: B,
+      center: { x: 76, z: 58 },
+      params: { type: 'ellipse', radiusX: 2.5, radiusZ: 2 } },
+    { id: 'h2_bunker_r', holeNumber: 2, terrainCode: B,
+      center: { x: 88, z: 57 },
+      params: { type: 'ellipse', radiusX: 2, radiusZ: 2.5 } },
+  ],
   obstacles: [
-    // West and east perimeter framing.
-    { x: 5, y: 103, type: 2 },
-    { x: 7, y: 97, type: 1 },
-    { x: 5, y: 90, type: 2 },
-    { x: 8, y: 83, type: 1 },
-    { x: 6, y: 76, type: 2 },
-    { x: 5, y: 68, type: 1 },
-    { x: 7, y: 60, type: 2 },
-    { x: 8, y: 52, type: 1 },
-    { x: 6, y: 44, type: 2 },
-    { x: 5, y: 36, type: 1 },
-    { x: 7, y: 28, type: 2 },
-    { x: 8, y: 20, type: 1 },
-    { x: 6, y: 12, type: 2 },
-    { x: 94, y: 102, type: 1 },
-    { x: 93, y: 94, type: 2 },
-    { x: 95, y: 86, type: 1 },
-    { x: 94, y: 78, type: 2 },
-    { x: 93, y: 70, type: 1 },
-    { x: 95, y: 62, type: 2 },
-    { x: 94, y: 54, type: 1 },
-    { x: 93, y: 46, type: 2 },
-    { x: 95, y: 38, type: 1 },
-    { x: 94, y: 30, type: 2 },
-    { x: 93, y: 22, type: 1 },
-    { x: 95, y: 14, type: 2 },
+    // ====== Hole 1 tree corridor ======
+    // Left side dense trees framing the dogleg
+    { x: 6, y: 95, type: 2 }, { x: 4, y: 88, type: 1 }, { x: 5, y: 80, type: 2 },
+    { x: 7, y: 73, type: 1 }, { x: 6, y: 65, type: 2 }, { x: 8, y: 58, type: 1 },
+    { x: 5, y: 50, type: 2 }, { x: 7, y: 43, type: 1 },
+    // Right side scattered trees
+    { x: 32, y: 92, type: 1 }, { x: 35, y: 84, type: 2 }, { x: 33, y: 76, type: 1 },
+    { x: 30, y: 68, type: 2 }, { x: 28, y: 60, type: 1 },
+    // Behind hole 1 green
+    { x: 12, y: 38, type: 2 }, { x: 20, y: 37, type: 1 }, { x: 24, y: 40, type: 2 },
 
-    // Top and bottom backdrop.
-    { x: 18, y: 105, type: 2 },
-    { x: 30, y: 104, type: 1 },
-    { x: 44, y: 103, type: 2 },
-    { x: 58, y: 104, type: 1 },
-    { x: 72, y: 105, type: 2 },
-    { x: 84, y: 104, type: 1 },
-    { x: 14, y: 6, type: 1 },
-    { x: 26, y: 7, type: 2 },
-    { x: 38, y: 6, type: 1 },
-    { x: 50, y: 7, type: 2 },
-    { x: 62, y: 6, type: 1 },
-    { x: 74, y: 7, type: 2 },
-    { x: 86, y: 6, type: 1 },
+    // ====== Hole 2 framing ======
+    // Left of hole 2
+    { x: 42, y: 90, type: 1 }, { x: 40, y: 82, type: 2 }, { x: 43, y: 72, type: 1 },
+    { x: 45, y: 64, type: 2 }, { x: 50, y: 56, type: 1 },
+    // Right of hole 2
+    { x: 68, y: 88, type: 2 }, { x: 70, y: 80, type: 1 }, { x: 72, y: 72, type: 2 },
+    { x: 74, y: 64, type: 1 },
+    // Behind hole 2 green
+    { x: 72, y: 54, type: 2 }, { x: 66, y: 52, type: 1 },
 
-    // Hole 1 and hole 2 separator/frames.
-    { x: 41, y: 88, type: 2 },
-    { x: 39, y: 80, type: 1 },
-    { x: 37, y: 72, type: 2 },
-    { x: 35, y: 64, type: 1 },
-    { x: 33, y: 56, type: 2 },
-    { x: 78, y: 84, type: 1 },
-    { x: 80, y: 76, type: 2 },
-    { x: 82, y: 68, type: 1 },
-    { x: 80, y: 60, type: 2 },
+    // ====== Hole 3 tree-lined corridor ======
+    // Upper tree line (north side of fairway)
+    { x: 50, y: 48, type: 1 }, { x: 56, y: 44, type: 2 }, { x: 62, y: 40, type: 1 },
+    { x: 70, y: 36, type: 2 }, { x: 78, y: 30, type: 1 }, { x: 84, y: 24, type: 2 },
+    // Lower tree line (south side)
+    { x: 54, y: 32, type: 2 }, { x: 62, y: 26, type: 1 }, { x: 68, y: 20, type: 2 },
+    { x: 76, y: 16, type: 1 },
+    // Around hole 3 green
+    { x: 92, y: 14, type: 2 }, { x: 94, y: 6, type: 1 }, { x: 82, y: 2, type: 2 },
 
-    // Around pond and hole 3 green backstop.
-    { x: 37, y: 82, type: 1 },
-    { x: 35, y: 74, type: 2 },
-    { x: 34, y: 66, type: 1 },
-    { x: 38, y: 58, type: 2 },
-    { x: 46, y: 54, type: 1 },
-    { x: 50, y: 56, type: 2 },
-    { x: 56, y: 56, type: 1 },
-    { x: 62, y: 56, type: 2 },
-    { x: 74, y: 50, type: 1 },
-    { x: 66, y: 52, type: 2 },
-    { x: 58, y: 54, type: 1 },
-    { x: 42, y: 46, type: 2 },
-    { x: 60, y: 30, type: 2 },
-    { x: 70, y: 28, type: 1 },
-    { x: 82, y: 48, type: 2 },
-    { x: 86, y: 44, type: 1 },
+    // ====== Perimeter trees ======
+    { x: 3, y: 104, type: 2 }, { x: 3, y: 30, type: 1 }, { x: 3, y: 15, type: 2 },
+    { x: 96, y: 104, type: 1 }, { x: 96, y: 90, type: 2 }, { x: 96, y: 50, type: 1 },
+    { x: 20, y: 105, type: 1 }, { x: 40, y: 106, type: 2 }, { x: 60, y: 105, type: 1 },
+    { x: 80, y: 106, type: 2 },
+    { x: 15, y: 4, type: 1 }, { x: 35, y: 3, type: 2 }, { x: 50, y: 4, type: 1 },
+    { x: 70, y: 3, type: 2 },
   ],
 };
+
+export const COURSE_3_HOLE: CourseData = courseLayoutToCourseData(SUNRISE_VALLEY_3_LAYOUT);
 
 export const COURSE_HOLE_1: CourseData = {
   name: 'Test Hole',

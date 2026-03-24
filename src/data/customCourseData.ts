@@ -9,6 +9,7 @@ import {
   type PlaceableHoleAsset,
   type HoleTeeSet,
 } from '../core/hole-construction';
+import type { CourseLayout } from '../core/course-layout';
 
 export interface PlacedAsset extends PlaceableHoleAsset {}
 
@@ -23,6 +24,7 @@ export interface CustomCourseData {
   placedAssets: PlacedAsset[];
   obstacles: ObstacleData[];
   holes: CourseHoleDefinition[];
+  layout?: CourseLayout;
 }
 
 const STORAGE_KEY = 'greenkeeper_custom_courses';
