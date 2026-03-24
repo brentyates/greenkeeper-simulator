@@ -309,6 +309,7 @@ export class UIPanelCoordinator {
     this.daySummaryPopup = new DaySummaryPopup(uiTexture, {
       onContinue: () => {
         this.systems.resetDailyStats();
+        this.state.isPaused = false;
       },
     });
   }

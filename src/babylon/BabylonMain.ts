@@ -1499,26 +1499,6 @@ export class BabylonMain {
       const season = getSeasonFromDay(this.state.gameDay).season;
       this.uiManager.updateTime(hours, minutes, this.state.gameDay, season);
       this.uiManager.updateWeather(this.state.weather.type, this.state.weather.temperature);
-      this.uiManager.updateEquipment(
-        this.equipmentManager.getSelected(),
-        this.equipmentManager.isActive()
-      );
-
-      const mowerState = this.equipmentManager.getState("mower");
-      const sprinklerState = this.equipmentManager.getState("sprinkler");
-      const spreaderState = this.equipmentManager.getState("spreader");
-      this.uiManager.updateResources(
-        mowerState
-          ? (mowerState.resourceCurrent / mowerState.resourceMax) * 100
-          : 100,
-        sprinklerState
-          ? (sprinklerState.resourceCurrent / sprinklerState.resourceMax) * 100
-          : 100,
-        spreaderState
-          ? (spreaderState.resourceCurrent / spreaderState.resourceMax) * 100
-          : 100
-      );
-
       const courseStats = this.terrainSystem.getCourseStats();
       this.uiManager.updateCourseStatus(
         courseStats.health,

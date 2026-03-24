@@ -108,14 +108,14 @@ export class UIManager {
     this.focusManager = new FocusManager(scene);
 
     this.createCourseStatusPanel();
-    this.createEquipmentSelector();
+    // Equipment selector removed — management camera mode, no player equipment
     this.createStatusRailBackdrop();
     this.createTimePanel();
     this.createEconomyPanel();
     this.createPrestigePanel();
     this.createScenarioPanel();
     this.createOperationsPanel();
-    this.createResourcesPanel();
+    // Resources panel removed — no player equipment
     this.createScorePanel();
     this.createUtilityDockBackdrop();
     this.createMinimap();
@@ -909,11 +909,10 @@ export class UIManager {
     this.minimapContainer.addControl(this.minimapMapArea);
 
     this.minimapPlayerDot = new Ellipse('playerDot');
-    this.minimapPlayerDot.width = '10px';
-    this.minimapPlayerDot.height = '10px';
-    this.minimapPlayerDot.background = 'white';
-    this.minimapPlayerDot.color = UI_THEME.colors.legacy.c_7fff7f;
-    this.minimapPlayerDot.thickness = 2;
+    this.minimapPlayerDot.width = '0px';
+    this.minimapPlayerDot.height = '0px';
+    this.minimapPlayerDot.thickness = 0;
+    this.minimapPlayerDot.isVisible = false;
     this.minimapMapArea.addControl(this.minimapPlayerDot);
   }
 
@@ -972,6 +971,8 @@ export class UIManager {
       text.paddingLeft = '8px';
       stack.addControl(text);
     }
+
+    setTimeout(() => { panel.alpha = 0; }, 8000);
   }
 
   private createPauseOverlay(): void {
