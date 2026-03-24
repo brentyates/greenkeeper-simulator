@@ -64,6 +64,12 @@ import {
   ReputationState,
   createInitialReputationState,
 } from "../core/reputation";
+import {
+  JobSystemState,
+  createJobSystemState,
+} from "../core/job";
+import type { NamedRegion } from "../core/named-region";
+import { deriveNamedRegions } from "../core/named-region";
 
 export interface DailyStats {
   revenue: { greenFees: number; tips: number; addOns: number; other: number };
@@ -222,6 +228,9 @@ export class GameState {
 
   reputationState: ReputationState = createInitialReputationState();
 
+  jobSystemState: JobSystemState = createJobSystemState();
+  namedRegions: NamedRegion[] = [];
+
   scenarioManager: ScenarioManager | null = null;
   currentScenario: ScenarioDefinition | null = null;
 
@@ -266,6 +275,11 @@ export class GameState {
       maintenanceShedX,
       maintenanceShedY
     );
+
+    if (course.layout) {
+      state.namedRegions = deriveNamedRegions(course.layout, course.topology);
+    }
+    state.jobSystemState = createJobSystemState();
 
     state.golferPool = createInitialPoolState();
     state.researchState = createInitialResearchState();
