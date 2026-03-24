@@ -4,6 +4,8 @@ import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import { UIManager } from "./ui/UIManager";
 import { GameState } from "./GameState";
 import { resolveServiceHubAnchorFromState } from "./GameState";
+import { evaluateStandingOrders, type FaceStateSampler } from "../core/standing-orders";
+import { cleanupCompletedJobs } from "../core/job";
 
 import {
   addIncome,
@@ -756,6 +758,31 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
   }
 }
 
+function tickStandingOrders(state: GameState, systems: SimulationSystems, gameTime: number): void {
+  if (!state.namedRegions?.length || !state.jobSystemState?.standingOrders?.length) return;
+
+  const sampler: FaceStateSampler = {
+    getFaceState: (fid: number) => {
+      const fs = systems.terrainSystem.getAllFaceStates().get(fid);
+      if (!fs) return undefined;
+      return { grassHeight: fs.grassHeight, moisture: fs.moisture, nutrients: fs.nutrients, health: fs.health };
+    },
+  };
+
+  evaluateStandingOrders(
+    state.jobSystemState,
+    state.namedRegions,
+    sampler,
+    gameTime,
+    state.currentCourse.topology,
+  );
+}
+
+function cleanupOldJobs(state: GameState, gameTime: number): void {
+  if (!state.jobSystemState) return;
+  cleanupCompletedJobs(state.jobSystemState, 1440, gameTime);
+}
+
 export function runSimulationTick(state: GameState, systems: SimulationSystems, deltaMs: number): void {
   const hours = Math.floor(state.gameTime / 60);
   const gameMinutes = (deltaMs / 1000) * 2 * state.timeScale;
@@ -770,9 +797,11 @@ export function runSimulationTick(state: GameState, systems: SimulationSystems, 
   tickTeeTimes(state, systems, hours, timestamp);
   tickGolferArrivals(state, systems, hours, isWeekendDay, isTwilight, timestamp);
   tickGolferSimulation(state, systems, gameMinutes, timestamp);
+  tickStandingOrders(state, systems, timestamp);
   tickEmployees(state, systems, gameMinutes, deltaMs);
   tickResearch(state, systems, gameMinutes, timestamp);
   tickAutonomousEquipment(state, systems, gameMinutes, timestamp);
   tickScenario(state, systems);
   tickIrrigation(state, systems, gameMinutes, timestamp);
+  cleanupOldJobs(state, timestamp);
 }

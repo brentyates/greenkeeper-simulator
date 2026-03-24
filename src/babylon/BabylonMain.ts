@@ -10,7 +10,7 @@ import {
 import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
 import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
-import { OverlayMode } from "../core/terrain";
+import { OverlayMode, getTerrainType, getTerrainDisplayName } from "../core/terrain";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { RobotVisualSystem } from "./systems/RobotVisualSystem";
@@ -27,9 +27,10 @@ import {
 import { UIManager } from "./ui/UIManager";
 import { DaySummaryData } from "./ui/DaySummaryPopup";
 import { findRegionAtPosition } from "../core/named-region";
-import { computeRegionStats } from "../core/standing-orders";
-import { getJobForRegion } from "../core/job";
-import { createPlayerJob } from "../core/player-job";
+import { computeRegionStats, evaluateStandingOrders, type FaceStateSampler } from "../core/standing-orders";
+import { getJobForRegion, getActivePlayerJob, cleanupCompletedJobs } from "../core/job";
+import { createPlayerJob, tickPlayerJob, reportPlayerJobProgress, hasActivePlayerJob } from "../core/player-job";
+import { tickJobExecution } from "../core/job-execution";
 import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 import { Control } from "@babylonjs/gui/2D/controls/control";
 import { TextBlock } from "@babylonjs/gui/2D/controls/textBlock";
@@ -1185,8 +1186,27 @@ export class BabylonMain {
     const world = this.babylonEngine.screenToWorldPosition(screenX, screenY);
     if (!world) return false;
 
-    const region = findRegionAtPosition(this.state.namedRegions, world.x, world.z);
-    if (!region) return false;
+    let region = findRegionAtPosition(this.state.namedRegions, world.x, world.z);
+    if (!region) {
+      const faceId = this.terrainSystem.findFaceAtPosition(world.x, world.z);
+      if (faceId === null || faceId === undefined) return false;
+      const fs = this.terrainSystem.getAllFaceStates().get(faceId);
+      if (!fs || fs.terrainCode === 4) return false;
+      const nearbyFaces = this.terrainSystem.getFacesInBrush(world.x, world.z, 5);
+      const sameTerrain = nearbyFaces.filter(f => {
+        const s = this.terrainSystem.getAllFaceStates().get(f);
+        return s && s.terrainCode === fs.terrainCode;
+      });
+      const name = getTerrainDisplayName(getTerrainType(fs.terrainCode));
+      region = {
+        id: `adhoc_${faceId}`,
+        name,
+        holeNumber: 0,
+        terrainCode: fs.terrainCode,
+        boundary: [],
+        faceIds: sameTerrain,
+      };
+    }
 
     const sampler = {
       getFaceState: (fid: number) => {
@@ -1444,6 +1464,33 @@ export class BabylonMain {
       }
 
       this.playerController.updateMovement(deltaMs);
+
+      if (hasActivePlayerJob(this.state.jobSystemState)) {
+        const p = this.playerController.getPlayer();
+        const gameMinutes = (deltaMs / 1000) * 2 * this.state.timeScale;
+        const absoluteTime = this.state.gameDay * 1440 + this.state.gameTime;
+        const result = tickPlayerJob(
+          this.state.jobSystemState, p.worldX, p.worldZ ?? p.worldY,
+          gameMinutes, absoluteTime
+        );
+        if (result.moved) {
+          this.playerController.movePlayerTo(result.newX, result.newZ);
+        }
+        if (result.effect) {
+          const affected = this.terrainSystem.applyWorkEffect(
+            result.effect.worldX, result.effect.worldZ,
+            result.effect.radius, result.effect.type,
+            result.effect.efficiency, absoluteTime
+          );
+          reportPlayerJobProgress(this.state.jobSystemState, affected);
+          if (result.effect.type === 'mow') this.state.dailyStats.maintenance.tilesMowed += affected.length;
+          else if (result.effect.type === 'water') this.state.dailyStats.maintenance.tilesWatered += affected.length;
+          else if (result.effect.type === 'fertilize') this.state.dailyStats.maintenance.tilesFertilized += affected.length;
+        }
+        if (result.completed) {
+          this.uiManager.showNotification('Job complete!');
+        }
+      }
 
       const pv = this.playerController.getPlayerVisual();
       if (pv) {
