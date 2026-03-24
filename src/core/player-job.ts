@@ -36,6 +36,8 @@ export function createPlayerJob(
   gameTime: number,
   topology?: SerializedTopology,
 ): boolean {
+  if (getActivePlayerJob(jobState)) return false;
+
   const pattern = getPatternForTask(taskType, region.terrainCode);
   const waypoints = generateWaypoints(pattern, region, topology);
   if (waypoints.length === 0) return false;
