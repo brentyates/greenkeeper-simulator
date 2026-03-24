@@ -409,6 +409,43 @@ export interface PanelSectionConfig {
   borderColor?: string;
 }
 
+export function createSectionDivider(parent: UIParent, label: string, width: number): StackPanel {
+  const row = new StackPanel();
+  row.isVertical = false;
+  row.height = '24px';
+  row.width = `${width}px`;
+  row.paddingTop = '10px';
+
+  const lineW = Math.floor((width - 140) / 2);
+
+  const line1 = new Rectangle();
+  line1.height = '1px';
+  line1.width = `${lineW}px`;
+  line1.background = UI_THEME.colors.border.muted;
+  line1.thickness = 0;
+  line1.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+  row.addControl(line1);
+
+  const text = new TextBlock();
+  text.text = label;
+  text.color = UI_THEME.colors.text.secondary;
+  text.fontSize = 10;
+  text.fontFamily = UI_THEME.typography.fontFamily;
+  text.width = '140px';
+  row.addControl(text);
+
+  const line2 = new Rectangle();
+  line2.height = '1px';
+  line2.width = `${lineW}px`;
+  line2.background = UI_THEME.colors.border.muted;
+  line2.thickness = 0;
+  line2.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+  row.addControl(line2);
+
+  parent.addControl(row);
+  return row;
+}
+
 export function createPanelSection(parent: UIParent, config: PanelSectionConfig): Rectangle {
   const theme = SECTION_THEMES[config.theme ?? 'green'];
   const container = new Rectangle(config.name);

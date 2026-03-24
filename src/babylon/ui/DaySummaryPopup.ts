@@ -5,7 +5,6 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { createActionButton, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
-import { addDialogSectionLabel } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
 
 export interface DaySummaryData {
@@ -49,16 +48,39 @@ export interface DaySummaryPopupCallbacks {
   onContinue: () => void;
 }
 
+const POPUP_W = 480;
+const CONTENT_W = POPUP_W - 36;
+const ROW_H = 22;
+
+function dollars(n: number): string {
+  return '$' + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function addCell(grid: Grid, row: number, col: number, text: string, opts?: {
+  color?: string; bold?: boolean; hAlign?: number; fontSize?: number;
+}): void {
+  const tb = new TextBlock();
+  tb.text = text;
+  tb.color = opts?.color ?? '#aaaaaa';
+  tb.fontSize = opts?.fontSize ?? 11;
+  if (opts?.bold) tb.fontWeight = 'bold';
+  tb.textHorizontalAlignment = opts?.hAlign ?? Control.HORIZONTAL_ALIGNMENT_LEFT;
+  tb.paddingLeft = '6px';
+  tb.paddingRight = '6px';
+  grid.addControl(tb, row, col);
+}
+
 export class DaySummaryPopup {
   private advancedTexture: AdvancedDynamicTexture;
-  private callbacks: DaySummaryPopupCallbacks;
+  callbacks: DaySummaryPopupCallbacks;
 
   private overlay: Rectangle | null = null;
   private dayText: TextBlock | null = null;
   private profitText: TextBlock | null = null;
-  private revenueStack: StackPanel | null = null;
-  private expenseStack: StackPanel | null = null;
-  private statsStack: StackPanel | null = null;
+  private finGrid: Grid | null = null;
+  private statsGrid: Grid | null = null;
+  private finContainer: StackPanel | null = null;
+  private statsContainer: StackPanel | null = null;
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: DaySummaryPopupCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -69,16 +91,15 @@ export class DaySummaryPopup {
   private createPopup(): void {
     const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
       name: 'summary',
-      width: 450,
-      height: 550,
+      width: POPUP_W,
+      height: 540,
       colors: POPUP_COLORS.green,
-      padding: 15,
+      padding: 18,
     });
 
     this.overlay = overlay;
-
     this.createHeader(stack);
-    this.createFinancialSummary(stack);
+    this.createFinancialSection(stack);
     this.createStatsSection(stack);
     this.createContinueButton(stack);
   }
@@ -86,7 +107,7 @@ export class DaySummaryPopup {
   private createHeader(parent: StackPanel): void {
     createPopupHeader(parent, {
       title: '🌅 DAY SUMMARY',
-      width: 420,
+      width: CONTENT_W,
       onClose: () => {
         this.hide();
         this.callbacks.onContinue();
@@ -94,159 +115,124 @@ export class DaySummaryPopup {
       closeLabel: 'Skip',
     });
 
-    const header = new Rectangle('summaryHeaderDetails');
-    header.height = '55px';
-    header.width = '420px';
-    header.thickness = 0;
-    header.background = 'transparent';
-    parent.addControl(header);
-
     this.dayText = new TextBlock('dayText');
     this.dayText.text = 'Day 1 Complete';
     this.dayText.color = UI_THEME.colors.legacy.c_ffcc00;
-    this.dayText.fontSize = UI_THEME.typography.scale.s20;
+    this.dayText.fontSize = 20;
     this.dayText.fontWeight = 'bold';
-    this.dayText.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    this.dayText.top = '8px';
-    header.addControl(this.dayText);
+    this.dayText.height = '32px';
+    this.dayText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    parent.addControl(this.dayText);
 
     this.profitText = new TextBlock('profitText');
-    this.profitText.text = 'Net: +$0';
-    this.profitText.color = UI_THEME.colors.legacy.c_44ff44;
-    this.profitText.fontSize = UI_THEME.typography.scale.s18;
-    this.profitText.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    this.profitText.top = '-5px';
-    header.addControl(this.profitText);
+    this.profitText.text = 'Net Profit: +$0';
+    this.profitText.color = '#44ff44';
+    this.profitText.fontSize = 16;
+    this.profitText.height = '26px';
+    this.profitText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    parent.addControl(this.profitText);
   }
 
-  private createFinancialSummary(parent: StackPanel): void {
-    const container = createPanelSection(parent, {
+  private createFinancialSection(parent: StackPanel): void {
+    this.finContainer = createPanelSection(parent, {
       name: 'financialContainer',
-      width: 420,
-      height: 210,
+      width: CONTENT_W,
+      height: 10,
       theme: 'green',
       paddingTop: 8,
     });
-
-    const grid = new Grid('financialGrid');
-    grid.addColumnDefinition(0.5);
-    grid.addColumnDefinition(0.5);
-    container.addControl(grid);
-
-    const revenueSection = new StackPanel('revenueSection');
-    revenueSection.paddingLeft = '15px';
-    revenueSection.paddingTop = '10px';
-    grid.addControl(revenueSection, 0, 0);
-
-    addDialogSectionLabel(revenueSection, {
-      id: 'revenueLabel',
-      text: '💰 REVENUE',
-      tone: 'success',
-      fontSize: 12,
-      height: 20,
-    });
-
-    this.revenueStack = new StackPanel('revenueStack');
-    this.revenueStack.paddingTop = '5px';
-    revenueSection.addControl(this.revenueStack);
-
-    const expenseSection = new StackPanel('expenseSection');
-    expenseSection.paddingTop = '10px';
-    grid.addControl(expenseSection, 0, 1);
-
-    const expenseLabel = addDialogSectionLabel(expenseSection, {
-      id: 'expenseLabel',
-      text: '💸 EXPENSES',
-      tone: 'default',
-      fontSize: 12,
-      height: 20,
-    });
-    expenseLabel.color = UI_THEME.colors.legacy.c_ff6666;
-
-    this.expenseStack = new StackPanel('expenseStack');
-    this.expenseStack.paddingTop = '5px';
-    expenseSection.addControl(this.expenseStack);
   }
 
-  private createLineItem(label: string, amount: number, isPositive: boolean): StackPanel {
-    const row = new StackPanel('row');
-    row.isVertical = false;
-    row.height = '22px';
-    row.width = '180px';
+  private buildFinGrid(revItems: Array<{ label: string; amount: number }>, expItems: Array<{ label: string; amount: number }>, totalRev: number, totalExp: number): void {
+    if (!this.finContainer) return;
+    if (this.finGrid) this.finContainer.removeControl(this.finGrid);
 
-    const labelText = new TextBlock('label');
-    labelText.text = label;
-    labelText.color = UI_THEME.colors.legacy.c_aaaaaa;
-    labelText.fontSize = UI_THEME.typography.scale.s11;
-    labelText.width = '100px';
-    labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    row.addControl(labelText);
+    const maxRows = Math.max(revItems.length, expItems.length);
+    const totalRows = 1 + maxRows + 1;
+    const gridH = totalRows * ROW_H + 16;
 
-    const amountText = new TextBlock('amount');
-    amountText.text = `$${Math.abs(amount).toLocaleString()}`;
-    amountText.color = isPositive ? '#66ff66' : '#ff8888';
-    amountText.fontSize = UI_THEME.typography.scale.s11;
-    amountText.width = '80px';
-    amountText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    row.addControl(amountText);
+    this.finContainer.height = `${gridH + 16}px`;
 
-    return row;
+    this.finGrid = new Grid('finGrid');
+    this.finGrid.width = `${CONTENT_W - 16}px`;
+    this.finGrid.height = `${gridH}px`;
+    // 4 columns: rev label | rev amount | exp label | exp amount
+    this.finGrid.addColumnDefinition(0.28);
+    this.finGrid.addColumnDefinition(0.22);
+    this.finGrid.addColumnDefinition(0.28);
+    this.finGrid.addColumnDefinition(0.22);
+
+    for (let i = 0; i < totalRows; i++) {
+      this.finGrid.addRowDefinition(ROW_H, true);
+    }
+
+    // Header row
+    addCell(this.finGrid, 0, 0, 'REVENUE', { color: '#66ff66', bold: true });
+    addCell(this.finGrid, 0, 2, 'EXPENSES', { color: '#ff6666', bold: true });
+
+    // Line items
+    for (let i = 0; i < maxRows; i++) {
+      const row = i + 1;
+      if (i < revItems.length) {
+        addCell(this.finGrid, row, 0, revItems[i].label);
+        addCell(this.finGrid, row, 1, dollars(revItems[i].amount), { color: '#66ff66', hAlign: Control.HORIZONTAL_ALIGNMENT_RIGHT });
+      }
+      if (i < expItems.length) {
+        addCell(this.finGrid, row, 2, expItems[i].label);
+        addCell(this.finGrid, row, 3, dollars(expItems[i].amount), { color: '#ff8888', hAlign: Control.HORIZONTAL_ALIGNMENT_RIGHT });
+      }
+    }
+
+    // Total row
+    const totalRow = maxRows + 1;
+    addCell(this.finGrid, totalRow, 0, 'TOTAL', { color: '#ffffff', bold: true });
+    addCell(this.finGrid, totalRow, 1, dollars(totalRev), { color: '#66ff66', bold: true, hAlign: Control.HORIZONTAL_ALIGNMENT_RIGHT });
+    addCell(this.finGrid, totalRow, 2, 'TOTAL', { color: '#ffffff', bold: true });
+    addCell(this.finGrid, totalRow, 3, dollars(totalExp), { color: '#ff8888', bold: true, hAlign: Control.HORIZONTAL_ALIGNMENT_RIGHT });
+
+    this.finContainer.addControl(this.finGrid);
   }
 
   private createStatsSection(parent: StackPanel): void {
-    const container = createPanelSection(parent, {
+    this.statsContainer = createPanelSection(parent, {
       name: 'statsContainer',
-      width: 420,
-      height: 175,
+      width: CONTENT_W,
+      height: 10,
       theme: 'green',
       paddingTop: 6,
     });
-
-    const title = addDialogSectionLabel(container, {
-      id: 'statsLabel',
-      text: '📊 DAY STATISTICS',
-      tone: 'info',
-      fontSize: 12,
-      height: 25,
-    });
-    title.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    title.top = '10px';
-
-    this.statsStack = new StackPanel('statsStack');
-    this.statsStack.paddingTop = '35px';
-    this.statsStack.paddingLeft = '15px';
-    container.addControl(this.statsStack);
   }
 
-  private createStatLine(icon: string, label: string, value: string, valueColor: string = '#ffffff'): StackPanel {
-    const row = new StackPanel('statRow');
-    row.isVertical = false;
-    row.height = '24px';
-    row.width = '390px';
+  private buildStatsGrid(rows: Array<{ label: string; value: string; color?: string }>): void {
+    if (!this.statsContainer) return;
+    if (this.statsGrid) this.statsContainer.removeControl(this.statsGrid);
 
-    const iconText = new TextBlock('icon');
-    iconText.text = icon;
-    iconText.fontSize = UI_THEME.typography.scale.s14;
-    iconText.width = '25px';
-    row.addControl(iconText);
+    const totalRows = 1 + rows.length;
+    const gridH = totalRows * ROW_H + 12;
+    this.statsContainer.height = `${gridH + 12}px`;
 
-    const labelText = new TextBlock('label');
-    labelText.text = label;
-    labelText.color = UI_THEME.colors.legacy.c_aaaaaa;
-    labelText.fontSize = UI_THEME.typography.scale.s12;
-    labelText.width = '200px';
-    labelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    row.addControl(labelText);
+    this.statsGrid = new Grid('statsGrid');
+    this.statsGrid.width = `${CONTENT_W - 16}px`;
+    this.statsGrid.height = `${gridH}px`;
+    this.statsGrid.addColumnDefinition(0.55);
+    this.statsGrid.addColumnDefinition(0.45);
 
-    const valueText = new TextBlock('value');
-    valueText.text = value;
-    valueText.color = valueColor;
-    valueText.fontSize = UI_THEME.typography.scale.s12;
-    valueText.width = '180px';
-    valueText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    row.addControl(valueText);
+    for (let i = 0; i < totalRows; i++) {
+      this.statsGrid.addRowDefinition(ROW_H, true);
+    }
 
-    return row;
+    addCell(this.statsGrid, 0, 0, 'DAY STATISTICS', { color: '#88bbff', bold: true });
+
+    for (let i = 0; i < rows.length; i++) {
+      addCell(this.statsGrid, i + 1, 0, rows[i].label, { fontSize: 12 });
+      addCell(this.statsGrid, i + 1, 1, rows[i].value, {
+        color: rows[i].color ?? '#ffffff',
+        fontSize: 12,
+        hAlign: Control.HORIZONTAL_ALIGNMENT_RIGHT,
+      });
+    }
+
+    this.statsContainer.addControl(this.statsGrid);
   }
 
   private createContinueButton(parent: StackPanel): void {
@@ -254,7 +240,7 @@ export class DaySummaryPopup {
       id: 'continueBtn',
       label: '▶️  Continue to Next Day',
       tone: 'primary',
-      width: 420,
+      width: CONTENT_W,
       height: 45,
       fontSize: 16,
       cornerRadius: 8,
@@ -264,12 +250,12 @@ export class DaySummaryPopup {
         this.callbacks.onContinue();
       },
     });
-    btn.paddingTop = '12px';
+    btn.paddingTop = '10px';
     parent.addControl(btn);
   }
 
   public show(data: DaySummaryData): void {
-    if (!this.overlay || !this.dayText || !this.profitText || !this.revenueStack || !this.expenseStack || !this.statsStack) return;
+    if (!this.overlay || !this.dayText || !this.profitText || !this.finContainer || !this.statsContainer) return;
 
     this.dayText.text = `Day ${data.day} Complete`;
 
@@ -278,91 +264,40 @@ export class DaySummaryPopup {
     const netProfit = totalRevenue - totalExpenses;
 
     this.profitText.text = netProfit >= 0
-      ? `Net Profit: +$${netProfit.toLocaleString()}`
-      : `Net Loss: -$${Math.abs(netProfit).toLocaleString()}`;
+      ? `Net Profit: +$${netProfit.toFixed(2)}`
+      : `Net Loss: -$${Math.abs(netProfit).toFixed(2)}`;
     this.profitText.color = netProfit >= 0 ? '#44ff44' : '#ff4444';
 
-    const revenueChildren = [...this.revenueStack.children];
-    for (const child of revenueChildren) {
-      this.revenueStack.removeControl(child);
-    }
+    const revItems: Array<{ label: string; amount: number }> = [];
+    if (data.revenue.greenFees > 0) revItems.push({ label: 'Green Fees', amount: data.revenue.greenFees });
+    if (data.revenue.tips > 0) revItems.push({ label: 'Tips', amount: data.revenue.tips });
+    if (data.revenue.addOns > 0) revItems.push({ label: 'Add-ons', amount: data.revenue.addOns });
+    if (data.revenue.other > 0) revItems.push({ label: 'Other', amount: data.revenue.other });
 
-    if (data.revenue.greenFees > 0) {
-      this.revenueStack.addControl(this.createLineItem('Green Fees', data.revenue.greenFees, true));
-    }
-    if (data.revenue.tips > 0) {
-      this.revenueStack.addControl(this.createLineItem('Tips', data.revenue.tips, true));
-    }
-    if (data.revenue.addOns > 0) {
-      this.revenueStack.addControl(this.createLineItem('Add-ons', data.revenue.addOns, true));
-    }
-    if (data.revenue.other > 0) {
-      this.revenueStack.addControl(this.createLineItem('Other', data.revenue.other, true));
-    }
+    const expItems: Array<{ label: string; amount: number }> = [];
+    if (data.expenses.wages > 0) expItems.push({ label: 'Wages', amount: data.expenses.wages });
+    if (data.expenses.supplies > 0) expItems.push({ label: 'Supplies', amount: data.expenses.supplies });
+    if (data.expenses.research > 0) expItems.push({ label: 'Research', amount: data.expenses.research });
+    if (data.expenses.utilities > 0) expItems.push({ label: 'Utilities', amount: data.expenses.utilities });
+    if (data.expenses.other > 0) expItems.push({ label: 'Other', amount: data.expenses.other });
 
-    const totalRow = this.createLineItem('TOTAL', totalRevenue, true);
-    const totalLabel = totalRow.children[0] as TextBlock;
-    totalLabel.color = UI_THEME.colors.legacy.c_ffffff;
-    totalLabel.fontWeight = 'bold';
-    this.revenueStack.addControl(totalRow);
+    this.buildFinGrid(revItems, expItems, totalRevenue, totalExpenses);
 
-    const expenseChildren = [...this.expenseStack.children];
-    for (const child of expenseChildren) {
-      this.expenseStack.removeControl(child);
-    }
-
-    if (data.expenses.wages > 0) {
-      this.expenseStack.addControl(this.createLineItem('Wages', data.expenses.wages, false));
-    }
-    if (data.expenses.supplies > 0) {
-      this.expenseStack.addControl(this.createLineItem('Supplies', data.expenses.supplies, false));
-    }
-    if (data.expenses.research > 0) {
-      this.expenseStack.addControl(this.createLineItem('Research', data.expenses.research, false));
-    }
-    if (data.expenses.utilities > 0) {
-      this.expenseStack.addControl(this.createLineItem('Utilities', data.expenses.utilities, false));
-    }
-    if (data.expenses.other > 0) {
-      this.expenseStack.addControl(this.createLineItem('Other', data.expenses.other, false));
-    }
-
-    const expenseTotal = this.createLineItem('TOTAL', totalExpenses, false);
-    const expenseTotalLabel = expenseTotal.children[0] as TextBlock;
-    expenseTotalLabel.color = UI_THEME.colors.legacy.c_ffffff;
-    expenseTotalLabel.fontWeight = 'bold';
-    this.expenseStack.addControl(expenseTotal);
-
-    const statsChildren = [...this.statsStack.children];
-    for (const child of statsChildren) {
-      this.statsStack.removeControl(child);
-    }
-
-    this.statsStack.addControl(
-      this.createStatLine('🏌️', 'Golfers Served', `${data.golfers.totalServed}`)
-    );
-    this.statsStack.addControl(
-      this.createStatLine('😊', 'Avg Satisfaction', `${data.golfers.averageSatisfaction.toFixed(0)}%`,
-        data.golfers.averageSatisfaction >= 70 ? '#44ff44' : data.golfers.averageSatisfaction >= 50 ? '#ffaa44' : '#ff4444')
-    );
-
-    const healthChange = data.courseHealth.change;
-    this.statsStack.addControl(
-      this.createStatLine('🌿', 'Course Health', `${data.courseHealth.end.toFixed(0)}% (${healthChange >= 0 ? '+' : ''}${healthChange.toFixed(1)}%)`,
-        healthChange >= 0 ? '#44ff44' : '#ff4444')
-    );
-
-    const prestigeChange = data.prestige.change;
-    this.statsStack.addControl(
-      this.createStatLine('⭐', 'Prestige Score', `${data.prestige.score.toFixed(0)} (${prestigeChange >= 0 ? '+' : ''}${prestigeChange.toFixed(0)})`,
-        prestigeChange >= 0 ? '#ffcc00' : '#ff8844')
-    );
-
+    const hc = data.courseHealth.change;
+    const pc = data.prestige.change;
+    const statRows = [
+      { label: '🏌️  Golfers Served', value: `${data.golfers.totalServed}` },
+      { label: '😊  Avg Satisfaction', value: `${data.golfers.averageSatisfaction.toFixed(0)}%`,
+        color: data.golfers.averageSatisfaction >= 70 ? '#44ff44' : data.golfers.averageSatisfaction >= 50 ? '#ffaa44' : '#ff4444' },
+      { label: '🌿  Course Health', value: `${data.courseHealth.end.toFixed(0)}% (${hc >= 0 ? '+' : ''}${hc.toFixed(1)})`,
+        color: hc >= 0 ? '#44ff44' : '#ff4444' },
+      { label: '⭐  Prestige', value: `${data.prestige.score.toFixed(0)} (${pc >= 0 ? '+' : ''}${pc.toFixed(0)})`,
+        color: pc >= 0 ? '#ffcc00' : '#ff8844' },
+    ];
     if (data.maintenance && data.maintenance.tasksCompleted > 0) {
-      this.statsStack.addControl(
-        this.createStatLine('🔧', 'Crew Work', `${data.maintenance.tasksCompleted} tasks completed`, '#88ccff')
-      );
+      statRows.push({ label: '🔧  Crew Work', value: `${data.maintenance.tasksCompleted} tasks`, color: '#88ccff' });
     }
+    this.buildStatsGrid(statRows);
 
     this.overlay.isVisible = true;
   }

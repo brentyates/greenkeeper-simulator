@@ -14,6 +14,7 @@ import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige'
 import { OverlayMode } from '../../core/terrain';
 import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
+import { createOverlayPopup, createPopupHeader, createSectionDivider, POPUP_COLORS } from './PopupUtils';
 
 export class UIManager {
   private advancedTexture: AdvancedDynamicTexture;
@@ -974,302 +975,125 @@ export class UIManager {
   }
 
   private createPauseOverlay(): void {
-    this.pauseOverlay = new Rectangle('pauseOverlay');
-    this.pauseOverlay.width = '100%';
-    this.pauseOverlay.height = '100%';
-    this.pauseOverlay.background = UI_THEME.colors.surfaces.overlay;
-    this.pauseOverlay.thickness = 0;
-    this.pauseOverlay.isVisible = false;
-    this.pauseOverlay.isPointerBlocker = true;
-    this.advancedTexture.addControl(this.pauseOverlay);
+    const POPUP_W = 400;
+    const CONTENT_W = POPUP_W - 36;
+    const W = `${CONTENT_W}px`;
+    const BTN_W = `${Math.floor(CONTENT_W / 2 - 4)}px`;
 
-    const panel = new Rectangle('pausePanel');
-    panel.width = '424px';
-    panel.height = '544px';
-    this.applyHudPanelStyle(panel, true);
-    panel.background = UI_THEME.colors.surfaces.panel;
-    panel.color = UI_THEME.colors.border.strong;
-    panel.thickness = 2;
-    panel.shadowBlur = 22;
-    panel.shadowOffsetY = 8;
-    this.pauseOverlay.addControl(panel);
+    const { overlay, stack } = createOverlayPopup(this.advancedTexture, {
+      name: 'pause',
+      width: POPUP_W,
+      height: 520,
+      colors: POPUP_COLORS.green,
+      padding: 18,
+    });
+    this.pauseOverlay = overlay;
 
-    const stack = new StackPanel('pauseStack');
-    stack.width = '384px';
-    stack.paddingTop = '18px';
-    panel.addControl(stack);
-
-    const title = new TextBlock('pauseTitle');
-    title.text = 'PAUSED';
-    title.color = UI_THEME.colors.text.accent;
-    title.fontSize = UI_THEME.typography.scale.s28;
-    title.fontFamily = UI_THEME.typography.fontFamily;
-    title.height = '34px';
-    stack.addControl(title);
-
-    const subtitle = new TextBlock('pauseSubtitle');
-    subtitle.text = 'Resume play, manage operations, or jump back to setup screens.';
-    subtitle.color = UI_THEME.colors.text.secondary;
-    subtitle.fontSize = UI_THEME.typography.scale.s11;
-    subtitle.fontFamily = UI_THEME.typography.fontFamily;
-    subtitle.height = '18px';
-    stack.addControl(subtitle);
-
-    const topActions = new Grid('pauseTopActions');
-    topActions.width = '384px';
-    topActions.height = '92px';
-    topActions.paddingTop = '14px';
-    topActions.addColumnDefinition(0.5);
-    topActions.addColumnDefinition(0.5);
-    topActions.addRowDefinition(0.5);
-    topActions.addRowDefinition(0.5);
-    stack.addControl(topActions);
-
-    const makePauseButton = (
-      label: string,
-      options: {
-        backgroundColor?: string;
-        borderColor?: string;
-        onClick: () => void;
-      }
-    ): AccessibleButton => {
-      const button = createAccessibleButton({
-        label,
-        width: '178px',
-        height: '36px',
-        fontSize: 15,
-        backgroundColor: options.backgroundColor,
-        borderColor: options.borderColor,
-        onClick: options.onClick,
-        focusGroup: 'pause-menu',
-      }, this.focusManager);
-      this.pauseMenuButtons.push(button);
-      return button;
-    };
+    createPopupHeader(stack, {
+      title: '⏸ PAUSED',
+      width: CONTENT_W,
+      onClose: () => this.onResume?.(),
+      closeLabel: 'Skip',
+    });
 
     const resumeBtn = createAccessibleButton({
       label: '▶ Resume',
-      width: '178px',
-      height: '36px',
-      fontSize: 15,
+      width: W,
+      height: '40px',
+      fontSize: 16,
       backgroundColor: UI_THEME.colors.action.primary.normal,
       borderColor: UI_THEME.colors.launch.selectedBorder,
       onClick: () => this.onResume?.(),
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    topActions.addControl(resumeBtn.control, 0, 0);
+    resumeBtn.control.paddingTop = '10px';
+    stack.addControl(resumeBtn.control);
     this.pauseMenuButtons.push(resumeBtn);
 
-    const saveBtn = makePauseButton('💾 Quick Save', {
-      backgroundColor: UI_THEME.colors.action.success.normal,
-      borderColor: UI_THEME.colors.border.strong,
-      onClick: () => {
-        this.onSave?.();
-        this.showNotification('Game saved!');
-      },
-    });
-    topActions.addControl(saveBtn.control, 0, 1);
+    const secondaryRow = new Grid('secondaryActions');
+    secondaryRow.width = W;
+    secondaryRow.height = '42px';
+    secondaryRow.paddingTop = '6px';
+    secondaryRow.addColumnDefinition(1 / 3);
+    secondaryRow.addColumnDefinition(1 / 3);
+    secondaryRow.addColumnDefinition(1 / 3);
+    secondaryRow.addRowDefinition(1.0);
+    stack.addControl(secondaryRow);
 
-    const restartBtn = makePauseButton('↺ Restart', {
-      backgroundColor: UI_THEME.colors.action.warning.normal,
-      borderColor: UI_THEME.colors.text.warning,
-      onClick: () => this.onRestart?.(),
-    });
-    topActions.addControl(restartBtn.control, 1, 0);
+    const makeSecondaryBtn = (label: string, col: number, onClick: () => void) => {
+      const btn = createAccessibleButton({
+        label,
+        width: '114px',
+        height: '34px',
+        fontSize: 12,
+        backgroundColor: UI_THEME.colors.action.neutral.normal,
+        borderColor: UI_THEME.colors.border.default,
+        onClick,
+        focusGroup: 'pause-menu',
+      }, this.focusManager);
+      secondaryRow.addControl(btn.control, 0, col);
+      this.pauseMenuButtons.push(btn);
+    };
 
-    const mainMenuBtn = makePauseButton('⌂ Main Menu', {
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.info,
-      onClick: () => this.onMainMenu?.(),
-    });
-    topActions.addControl(mainMenuBtn.control, 1, 1);
+    makeSecondaryBtn('💾 Save', 0, () => { this.onSave?.(); this.showNotification('Game saved!'); });
+    makeSecondaryBtn('↺ Restart', 1, () => this.onRestart?.());
+    makeSecondaryBtn('⌂ Menu', 2, () => this.onMainMenu?.());
 
-    const divider = new Rectangle('divider');
-    divider.width = '384px';
-    divider.height = '1px';
-    divider.background = UI_THEME.colors.border.muted;
-    divider.thickness = 0;
-    divider.paddingTop = '8px';
-    divider.paddingBottom = '8px';
-    stack.addControl(divider);
+    createSectionDivider(stack, 'MANAGEMENT', CONTENT_W);
 
-    const mgmtLabel = new TextBlock('mgmtLabel');
-    mgmtLabel.text = 'MANAGEMENT';
-    mgmtLabel.color = UI_THEME.colors.text.secondary;
-    mgmtLabel.fontSize = UI_THEME.typography.scale.s12;
-    mgmtLabel.fontFamily = UI_THEME.typography.fontFamily;
-    mgmtLabel.height = '20px';
-    stack.addControl(mgmtLabel);
+    const mgmtGrid = new Grid('pauseManagementGrid');
+    mgmtGrid.width = W;
+    mgmtGrid.height = '148px';
+    mgmtGrid.paddingTop = '6px';
+    mgmtGrid.addColumnDefinition(0.5);
+    mgmtGrid.addColumnDefinition(0.5);
+    mgmtGrid.addRowDefinition(0.25);
+    mgmtGrid.addRowDefinition(0.25);
+    mgmtGrid.addRowDefinition(0.25);
+    mgmtGrid.addRowDefinition(0.25);
+    stack.addControl(mgmtGrid);
 
-    const managementGrid = new Grid('pauseManagementGrid');
-    managementGrid.width = '384px';
-    managementGrid.height = '184px';
-    managementGrid.paddingTop = '8px';
-    managementGrid.addColumnDefinition(0.5);
-    managementGrid.addColumnDefinition(0.5);
-    managementGrid.addRowDefinition(0.25);
-    managementGrid.addRowDefinition(0.25);
-    managementGrid.addRowDefinition(0.25);
-    managementGrid.addRowDefinition(0.25);
-    stack.addControl(managementGrid);
+    const makeMgmtBtn = (label: string, row: number, col: number, onClick: () => void) => {
+      const btn = createAccessibleButton({
+        label,
+        fontSize: 13,
+        width: BTN_W,
+        height: '30px',
+        backgroundColor: UI_THEME.colors.action.neutral.normal,
+        borderColor: UI_THEME.colors.border.default,
+        onClick: () => { this.hidePauseMenu(); onClick(); },
+        focusGroup: 'pause-menu'
+      }, this.focusManager);
+      mgmtGrid.addControl(btn.control, row, col);
+      this.pauseMenuButtons.push(btn);
+    };
 
-    const employeesBtn = createAccessibleButton({
-      label: '👥 Employees',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onEmployees?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(employeesBtn.control, 0, 0);
-    this.pauseMenuButtons.push(employeesBtn);
+    makeMgmtBtn('👥 Employees', 0, 0, () => this.onEmployees?.());
+    makeMgmtBtn('🔬 Research', 0, 1, () => this.onResearch?.());
+    makeMgmtBtn('📋 Tee Sheet', 1, 0, () => this.onTeeSheet?.());
+    makeMgmtBtn('💧 Irrigation', 1, 1, () => this.onIrrigation?.());
+    makeMgmtBtn('🛒 Equipment', 2, 0, () => this.onEquipmentStore?.());
+    makeMgmtBtn('🏛️ Amenities', 2, 1, () => this.onAmenityPanel?.());
+    makeMgmtBtn('🛠 Hole Builder', 3, 0, () => this.onHoleBuilder?.());
+    makeMgmtBtn('⛳ Course Layout', 3, 1, () => this.onCourseLayout?.());
 
-    const researchBtn = createAccessibleButton({
-      label: '🔬 Research',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onResearch?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(researchBtn.control, 0, 1);
-    this.pauseMenuButtons.push(researchBtn);
+    createSectionDivider(stack, 'GAME SPEED', CONTENT_W);
 
-    const teeSheetBtn = createAccessibleButton({
-      label: '📋 Tee Sheet',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onTeeSheet?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(teeSheetBtn.control, 1, 0);
-    this.pauseMenuButtons.push(teeSheetBtn);
+    const speedRow = new StackPanel('speedRow');
+    speedRow.isVertical = false;
+    speedRow.height = '40px';
+    speedRow.width = W;
+    speedRow.paddingTop = '6px';
+    stack.addControl(speedRow);
 
-    const irrigationBtn = createAccessibleButton({
-      label: '💧 Irrigation',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onIrrigation?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(irrigationBtn.control, 1, 1);
-    this.pauseMenuButtons.push(irrigationBtn);
-
-    const equipmentStoreBtn = createAccessibleButton({
-      label: '🛒 Equipment Store',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onEquipmentStore?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(equipmentStoreBtn.control, 2, 0);
-    this.pauseMenuButtons.push(equipmentStoreBtn);
-
-    const amenitiesBtn = createAccessibleButton({
-      label: '🏛️ Amenities',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onAmenityPanel?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(amenitiesBtn.control, 2, 1);
-    this.pauseMenuButtons.push(amenitiesBtn);
-
-    const holeBuilderBtn = createAccessibleButton({
-      label: '🛠 Hole Builder',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onHoleBuilder?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(holeBuilderBtn.control, 3, 0);
-    this.pauseMenuButtons.push(holeBuilderBtn);
-
-    const courseLayoutBtn = createAccessibleButton({
-      label: '⛳ Course Layout',
-      fontSize: 14,
-      width: '178px',
-      height: '34px',
-      backgroundColor: UI_THEME.colors.action.neutral.normal,
-      borderColor: UI_THEME.colors.border.default,
-      onClick: () => {
-        this.hidePauseMenu();
-        this.onCourseLayout?.();
-      },
-      focusGroup: 'pause-menu'
-    }, this.focusManager);
-    managementGrid.addControl(courseLayoutBtn.control, 3, 1);
-    this.pauseMenuButtons.push(courseLayoutBtn);
-
-    const speedDivider = new Rectangle('speedDivider');
-    speedDivider.width = '384px';
-    speedDivider.height = '1px';
-    speedDivider.background = UI_THEME.colors.border.muted;
-    speedDivider.thickness = 0;
-    speedDivider.paddingTop = '8px';
-    speedDivider.paddingBottom = '3px';
-    stack.addControl(speedDivider);
-
-    const speedLabel = new TextBlock('speedLabel');
-    speedLabel.text = 'GAME SPEED';
-    speedLabel.color = UI_THEME.colors.text.secondary;
-    speedLabel.fontSize = UI_THEME.typography.scale.s11;
-    speedLabel.fontFamily = UI_THEME.typography.fontFamily;
-    speedLabel.height = '20px';
-    stack.addControl(speedLabel);
-
-    const speedContainer = new Rectangle('speedContainer');
-    speedContainer.height = '54px';
-    speedContainer.width = '384px';
-    speedContainer.cornerRadius = UI_THEME.radii.section;
-    speedContainer.background = UI_THEME.colors.surfaces.hudInset;
-    speedContainer.color = UI_THEME.colors.border.muted;
-    speedContainer.thickness = 1;
-    stack.addControl(speedContainer);
+    const spacerL = new Rectangle();
+    spacerL.width = '100px';
+    spacerL.thickness = 0;
+    speedRow.addControl(spacerL);
 
     const slowBtn = createAccessibleButton({
       label: '◀',
-      width: '56px',
+      width: '44px',
       height: '30px',
       fontSize: 14,
       backgroundColor: UI_THEME.colors.action.neutral.normal,
@@ -1280,9 +1104,7 @@ export class UIManager {
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    slowBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    slowBtn.control.left = '18px';
-    speedContainer.addControl(slowBtn.control);
+    speedRow.addControl(slowBtn.control);
     this.pauseMenuButtons.push(slowBtn);
 
     this.speedText = new TextBlock('speedText');
@@ -1291,11 +1113,12 @@ export class UIManager {
     this.speedText.fontSize = UI_THEME.typography.scale.s16;
     this.speedText.fontWeight = 'bold';
     this.speedText.fontFamily = UI_THEME.typography.fontFamily;
-    speedContainer.addControl(this.speedText);
+    this.speedText.width = '72px';
+    speedRow.addControl(this.speedText);
 
     const fastBtn = createAccessibleButton({
       label: '▶',
-      width: '56px',
+      width: '44px',
       height: '30px',
       fontSize: 14,
       backgroundColor: UI_THEME.colors.action.neutral.normal,
@@ -1306,17 +1129,20 @@ export class UIManager {
       },
       focusGroup: 'pause-menu'
     }, this.focusManager);
-    fastBtn.control.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-    fastBtn.control.left = '-18px';
-    speedContainer.addControl(fastBtn.control);
+    speedRow.addControl(fastBtn.control);
     this.pauseMenuButtons.push(fastBtn);
 
+    const spacerR = new Rectangle();
+    spacerR.width = '100px';
+    spacerR.thickness = 0;
+    speedRow.addControl(spacerR);
+
     const hint = new TextBlock('pauseHint');
-    hint.text = 'Press P or ESC to return. Use Tab or arrows to move between buttons.';
+    hint.text = 'P / ESC to return';
     hint.color = UI_THEME.colors.text.muted;
-    hint.fontSize = UI_THEME.typography.scale.s11;
+    hint.fontSize = 10;
     hint.fontFamily = UI_THEME.typography.fontFamily;
-    hint.height = '22px';
+    hint.height = '20px';
     hint.paddingTop = '8px';
     stack.addControl(hint);
   }
