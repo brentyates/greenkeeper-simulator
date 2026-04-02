@@ -1,8 +1,8 @@
-export type ClubhouseTier = 0 | 1 | 2 | 3 | 4;
-export type ProShopTier = 0 | 1 | 2 | 3;
-export type DiningTier = 0 | 1 | 2 | 3 | 4;
-export type CartType = 'walking' | 'pull_carts' | 'basic_carts' | 'premium_carts' | 'luxury_carts';
-export type ComfortStationTier = 0 | 1 | 2 | 3 | 4;
+type ClubhouseTier = 0 | 1 | 2 | 3 | 4;
+type ProShopTier = 0 | 1 | 2 | 3;
+type DiningTier = 0 | 1 | 2 | 3 | 4;
+type CartType = 'walking' | 'pull_carts' | 'basic_carts' | 'premium_carts' | 'luxury_carts';
+type ComfortStationTier = 0 | 1 | 2 | 3 | 4;
 
 export interface Facilities {
   drivingRange: boolean;
@@ -22,7 +22,7 @@ export interface Services {
   concierge: boolean;
 }
 
-export interface CourseFeatures {
+interface CourseFeatures {
   cartType: CartType;
   beverageService: boolean;
   comfortStations: ComfortStationTier;

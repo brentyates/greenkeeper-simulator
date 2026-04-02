@@ -277,7 +277,7 @@ const SUNRISE_VALLEY_3_LAYOUT: CourseLayout = {
   ],
 };
 
-export const COURSE_3_HOLE: CourseData = courseLayoutToCourseData(SUNRISE_VALLEY_3_LAYOUT);
+const COURSE_3_HOLE: CourseData = courseLayoutToCourseData(SUNRISE_VALLEY_3_LAYOUT);
 
 export const COURSE_HOLE_1: CourseData = {
   name: 'Test Hole',
@@ -300,7 +300,7 @@ export const COURSE_HOLE_1: CourseData = {
   obstacles: [],
 };
 
-export const COURSE_TEST: CourseData = {
+const COURSE_TEST: CourseData = {
   name: 'Test Course',
   width: 15,
   height: 15,
@@ -363,4 +363,3 @@ export function getCourseById(courseId: string): CourseData | undefined {
   return undefined;
 }
 
-export const DEFAULT_COURSE = COURSE_3_HOLE;

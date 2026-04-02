@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   AmenityState,
-  ClubhouseTier,
-  ProShopTier,
-  DiningTier,
-  ComfortStationTier,
-
   createInitialAmenityState,
   calculateAmenityScore,
   getUpgradeCost,
@@ -37,19 +32,19 @@ describe('amenities', () => {
   describe('calculateAmenityScore', () => {
     it('adds clubhouse prestige', () => {
       const state = createInitialAmenityState();
-      const withClubhouse = { ...state, clubhouseTier: 1 as ClubhouseTier };
+      const withClubhouse = { ...state, clubhouseTier: 1 as const };
       expect(calculateAmenityScore(withClubhouse)).toBeGreaterThan(0);
     });
 
     it('adds pro shop prestige', () => {
       const state = createInitialAmenityState();
-      const withProShop = { ...state, proShopTier: 2 as ProShopTier };
+      const withProShop = { ...state, proShopTier: 2 as const };
       expect(calculateAmenityScore(withProShop)).toBeGreaterThan(0);
     });
 
     it('adds dining prestige', () => {
       const state = createInitialAmenityState();
-      const withDining = { ...state, diningTier: 3 as DiningTier };
+      const withDining = { ...state, diningTier: 3 as const };
       expect(calculateAmenityScore(withDining)).toBeGreaterThan(0);
     });
 
@@ -84,7 +79,7 @@ describe('amenities', () => {
       const state = createInitialAmenityState();
       const withStations = {
         ...state,
-        courseFeatures: { ...state.courseFeatures, comfortStations: 2 as ComfortStationTier },
+        courseFeatures: { ...state.courseFeatures, comfortStations: 2 as const },
       };
       expect(calculateAmenityScore(withStations)).toBeGreaterThan(0);
     });

@@ -262,27 +262,3 @@ export function getScenarioById(id: string): ScenarioDefinition | undefined {
   return SCENARIOS.find(s => s.id === id);
 }
 
-export function getNextScenario(currentId: string): ScenarioDefinition | undefined {
-  const scenario = SCENARIOS.find(s => s.unlockAfter === currentId);
-  return scenario;
-}
-
-export function getScenariosByDifficulty(difficulty: ScenarioDefinition['difficulty']): ScenarioDefinition[] {
-  return SCENARIOS.filter(s => s.difficulty === difficulty);
-}
-
-export function getProgressionPath(): string[] {
-  // Returns the main progression path (one scenario per course)
-  return [
-    'tutorial_basics',
-    'meadowbrook_restoration',
-    'meadowbrook_attendance',
-    'highlands_profit_challenge',
-    'highlands_satisfaction',
-    'sunrise_valley_revenue',
-    'sunrise_valley_attendance',
-    'grand_summit_restoration',
-    'grand_summit_excellence',
-    'grand_summit_finale',
-  ];
-}

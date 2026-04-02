@@ -1,7 +1,7 @@
 import { ShapeTemplate } from '../core/shape-templates';
 import { TERRAIN_CODES } from '../core/terrain';
 
-export const CIRCLE_SHAPE: ShapeTemplate = {
+const CIRCLE_SHAPE: ShapeTemplate = {
   name: 'Circle',
   shape: 'circle',
   rings: [
@@ -12,7 +12,7 @@ export const CIRCLE_SHAPE: ShapeTemplate = {
   centerTerrainCode: TERRAIN_CODES.BUNKER,
 };
 
-export const OVAL_SHAPE: ShapeTemplate = {
+const OVAL_SHAPE: ShapeTemplate = {
   name: 'Oval',
   shape: 'oval',
   rings: [
@@ -25,7 +25,7 @@ export const OVAL_SHAPE: ShapeTemplate = {
   centerTerrainCode: TERRAIN_CODES.BUNKER,
 };
 
-export const KIDNEY_SHAPE: ShapeTemplate = {
+const KIDNEY_SHAPE: ShapeTemplate = {
   name: 'Kidney',
   shape: 'kidney',
   rings: [
@@ -39,7 +39,7 @@ export const KIDNEY_SHAPE: ShapeTemplate = {
   centerTerrainCode: TERRAIN_CODES.BUNKER,
 };
 
-export const RECTANGLE_SHAPE: ShapeTemplate = {
+const RECTANGLE_SHAPE: ShapeTemplate = {
   name: 'Rectangle',
   shape: 'rectangle',
   rings: [
