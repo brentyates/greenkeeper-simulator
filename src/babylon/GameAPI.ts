@@ -1,7 +1,5 @@
-import { EquipmentSlot } from "./engine/InputManager";
-import { OverlayMode, getTerrainType } from "../core/terrain";
+import { getTerrainType } from "../core/terrain";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
-import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
 import { UIManager } from "./ui/UIManager";
@@ -121,7 +119,6 @@ import {
 } from "../core/reputation";
 
 export interface GameSystems {
-  equipmentManager: EquipmentManager;
   terrainSystem: TerrainSystem;
   terrainEditorSystem: TerrainEditorSystem | null;
   irrigationRenderSystem: IrrigationRenderSystem | null;
@@ -329,92 +326,6 @@ export class GameAPI {
     return true;
   }
 
-  public selectEquipment(slot: 1 | 2 | 3): void {
-    const wasSelected = this.systems.equipmentManager.getSelected();
-    this.systems.equipmentManager.handleSlot(slot);
-    const nowSelected = this.systems.equipmentManager.getSelected();
-
-    if (nowSelected !== null && nowSelected !== wasSelected) {
-      const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
-        1: null,
-        2: "moisture",
-        3: "nutrients",
-      };
-      const targetOverlay = overlayMap[slot];
-      if (targetOverlay && this.systems.terrainSystem.getOverlayMode() !== targetOverlay) {
-        this.systems.terrainSystem.setOverlayMode(targetOverlay);
-        this.systems.uiManager.updateOverlayLegend(targetOverlay);
-        this.state.overlayAutoSwitched = true;
-        this.systems.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.state.overlayAutoSwitched) {
-        this.systems.terrainSystem.setOverlayMode("normal");
-        this.systems.uiManager.updateOverlayLegend("normal");
-        this.state.overlayAutoSwitched = false;
-        this.systems.updateIrrigationVisibility();
-      }
-    } else if (nowSelected === null && this.state.overlayAutoSwitched) {
-      this.systems.terrainSystem.setOverlayMode("normal");
-      this.systems.uiManager.updateOverlayLegend("normal");
-      this.state.overlayAutoSwitched = false;
-      this.systems.updateIrrigationVisibility();
-    }
-  }
-
-  public toggleEquipment(): void {
-    const selected = this.systems.equipmentManager.getSelected();
-    if (selected === null) return;
-
-    const slotMap: Record<string, 1 | 2 | 3> = {
-      mower: 1,
-      sprinkler: 2,
-      spreader: 3,
-    };
-    this.selectEquipment(slotMap[selected]);
-  }
-
-  public getEquipmentState(): {
-    selectedSlot: number | null;
-    mower: { active: boolean; resource: number; max: number } | null;
-    sprinkler: { active: boolean; resource: number; max: number } | null;
-    spreader: { active: boolean; resource: number; max: number } | null;
-  } {
-    const mowerState = this.systems.equipmentManager.getState("mower");
-    const sprinklerState = this.systems.equipmentManager.getState("sprinkler");
-    const spreaderState = this.systems.equipmentManager.getState("spreader");
-
-    const selected = this.systems.equipmentManager.getSelected();
-    const slotMap: Record<string, number> = {
-      mower: 0,
-      sprinkler: 1,
-      spreader: 2,
-    };
-
-    return {
-      selectedSlot: selected ? slotMap[selected] : null,
-      mower: mowerState
-        ? {
-            active: selected === "mower",
-            resource: mowerState.resourceCurrent,
-            max: mowerState.resourceMax,
-          }
-        : null,
-      sprinkler: sprinklerState
-        ? {
-            active: selected === "sprinkler",
-            resource: sprinklerState.resourceCurrent,
-            max: sprinklerState.resourceMax,
-          }
-        : null,
-      spreader: spreaderState
-        ? {
-            active: selected === "spreader",
-            resource: spreaderState.resourceCurrent,
-            max: spreaderState.resourceMax,
-          }
-        : null,
-    };
-  }
-
   public setTerrainEditor(enabled: boolean): void {
     if (!this.systems.terrainEditorSystem) return;
     if (enabled) {
@@ -612,7 +523,6 @@ export class GameAPI {
   }
 
   public getFullGameState(): {
-    equipment: ReturnType<GameAPI["getEquipmentState"]>;
     time: { day: number; hours: number; minutes: number };
     economy: ReturnType<GameAPI["getEconomyState"]>;
     terrain: { width: number; height: number };
@@ -620,7 +530,6 @@ export class GameAPI {
   } {
     const dims = this.systems.terrainSystem.getWorldDimensions();
     return {
-      equipment: this.getEquipmentState(),
       time: {
         day: this.state.gameDay,
         hours: Math.floor(this.state.gameTime / 60),
@@ -829,13 +738,6 @@ export class GameAPI {
     return this.systems.terrainSystem.getCourseStats();
   }
 
-  public setEquipmentResource(
-    type: "mower" | "sprinkler" | "spreader",
-    amount: number
-  ): void {
-    this.systems.equipmentManager.setResource(type, amount);
-  }
-
   public advanceTimeByMinutes(minutes: number): void {
     const deltaMs = minutes * 60 * 1000 / this.state.timeScale;
     this.state.gameTime += (deltaMs / 1000) * 2 * this.state.timeScale;
@@ -1011,9 +913,6 @@ export class GameAPI {
     return this.state.scenarioManager.getProgress();
   }
 
-  public hasActiveParticles(): boolean {
-    return this.systems.equipmentManager.hasParticles();
-  }
 
   public getUIState(): {
     isPaused: boolean;

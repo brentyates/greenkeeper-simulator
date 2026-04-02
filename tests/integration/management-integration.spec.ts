@@ -71,13 +71,7 @@ test.describe('Management Systems Integration', () => {
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => {
       window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
-      window.game.setEquipmentResource('mower', 100);
-      window.game.setEquipmentResource('sprinkler', 100);
-      window.game.setEquipmentResource('spreader', 100);
-      window.game.selectEquipment(1);
-      window.game.toggleEquipment();
     });
-      await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     });
 
     test('game time has valid hour and minute values', async ({ page }) => {

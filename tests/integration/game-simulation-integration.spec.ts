@@ -300,13 +300,6 @@ test.describe('Extended Game Loop', () => {
     await page.evaluate(() => window.game.setCash(50000));
     await page.evaluate(() => window.game.setPaused(false));
 
-    // Simulate a full day of activity - select each equipment type
-    await page.evaluate(() => {
-      window.game.selectEquipment(1);
-      window.game.selectEquipment(2);
-      window.game.selectEquipment(3);
-    });
-
     // Advance the day
     await page.evaluate(() => window.game.advanceDay());
 

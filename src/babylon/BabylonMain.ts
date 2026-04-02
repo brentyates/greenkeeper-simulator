@@ -11,7 +11,6 @@ import { InputManager } from "./engine/InputManager";
 import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { getTerrainType, getTerrainDisplayName } from "../core/terrain";
-import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { RobotVisualSystem } from "./systems/RobotVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
@@ -101,7 +100,6 @@ export class BabylonMain {
   private inputManager: InputManager;
   private terrainSystem: TerrainSystem;
   private terrainMeshSystem: TerrainMeshSystem;
-  private equipmentManager: EquipmentManager;
   private uiManager: UIManager;
   private lastTime: number = 0;
 
@@ -141,7 +139,6 @@ export class BabylonMain {
     this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
     this.terrainSystem = this.terrainMeshSystem;
 
-    this.equipmentManager = new EquipmentManager(this.babylonEngine.getScene());
     this.employeeVisualSystem = new EmployeeVisualSystem(
       this.babylonEngine.getScene(),
       { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
@@ -1227,7 +1224,6 @@ export class BabylonMain {
     this.state.timeScale = 1;
     this.state.weatherState = createInitialWeatherState(this.state.gameDay);
     this.state.weather = this.state.weatherState.current;
-    this.equipmentManager.refill();
     this.terrainSystem.dispose();
     this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
     this.terrainSystem = this.terrainMeshSystem;
@@ -1557,7 +1553,6 @@ export class BabylonMain {
 
   public createAPI(): GameAPI {
     const gameSystems: GameSystems = {
-      equipmentManager: this.equipmentManager,
       terrainSystem: this.terrainSystem,
       terrainEditorSystem: this.terrainEditorController.getSystem(),
       irrigationRenderSystem: this.irrigationRenderSystem,
@@ -1583,7 +1578,6 @@ export class BabylonMain {
   public dispose(): void {
     this.inputManager.dispose();
     this.terrainSystem.dispose();
-    this.equipmentManager.dispose();
     this.uiManager.dispose();
     this.terrainEditorController.dispose();
     this.uiPanelCoordinator.dispose();
@@ -1651,21 +1645,7 @@ export class BabylonMain {
     if (courseStats.health < 65) {
       this.showTutorialHint(
         "health_low",
-        "🎓 Course health is low! Mow (1), water (2), or fertilize (3)."
-      );
-    }
-
-    const mowerState = this.equipmentManager.getState("mower");
-    const sprinklerState = this.equipmentManager.getState("sprinkler");
-    const spreaderState = this.equipmentManager.getState("spreader");
-    if (
-      (mowerState && mowerState.resourceCurrent < 20) ||
-      (sprinklerState && sprinklerState.resourceCurrent < 20) ||
-      (spreaderState && spreaderState.resourceCurrent < 20)
-    ) {
-      this.showTutorialHint(
-        "refill",
-        "🎓 Running low on supplies! Press E near the refill station."
+        "🎓 Course health is low! Hire employees to maintain the course."
       );
     }
 

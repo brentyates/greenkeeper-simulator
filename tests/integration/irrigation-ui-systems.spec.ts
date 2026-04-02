@@ -308,74 +308,6 @@ test.describe('Terrain Editor System', () => {
   });
 });
 
-test.describe('Equipment System Extended', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForFunction(() => window.app !== undefined);
-    await page.evaluate(() => window.startScenario('tutorial_basics'));
-    await page.waitForFunction(() => window.game !== null);
-    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
-    await page.evaluate(() => {
-      window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
-      window.game.setEquipmentResource('mower', 100);
-      window.game.setEquipmentResource('sprinkler', 100);
-      window.game.setEquipmentResource('spreader', 100);
-      window.game.selectEquipment(1);
-      window.game.toggleEquipment();
-    });
-    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
-  });
-
-  test.describe('Equipment Resource', () => {
-    test('setEquipmentResource sets mower resource', async ({ page }) => {
-      await page.evaluate(() => window.game.setEquipmentResource('mower', 50));
-      const state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.mower?.resource).toBe(50);
-    });
-
-    test('setEquipmentResource sets sprinkler resource', async ({ page }) => {
-      await page.evaluate(() => window.game.setEquipmentResource('sprinkler', 75));
-      const state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.sprinkler?.resource).toBe(75);
-    });
-
-    test('setEquipmentResource sets spreader resource', async ({ page }) => {
-      await page.evaluate(() => window.game.setEquipmentResource('spreader', 25));
-      const state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.spreader?.resource).toBe(25);
-    });
-  });
-
-  test.describe('Refill Station', () => {
-    test('isAtRefillStation returns boolean', async ({ page }) => {
-      const result = await page.evaluate(() => window.game.isAtRefillStation());
-      expect(typeof result).toBe('boolean');
-    });
-
-    test('getRefillStations returns array', async ({ page }) => {
-      const stations = await page.evaluate(() => window.game.getRefillStations());
-      expect(Array.isArray(stations)).toBe(true);
-      for (const station of stations) {
-        expect(typeof station.x).toBe('number');
-        expect(typeof station.y).toBe('number');
-      }
-    });
-
-    test('refillAtCurrentPosition returns result', async ({ page }) => {
-      const result = await page.evaluate(() => window.game.refillAtCurrentPosition());
-      expect(typeof result.success).toBe('boolean');
-      expect(typeof result.cost).toBe('number');
-    });
-  });
-
-  test.describe('Particles', () => {
-    test('hasActiveParticles returns boolean', async ({ page }) => {
-      const result = await page.evaluate(() => window.game.hasActiveParticles());
-      expect(typeof result).toBe('boolean');
-    });
-  });
-});
-
 test.describe('Grass System Extended', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -446,7 +378,6 @@ test.describe('Full Game State', () => {
       const state = await page.evaluate(() => window.game.getFullGameState());
       expect(state).toBeDefined();
       expect(state.player).toBeDefined();
-      expect(state.equipment).toBeDefined();
       expect(state.time).toBeDefined();
       expect(state.economy).toBeDefined();
       expect(state.terrain).toBeDefined();

@@ -347,14 +347,6 @@ function createMockState(): GameState {
 
 function createMockSystems(): GameSystems {
   return {
-    equipmentManager: {
-      handleSlot: vi.fn(),
-      getSelected: vi.fn(() => null),
-      getState: vi.fn(() => undefined),
-      setResource: vi.fn(),
-      refill: vi.fn(() => 25),
-      hasParticles: vi.fn(() => false),
-    } as any,
     terrainSystem: {
       getOverlayMode: vi.fn(() => "normal"),
       setOverlayMode: vi.fn(),
@@ -544,126 +536,6 @@ describe("GameAPI", () => {
     });
   });
 
-  describe("selectEquipment", () => {
-    it("auto-switches to moisture overlay when sprinkler selected", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce(null).mockReturnValueOnce("sprinkler");
-      api.selectEquipment(2);
-      expect(sys.terrainSystem.setOverlayMode).toHaveBeenCalledWith("moisture");
-      expect(state.overlayAutoSwitched).toBe(true);
-    });
-
-    it("auto-switches to nutrients overlay when spreader selected", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce(null).mockReturnValueOnce("spreader");
-      api.selectEquipment(3);
-      expect(sys.terrainSystem.setOverlayMode).toHaveBeenCalledWith("nutrients");
-    });
-
-    it("reverts overlay when mower selected and was auto-switched", () => {
-      state.overlayAutoSwitched = true;
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("sprinkler").mockReturnValueOnce("mower");
-      api.selectEquipment(1);
-      expect(sys.terrainSystem.setOverlayMode).toHaveBeenCalledWith("normal");
-      expect(state.overlayAutoSwitched).toBe(false);
-    });
-
-    it("does not revert overlay for mower when not auto-switched", () => {
-      state.overlayAutoSwitched = false;
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce(null).mockReturnValueOnce("mower");
-      api.selectEquipment(1);
-      expect(sys.terrainSystem.setOverlayMode).not.toHaveBeenCalled();
-    });
-
-    it("reverts overlay when deselected and was auto-switched", () => {
-      state.overlayAutoSwitched = true;
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("sprinkler").mockReturnValueOnce(null);
-      api.selectEquipment(2);
-      expect(sys.terrainSystem.setOverlayMode).toHaveBeenCalledWith("normal");
-      expect(state.overlayAutoSwitched).toBe(false);
-    });
-
-    it("does not revert overlay when deselected and was not auto-switched", () => {
-      state.overlayAutoSwitched = false;
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("mower").mockReturnValueOnce(null);
-      api.selectEquipment(1);
-      expect(sys.terrainSystem.setOverlayMode).not.toHaveBeenCalled();
-    });
-
-    it("does not switch overlay when same tool reselected", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("sprinkler").mockReturnValueOnce("sprinkler");
-      api.selectEquipment(2);
-      expect(sys.terrainSystem.setOverlayMode).not.toHaveBeenCalled();
-    });
-
-    it("does not switch overlay when already on target mode", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce(null).mockReturnValueOnce("sprinkler");
-      (sys.terrainSystem.getOverlayMode as Mock).mockReturnValue("moisture");
-      api.selectEquipment(2);
-      expect(sys.terrainSystem.setOverlayMode).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("toggleEquipment", () => {
-    it("does nothing when nothing selected", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
-      api.toggleEquipment();
-      expect(sys.equipmentManager.handleSlot).not.toHaveBeenCalled();
-    });
-
-    it("re-selects mower slot", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("mower").mockReturnValueOnce(null).mockReturnValueOnce(null);
-      api.toggleEquipment();
-      expect(sys.equipmentManager.handleSlot).toHaveBeenCalledWith(1);
-    });
-
-    it("re-selects sprinkler slot", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("sprinkler").mockReturnValueOnce(null).mockReturnValueOnce(null);
-      api.toggleEquipment();
-      expect(sys.equipmentManager.handleSlot).toHaveBeenCalledWith(2);
-    });
-
-    it("re-selects spreader slot", () => {
-      (sys.equipmentManager.getSelected as Mock).mockReturnValueOnce("spreader").mockReturnValueOnce(null).mockReturnValueOnce(null);
-      api.toggleEquipment();
-      expect(sys.equipmentManager.handleSlot).toHaveBeenCalledWith(3);
-    });
-  });
-
-  describe("getEquipmentState", () => {
-    it("returns null for missing equipment states", () => {
-      (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
-      const result = api.getEquipmentState();
-      expect(result.selectedSlot).toBeNull();
-      expect(result.mower).toBeNull();
-      expect(result.sprinkler).toBeNull();
-      expect(result.spreader).toBeNull();
-    });
-
-    it("returns populated equipment states", () => {
-      (sys.equipmentManager.getState as Mock).mockImplementation((type: string) => ({
-        resourceCurrent: type === "mower" ? 100 : type === "sprinkler" ? 80 : 60,
-        resourceMax: 100,
-      }));
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue("mower");
-      const result = api.getEquipmentState();
-      expect(result.selectedSlot).toBe(0);
-      expect(result.mower!.active).toBe(true);
-      expect(result.sprinkler!.active).toBe(false);
-    });
-
-    it("maps sprinkler selected slot", () => {
-      (sys.equipmentManager.getState as Mock).mockReturnValue({ resourceCurrent: 50, resourceMax: 100 });
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue("sprinkler");
-      expect(api.getEquipmentState().selectedSlot).toBe(1);
-    });
-
-    it("maps spreader selected slot", () => {
-      (sys.equipmentManager.getState as Mock).mockReturnValue({ resourceCurrent: 50, resourceMax: 100 });
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue("spreader");
-      expect(api.getEquipmentState().selectedSlot).toBe(2);
-    });
-  });
-
   describe("setTerrainEditor", () => {
     it("does nothing when terrainEditorSystem is null", () => { api.setTerrainEditor(true); });
 
@@ -832,8 +704,6 @@ describe("GameAPI", () => {
     it("toggleTeeSheetPanel", () => { api.toggleTeeSheetPanel(); expect(sys.handleTeeSheetPanel).toHaveBeenCalled(); });
     it("cycleOverlay", () => { api.cycleOverlay(); expect(sys.handleOverlayCycle).toHaveBeenCalled(); });
     it("toggleMute", () => { api.toggleMute(); expect(sys.handleMute).toHaveBeenCalled(); });
-    it("hasActiveParticles", () => { expect(api.hasActiveParticles()).toBe(false); });
-    it("setEquipmentResource", () => { api.setEquipmentResource("mower", 50); expect(sys.equipmentManager.setResource).toHaveBeenCalledWith("mower", 50); });
     it("getResearchState", () => { expect(api.getResearchState()).toBe(state.researchState); });
     it("getIrrigationSystem", () => { expect(api.getIrrigationSystem()).toBe(state.irrigationSystem); });
     it("saveCurrentGame", () => { api.saveCurrentGame(); expect(sys.saveCurrentGame).toHaveBeenCalled(); });
@@ -861,8 +731,6 @@ describe("GameAPI", () => {
 
   describe("getFullGameState", () => {
     it("returns complete game state", () => {
-      (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       const result = api.getFullGameState();
       expect(result.terrain).toEqual({ width: 10, height: 10 });
       expect(result.editorEnabled).toBe(false);
@@ -870,8 +738,6 @@ describe("GameAPI", () => {
 
     it("handles zero dimensions", () => {
       (sys.terrainSystem.getWorldDimensions as Mock).mockReturnValue({ width: 0, height: 0 });
-      (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
-      (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       expect(api.getFullGameState().terrain.width).toBe(0);
     });
   });

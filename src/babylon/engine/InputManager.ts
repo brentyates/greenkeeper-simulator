@@ -5,7 +5,6 @@ import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 import { Direction } from "../../core/movement";
 
 export type { Direction };
-export type EquipmentSlot = 1 | 2 | 3;
 
 export type AxisConstraint = 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz';
 
