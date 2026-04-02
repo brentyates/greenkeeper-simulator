@@ -1,49 +1,35 @@
-/**
- * Economy System - Core money management for the golf course simulator
- *
- * Similar to RollerCoaster Tycoon's economy system:
- * - Track cash balance and loans
- * - Record all transactions with categories
- * - Calculate income/expenses over time periods
- * - Support for loans with interest
- */
-
-// ============================================================================
-// Types
-// ============================================================================
-
 export type TransactionCategory =
-  | "green_fees"           // Income from golfers
-  | "equipment_purchase"   // Buying new equipment
-  | "equipment_maintenance"// Repairs and upkeep
-  | "employee_wages"       // Paying staff
-  | "research"             // R&D spending
-  | "supplies"             // Fertilizer, fuel, seeds, etc.
-  | "loan_received"        // Taking out a loan
-  | "loan_payment"         // Paying back principal
-  | "loan_interest"        // Interest payments
-  | "construction"         // Building/terrain changes
-  | "marketing"            // Advertising and promotions
-  | "utilities"            // Water, electricity
-  | "other_income"         // Misc income
-  | "other_expense";       // Misc expenses
+  | "green_fees"
+  | "equipment_purchase"
+  | "equipment_maintenance"
+  | "employee_wages"
+  | "research"
+  | "supplies"
+  | "loan_received"
+  | "loan_payment"
+  | "loan_interest"
+  | "construction"
+  | "marketing"
+  | "utilities"
+  | "other_income"
+  | "other_expense";
 
 export interface Transaction {
   readonly id: string;
-  readonly amount: number;        // Positive for income, negative for expense
+  readonly amount: number;
   readonly category: TransactionCategory;
   readonly description: string;
-  readonly timestamp: number;     // Game time in minutes
+  readonly timestamp: number;
 }
 
 export interface Loan {
   readonly id: string;
-  readonly principal: number;     // Original loan amount
+  readonly principal: number;
   readonly remainingBalance: number;
-  readonly interestRate: number;  // Annual rate as decimal (0.10 = 10%)
+  readonly interestRate: number;
   readonly monthlyPayment: number;
-  readonly startTime: number;     // Game time when loan was taken
-  readonly termMonths: number;    // Loan duration
+  readonly startTime: number;
+  readonly termMonths: number;
 }
 
 export interface FinancialSummary {
@@ -57,27 +43,23 @@ export interface EconomyState {
   readonly cash: number;
   readonly loans: readonly Loan[];
   readonly transactions: readonly Transaction[];
-  readonly totalEarned: number;   // Lifetime earnings
-  readonly totalSpent: number;    // Lifetime spending
+  readonly totalEarned: number;
+  readonly totalSpent: number;
 }
 
-export interface LoanTerms {
+interface LoanTerms {
   readonly principal: number;
   readonly interestRate: number;
   readonly termMonths: number;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-export const INCOME_CATEGORIES: readonly TransactionCategory[] = [
+const INCOME_CATEGORIES: readonly TransactionCategory[] = [
   "green_fees",
   "loan_received",
   "other_income"
 ] as const;
 
-export const EXPENSE_CATEGORIES: readonly TransactionCategory[] = [
+const EXPENSE_CATEGORIES: readonly TransactionCategory[] = [
   "equipment_purchase",
   "equipment_maintenance",
   "employee_wages",
@@ -97,12 +79,8 @@ export const DEFAULT_LOAN_TERMS: Record<"small" | "medium" | "large", LoanTerms>
   large: { principal: 100000, interestRate: 0.12, termMonths: 36 }
 };
 
-export const MAX_LOANS = 3;
-export const MIN_CASH_FOR_OPERATIONS = 0;
-
-// ============================================================================
-// Factory Functions
-// ============================================================================
+const MAX_LOANS = 3;
+const MIN_CASH_FOR_OPERATIONS = 0;
 
 let transactionIdCounter = 0;
 let loanIdCounter = 0;
@@ -117,7 +95,7 @@ export function createInitialEconomyState(startingCash: number = 10000): Economy
   };
 }
 
-export function createTransaction(
+function createTransaction(
   amount: number,
   category: TransactionCategory,
   description: string,
@@ -132,7 +110,7 @@ export function createTransaction(
   };
 }
 
-export function createLoan(terms: LoanTerms, startTime: number): Loan {
+function createLoan(terms: LoanTerms, startTime: number): Loan {
   const monthlyPayment = calculateMonthlyPayment(
     terms.principal,
     terms.interestRate,
@@ -148,18 +126,6 @@ export function createLoan(terms: LoanTerms, startTime: number): Loan {
     startTime,
     termMonths: terms.termMonths
   };
-}
-
-// ============================================================================
-// Query Functions
-// ============================================================================
-
-export function isIncomeCategory(category: TransactionCategory): boolean {
-  return (INCOME_CATEGORIES as readonly string[]).includes(category);
-}
-
-export function isExpenseCategory(category: TransactionCategory): boolean {
-  return (EXPENSE_CATEGORIES as readonly string[]).includes(category);
 }
 
 export function getTotalDebt(state: EconomyState): number {
@@ -178,7 +144,7 @@ export function canTakeLoan(state: EconomyState): boolean {
   return state.loans.length < MAX_LOANS;
 }
 
-export function getLoanById(state: EconomyState, loanId: string): Loan | null {
+function getLoanById(state: EconomyState, loanId: string): Loan | null {
   return state.loans.find(l => l.id === loanId) ?? null;
 }
 
@@ -192,18 +158,7 @@ export function getTransactionsInRange(
   );
 }
 
-export function getTransactionsByCategory(
-  state: EconomyState,
-  category: TransactionCategory
-): readonly Transaction[] {
-  return state.transactions.filter(t => t.category === category);
-}
-
-// ============================================================================
-// Calculation Functions
-// ============================================================================
-
-export function calculateMonthlyPayment(
+function calculateMonthlyPayment(
   principal: number,
   annualRate: number,
   termMonths: number
@@ -219,14 +174,9 @@ export function calculateMonthlyPayment(
   return Math.round((numerator / denominator) * 100) / 100;
 }
 
-export function calculateInterestPortion(loan: Loan): number {
+function calculateInterestPortion(loan: Loan): number {
   const monthlyRate = loan.interestRate / 12;
   return Math.round(loan.remainingBalance * monthlyRate * 100) / 100;
-}
-
-export function calculatePrincipalPortion(loan: Loan): number {
-  const interest = calculateInterestPortion(loan);
-  return Math.round((loan.monthlyPayment - interest) * 100) / 100;
 }
 
 export function calculateFinancialSummary(
@@ -234,7 +184,6 @@ export function calculateFinancialSummary(
 ): FinancialSummary {
   const byCategory = {} as Record<TransactionCategory, number>;
 
-  // Initialize all categories to 0
   for (const cat of [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]) {
     byCategory[cat] = 0;
   }
@@ -260,20 +209,6 @@ export function calculateFinancialSummary(
   };
 }
 
-export function calculateMonthlyFinancials(
-  state: EconomyState,
-  currentGameTime: number,
-  gameMinutesPerMonth: number = 30 * 24 * 60 // 30 days
-): FinancialSummary {
-  const monthStart = currentGameTime - gameMinutesPerMonth;
-  const transactions = getTransactionsInRange(state, monthStart, currentGameTime);
-  return calculateFinancialSummary(transactions);
-}
-
-// ============================================================================
-// State Transformation Functions
-// ============================================================================
-
 export function addIncome(
   state: EconomyState,
   amount: number,
@@ -282,7 +217,7 @@ export function addIncome(
   timestamp: number
 ): EconomyState {
   if (amount <= 0) {
-    return state; // Invalid income amount
+    return state;
   }
 
   const transaction = createTransaction(amount, category, description, timestamp);
@@ -304,11 +239,11 @@ export function addExpense(
   force: boolean = false
 ): EconomyState | null {
   if (amount <= 0) {
-    return null; // Invalid expense amount
+    return null;
   }
 
   if (!force && !canAfford(state, amount)) {
-    return null; // Can't afford this expense
+    return null;
   }
 
   const transaction = createTransaction(-amount, category, description, timestamp);
@@ -327,11 +262,11 @@ export function takeLoan(
   timestamp: number
 ): EconomyState | null {
   if (!canTakeLoan(state)) {
-    return null; // Already at max loans
+    return null;
   }
 
   if (terms.principal <= 0 || terms.termMonths <= 0) {
-    return null; // Invalid loan terms
+    return null;
   }
 
   const loan = createLoan(terms, timestamp);
@@ -358,13 +293,13 @@ export function makeLoanPayment(
 ): EconomyState | null {
   const loan = getLoanById(state, loanId);
   if (!loan) {
-    return null; // Loan not found
+    return null;
   }
 
   const paymentAmount = Math.min(loan.monthlyPayment, loan.remainingBalance);
 
   if (!canAfford(state, paymentAmount)) {
-    return null; // Can't afford payment
+    return null;
   }
 
   const interestPortion = calculateInterestPortion(loan);
@@ -376,7 +311,6 @@ export function makeLoanPayment(
 
   const newBalance = Math.round((loan.remainingBalance - principalPortion) * 100) / 100;
 
-  // Create transactions for interest and principal
   const interestTxn = createTransaction(
     -actualInterest,
     "loan_interest",
@@ -391,7 +325,6 @@ export function makeLoanPayment(
     timestamp
   );
 
-  // Update or remove the loan
   let newLoans: readonly Loan[];
   if (newBalance <= 0) {
     newLoans = state.loans.filter(l => l.id !== loanId);
@@ -440,17 +373,3 @@ export function payOffLoan(
   };
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-export function formatCurrency(amount: number): string {
-  const absAmount = Math.abs(amount);
-  const formatted = absAmount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  });
-  return amount < 0 ? `-${formatted}` : formatted;
-}

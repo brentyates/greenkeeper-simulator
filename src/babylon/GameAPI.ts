@@ -1220,13 +1220,6 @@ export class GameAPI {
     return true;
   }
 
-  public inspectRobot(robotId: string): boolean {
-    const robot = this.state.autonomousState.robots.find(r => r.id === robotId);
-    if (!robot) return false;
-    this.systems.showRobotInspector(robot);
-    return true;
-  }
-
   public getRobotList(): Array<{ id: string; type: string; state: string; battery: number }> {
     return this.state.autonomousState.robots.map(r => ({
       id: r.id,

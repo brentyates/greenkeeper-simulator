@@ -20,7 +20,7 @@ import type { FaceStateSample, TerrainSystem } from '../babylon/systems/TerrainS
 
 export type { EmployeeTask } from './movable-entity';
 
-export interface WorkTarget {
+interface WorkTarget {
   readonly worldX: number;
   readonly worldZ: number;
   readonly task: EmployeeTask;
@@ -55,14 +55,14 @@ export interface WorkEffect {
   readonly efficiency: number;
 }
 
-export interface TaskCompletion {
+interface TaskCompletion {
   readonly employeeId: string;
   readonly task: EmployeeTask;
   readonly worldX: number;
   readonly worldZ: number;
 }
 
-export interface EmployeeWorkTickResult {
+interface EmployeeWorkTickResult {
   readonly state: EmployeeWorkSystemState;
   readonly effects: readonly WorkEffect[];
   readonly tasksCompleted: number;
@@ -81,7 +81,7 @@ export interface CourseAreaCondition {
   readonly severity: number;
 }
 
-export const TASK_DURATIONS: Record<EmployeeTask, number> = {
+const TASK_DURATIONS: Record<EmployeeTask, number> = {
   mow_grass: 0.5,
   water_area: 0.25,
   fertilize_area: 0.3,
@@ -90,8 +90,6 @@ export const TASK_DURATIONS: Record<EmployeeTask, number> = {
   return_to_base: 0,
   idle: 0,
 };
-
-export const EMPLOYEE_MOVE_SPEED = MOVE_SPEED;
 
 export const TASK_EXPERIENCE_REWARDS: Record<EmployeeTask, number> = {
   mow_grass: 10,
@@ -113,7 +111,7 @@ export const TASK_SUPPLY_COSTS: Record<EmployeeTask, number> = {
   idle: 0,
 };
 
-export const WORK_THRESHOLDS = {
+const WORK_THRESHOLDS = {
   heightCritical: 80,
   heightStandard: 60,
   waterCritical: 20,
@@ -250,7 +248,7 @@ export function sampleCourseAreaConditions(
     .sort((left, right) => right.severity - left.severity);
 }
 
-export function addWorker(
+function addWorker(
   state: EmployeeWorkSystemState,
   employee: Employee
 ): EmployeeWorkSystemState {
@@ -274,16 +272,6 @@ export function addWorker(
   };
 }
 
-export function removeWorker(
-  state: EmployeeWorkSystemState,
-  employeeId: string
-): EmployeeWorkSystemState {
-  return {
-    ...state,
-    workers: state.workers.filter(w => w.employeeId !== employeeId),
-  };
-}
-
 export function assignWorkerToArea(
   state: EmployeeWorkSystemState,
   employeeId: string,
@@ -295,26 +283,6 @@ export function assignWorkerToArea(
       w.employeeId === employeeId ? { ...w, assignedAreaId: areaId } : w
     ),
   };
-}
-
-export function addArea(
-  state: EmployeeWorkSystemState,
-  area: CourseArea
-): EmployeeWorkSystemState {
-  const existing = state.areas.find(a => a.id === area.id);
-  if (existing) return state;
-
-  return {
-    ...state,
-    areas: [...state.areas, area],
-  };
-}
-
-export function getWorkerState(
-  state: EmployeeWorkSystemState,
-  employeeId: string
-): EmployeeWorkState | null {
-  return state.workers.find(w => w.employeeId === employeeId) ?? null;
 }
 
 function isInArea(x: number, y: number, area: CourseArea | null): boolean {
@@ -426,7 +394,7 @@ function getTaskNeedFromSample(
   }
 }
 
-export function findBestWorkTarget(
+function findBestWorkTarget(
   terrainSystem: TerrainSystem,
   currentWorldX: number,
   currentWorldZ: number,
@@ -551,7 +519,7 @@ function findBestWorkTargetWithExpansion(
   return null;
 }
 
-export function generateWaypointsToTarget(
+function generateWaypointsToTarget(
   startWorldX: number,
   startWorldZ: number,
   targetWorldX: number,
@@ -872,7 +840,6 @@ export function tickEmployeeWork(
   };
 }
 
-/** Roles that have autonomous field work (pathfinding-based) */
 const FIELD_WORK_ROLES: readonly EmployeeRole[] = ['groundskeeper', 'mechanic'];
 
 export function syncWorkersWithRoster(
@@ -905,10 +872,6 @@ export function syncWorkersWithRoster(
   };
 
   return newState;
-}
-
-export function getActiveWorkerCount(state: EmployeeWorkSystemState): number {
-  return state.workers.filter(w => w.currentTask !== 'idle').length;
 }
 
 export function getWorkerPositions(

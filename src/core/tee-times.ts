@@ -1,4 +1,4 @@
-export type TeeTimeStatus =
+type TeeTimeStatus =
   | 'available'
   | 'reserved'
   | 'checked_in'
@@ -7,13 +7,13 @@ export type TeeTimeStatus =
   | 'no_show'
   | 'cancelled';
 
-export type BookingType = 'reservation' | 'walk_on' | 'member' | 'tournament';
-export type MembershipStatus = 'member' | 'guest' | 'public';
+type BookingType = 'reservation' | 'walk_on' | 'member' | 'tournament';
+type MembershipStatus = 'member' | 'guest' | 'public';
 
 export type TeeTimeSpacing = 'packed' | 'tight' | 'standard' | 'comfortable' | 'relaxed' | 'exclusive';
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-export interface BookingWindowConfig {
+interface BookingWindowConfig {
   publicBookingDays: number;
   memberBookingDays: number;
   freeCancellationHours: number;
@@ -22,7 +22,7 @@ export interface BookingWindowConfig {
   noShowCountForBlacklist: number;
 }
 
-export const DEFAULT_BOOKING_CONFIG: BookingWindowConfig = {
+const DEFAULT_BOOKING_CONFIG: BookingWindowConfig = {
   publicBookingDays: 7,
   memberBookingDays: 14,
   freeCancellationHours: 24,
@@ -31,7 +31,7 @@ export const DEFAULT_BOOKING_CONFIG: BookingWindowConfig = {
   noShowCountForBlacklist: 3,
 } as const;
 
-export interface ReservationDemand {
+interface ReservationDemand {
   baseDemand: number;
   dayOfWeekMultiplier: number;
   timeOfDayMultiplier: number;
@@ -43,7 +43,7 @@ export interface ReservationDemand {
   bookingProbability: number;
 }
 
-export const DAY_OF_WEEK_MULTIPLIERS: Record<DayOfWeek, number> = {
+const DAY_OF_WEEK_MULTIPLIERS: Record<DayOfWeek, number> = {
   0: 1.3,   // Sunday
   1: 0.7,   // Monday
   2: 0.8,   // Tuesday
@@ -65,7 +65,7 @@ export interface AddOn {
   price: number;
 }
 
-export interface GolferBooking {
+interface GolferBooking {
   golferId: string;
   name: string;
   membershipStatus: MembershipStatus;
@@ -90,7 +90,7 @@ export interface TeeTime {
   completionTime?: GameTime;
 }
 
-export interface CourseOperatingHours {
+interface CourseOperatingHours {
   openTime: number;
   closeTime: number;
   lastTeeTime: number;
@@ -99,7 +99,7 @@ export interface CourseOperatingHours {
   twilightStart: number;
 }
 
-export interface SpacingConfiguration {
+interface SpacingConfiguration {
   spacing: TeeTimeSpacing;
   minutesBetween: number;
   maxDailyTeeTimes: number;
@@ -109,7 +109,7 @@ export interface SpacingConfiguration {
   revenueMultiplier: number;
 }
 
-export interface BookingMetrics {
+interface BookingMetrics {
   totalBookingsToday: number;
   cancellationsToday: number;
   noShowsToday: number;
@@ -209,7 +209,7 @@ export function createInitialTeeTimeState(
   };
 }
 
-export function getOperatingHoursForSeason(
+function getOperatingHoursForSeason(
   hours: CourseOperatingHours,
   day: number
 ): { open: number; close: number; lastTee: number } {
@@ -221,16 +221,6 @@ export function getOperatingHoursForSeason(
     return hours.winterHours;
   }
   return { open: hours.openTime, close: hours.closeTime, lastTee: hours.lastTeeTime };
-}
-
-export function calculateMaxDailySlots(
-  spacing: SpacingConfiguration,
-  operatingHours: CourseOperatingHours,
-  day: number
-): number {
-  const seasonalHours = getOperatingHoursForSeason(operatingHours, day);
-  const operatingMinutes = (seasonalHours.lastTee - seasonalHours.open) * 60;
-  return Math.floor(operatingMinutes / spacing.minutesBetween) + 1;
 }
 
 function generateTeeTimeId(day: number, hour: number, minute: number): string {
@@ -281,22 +271,9 @@ export function getTeeTimes(state: TeeTimeSystemState, day: number): TeeTime[] {
   return newSlots;
 }
 
-export function getTeeTimeById(state: TeeTimeSystemState, id: string): TeeTime | undefined {
-  for (const slots of state.teeTimes.values()) {
-    const found = slots.find(s => s.id === id);
-    if (found) return found;
-  }
-  return undefined;
-}
-
 export function getAvailableSlots(state: TeeTimeSystemState, day: number): TeeTime[] {
   const slots = getTeeTimes(state, day);
   return slots.filter(s => s.status === 'available');
-}
-
-export function getBookedSlots(state: TeeTimeSystemState, day: number): TeeTime[] {
-  const slots = getTeeTimes(state, day);
-  return slots.filter(s => s.status !== 'available' && s.status !== 'cancelled');
 }
 
 export function updateSpacing(
@@ -306,16 +283,6 @@ export function updateSpacing(
   return {
     ...state,
     spacingConfig: { ...SPACING_CONFIGS[newSpacing] },
-  };
-}
-
-export function updateOperatingHours(
-  state: TeeTimeSystemState,
-  hours: Partial<CourseOperatingHours>
-): TeeTimeSystemState {
-  return {
-    ...state,
-    operatingHours: { ...state.operatingHours, ...hours },
   };
 }
 
@@ -384,71 +351,6 @@ export function checkInTeeTime(
         ...slot,
         status: 'checked_in',
         checkedIn: true,
-      };
-
-      const newSlots = [...slots];
-      newSlots[slotIndex] = updatedSlot;
-      newTeeTimes.set(day, newSlots);
-
-      return { ...state, teeTimes: newTeeTimes };
-    }
-  }
-
-  return state;
-}
-
-export function startRound(
-  state: TeeTimeSystemState,
-  teeTimeId: string,
-  actualStartTime: GameTime
-): TeeTimeSystemState {
-  const newTeeTimes = new Map(state.teeTimes);
-
-  for (const [day, slots] of newTeeTimes) {
-    const slotIndex = slots.findIndex(s => s.id === teeTimeId);
-    if (slotIndex >= 0) {
-      const slot = slots[slotIndex];
-      if (slot.status !== 'checked_in') {
-        return state;
-      }
-
-      const updatedSlot: TeeTime = {
-        ...slot,
-        status: 'in_progress',
-        actualStartTime,
-      };
-
-      const newSlots = [...slots];
-      newSlots[slotIndex] = updatedSlot;
-      newTeeTimes.set(day, newSlots);
-
-      return { ...state, teeTimes: newTeeTimes };
-    }
-  }
-
-  return state;
-}
-
-export function completeRound(
-  state: TeeTimeSystemState,
-  teeTimeId: string,
-  completionTime: GameTime
-): TeeTimeSystemState {
-  const newTeeTimes = new Map(state.teeTimes);
-
-  for (const [day, slots] of newTeeTimes) {
-    const slotIndex = slots.findIndex(s => s.id === teeTimeId);
-    if (slotIndex >= 0) {
-      const slot = slots[slotIndex];
-      if (slot.status !== 'in_progress') {
-        return state;
-      }
-
-      const updatedSlot: TeeTime = {
-        ...slot,
-        status: 'completed',
-        roundCompleted: true,
-        completionTime,
       };
 
       const newSlots = [...slots];
@@ -635,7 +537,7 @@ export function getDayOfWeek(day: number): DayOfWeek {
   return (day % 7) as DayOfWeek;
 }
 
-export function getTimeOfDayMultiplier(hour: number): number {
+function getTimeOfDayMultiplier(hour: number): number {
   if (hour < 7) return 0.6;      // Early bird
   if (hour < 10) return 1.3;     // Prime morning
   if (hour < 12) return 1.1;     // Late morning
@@ -644,14 +546,14 @@ export function getTimeOfDayMultiplier(hour: number): number {
   return 0.7;                     // Twilight
 }
 
-export function getSeasonMultiplier(day: number): number {
+function getSeasonMultiplier(day: number): number {
   const dayOfYear = day % 365;
   if (dayOfYear >= 91 && dayOfYear <= 273) return 1.2;   // Summer: high season
   if (dayOfYear <= 60 || dayOfYear >= 305) return 0.6;   // Winter: low season
   return 1.0;                                             // Spring/Fall: normal
 }
 
-export interface DemandFactors {
+interface DemandFactors {
   baseDemand?: number;
   prestigeScore?: number;
   weatherCondition?: 'perfect' | 'good' | 'fair' | 'poor' | 'bad';
@@ -666,7 +568,7 @@ const WEATHER_MULTIPLIERS: Record<string, number> = {
   bad: 0.3,
 };
 
-export function calculateSlotDemand(
+function calculateSlotDemand(
   slot: TeeTime,
   day: number,
   factors: DemandFactors = {}
@@ -709,58 +611,11 @@ export function calculateSlotDemand(
   };
 }
 
-export function selectGroupSize(random: number = Math.random()): number {
+function selectGroupSize(random: number = Math.random()): number {
   if (random < 0.05) return 1;   // 5% singles
   if (random < 0.15) return 2;   // 10% twosomes
   if (random < 0.30) return 3;   // 15% threesomes
   return 4;                       // 70% foursomes
-}
-
-export function canBookSlot(
-  state: TeeTimeSystemState,
-  teeTimeDay: number,
-  currentDay: number,
-  membershipStatus: MembershipStatus
-): boolean {
-  const maxDaysAhead = membershipStatus === 'member'
-    ? state.bookingConfig.memberBookingDays
-    : state.bookingConfig.publicBookingDays;
-
-  const daysAhead = teeTimeDay - currentDay;
-  return daysAhead > 0 && daysAhead <= maxDaysAhead;
-}
-
-export function isLateCancellation(
-  teeTime: TeeTime,
-  currentTime: GameTime,
-  bookingConfig: BookingWindowConfig
-): boolean {
-  const teeTimeMinutes = teeTime.scheduledTime.day * 24 * 60
-    + teeTime.scheduledTime.hour * 60
-    + teeTime.scheduledTime.minute;
-  const currentMinutes = currentTime.day * 24 * 60
-    + currentTime.hour * 60
-    + currentTime.minute;
-  const hoursUntilTeeTime = (teeTimeMinutes - currentMinutes) / 60;
-  return hoursUntilTeeTime < bookingConfig.freeCancellationHours;
-}
-
-export function calculateCancellationPenalty(
-  teeTime: TeeTime,
-  currentTime: GameTime,
-  bookingConfig: BookingWindowConfig
-): number {
-  if (!isLateCancellation(teeTime, currentTime, bookingConfig)) {
-    return 0;
-  }
-  return teeTime.totalRevenue * bookingConfig.lateCancelPenalty;
-}
-
-export function calculateNoShowPenalty(
-  teeTime: TeeTime,
-  bookingConfig: BookingWindowConfig
-): number {
-  return teeTime.totalRevenue * bookingConfig.noShowPenalty;
 }
 
 export interface BookingSimulationResult {
@@ -866,216 +721,4 @@ export function resetDailyMetrics(state: TeeTimeSystemState): TeeTimeSystemState
   };
 }
 
-export function updateBookingConfig(
-  state: TeeTimeSystemState,
-  config: Partial<BookingWindowConfig>
-): TeeTimeSystemState {
-  return {
-    ...state,
-    bookingConfig: { ...state.bookingConfig, ...config },
-  };
-}
-
-export type PaceRating = 'excellent' | 'good' | 'acceptable' | 'slow' | 'terrible';
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
-
-export interface SkillDistribution {
-  beginner: number;
-  intermediate: number;
-  advanced: number;
-  expert: number;
-}
-
-export interface PaceOfPlayState {
-  targetRoundTime: number;
-  averageRoundTime: number;
-  backupLocations: number[];
-  waitTimeMinutes: number;
-  paceRating: PaceRating;
-  satisfactionPenalty: number;
-}
-
-export const SKILL_TIME_PENALTIES: Record<SkillLevel, number> = {
-  beginner: 0.5,
-  intermediate: 0.15,
-  advanced: 0,
-  expert: -0.1,
-} as const;
-
-export const PACE_RATING_THRESHOLDS = {
-  excellent: 3.75,
-  good: 4.25,
-  acceptable: 4.75,
-  slow: 5.5,
-} as const;
-
-export const PACE_SATISFACTION_PENALTIES: Record<PaceRating, number> = {
-  excellent: 0,
-  good: 0,
-  acceptable: -5,
-  slow: -15,
-  terrible: -30,
-} as const;
-
-export function getPaceRating(roundTime: number): PaceRating {
-  if (roundTime <= PACE_RATING_THRESHOLDS.excellent) return 'excellent';
-  if (roundTime <= PACE_RATING_THRESHOLDS.good) return 'good';
-  if (roundTime <= PACE_RATING_THRESHOLDS.acceptable) return 'acceptable';
-  if (roundTime <= PACE_RATING_THRESHOLDS.slow) return 'slow';
-  return 'terrible';
-}
-
-export function calculateSkillPenalty(skillMix: SkillDistribution): number {
-  const total = skillMix.beginner + skillMix.intermediate + skillMix.advanced + skillMix.expert;
-  if (total === 0) return 0;
-
-  return (
-    (skillMix.beginner / total) * SKILL_TIME_PENALTIES.beginner +
-    (skillMix.intermediate / total) * SKILL_TIME_PENALTIES.intermediate +
-    (skillMix.advanced / total) * SKILL_TIME_PENALTIES.advanced +
-    (skillMix.expert / total) * SKILL_TIME_PENALTIES.expert
-  );
-}
-
-export function identifyBackupLocations(roundTime: number, spacing: SpacingConfiguration): number[] {
-  const backups: number[] = [];
-  if (roundTime <= 4.0) return backups;
-
-  const excessTime = roundTime - 4.0;
-  const backupProbability = Math.min(0.8, excessTime * spacing.backupRiskMultiplier * 0.3);
-
-  const typicalBackupHoles = [4, 8, 12, 15, 17];
-  for (const hole of typicalBackupHoles) {
-    if (Math.random() < backupProbability) {
-      backups.push(hole);
-    }
-  }
-  return backups;
-}
-
-export function calculateWaitTime(roundTime: number, spacing: SpacingConfiguration): number {
-  if (roundTime <= 4.0) return 0;
-  const excessMinutes = (roundTime - 4.0) * 60;
-  const waitPerHole = (excessMinutes / 18) * spacing.backupRiskMultiplier;
-  return Math.round(waitPerHole * 10) / 10;
-}
-
-export function calculatePaceOfPlay(
-  spacing: SpacingConfiguration,
-  currentCapacity: number,
-  courseConditions: number,
-  skillMix: SkillDistribution = { beginner: 10, intermediate: 50, advanced: 30, expert: 10 }
-): PaceOfPlayState {
-  let roundTime = 4.0;
-
-  roundTime += spacing.paceOfPlayPenalty;
-
-  if (currentCapacity > 0.8) {
-    roundTime += (currentCapacity - 0.8) * 1.5;
-  }
-
-  if (courseConditions < 50) {
-    roundTime += (50 - courseConditions) * 0.02;
-  }
-
-  roundTime += calculateSkillPenalty(skillMix);
-
-  const paceRating = getPaceRating(roundTime);
-  const satisfactionPenalty = PACE_SATISFACTION_PENALTIES[paceRating];
-  const backupLocations = identifyBackupLocations(roundTime, spacing);
-  const waitTimeMinutes = calculateWaitTime(roundTime, spacing);
-
-  return {
-    targetRoundTime: 4.0,
-    averageRoundTime: Math.round(roundTime * 100) / 100,
-    backupLocations,
-    waitTimeMinutes,
-    paceRating,
-    satisfactionPenalty,
-  };
-}
-
-export function calculatePaceOfPlayDeterministic(
-  spacing: SpacingConfiguration,
-  currentCapacity: number,
-  courseConditions: number,
-  skillMix: SkillDistribution = { beginner: 10, intermediate: 50, advanced: 30, expert: 10 }
-): Omit<PaceOfPlayState, 'backupLocations'> {
-  let roundTime = 4.0;
-
-  roundTime += spacing.paceOfPlayPenalty;
-
-  if (currentCapacity > 0.8) {
-    roundTime += (currentCapacity - 0.8) * 1.5;
-  }
-
-  if (courseConditions < 50) {
-    roundTime += (50 - courseConditions) * 0.02;
-  }
-
-  roundTime += calculateSkillPenalty(skillMix);
-
-  const paceRating = getPaceRating(roundTime);
-  const satisfactionPenalty = PACE_SATISFACTION_PENALTIES[paceRating];
-  const waitTimeMinutes = calculateWaitTime(roundTime, spacing);
-
-  return {
-    targetRoundTime: 4.0,
-    averageRoundTime: Math.round(roundTime * 100) / 100,
-    waitTimeMinutes,
-    paceRating,
-    satisfactionPenalty,
-  };
-}
-
-export interface SpacingImpactPreview {
-  maxDailyTeeTimes: number;
-  estimatedRoundTime: number;
-  paceRating: PaceRating;
-  backupRisk: 'low' | 'medium' | 'high' | 'very_high';
-  revenueMultiplier: number;
-  reputationImpact: number;
-  satisfactionPenalty: number;
-}
-
-export function previewSpacingImpact(
-  spacing: TeeTimeSpacing,
-  currentCapacity: number = 0.7,
-  courseConditions: number = 80
-): SpacingImpactPreview {
-  const config = SPACING_CONFIGS[spacing];
-  const pace = calculatePaceOfPlayDeterministic(config, currentCapacity, courseConditions);
-
-  let backupRisk: SpacingImpactPreview['backupRisk'];
-  if (config.backupRiskMultiplier <= 0.5) backupRisk = 'low';
-  else if (config.backupRiskMultiplier <= 1.0) backupRisk = 'medium';
-  else if (config.backupRiskMultiplier <= 2.0) backupRisk = 'high';
-  else backupRisk = 'very_high';
-
-  return {
-    maxDailyTeeTimes: config.maxDailyTeeTimes,
-    estimatedRoundTime: pace.averageRoundTime,
-    paceRating: pace.paceRating,
-    backupRisk,
-    revenueMultiplier: config.revenueMultiplier,
-    reputationImpact: config.reputationModifier,
-    satisfactionPenalty: pace.satisfactionPenalty,
-  };
-}
-
-export function getPaceRatingLabel(rating: PaceRating): string {
-  switch (rating) {
-    case 'excellent': return 'Excellent (≤3:45)';
-    case 'good': return 'Good (≤4:15)';
-    case 'acceptable': return 'Acceptable (≤4:45)';
-    case 'slow': return 'Slow (≤5:30)';
-    case 'terrible': return 'Very Slow (>5:30)';
-  }
-}
-
-export function formatRoundTime(hours: number): string {
-  const totalMinutes = Math.round(hours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}:${m.toString().padStart(2, '0')}`;
-}

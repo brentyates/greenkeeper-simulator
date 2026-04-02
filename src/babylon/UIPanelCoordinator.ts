@@ -1066,13 +1066,26 @@ export class UIPanelCoordinator {
     this.systems.uiManager.updateCurrentPrice(this.state.greenFees.weekday18Holes);
   }
 
+  private get managementPanels() {
+    return [
+      this.employeePanel, this.researchPanel, this.teeSheetPanel,
+      this.equipmentStorePanel, this.amenityPanel, this.courseLayoutPanel,
+    ];
+  }
+
+  private get allClosablePanels() {
+    return [
+      this.irrigationSchedulePanel, this.courseLayoutPanel, this.amenityPanel,
+      this.equipmentStorePanel, this.teeSheetPanel, this.researchPanel,
+      this.employeePanel, this.irrigationInfoPanel, this.entityInspectorPanel,
+      this.regionInfoPanel,
+    ];
+  }
+
   private closeAllManagementPanels(): void {
-    if (this.employeePanel?.isVisible()) this.employeePanel.hide();
-    if (this.researchPanel?.isVisible()) this.researchPanel.hide();
-    if (this.teeSheetPanel?.isVisible()) this.teeSheetPanel.hide();
-    if (this.equipmentStorePanel?.isVisible()) this.equipmentStorePanel.hide();
-    if (this.amenityPanel?.isVisible()) this.amenityPanel.hide();
-    if (this.courseLayoutPanel?.isVisible()) this.courseLayoutPanel.hide();
+    for (const panel of this.managementPanels) {
+      if (panel?.isVisible()) panel.hide();
+    }
   }
 
   handleEmployeePanel(): void {
@@ -1232,58 +1245,17 @@ export class UIPanelCoordinator {
   }
 
   isModalDialogVisible(): boolean {
-    return (
-      (this.employeePanel?.isVisible() ?? false) ||
-      (this.researchPanel?.isVisible() ?? false) ||
+    return this.managementPanels.some(p => p?.isVisible()) ||
       (this.daySummaryPopup?.isVisible() ?? false) ||
-      (this.teeSheetPanel?.isVisible() ?? false) ||
-      (this.equipmentStorePanel?.isVisible() ?? false) ||
-      (this.amenityPanel?.isVisible() ?? false) ||
-      (this.courseLayoutPanel?.isVisible() ?? false) ||
-      (this.irrigationSchedulePanel?.isVisible() ?? false)
-    );
+      (this.irrigationSchedulePanel?.isVisible() ?? false);
   }
 
   closeTopmostPanel(): boolean {
-    if (this.irrigationSchedulePanel?.isVisible()) {
-      this.irrigationSchedulePanel.hide();
-      return true;
-    }
-    if (this.courseLayoutPanel?.isVisible()) {
-      this.courseLayoutPanel.hide();
-      return true;
-    }
-    if (this.amenityPanel?.isVisible()) {
-      this.amenityPanel.hide();
-      return true;
-    }
-    if (this.equipmentStorePanel?.isVisible()) {
-      this.equipmentStorePanel.hide();
-      return true;
-    }
-    if (this.teeSheetPanel?.isVisible()) {
-      this.teeSheetPanel.hide();
-      return true;
-    }
-    if (this.researchPanel?.isVisible()) {
-      this.researchPanel.hide();
-      return true;
-    }
-    if (this.employeePanel?.isVisible()) {
-      this.employeePanel.hide();
-      return true;
-    }
-    if (this.irrigationInfoPanel?.isVisible()) {
-      this.irrigationInfoPanel.hide();
-      return true;
-    }
-    if (this.entityInspectorPanel?.isVisible()) {
-      this.entityInspectorPanel.hide();
-      return true;
-    }
-    if (this.regionInfoPanel?.isVisible()) {
-      this.regionInfoPanel.hide();
-      return true;
+    for (const panel of this.allClosablePanels) {
+      if (panel?.isVisible()) {
+        panel.hide();
+        return true;
+      }
     }
     return false;
   }

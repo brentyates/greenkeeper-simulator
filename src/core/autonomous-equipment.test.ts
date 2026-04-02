@@ -3,13 +3,10 @@ import {
   createInitialAutonomousState,
   purchaseRobot,
   sellRobot,
-  countRobotsByType,
   countWorkingRobots,
   countBrokenRobots,
   tickAutonomousEquipment,
-  getRobotTypeFromEquipmentId,
   getAvailableRobotsToPurchase,
-  getRobotStatus,
   AutonomousEquipmentState,
   RobotUnit,
 } from './autonomous-equipment';
@@ -76,31 +73,6 @@ describe('autonomous-equipment', () => {
       const state = createInitialAutonomousState(10, 15);
       expect(state.chargingStationX).toBe(10);
       expect(state.chargingStationY).toBe(15);
-    });
-  });
-
-  describe('getRobotTypeFromEquipmentId', () => {
-    it('returns mower for mower equipment', () => {
-      expect(getRobotTypeFromEquipmentId('robot_mower_fairway')).toBe('mower');
-      expect(getRobotTypeFromEquipmentId('robot_mower_greens')).toBe('mower');
-    });
-
-    it('returns sprayer for sprayer equipment', () => {
-      expect(getRobotTypeFromEquipmentId('robot_sprayer')).toBe('sprayer');
-      expect(getRobotTypeFromEquipmentId('robot_sprinkler')).toBe('sprayer');
-    });
-
-    it('returns spreader for fertilizer equipment', () => {
-      expect(getRobotTypeFromEquipmentId('robot_fertilizer')).toBe('spreader');
-      expect(getRobotTypeFromEquipmentId('robot_spreader')).toBe('spreader');
-    });
-
-    it('returns raker for bunker rake equipment', () => {
-      expect(getRobotTypeFromEquipmentId('robot_bunker_rake')).toBe('raker');
-    });
-
-    it('defaults to mower for unknown equipment', () => {
-      expect(getRobotTypeFromEquipmentId('unknown')).toBe('mower');
     });
   });
 
@@ -256,23 +228,6 @@ describe('autonomous-equipment', () => {
   });
 
   describe('counting functions', () => {
-    it('countRobotsByType counts correctly', () => {
-      let state = createInitialAutonomousState();
-      const mowerStats = createMockRobotStats();
-      const sprayerStats = createMockRobotStats();
-      const rakerStats = createMockRobotStats();
-
-      state = purchaseRobot(state, 'robot_mower_1', mowerStats)!.state;
-      state = purchaseRobot(state, 'robot_mower_2', mowerStats)!.state;
-      state = purchaseRobot(state, 'robot_sprayer', sprayerStats)!.state;
-      state = purchaseRobot(state, 'robot_bunker_rake', rakerStats)!.state;
-
-      expect(countRobotsByType(state, 'mower')).toBe(2);
-      expect(countRobotsByType(state, 'sprayer')).toBe(1);
-      expect(countRobotsByType(state, 'spreader')).toBe(0);
-      expect(countRobotsByType(state, 'raker')).toBe(1);
-    });
-
     it('countWorkingRobots counts working and moving robots', () => {
       const robot1: RobotUnit = {
         id: 'r1',
@@ -328,47 +283,6 @@ describe('autonomous-equipment', () => {
       };
 
       expect(countBrokenRobots(state)).toBe(1);
-    });
-  });
-
-  describe('getRobotStatus', () => {
-    it('returns status breakdown', () => {
-      const makeRobot = (id: string, state: RobotUnit['state']): RobotUnit => ({
-        id,
-        equipmentId: 'robot_mower',
-        type: 'mower',
-        stats: createMockRobotStats(),
-        worldX: 0,
-        worldZ: 0,
-        resourceCurrent: 100,
-        resourceMax: 300,
-        state,
-        targetX: null,
-        targetY: null,
-        path: null,
-        pathIndex: 0,
-        breakdownTimeRemaining: 0,
-      });
-
-      const state: AutonomousEquipmentState = {
-        robots: [
-          makeRobot('r1', 'working'),
-          makeRobot('r2', 'working'),
-          makeRobot('r3', 'idle'),
-          makeRobot('r4', 'charging'),
-          makeRobot('r5', 'broken'),
-        ],
-        chargingStationX: 0,
-        chargingStationY: 0,
-      };
-
-      const status = getRobotStatus(state);
-
-      expect(status.total).toBe(5);
-      expect(status.working).toBe(2);
-      expect(status.idle).toBe(1);
-      expect(status.charging).toBe(1);
-      expect(status.broken).toBe(1);
     });
   });
 

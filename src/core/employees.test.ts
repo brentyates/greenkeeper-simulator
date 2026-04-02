@@ -1,88 +1,35 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  // Types
   Employee,
-  EmployeeRole,
   EmployeeRoster,
-  EmployeeSkills,
 
-  // Constants
-  EMPLOYEE_CONFIGS,
-  SKILL_LEVEL_BONUSES,
-  SKILL_LEVELS_ORDER,
-  DEFAULT_MAX_EMPLOYEES,
-  PAYROLL_INTERVAL_MINUTES,
-  PAYROLL_SHIFT_HOURS,
-
-  // Factory functions
   createInitialRoster,
   generateRandomName,
   generateRandomSkills,
   createEmployee,
-  generateHiringPool,
 
-  // Query functions
   getEmployee,
-  getEmployeesByRole,
-  getEmployeesByStatus,
-  getWorkingEmployees,
-  getEmployeeCount,
-  getEmployeeCountByRole,
-  canHire,
   getAvailableSlots,
-  getTotalHourlyWages,
-  getAverageHappiness,
-  getAverageEfficiency,
-  getEmployeesNeedingBreak,
   calculateEffectiveEfficiency,
-  getNextSkillLevel,
-  getExperienceForNextLevel,
-  isEligibleForPromotion,
   awardExperience,
 
-  // State transformation functions
   hireEmployee,
   fireEmployee,
-  updateEmployee,
-  setEmployeeStatus,
   assignEmployeeToArea,
-  startEmployeeBreak,
-  endEmployeeBreak,
   tickEmployees,
   processPayroll,
   markEmployeesUnpaid,
   resumeEmployeesAfterPayroll,
-  promoteEmployee,
-  adjustHappiness,
-  giveRaise,
-  refreshHiringPool,
 
-  // Utility functions
-  getRoleName,
-  getSkillLevelName,
-  formatWage,
-  resetEmployeeCounter,
-
-  // Prestige-based hiring functions
   createInitialApplicationState,
-  resetJobPostingCounter,
-  generateApplication,
   tickApplications,
   postJobOpening,
   acceptApplication,
-  rejectApplication,
-  getTimeUntilNextApplication,
-  getActivePostingsCount,
   hasActivePosting,
   getPostingCost,
 
-  // Prestige types/constants
   PRESTIGE_HIRING_CONFIG
 } from "./employees";
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
 
 function makeEmployee(overrides: Partial<Employee> = {}): Employee {
   return {
@@ -110,62 +57,14 @@ function makeEmployee(overrides: Partial<Employee> = {}): Employee {
 function makeRoster(overrides: Partial<EmployeeRoster> = {}): EmployeeRoster {
   return {
     employees: [],
-    maxEmployees: DEFAULT_MAX_EMPLOYEES,
+    maxEmployees: 20,
     lastPayrollTime: 0,
     totalWagesPaid: 0,
     ...overrides
   };
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 describe("Employee System", () => {
-  beforeEach(() => {
-    resetEmployeeCounter();
-  });
-
-  // ==========================================================================
-  // Constants Tests
-  // ==========================================================================
-
-  describe("Constants", () => {
-    it("has configs for all employee roles", () => {
-      const roles: EmployeeRole[] = [
-        "groundskeeper", "mechanic"
-      ];
-
-      for (const role of roles) {
-        expect(EMPLOYEE_CONFIGS[role]).toBeDefined();
-        expect(EMPLOYEE_CONFIGS[role].baseWage).toBeGreaterThan(0);
-      }
-    });
-
-    it("has increasing wage multipliers by skill level", () => {
-      for (const role of Object.keys(EMPLOYEE_CONFIGS) as EmployeeRole[]) {
-        const config = EMPLOYEE_CONFIGS[role];
-        expect(config.wageMultipliers.novice).toBeLessThanOrEqual(config.wageMultipliers.trained);
-        expect(config.wageMultipliers.trained).toBeLessThanOrEqual(config.wageMultipliers.experienced);
-        expect(config.wageMultipliers.experienced).toBeLessThanOrEqual(config.wageMultipliers.expert);
-      }
-    });
-
-    it("has correct skill level order", () => {
-      expect(SKILL_LEVELS_ORDER).toEqual(["novice", "trained", "experienced", "expert"]);
-    });
-
-    it("has increasing skill level bonuses", () => {
-      expect(SKILL_LEVEL_BONUSES.novice).toBeLessThan(SKILL_LEVEL_BONUSES.trained);
-      expect(SKILL_LEVEL_BONUSES.trained).toBeLessThan(SKILL_LEVEL_BONUSES.experienced);
-      expect(SKILL_LEVEL_BONUSES.experienced).toBeLessThan(SKILL_LEVEL_BONUSES.expert);
-    });
-  });
-
-  // ==========================================================================
-  // Factory Function Tests
-  // ==========================================================================
-
   describe("createInitialRoster", () => {
     it("creates empty roster", () => {
       const roster = createInitialRoster();
@@ -174,7 +73,7 @@ describe("Employee System", () => {
 
     it("sets default max employees", () => {
       const roster = createInitialRoster();
-      expect(roster.maxEmployees).toBe(DEFAULT_MAX_EMPLOYEES);
+      expect(roster.maxEmployees).toBe(20);
     });
 
     it("accepts custom max employees", () => {
@@ -198,8 +97,6 @@ describe("Employee System", () => {
     it("generates different names with different seeds", () => {
       const name1 = generateRandomName(0.1);
       const name2 = generateRandomName(0.9);
-      // Names might be the same by chance, but very unlikely with different seeds
-      // Just check they are valid names
       expect(name1.length).toBeGreaterThan(0);
       expect(name2.length).toBeGreaterThan(0);
     });
@@ -219,7 +116,6 @@ describe("Employee System", () => {
     });
 
     it("generates better skills for higher levels", () => {
-      // Generate many samples to test average
       let noviceTotal = 0;
       let expertTotal = 0;
 
@@ -252,9 +148,8 @@ describe("Employee System", () => {
     });
 
     it("calculates wage based on role and skill level", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = createEmployee("groundskeeper", "trained", 0);
-      const expectedWage = config.baseWage * config.wageMultipliers.trained;
+      const expectedWage = 12 * 1.25;
       expect(emp.hourlyWage).toBeCloseTo(expectedWage, 2);
     });
 
@@ -289,7 +184,7 @@ describe("Employee System", () => {
     });
 
     it("accepts custom skills", () => {
-      const customSkills: EmployeeSkills = {
+      const customSkills = {
         efficiency: 1.5,
         quality: 1.3,
         stamina: 1.2,
@@ -299,28 +194,6 @@ describe("Employee System", () => {
       expect(emp.skills).toEqual(customSkills);
     });
   });
-
-  describe("generateHiringPool", () => {
-    it("generates specified number of candidates", () => {
-      const pool = generateHiringPool(1000, 5);
-      expect(pool.candidates.length).toBe(5);
-    });
-
-    it("sets refresh time", () => {
-      const pool = generateHiringPool(5000, 3);
-      expect(pool.refreshTime).toBe(5000);
-    });
-
-    it("generates employees with various roles", () => {
-      const pool = generateHiringPool(0, 20);
-      const roles = new Set(pool.candidates.map(c => c.role));
-      expect(roles.size).toBeGreaterThan(1);
-    });
-  });
-
-  // ==========================================================================
-  // Query Function Tests
-  // ==========================================================================
 
   describe("getEmployee", () => {
     it("returns employee when found", () => {
@@ -335,92 +208,6 @@ describe("Employee System", () => {
     });
   });
 
-  describe("getEmployeesByRole", () => {
-    it("returns employees matching role", () => {
-      const emp1 = makeEmployee({ id: "emp_1", role: "groundskeeper" });
-      const emp2 = makeEmployee({ id: "emp_2", role: "mechanic" });
-      const emp3 = makeEmployee({ id: "emp_3", role: "groundskeeper" });
-      const roster = makeRoster({ employees: [emp1, emp2, emp3] });
-
-      const groundskeepers = getEmployeesByRole(roster, "groundskeeper");
-      expect(groundskeepers.length).toBe(2);
-      expect(groundskeepers.every(e => e.role === "groundskeeper")).toBe(true);
-    });
-
-    it("returns empty array when no matches", () => {
-      const emp = makeEmployee({ role: "groundskeeper" });
-      const roster = makeRoster({ employees: [emp] });
-      expect(getEmployeesByRole(roster, "mechanic")).toEqual([]);
-    });
-  });
-
-  describe("getEmployeesByStatus", () => {
-    it("returns employees matching status", () => {
-      const emp1 = makeEmployee({ id: "emp_1", status: "working" });
-      const emp2 = makeEmployee({ id: "emp_2", status: "on_break" });
-      const emp3 = makeEmployee({ id: "emp_3", status: "working" });
-      const roster = makeRoster({ employees: [emp1, emp2, emp3] });
-
-      const working = getEmployeesByStatus(roster, "working");
-      expect(working.length).toBe(2);
-    });
-  });
-
-  describe("getWorkingEmployees", () => {
-    it("returns only working employees", () => {
-      const emp1 = makeEmployee({ id: "emp_1", status: "working" });
-      const emp2 = makeEmployee({ id: "emp_2", status: "idle" });
-      const emp3 = makeEmployee({ id: "emp_3", status: "working" });
-      const roster = makeRoster({ employees: [emp1, emp2, emp3] });
-
-      const working = getWorkingEmployees(roster);
-      expect(working.length).toBe(2);
-    });
-  });
-
-  describe("getEmployeeCount", () => {
-    it("returns total count", () => {
-      const roster = makeRoster({
-        employees: [makeEmployee({ id: "1" }), makeEmployee({ id: "2" })]
-      });
-      expect(getEmployeeCount(roster)).toBe(2);
-    });
-
-    it("returns 0 for empty roster", () => {
-      const roster = makeRoster();
-      expect(getEmployeeCount(roster)).toBe(0);
-    });
-  });
-
-  describe("getEmployeeCountByRole", () => {
-    it("counts employees of specific role", () => {
-      const roster = makeRoster({
-        employees: [
-          makeEmployee({ id: "1", role: "groundskeeper" }),
-          makeEmployee({ id: "2", role: "mechanic" }),
-          makeEmployee({ id: "3", role: "groundskeeper" })
-        ]
-      });
-      expect(getEmployeeCountByRole(roster, "groundskeeper")).toBe(2);
-      expect(getEmployeeCountByRole(roster, "mechanic")).toBe(1);
-    });
-  });
-
-  describe("canHire", () => {
-    it("returns true when slots available", () => {
-      const roster = makeRoster({ maxEmployees: 10, employees: [] });
-      expect(canHire(roster)).toBe(true);
-    });
-
-    it("returns false when at max", () => {
-      const roster = makeRoster({
-        maxEmployees: 2,
-        employees: [makeEmployee({ id: "1" }), makeEmployee({ id: "2" })]
-      });
-      expect(canHire(roster)).toBe(false);
-    });
-  });
-
   describe("getAvailableSlots", () => {
     it("calculates remaining slots", () => {
       const roster = makeRoster({
@@ -431,89 +218,6 @@ describe("Employee System", () => {
     });
   });
 
-  describe("getTotalHourlyWages", () => {
-    it("sums all employee wages", () => {
-      const roster = makeRoster({
-        employees: [
-          makeEmployee({ id: "1", hourlyWage: 15 }),
-          makeEmployee({ id: "2", hourlyWage: 20 })
-        ]
-      });
-      expect(getTotalHourlyWages(roster)).toBe(35);
-    });
-
-    it("returns 0 for empty roster", () => {
-      const roster = makeRoster();
-      expect(getTotalHourlyWages(roster)).toBe(0);
-    });
-  });
-
-  describe("getAverageHappiness", () => {
-    it("calculates average happiness", () => {
-      const roster = makeRoster({
-        employees: [
-          makeEmployee({ id: "1", happiness: 80 }),
-          makeEmployee({ id: "2", happiness: 60 })
-        ]
-      });
-      expect(getAverageHappiness(roster)).toBe(70);
-    });
-
-    it("returns 100 for empty roster", () => {
-      const roster = makeRoster();
-      expect(getAverageHappiness(roster)).toBe(100);
-    });
-  });
-
-  describe("getAverageEfficiency", () => {
-    it("calculates average efficiency", () => {
-      const roster = makeRoster({
-        employees: [
-          makeEmployee({ id: "1", skills: { efficiency: 1.2, quality: 1, stamina: 1, reliability: 1 } }),
-          makeEmployee({ id: "2", skills: { efficiency: 0.8, quality: 1, stamina: 1, reliability: 1 } })
-        ]
-      });
-      expect(getAverageEfficiency(roster)).toBe(1.0);
-    });
-
-    it("returns 1 for empty roster", () => {
-      const roster = makeRoster();
-      expect(getAverageEfficiency(roster)).toBe(1);
-    });
-  });
-
-  describe("getEmployeesNeedingBreak", () => {
-    it("returns employees above fatigue threshold", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp1 = makeEmployee({
-        id: "emp_1",
-        status: "working",
-        fatigue: config.breakThreshold + 1
-      });
-      const emp2 = makeEmployee({
-        id: "emp_2",
-        status: "working",
-        fatigue: config.breakThreshold - 1
-      });
-      const roster = makeRoster({ employees: [emp1, emp2] });
-
-      const needBreak = getEmployeesNeedingBreak(roster);
-      expect(needBreak.length).toBe(1);
-      expect(needBreak[0].id).toBe("emp_1");
-    });
-
-    it("excludes non-working employees", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        status: "on_break",
-        fatigue: config.breakThreshold + 10
-      });
-      const roster = makeRoster({ employees: [emp] });
-
-      expect(getEmployeesNeedingBreak(roster).length).toBe(0);
-    });
-  });
-
   describe("calculateEffectiveEfficiency", () => {
     it("returns full efficiency at full happiness and zero fatigue", () => {
       const emp = makeEmployee({
@@ -521,7 +225,6 @@ describe("Employee System", () => {
         happiness: 100,
         fatigue: 0
       });
-      // Happiness 100/100 = 1.0x, fatigue 0 = 1.0x
       expect(calculateEffectiveEfficiency(emp)).toBe(1.0);
     });
 
@@ -531,7 +234,6 @@ describe("Employee System", () => {
         happiness: 0,
         fatigue: 0
       });
-      // Happiness 0/100 = 0.0x
       expect(calculateEffectiveEfficiency(emp)).toBe(0);
     });
 
@@ -541,7 +243,6 @@ describe("Employee System", () => {
         happiness: 100,
         fatigue: 100
       });
-      // Happiness 100/100 = 1.0x, Fatigue 100 = 0.7x
       expect(calculateEffectiveEfficiency(emp)).toBe(0.7);
     });
 
@@ -552,72 +253,8 @@ describe("Employee System", () => {
         fatigue: 50
       });
       const result = calculateEffectiveEfficiency(emp);
-      // happiness 50/100 = 0.5, fatigue 50 -> 0.85, combined = 0.425
       expect(result).toBeLessThan(1.0);
       expect(result).toBeGreaterThan(0.3);
-    });
-  });
-
-  describe("getNextSkillLevel", () => {
-    it("returns next level for novice", () => {
-      expect(getNextSkillLevel("novice")).toBe("trained");
-    });
-
-    it("returns next level for trained", () => {
-      expect(getNextSkillLevel("trained")).toBe("experienced");
-    });
-
-    it("returns next level for experienced", () => {
-      expect(getNextSkillLevel("experienced")).toBe("expert");
-    });
-
-    it("returns null for expert", () => {
-      expect(getNextSkillLevel("expert")).toBeNull();
-    });
-  });
-
-  describe("getExperienceForNextLevel", () => {
-    it("returns remaining experience needed", () => {
-      const emp = makeEmployee({
-        role: "groundskeeper",
-        skillLevel: "novice",
-        experience: 400
-      });
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      expect(getExperienceForNextLevel(emp)).toBe(config.experienceToLevel - 400);
-    });
-
-    it("returns 0 for max level", () => {
-      const emp = makeEmployee({ skillLevel: "expert", experience: 0 });
-      expect(getExperienceForNextLevel(emp)).toBe(0);
-    });
-  });
-
-  describe("isEligibleForPromotion", () => {
-    it("returns true when experience threshold reached", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        role: "groundskeeper",
-        skillLevel: "novice",
-        experience: config.experienceToLevel
-      });
-      expect(isEligibleForPromotion(emp)).toBe(true);
-    });
-
-    it("returns false when below threshold", () => {
-      const emp = makeEmployee({
-        skillLevel: "novice",
-        experience: 100
-      });
-      expect(isEligibleForPromotion(emp)).toBe(false);
-    });
-
-    it("returns false for expert level", () => {
-      const emp = makeEmployee({
-        skillLevel: "expert",
-        experience: 10000
-      });
-      expect(isEligibleForPromotion(emp)).toBe(false);
     });
   });
 
@@ -630,11 +267,10 @@ describe("Employee System", () => {
     });
 
     it("promotes employee when threshold reached", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         role: "groundskeeper",
         skillLevel: "novice",
-        experience: config.experienceToLevel - 50,
+        experience: 950,
       });
       const roster = makeRoster({ employees: [emp] });
       const updated = awardExperience(roster, emp.id, 100);
@@ -643,11 +279,10 @@ describe("Employee System", () => {
     });
 
     it("increases skills on promotion", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         role: "groundskeeper",
         skillLevel: "novice",
-        experience: config.experienceToLevel - 10,
+        experience: 990,
         skills: { efficiency: 1.0, quality: 1.0, stamina: 1.0, reliability: 1.0 },
       });
       const roster = makeRoster({ employees: [emp] });
@@ -673,22 +308,17 @@ describe("Employee System", () => {
     });
 
     it("does not promote expert when experience threshold reached", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         role: "groundskeeper",
         skillLevel: "expert",
-        experience: config.experienceToLevel - 10
+        experience: 990
       });
       const roster = makeRoster({ employees: [emp] });
       const updated = awardExperience(roster, emp.id, 50);
       expect(updated.employees[0].skillLevel).toBe("expert");
-      expect(updated.employees[0].experience).toBe(config.experienceToLevel + 40);
+      expect(updated.employees[0].experience).toBe(1040);
     });
   });
-
-  // ==========================================================================
-  // State Transformation Tests
-  // ==========================================================================
 
   describe("hireEmployee", () => {
     it("adds employee to roster", () => {
@@ -745,49 +375,6 @@ describe("Employee System", () => {
     });
   });
 
-  describe("updateEmployee", () => {
-    it("updates specified fields", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 50 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = updateEmployee(roster, "emp_1", { happiness: 75 });
-
-      expect(result?.employees[0].happiness).toBe(75);
-    });
-
-    it("preserves other fields", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 50, fatigue: 30 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = updateEmployee(roster, "emp_1", { happiness: 75 });
-
-      expect(result?.employees[0].fatigue).toBe(30);
-    });
-
-    it("returns null for nonexistent employee", () => {
-      const roster = makeRoster();
-      expect(updateEmployee(roster, "fake", { happiness: 50 })).toBeNull();
-    });
-
-    it("only updates targeted employee in roster with multiple employees", () => {
-      const emp1 = makeEmployee({ id: "emp_1", happiness: 50 });
-      const emp2 = makeEmployee({ id: "emp_2", happiness: 60 });
-      const roster = makeRoster({ employees: [emp1, emp2] });
-      const result = updateEmployee(roster, "emp_1", { happiness: 75 });
-
-      expect(result?.employees[0].happiness).toBe(75);
-      expect(result?.employees[1].happiness).toBe(60);
-    });
-  });
-
-  describe("setEmployeeStatus", () => {
-    it("updates employee status", () => {
-      const emp = makeEmployee({ id: "emp_1", status: "idle" });
-      const roster = makeRoster({ employees: [emp] });
-      const result = setEmployeeStatus(roster, "emp_1", "working");
-
-      expect(result?.employees[0].status).toBe("working");
-    });
-  });
-
   describe("assignEmployeeToArea", () => {
     it("assigns employee to area", () => {
       const emp = makeEmployee({ id: "emp_1", assignedArea: null });
@@ -803,33 +390,6 @@ describe("Employee System", () => {
       const result = assignEmployeeToArea(roster, "emp_1", null);
 
       expect(result?.employees[0].assignedArea).toBeNull();
-    });
-  });
-
-  describe("startEmployeeBreak", () => {
-    it("sets status to on_break", () => {
-      const emp = makeEmployee({ id: "emp_1", status: "working" });
-      const roster = makeRoster({ employees: [emp] });
-      const result = startEmployeeBreak(roster, "emp_1");
-
-      expect(result?.employees[0].status).toBe("on_break");
-    });
-  });
-
-  describe("endEmployeeBreak", () => {
-    it("sets status to working", () => {
-      const emp = makeEmployee({ id: "emp_1", status: "on_break" });
-      const roster = makeRoster({ employees: [emp] });
-      const result = endEmployeeBreak(roster, "emp_1");
-
-      expect(result?.employees[0].status).toBe("working");
-    });
-
-    it("returns null if not on break", () => {
-      const emp = makeEmployee({ id: "emp_1", status: "working" });
-      const roster = makeRoster({ employees: [emp] });
-
-      expect(endEmployeeBreak(roster, "emp_1")).toBeNull();
     });
   });
 
@@ -859,12 +419,11 @@ describe("Employee System", () => {
     });
 
     it("triggers automatic break at fatigue threshold", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         id: "emp_1",
         role: "groundskeeper",
         status: "working",
-        fatigue: config.breakThreshold - 1
+        fatigue: 79
       });
       const roster = makeRoster({ employees: [emp] });
       const result = tickEmployees(roster, 10);
@@ -882,13 +441,12 @@ describe("Employee System", () => {
     });
 
     it("triggers promotion when experience threshold reached", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         id: "emp_1",
         role: "groundskeeper",
         skillLevel: "novice",
         status: "working",
-        experience: config.experienceToLevel - 1
+        experience: 999
       });
       const roster = makeRoster({ employees: [emp] });
       const result = tickEmployees(roster, 10);
@@ -899,30 +457,27 @@ describe("Employee System", () => {
     });
 
     it("updates wage on promotion", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         id: "emp_1",
         role: "groundskeeper",
         skillLevel: "novice",
         status: "working",
-        experience: config.experienceToLevel - 1,
-        hourlyWage: config.baseWage * config.wageMultipliers.novice
+        experience: 999,
+        hourlyWage: 12
       });
       const roster = makeRoster({ employees: [emp] });
       const result = tickEmployees(roster, 10);
 
-      const expectedWage = config.baseWage * config.wageMultipliers.trained;
-      expect(result.roster.employees[0].hourlyWage).toBeCloseTo(expectedWage, 2);
+      expect(result.roster.employees[0].hourlyWage).toBeCloseTo(15, 2);
     });
 
     it("does not promote when already at expert level", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp = makeEmployee({
         id: "emp_1",
         role: "groundskeeper",
         skillLevel: "expert",
         status: "working",
-        experience: config.experienceToLevel - 1
+        experience: 999
       });
       const roster = makeRoster({ employees: [emp] });
       const result = tickEmployees(roster, 10);
@@ -944,11 +499,9 @@ describe("Employee System", () => {
       const emp = makeEmployee({ id: "emp_1", status: "working", fatigue: 0 });
       const roster = makeRoster({ employees: [emp] });
 
-      // Without training bonus
       const resultNoBonus = tickEmployees(roster, 10, 1.0);
       const fatigueNoBonus = resultNoBonus.roster.employees[0].fatigue;
 
-      // With 1.5x training bonus (fatigue should be reduced)
       const resultWithBonus = tickEmployees(roster, 10, 1.5);
       const fatigueWithBonus = resultWithBonus.roster.employees[0].fatigue;
 
@@ -959,11 +512,9 @@ describe("Employee System", () => {
       const emp = makeEmployee({ id: "emp_1", status: "working", experience: 0 });
       const roster = makeRoster({ employees: [emp] });
 
-      // Without training bonus
       const resultNoBonus = tickEmployees(roster, 10, 1.0);
       const expNoBonus = resultNoBonus.roster.employees[0].experience;
 
-      // With 1.5x training bonus
       const resultWithBonus = tickEmployees(roster, 10, 1.5);
       const expWithBonus = resultWithBonus.roster.employees[0].experience;
 
@@ -991,7 +542,7 @@ describe("Employee System", () => {
         employees: [emp],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, 30); // Only 30 minutes
+      const result = processPayroll(roster, 30);
 
       expect(result.totalPaid).toBe(0);
     });
@@ -1002,7 +553,7 @@ describe("Employee System", () => {
         employees: [emp],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
       expect(result.totalPaid).toBe(1.88);
     });
@@ -1013,7 +564,7 @@ describe("Employee System", () => {
         employees: [emp],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
       expect(result.totalPaid).toBe(1.25);
     });
@@ -1021,9 +572,9 @@ describe("Employee System", () => {
     it("updates last payroll time", () => {
       const emp = makeEmployee({ hourlyWage: 15 });
       const roster = makeRoster({ employees: [emp], lastPayrollTime: 0 });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
-      expect(result.roster.lastPayrollTime).toBe(PAYROLL_INTERVAL_MINUTES);
+      expect(result.roster.lastPayrollTime).toBe(60);
     });
 
     it("accumulates total wages paid", () => {
@@ -1033,7 +584,7 @@ describe("Employee System", () => {
         lastPayrollTime: 0,
         totalWagesPaid: 100
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
       expect(result.roster.totalWagesPaid).toBe(101.88);
     });
@@ -1045,7 +596,7 @@ describe("Employee System", () => {
         employees: [emp1, emp2],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
       expect(result.breakdown.length).toBe(2);
       expect(result.breakdown.find(b => b.employeeId === "emp_1")?.amount).toBe(1.88);
@@ -1058,7 +609,7 @@ describe("Employee System", () => {
         employees: [emp],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+      const result = processPayroll(roster, 60);
 
       expect(result.totalPaid).toBe(0);
     });
@@ -1069,7 +620,7 @@ describe("Employee System", () => {
         employees: [emp],
         lastPayrollTime: 0
       });
-      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES * PAYROLL_SHIFT_HOURS);
+      const result = processPayroll(roster, 60 * 8);
 
       expect(result.totalPaid).toBe(16);
     });
@@ -1095,251 +646,38 @@ describe("Employee System", () => {
     });
   });
 
-  describe("promoteEmployee", () => {
-    it("promotes eligible employee", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        id: "emp_1",
-        role: "groundskeeper",
-        skillLevel: "novice",
-        experience: config.experienceToLevel
-      });
-      const roster = makeRoster({ employees: [emp] });
-      const result = promoteEmployee(roster, "emp_1");
-
-      expect(result?.employees[0].skillLevel).toBe("trained");
-    });
-
-    it("resets experience after promotion", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        id: "emp_1",
-        role: "groundskeeper",
-        skillLevel: "novice",
-        experience: config.experienceToLevel + 100
-      });
-      const roster = makeRoster({ employees: [emp] });
-      const result = promoteEmployee(roster, "emp_1");
-
-      expect(result?.employees[0].experience).toBe(0);
-    });
-
-    it("increases happiness on promotion", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        id: "emp_1",
-        role: "groundskeeper",
-        skillLevel: "novice",
-        experience: config.experienceToLevel,
-        happiness: 70
-      });
-      const roster = makeRoster({ employees: [emp] });
-      const result = promoteEmployee(roster, "emp_1");
-
-      expect(result?.employees[0].happiness).toBe(80);
-    });
-
-    it("returns null if not eligible", () => {
-      const emp = makeEmployee({
-        id: "emp_1",
-        skillLevel: "novice",
-        experience: 10
-      });
-      const roster = makeRoster({ employees: [emp] });
-
-      expect(promoteEmployee(roster, "emp_1")).toBeNull();
-    });
-
-    it("returns null for max level", () => {
-      const emp = makeEmployee({
-        id: "emp_1",
-        skillLevel: "expert",
-        experience: 10000
-      });
-      const roster = makeRoster({ employees: [emp] });
-
-      expect(promoteEmployee(roster, "emp_1")).toBeNull();
-    });
-
-    it("returns null for non-existent employee", () => {
-      const roster = makeRoster({ employees: [] });
-      expect(promoteEmployee(roster, "nonexistent")).toBeNull();
-    });
-  });
-
-  describe("adjustHappiness", () => {
-    it("returns null for non-existent employee", () => {
-      const roster = makeRoster({ employees: [] });
-      expect(adjustHappiness(roster, "nonexistent", 10)).toBeNull();
-    });
-    it("increases happiness", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 50 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = adjustHappiness(roster, "emp_1", 20);
-
-      expect(result?.employees[0].happiness).toBe(70);
-    });
-
-    it("decreases happiness", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 50 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = adjustHappiness(roster, "emp_1", -20);
-
-      expect(result?.employees[0].happiness).toBe(30);
-    });
-
-    it("clamps to 0-100 range", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 90 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = adjustHappiness(roster, "emp_1", 20);
-
-      expect(result?.employees[0].happiness).toBe(100);
-    });
-  });
-
-  describe("giveRaise", () => {
-    it("returns null for non-existent employee", () => {
-      const roster = makeRoster({ employees: [] });
-      expect(giveRaise(roster, "nonexistent", 10)).toBeNull();
-    });
-
-    it("increases wage by percentage", () => {
-      const emp = makeEmployee({ id: "emp_1", hourlyWage: 10 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = giveRaise(roster, "emp_1", 10);
-
-      expect(result?.employees[0].hourlyWage).toBe(11);
-    });
-
-    it("increases happiness", () => {
-      const emp = makeEmployee({ id: "emp_1", hourlyWage: 10, happiness: 70 });
-      const roster = makeRoster({ employees: [emp] });
-      const result = giveRaise(roster, "emp_1", 10);
-
-      expect(result?.employees[0].happiness).toBe(75);
-    });
-  });
-
-  describe("refreshHiringPool", () => {
-    it("does nothing before refresh interval", () => {
-      const pool = generateHiringPool(0, 3);
-      const candidates = pool.candidates;
-      const result = refreshHiringPool(pool, 100);
-
-      expect(result.candidates).toEqual(candidates);
-    });
-
-    it("generates new candidates after interval", () => {
-      const pool = generateHiringPool(0, 3);
-      const oldIds = pool.candidates.map(c => c.id);
-      const result = refreshHiringPool(pool, 500);
-
-      const newIds = result.candidates.map(c => c.id);
-      // New pool should have different IDs (very unlikely to match)
-      expect(newIds.some(id => !oldIds.includes(id))).toBe(true);
-    });
-  });
-
-  // ==========================================================================
-  // Utility Function Tests
-  // ==========================================================================
-
-  describe("getRoleName", () => {
-    it("returns display names for all roles", () => {
-      expect(getRoleName("groundskeeper")).toBe("Groundskeeper");
-      expect(getRoleName("mechanic")).toBe("Mechanic");
-    });
-  });
-
-  describe("getSkillLevelName", () => {
-    it("returns display names for all levels", () => {
-      expect(getSkillLevelName("novice")).toBe("Novice");
-      expect(getSkillLevelName("trained")).toBe("Trained");
-      expect(getSkillLevelName("experienced")).toBe("Experienced");
-      expect(getSkillLevelName("expert")).toBe("Expert");
-    });
-  });
-
-  describe("formatWage", () => {
-    it("formats wage with dollar sign and per hour", () => {
-      expect(formatWage(15)).toBe("$15.00/hr");
-      expect(formatWage(12.5)).toBe("$12.50/hr");
-    });
-  });
-
-  // ==========================================================================
-  // Edge Cases
-  // ==========================================================================
-
   describe("Edge Cases", () => {
     it("handles roster at exactly max capacity", () => {
       const emp = makeEmployee({ id: "emp_1" });
       const roster = makeRoster({ maxEmployees: 1, employees: [emp] });
 
-      expect(canHire(roster)).toBe(false);
+      expect(hireEmployee(roster, makeEmployee({ id: "new" }))).toBeNull();
       expect(getAvailableSlots(roster)).toBe(0);
     });
 
-    it("handles employee at exactly fatigue threshold", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
-      const emp = makeEmployee({
-        id: "emp_1",
-        role: "groundskeeper",
-        status: "working",
-        fatigue: config.breakThreshold
-      });
-      const roster = makeRoster({ employees: [emp] });
-
-      const needBreak = getEmployeesNeedingBreak(roster);
-      expect(needBreak.length).toBe(1);
-    });
-
     it("handles multiple promotions in same tick", () => {
-      const config = EMPLOYEE_CONFIGS.groundskeeper;
       const emp1 = makeEmployee({
         id: "emp_1",
         role: "groundskeeper",
         skillLevel: "novice",
         status: "working",
-        experience: config.experienceToLevel - 1
+        experience: 999
       });
       const emp2 = makeEmployee({
         id: "emp_2",
         role: "groundskeeper",
         skillLevel: "trained",
         status: "working",
-        experience: config.experienceToLevel - 1
+        experience: 999
       });
       const roster = makeRoster({ employees: [emp1, emp2] });
       const result = tickEmployees(roster, 10);
 
       expect(result.promotions.length).toBe(2);
     });
-
-    it("handles happiness at boundaries", () => {
-      const emp = makeEmployee({ id: "emp_1", happiness: 0 });
-      const roster = makeRoster({ employees: [emp] });
-
-      const decreased = adjustHappiness(roster, "emp_1", -10);
-      expect(decreased?.employees[0].happiness).toBe(0);
-
-      const emp2 = makeEmployee({ id: "emp_2", happiness: 100 });
-      const roster2 = makeRoster({ employees: [emp2] });
-
-      const increased = adjustHappiness(roster2, "emp_2", 10);
-      expect(increased?.employees[0].happiness).toBe(100);
-    });
   });
 
-  // ==========================================================================
-  // Prestige-Based Hiring System Tests
-  // ==========================================================================
-
   describe("Prestige-Based Hiring", () => {
-    beforeEach(() => {
-      resetJobPostingCounter();
-    });
-
     describe("createInitialApplicationState", () => {
       it("creates empty application state", () => {
         const state = createInitialApplicationState(0, 'municipal');
@@ -1357,80 +695,7 @@ describe("Employee System", () => {
       it("uses different config for different tiers", () => {
         const municipal = createInitialApplicationState(0, 'municipal');
         const championship = createInitialApplicationState(0, 'championship');
-        // Championship has different application rate
         expect(municipal.nextApplicationTime).not.toBe(championship.nextApplicationTime);
-      });
-    });
-
-    describe("generateApplication", () => {
-      it("generates employee application", () => {
-        const emp = generateApplication(1000, 'municipal');
-        expect(emp).toBeDefined();
-        expect(emp.id).toBeDefined();
-        expect(emp.hireDate).toBe(1000);
-      });
-
-      it("can target specific role from posting", () => {
-        const posting = {
-          id: 'posting_1',
-          role: 'mechanic' as const,
-          postedTime: 0,
-          expiresAt: 10000,
-          cost: 100
-        };
-        // With target posting, role selection is biased
-        const applications = [];
-        for (let i = 0; i < 10; i++) {
-          applications.push(generateApplication(1000, 'municipal', posting));
-        }
-        // Should have at least some mechanics due to 65% bias
-        expect(applications.some(a => a.role === 'mechanic')).toBe(true);
-      });
-
-      it("can target specific skill level from posting", () => {
-        const posting = {
-          id: 'posting_1',
-          role: 'groundskeeper' as const,
-          postedTime: 0,
-          expiresAt: 10000,
-          cost: 100,
-          targetSkillLevel: 'experienced' as const
-        };
-        // With target skill, 60% chance to match
-        const applications = [];
-        for (let i = 0; i < 10; i++) {
-          applications.push(generateApplication(1000, 'municipal', posting));
-        }
-        // Should have at least some experienced due to 60% bias
-        expect(applications.some(a => a.skillLevel === 'experienced')).toBe(true);
-      });
-
-      it("generates experienced skill level when random falls in experienced range", () => {
-        const randomSpy = vi.spyOn(Math, 'random');
-        // For championship tier: novice=3, trained=17, experienced=42, expert=38 (total=100)
-        // To get experienced: roll must be > 20 (3+17) and <= 62 (3+17+42)
-        // So we need random() * 100 to be in range (20, 62] => random() in (0.2, 0.62]
-        // We'll return 0.4 which gives roll = 40, hitting experienced
-        randomSpy.mockReturnValue(0.4);
-
-        const emp = generateApplication(1000, 'championship');
-        expect(emp.skillLevel).toBe('experienced');
-
-        randomSpy.mockRestore();
-      });
-
-      it("generates expert skill level when random falls in expert range", () => {
-        const randomSpy = vi.spyOn(Math, 'random');
-        // For championship tier: novice=3, trained=17, experienced=42, expert=38 (total=100)
-        // To get expert: roll must be > 62
-        // So we need random() * 100 to be > 62 => random() > 0.62
-        // We'll return 0.8 which gives roll = 80, hitting expert
-        randomSpy.mockReturnValue(0.8);
-
-        const emp = generateApplication(1000, 'championship');
-        expect(emp.skillLevel).toBe('expert');
-
-        randomSpy.mockRestore();
       });
     });
 
@@ -1474,7 +739,7 @@ describe("Employee System", () => {
       it("respects max applications limit", () => {
         const config = PRESTIGE_HIRING_CONFIG['municipal'];
         const apps = Array(config.maxApplications).fill(null).map(() =>
-          generateApplication(0, 'municipal')
+          createEmployee('groundskeeper', 'novice', 0)
         );
         const state = {
           ...createInitialApplicationState(0, 'municipal'),
@@ -1551,7 +816,7 @@ describe("Employee System", () => {
 
     describe("acceptApplication", () => {
       it("removes accepted application", () => {
-        const app = generateApplication(0, 'municipal');
+        const app = createEmployee('groundskeeper', 'novice', 0);
         const state = {
           ...createInitialApplicationState(0, 'municipal'),
           applications: [app]
@@ -1567,8 +832,8 @@ describe("Employee System", () => {
       });
 
       it("keeps other applications", () => {
-        const app1 = generateApplication(0, 'municipal');
-        const app2 = generateApplication(100, 'municipal');
+        const app1 = createEmployee('groundskeeper', 'novice', 0);
+        const app2 = createEmployee('groundskeeper', 'novice', 100);
         const state = {
           ...createInitialApplicationState(0, 'municipal'),
           applications: [app1, app2]
@@ -1577,58 +842,6 @@ describe("Employee System", () => {
         const result = acceptApplication(state, app1.id);
         expect(result?.applications.length).toBe(1);
         expect(result?.applications[0].id).toBe(app2.id);
-      });
-    });
-
-    describe("rejectApplication", () => {
-      it("removes rejected application", () => {
-        const app = generateApplication(0, 'municipal');
-        const state = {
-          ...createInitialApplicationState(0, 'municipal'),
-          applications: [app]
-        };
-
-        const result = rejectApplication(state, app.id);
-        expect(result?.applications.length).toBe(0);
-      });
-
-      it("returns null for non-existent application", () => {
-        const state = createInitialApplicationState(0, 'municipal');
-        expect(rejectApplication(state, 'fake_id')).toBeNull();
-      });
-    });
-
-    describe("getTimeUntilNextApplication", () => {
-      it("returns time remaining", () => {
-        const state = createInitialApplicationState(0, 'municipal');
-        const timeUntil = getTimeUntilNextApplication(state, 100);
-        expect(timeUntil).toBe(state.nextApplicationTime - 100);
-      });
-
-      it("returns 0 when time has passed", () => {
-        const state = createInitialApplicationState(0, 'municipal');
-        const timeUntil = getTimeUntilNextApplication(state, state.nextApplicationTime + 1000);
-        expect(timeUntil).toBe(0);
-      });
-    });
-
-    describe("getActivePostingsCount", () => {
-      it("returns count of active postings", () => {
-        const state = createInitialApplicationState(0, 'municipal');
-        expect(getActivePostingsCount(state)).toBe(0);
-
-        const posting = {
-          id: 'posting_1',
-          role: 'mechanic' as const,
-          postedTime: 0,
-          expiresAt: 10000,
-          cost: 100
-        };
-        const stateWithPosting = {
-          ...state,
-          activeJobPostings: [posting]
-        };
-        expect(getActivePostingsCount(stateWithPosting)).toBe(1);
       });
     });
 

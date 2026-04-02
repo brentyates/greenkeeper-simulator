@@ -2,20 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createInitialWorkSystemState,
   createDefaultCourseAreas,
-  addWorker,
-  removeWorker,
   assignWorkerToArea,
-  addArea,
-  getWorkerState,
-  findBestWorkTarget,
   tickEmployeeWork,
   syncWorkersWithRoster,
-  getActiveWorkerCount,
   getWorkerPositions,
-  EMPLOYEE_MOVE_SPEED,
-  TASK_DURATIONS,
-  WORK_THRESHOLDS,
-  CourseArea,
 } from './employee-work';
 import { createEmployeeEntity } from './movable-entity';
 import { createEmployee, resetEmployeeCounter } from './employees';
@@ -146,67 +136,11 @@ describe('employee-work', () => {
     });
   });
 
-  describe('addWorker', () => {
-    it('adds worker to state', () => {
-      const state = createInitialWorkSystemState(5, 5);
-      const employee = createEmployee('groundskeeper', 'novice', 0);
-      const newState = addWorker(state, employee);
-
-      expect(newState.workers).toHaveLength(1);
-      expect(newState.workers[0].employeeId).toBe(employee.id);
-      expect(newState.workers[0].worldX).toBe(5);
-      expect(newState.workers[0].worldZ).toBe(5);
-    });
-
-    it('initializes worker as idle', () => {
-      const state = createInitialWorkSystemState();
-      const employee = createEmployee('groundskeeper', 'novice', 0);
-      const newState = addWorker(state, employee);
-
-      expect(newState.workers[0].currentTask).toBe('idle');
-      expect(newState.workers[0].targetX).toBeNull();
-      expect(newState.workers[0].targetZ).toBeNull();
-    });
-
-    it('does not duplicate existing worker', () => {
-      const state = createInitialWorkSystemState();
-      const employee = createEmployee('groundskeeper', 'novice', 0);
-      let newState = addWorker(state, employee);
-      newState = addWorker(newState, employee);
-
-      expect(newState.workers).toHaveLength(1);
-    });
-  });
-
-  describe('removeWorker', () => {
-    it('removes worker from state', () => {
-      const state = createInitialWorkSystemState();
-      const employee = createEmployee('groundskeeper', 'novice', 0);
-      let newState = addWorker(state, employee);
-      newState = removeWorker(newState, employee.id);
-
-      expect(newState.workers).toHaveLength(0);
-    });
-
-    it('keeps other workers when removing one', () => {
-      const state = createInitialWorkSystemState();
-      const emp1 = createEmployee('groundskeeper', 'novice', 0);
-      const emp2 = createEmployee('groundskeeper', 'trained', 0);
-
-      let newState = addWorker(state, emp1);
-      newState = addWorker(newState, emp2);
-      newState = removeWorker(newState, emp1.id);
-
-      expect(newState.workers).toHaveLength(1);
-      expect(newState.workers[0].employeeId).toBe(emp2.id);
-    });
-  });
-
   describe('assignWorkerToArea', () => {
     it('assigns worker to area', () => {
       const state = createInitialWorkSystemState();
       const employee = createEmployee('groundskeeper', 'novice', 0);
-      let newState = addWorker(state, employee);
+      let newState = syncWorkersWithRoster(state, [employee]);
       newState = assignWorkerToArea(newState, employee.id, 'front-9');
 
       expect(newState.workers[0].assignedAreaId).toBe('front-9');
@@ -215,7 +149,7 @@ describe('employee-work', () => {
     it('clears area assignment when null', () => {
       const state = createInitialWorkSystemState();
       const employee = createEmployee('groundskeeper', 'novice', 0);
-      let newState = addWorker(state, employee);
+      let newState = syncWorkersWithRoster(state, [employee]);
       newState = assignWorkerToArea(newState, employee.id, 'front-9');
       newState = assignWorkerToArea(newState, employee.id, null);
 
@@ -226,8 +160,7 @@ describe('employee-work', () => {
       const state = createInitialWorkSystemState();
       const emp1 = createEmployee('groundskeeper', 'novice', 0);
       const emp2 = createEmployee('groundskeeper', 'novice', 0);
-      let newState = addWorker(state, emp1);
-      newState = addWorker(newState, emp2);
+      let newState = syncWorkersWithRoster(state, [emp1, emp2]);
       newState = assignWorkerToArea(newState, emp1.id, 'front-9');
 
       const worker1 = newState.workers.find(w => w.employeeId === emp1.id);
@@ -237,49 +170,12 @@ describe('employee-work', () => {
     });
   });
 
-  describe('addArea', () => {
-    it('adds area to state', () => {
-      const state = createInitialWorkSystemState();
-      const area: CourseArea = { id: 'front-9', name: 'Front 9', minX: 0, maxX: 50, minY: 0, maxY: 50 };
-      const newState = addArea(state, area);
-
-      expect(newState.areas).toHaveLength(1);
-      expect(newState.areas[0].id).toBe('front-9');
-    });
-
-    it('does not duplicate existing area', () => {
-      const state = createInitialWorkSystemState();
-      const area: CourseArea = { id: 'front-9', name: 'Front 9', minX: 0, maxX: 50, minY: 0, maxY: 50 };
-      let newState = addArea(state, area);
-      newState = addArea(newState, area);
-
-      expect(newState.areas).toHaveLength(1);
-    });
-  });
-
-  describe('getWorkerState', () => {
-    it('returns worker state by id', () => {
-      const state = createInitialWorkSystemState();
-      const employee = createEmployee('groundskeeper', 'novice', 0);
-      const newState = addWorker(state, employee);
-
-      const workerState = getWorkerState(newState, employee.id);
-      expect(workerState).not.toBeNull();
-      expect(workerState?.employeeId).toBe(employee.id);
-    });
-
-    it('returns null for unknown worker', () => {
-      const state = createInitialWorkSystemState();
-      expect(getWorkerState(state, 'unknown')).toBeNull();
-    });
-  });
-
   describe('tickEmployeeWork', () => {
     it('finds work target for idle worker', () => {
       const state = createInitialWorkSystemState();
       const employee = createEmployee('groundskeeper', 'novice', 0, 'Test Worker');
       const workingEmployee = { ...employee, status: 'working' as const };
-      let workState = addWorker(state, workingEmployee);
+      let workState = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', createSampleWithWork('mow'));
@@ -295,7 +191,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0, 'Test Worker');
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('30,30', createSampleWithWork('mow'));
@@ -317,8 +213,11 @@ describe('employee-work', () => {
         status: 'working' as const,
         assignedArea: 'all_course',
       };
-      state = addWorker(state, workingEmployee);
-      state = addArea(state, { id: 'all_course', name: 'All Course', minX: 0, maxX: 50, minY: 0, maxY: 50 });
+      state = syncWorkersWithRoster(state, [workingEmployee]);
+      state = {
+        ...state,
+        areas: [{ id: 'all_course', name: 'All Course', minX: 0, maxX: 50, minY: 0, maxY: 50 }],
+      };
       state = assignWorkerToArea(state, workingEmployee.id, 'all_course');
 
       const sampleMap = new Map<string, FaceStateSample>();
@@ -337,7 +236,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -367,7 +266,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -398,7 +297,7 @@ describe('employee-work', () => {
       const state = createInitialWorkSystemState();
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const onBreakEmployee = { ...employee, status: 'on_break' as const };
-      const workState = addWorker(state, onBreakEmployee);
+      const workState = syncWorkersWithRoster(state, [onBreakEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', createSampleWithWork('mow'));
@@ -413,7 +312,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -444,7 +343,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -474,7 +373,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -505,7 +404,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -562,7 +461,7 @@ describe('employee-work', () => {
     it('handles employee not found in roster', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
-      state = addWorker(state, employee);
+      state = syncWorkersWithRoster(state, [employee]);
 
       const terrain = createMockTerrainSystem();
       const result = tickEmployeeWork(state, [], terrain, 1);
@@ -574,7 +473,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -603,7 +502,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -632,7 +531,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -661,7 +560,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -701,17 +600,14 @@ describe('employee-work', () => {
       const emp1 = createEmployee('groundskeeper', 'novice', 0);
       const emp2 = createEmployee('groundskeeper', 'trained', 0);
 
-      state = addWorker(state, emp1);
-      state = addWorker(state, emp2);
+      state = syncWorkersWithRoster(state, [emp1, emp2]);
 
       const newState = syncWorkersWithRoster(state, [emp1]);
 
       expect(newState.workers).toHaveLength(1);
       expect(newState.workers[0].employeeId).toBe(emp1.id);
     });
-  });
 
-  describe('getActiveWorkerCount', () => {
     it('mirrors employee area assignments into worker state during sync', () => {
       const state = createInitialWorkSystemState();
       const employee = {
@@ -723,32 +619,13 @@ describe('employee-work', () => {
 
       expect(synced.workers[0].assignedAreaId).toBe('clubhouse_side');
     });
-
-    it('counts workers not idle', () => {
-      let state = createInitialWorkSystemState();
-      const emp1 = createEmployee('groundskeeper', 'novice', 0);
-      const emp2 = createEmployee('groundskeeper', 'novice', 0);
-
-      state = addWorker(state, emp1);
-      state = addWorker(state, emp2);
-
-      state = {
-        ...state,
-        workers: [
-          { ...state.workers[0], currentTask: 'mow_grass' as const },
-          state.workers[1],
-        ],
-      };
-
-      expect(getActiveWorkerCount(state)).toBe(1);
-    });
   });
 
   describe('getWorkerPositions', () => {
     it('returns all worker positions with world coordinates', () => {
       let state = createInitialWorkSystemState(10, 20);
       const emp = createEmployee('groundskeeper', 'novice', 0);
-      state = addWorker(state, emp);
+      state = syncWorkersWithRoster(state, [emp]);
 
       const positions = getWorkerPositions(state);
 
@@ -764,7 +641,7 @@ describe('employee-work', () => {
     it('reports isMoving when worker has a path', () => {
       let state = createInitialWorkSystemState(5, 5);
       const emp = createEmployee('groundskeeper', 'novice', 0);
-      state = addWorker(state, emp);
+      state = syncWorkersWithRoster(state, [emp]);
 
       state = {
         ...state,
@@ -784,7 +661,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -818,7 +695,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', createSampleWithWork('water'));
@@ -834,7 +711,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', createSampleWithWork('fertilize'));
@@ -850,7 +727,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', {
@@ -873,7 +750,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', {
@@ -896,7 +773,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const sampleMap = new Map<string, FaceStateSample>();
       sampleMap.set('0,0', createSampleWithWork('bunker'));
@@ -912,7 +789,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'novice', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       const terrain = createMockTerrainSystem();
       const result = tickEmployeeWork(state, [workingEmployee], terrain, 0.1);
@@ -921,98 +798,6 @@ describe('employee-work', () => {
       expect(worker.currentTask).toBe('idle');
     });
 
-    it('prefers nearby work over slightly higher-need distant work', () => {
-      const sampleMap = new Map<string, FaceStateSample>();
-      sampleMap.set('11,10', {
-        avgMoisture: 100,
-        avgNutrients: 100,
-        avgGrassHeight: 82,
-        avgHealth: 70,
-        dominantTerrainCode: TERRAIN_CODES.ROUGH,
-        faceCount: 4,
-      });
-      sampleMap.set('40,10', {
-        avgMoisture: 100,
-        avgNutrients: 100,
-        avgGrassHeight: 85,
-        avgHealth: 68,
-        dominantTerrainCode: TERRAIN_CODES.ROUGH,
-        faceCount: 4,
-      });
-      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
-
-      const target = findBestWorkTarget(
-        terrain,
-        10,
-        10,
-        'groundskeeper',
-        'balanced',
-        null,
-        new Set<string>(),
-        0,
-        100
-      );
-
-      expect(target).not.toBeNull();
-      expect(target?.task).toBe('mow_grass');
-      expect(target?.worldX).toBe(11.5);
-      expect(target?.worldZ).toBe(10.5);
-    });
-
-    it('still chooses extremely neglected distant bunker work', () => {
-      const sampleMap = new Map<string, FaceStateSample>();
-      sampleMap.set('11,10', {
-        avgMoisture: 20,
-        avgNutrients: 0,
-        avgGrassHeight: 0,
-        avgHealth: 40,
-        dominantTerrainCode: TERRAIN_CODES.BUNKER,
-        faceCount: 4,
-      });
-      sampleMap.set('40,10', {
-        avgMoisture: 20,
-        avgNutrients: 0,
-        avgGrassHeight: 0,
-        avgHealth: 2,
-        dominantTerrainCode: TERRAIN_CODES.BUNKER,
-        faceCount: 4,
-      });
-      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
-
-      const target = findBestWorkTarget(
-        terrain,
-        10,
-        10,
-        'groundskeeper',
-        'balanced',
-        null,
-        new Set<string>(),
-        0,
-        100
-      );
-
-      expect(target).not.toBeNull();
-      expect(target?.task).toBe('rake_bunker');
-      expect(target?.worldX).toBe(40.5);
-      expect(target?.worldZ).toBe(10.5);
-    });
-  });
-
-  describe('constants', () => {
-    it('has positive move speed', () => {
-      expect(EMPLOYEE_MOVE_SPEED).toBeGreaterThan(0);
-    });
-
-    it('has task durations for all tasks', () => {
-      expect(TASK_DURATIONS.mow_grass).toBeGreaterThan(0);
-      expect(TASK_DURATIONS.water_area).toBeGreaterThan(0);
-      expect(TASK_DURATIONS.fertilize_area).toBeGreaterThan(0);
-    });
-
-    it('has sensible work thresholds', () => {
-      expect(WORK_THRESHOLDS.heightCritical).toBeGreaterThan(WORK_THRESHOLDS.heightStandard);
-      expect(WORK_THRESHOLDS.waterStandard).toBeGreaterThan(WORK_THRESHOLDS.waterCritical);
-    });
   });
 
   describe('work effects include radius', () => {
@@ -1020,7 +805,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,
@@ -1049,7 +834,7 @@ describe('employee-work', () => {
       let state = createInitialWorkSystemState(5, 5);
       const employee = createEmployee('groundskeeper', 'expert', 0);
       const workingEmployee = { ...employee, status: 'working' as const };
-      state = addWorker(state, workingEmployee);
+      state = syncWorkersWithRoster(state, [workingEmployee]);
 
       state = {
         ...state,

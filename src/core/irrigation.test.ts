@@ -1,8 +1,4 @@
-/**
- * Unit tests for irrigation system
- */
-
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createInitialIrrigationSystem,
   addPipe,
@@ -14,26 +10,16 @@ import {
   repairLeak,
   calculateWaterUsage,
   calculateWaterCost,
-  calculateLeakChance,
-  getSprinklerCoveragePattern,
   getPipeAt,
   getSprinklerHeadAt,
-  getWaterSourceAt,
   setSprinklerActive,
   updateSprinklerSchedule,
-  resetCounters,
   addWaterSource,
   createWaterSource,
-  createPipeTile,
-  updatePipeConnections,
   WateringSchedule,
 } from './irrigation';
 
 describe('irrigation system', () => {
-  beforeEach(() => {
-    resetCounters();
-  });
-
   describe('pipe management', () => {
     it('should create initial system', () => {
       const system = createInitialIrrigationSystem();
@@ -132,66 +118,6 @@ describe('irrigation system', () => {
 
       system = removePipe(system, 10, 10);
       expect(system.sprinklerHeads[0].connectedToPipe).toBe(false);
-    });
-  });
-
-  describe('coverage patterns', () => {
-    it('should generate fixed spray coverage', () => {
-      const coverage = getSprinklerCoveragePattern(10, 10, 'fixed', 100);
-      expect(coverage.length).toBe(9);
-
-      const center = coverage.find(t => t.x === 10 && t.y === 10);
-      expect(center).toBeDefined();
-      expect(center?.efficiency).toBe(1.0);
-    });
-
-    it('should generate rotary coverage', () => {
-      const coverage = getSprinklerCoveragePattern(10, 10, 'rotary', 100);
-      expect(coverage.length).toBeGreaterThan(9);
-
-      const center = coverage.find(t => t.x === 10 && t.y === 10);
-      expect(center).toBeDefined();
-    });
-
-    it('should generate impact coverage with reduced efficiency at edges', () => {
-      const coverage = getSprinklerCoveragePattern(10, 10, 'impact', 100);
-      expect(coverage.length).toBeGreaterThan(20);
-
-      const edgeTile = coverage.find(t => {
-        const distance = Math.sqrt(Math.pow(t.x - 10, 2) + Math.pow(t.y - 10, 2));
-        return distance > 2.5 && distance <= 3;
-      });
-      expect(edgeTile).toBeDefined();
-      expect(edgeTile?.efficiency).toBe(0.6);
-    });
-
-    it('should generate impact coverage with full efficiency for inner tiles', () => {
-      const coverage = getSprinklerCoveragePattern(10, 10, 'impact', 100);
-
-      const innerTile = coverage.find(t => {
-        const distance = Math.sqrt(Math.pow(t.x - 10, 2) + Math.pow(t.y - 10, 2));
-        return distance > 0 && distance <= 2.5;
-      });
-      expect(innerTile).toBeDefined();
-      expect(innerTile?.efficiency).toBe(1.0);
-    });
-
-    it('should generate precision coverage', () => {
-      const coverage = getSprinklerCoveragePattern(10, 10, 'precision', 100);
-      expect(coverage.length).toBe(25);
-
-      coverage.forEach(tile => {
-        expect(tile.x).toBe(10);
-        expect(tile.y).toBe(10);
-        expect(tile.efficiency).toBe(1.0);
-      });
-    });
-
-    it('should reduce coverage with low pressure', () => {
-      const fullCoverage = getSprinklerCoveragePattern(10, 10, 'fixed', 100);
-      const lowCoverage = getSprinklerCoveragePattern(10, 10, 'fixed', 50);
-
-      expect(fullCoverage[0].efficiency).toBeGreaterThan(lowCoverage[0].efficiency);
     });
   });
 
@@ -428,68 +354,6 @@ describe('irrigation system', () => {
     });
   });
 
-  describe('leak chance calculation', () => {
-    it('should have zero chance during warranty period', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const withinWarrantyTime = 60 * 24 * 20;
-
-      const chance = calculateLeakChance(pipe, withinWarrantyTime);
-      expect(chance).toBe(0);
-    });
-
-    it('should increase chance during stormy weather', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const oldTime = 60 * 24 * 40;
-
-      const normalChance = calculateLeakChance(pipe, oldTime);
-      const stormyChance = calculateLeakChance(pipe, oldTime, { type: 'stormy', temperature: 70 });
-
-      expect(normalChance).toBeGreaterThan(0);
-      expect(stormyChance).toBeGreaterThan(normalChance);
-    });
-
-    it('should increase chance during freezing weather', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const oldTime = 60 * 24 * 40;
-
-      const normalChance = calculateLeakChance(pipe, oldTime);
-      const freezingChance = calculateLeakChance(pipe, oldTime, { type: 'sunny', temperature: 20 });
-
-      expect(normalChance).toBeGreaterThan(0);
-      expect(freezingChance).toBeGreaterThan(normalChance);
-    });
-
-    it('should combine stormy and freezing effects', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const oldTime = 60 * 24 * 40;
-
-      const stormyOnly = calculateLeakChance(pipe, oldTime, { type: 'stormy', temperature: 70 });
-      const freezingOnly = calculateLeakChance(pipe, oldTime, { type: 'sunny', temperature: 20 });
-      const combinedChance = calculateLeakChance(pipe, oldTime, { type: 'stormy', temperature: 20 });
-
-      expect(combinedChance).toBeGreaterThanOrEqual(stormyOnly);
-      expect(combinedChance).toBeGreaterThanOrEqual(freezingOnly);
-    });
-
-    it('should not increase chance when temperature is above freezing', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const oldTime = 60 * 24 * 40;
-
-      const normalChance = calculateLeakChance(pipe, oldTime);
-      const warmChance = calculateLeakChance(pipe, oldTime, { type: 'sunny', temperature: 70 });
-
-      expect(warmChance).toBe(normalChance);
-    });
-
-    it('should cap leak chance at 0.5', () => {
-      const pipe = createPipeTile(0, 0, 'pvc', 0);
-      const veryOldTime = 60 * 24 * 1000;
-
-      const chance = calculateLeakChance(pipe, veryOldTime, { type: 'stormy', temperature: 20 });
-      expect(chance).toBeLessThanOrEqual(0.5);
-    });
-  });
-
   describe('water consumption', () => {
     it('should calculate water usage', () => {
       let system = createInitialIrrigationSystem();
@@ -553,23 +417,6 @@ describe('irrigation system', () => {
     });
   });
 
-  describe('water source management', () => {
-    it('should get water source at position', () => {
-      let system = createInitialIrrigationSystem();
-      system = addWaterSource(system, 'municipal', 5, 5);
-
-      const source = getWaterSourceAt(system, 5, 5);
-      expect(source).not.toBeNull();
-      expect(source?.type).toBe('municipal');
-    });
-
-    it('should return null for non-existent water source', () => {
-      const system = createInitialIrrigationSystem();
-      const source = getWaterSourceAt(system, 99, 99);
-      expect(source).toBeNull();
-    });
-  });
-
   describe('sprinkler schedule', () => {
     it('should update sprinkler schedule', () => {
       let system = createInitialIrrigationSystem();
@@ -625,27 +472,4 @@ describe('irrigation system', () => {
     });
   });
 
-  describe('updatePipeConnections', () => {
-    it('should detect east connection', () => {
-      let system = createInitialIrrigationSystem();
-      system = addPipe(system, 10, 10, 'pvc', 0);
-      system = addPipe(system, 11, 10, 'pvc', 0);
-
-      const pipe = getPipeAt(system, 10, 10)!;
-      const updated = updatePipeConnections(system, pipe);
-
-      expect(updated.connectedTo).toContain('east');
-    });
-
-    it('should detect west connection', () => {
-      let system = createInitialIrrigationSystem();
-      system = addPipe(system, 10, 10, 'pvc', 0);
-      system = addPipe(system, 9, 10, 'pvc', 0);
-
-      const pipe = getPipeAt(system, 10, 10)!;
-      const updated = updatePipeConnections(system, pipe);
-
-      expect(updated.connectedTo).toContain('west');
-    });
-  });
 });

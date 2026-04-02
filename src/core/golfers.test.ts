@@ -1,73 +1,25 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  // Types
   Golfer,
-  GolferType,
   GolferPoolState,
-  GolferPreferences,
   WeatherCondition,
 
-  // Constants
-  GOLFER_TYPE_WEIGHTS,
-  GOLFER_TYPE_CONFIGS,
   DEFAULT_GREEN_FEES,
-  SATISFACTION_WEIGHTS,
-  WEATHER_SATISFACTION_MODIFIERS,
 
-  // Factory functions
   createInitialPoolState,
-  generateGolferPreferences,
-  selectGolferType,
   createGolfer,
 
-  // Query functions
   getGolfer,
-  getGolfersByStatus,
-  getGolfersByType,
-  getActiveGolferCount,
-  getPlayingGolferCount,
-  isAtCapacity,
-  getAvailableTeeSlots,
-  calculateCrowdingLevel,
   getAverageSatisfaction,
-  getGolferStats,
 
-  // Pricing functions
-  getGreenFee,
-  wouldPayFee,
-  calculateOptimalPrice,
-  calculateTip,
-
-  // Satisfaction functions
-  calculateSatisfactionFactor,
-  updateSatisfaction,
-  calculateWillReturn,
-
-  // Generation functions
   calculateArrivalRate,
   generateArrivals,
 
-  // State transformation functions
   addGolfer,
-  removeGolfer,
-  updateGolfer,
-  setGolferStatus,
-  advanceGolferProgress,
   tickGolfers,
   updateCourseRating,
-  resetDailyStats,
-
-  // Utility functions
-  getGolferTypeName,
-  getSatisfactionLevel,
-  formatGreenFee,
-  resetGolferCounter,
-  estimateRoundDuration
+  resetDailyStats
 } from "./golfers";
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
 
 function makeGolfer(overrides: Partial<Golfer> = {}): Golfer {
   return {
@@ -119,51 +71,13 @@ function makeWeather(overrides: Partial<WeatherCondition> = {}): WeatherConditio
   };
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 describe("Golfer System", () => {
-  beforeEach(() => {
-    resetGolferCounter();
-  });
-
-  // ==========================================================================
-  // Constants Tests
-  // ==========================================================================
-
   describe("Constants", () => {
-    it("golfer type weights sum to 1", () => {
-      const sum = Object.values(GOLFER_TYPE_WEIGHTS).reduce((a, b) => a + b, 0);
-      expect(sum).toBeCloseTo(1.0, 2);
-    });
-
-    it("all golfer types have configs", () => {
-      const types: GolferType[] = ["casual", "regular", "enthusiast", "professional", "tourist"];
-      for (const type of types) {
-        expect(GOLFER_TYPE_CONFIGS[type]).toBeDefined();
-      }
-    });
-
-    it("satisfaction weights sum to 1", () => {
-      const sum = Object.values(SATISFACTION_WEIGHTS).reduce((a, b) => a + b, 0);
-      expect(sum).toBeCloseTo(1.0, 2);
-    });
-
-    it("has valid weather modifiers", () => {
-      expect(WEATHER_SATISFACTION_MODIFIERS.sunny).toBe(1.0);
-      expect(WEATHER_SATISFACTION_MODIFIERS.stormy).toBeLessThan(WEATHER_SATISFACTION_MODIFIERS.sunny);
-    });
-
     it("has default green fees", () => {
       expect(DEFAULT_GREEN_FEES.weekday18Holes).toBeGreaterThan(0);
       expect(DEFAULT_GREEN_FEES.weekend18Holes).toBeGreaterThan(DEFAULT_GREEN_FEES.weekday18Holes);
     });
   });
-
-  // ==========================================================================
-  // Factory Function Tests
-  // ==========================================================================
 
   describe("createInitialPoolState", () => {
     it("creates empty golfer pool", () => {
@@ -191,55 +105,6 @@ describe("Golfer System", () => {
     it("has initial course rating", () => {
       const state = createInitialPoolState();
       expect(state.rating.overall).toBe(70);
-    });
-  });
-
-  describe("generateGolferPreferences", () => {
-    it("generates preferences within type ranges", () => {
-      const config = GOLFER_TYPE_CONFIGS.regular;
-      const prefs = generateGolferPreferences("regular");
-
-      expect(prefs.priceThreshold).toBeGreaterThanOrEqual(config.priceRange[0]);
-      expect(prefs.priceThreshold).toBeLessThanOrEqual(config.priceRange[1]);
-    });
-
-    it("generates deterministic results with seed", () => {
-      const prefs1 = generateGolferPreferences("casual", 0.5);
-      const prefs2 = generateGolferPreferences("casual", 0.5);
-      expect(prefs1.priceThreshold).toBe(prefs2.priceThreshold);
-    });
-
-    it("professionals have higher quality expectations", () => {
-      const casual = GOLFER_TYPE_CONFIGS.casual;
-      const professional = GOLFER_TYPE_CONFIGS.professional;
-
-      expect(professional.qualityRange[0]).toBeGreaterThan(casual.qualityRange[0]);
-    });
-  });
-
-  describe("selectGolferType", () => {
-    it("returns valid golfer type", () => {
-      const validTypes: GolferType[] = ["casual", "regular", "enthusiast", "professional", "tourist"];
-      const type = selectGolferType();
-      expect(validTypes).toContain(type);
-    });
-
-    it("produces distribution matching weights over many samples", () => {
-      const counts: Record<GolferType, number> = {
-        casual: 0, regular: 0, enthusiast: 0, professional: 0, tourist: 0
-      };
-
-      for (let i = 0; i < 1000; i++) {
-        counts[selectGolferType(i / 1000)]++;
-      }
-
-      // Casual should be most common
-      expect(counts.casual).toBeGreaterThan(counts.professional);
-    });
-
-    it("returns casual as fallback for edge case roll >= 1", () => {
-      const type = selectGolferType(1.0);
-      expect(type).toBe("casual");
     });
   });
 
@@ -284,22 +149,7 @@ describe("Golfer System", () => {
       const golfer = createGolfer("casual", 0);
       expect(golfer.holesPlayed).toBe(0);
     });
-
-    it("accepts custom preferences", () => {
-      const prefs: GolferPreferences = {
-        priceThreshold: 100,
-        qualityExpectation: 80,
-        patienceLevel: 50,
-        tipGenerosity: 1.5
-      };
-      const golfer = createGolfer("casual", 0, 18, 50, prefs);
-      expect(golfer.preferences).toEqual(prefs);
-    });
   });
-
-  // ==========================================================================
-  // Query Function Tests
-  // ==========================================================================
 
   describe("getGolfer", () => {
     it("returns golfer when found", () => {
@@ -311,115 +161,6 @@ describe("Golfer System", () => {
     it("returns null when not found", () => {
       const state = makePoolState();
       expect(getGolfer(state, "fake")).toBeNull();
-    });
-  });
-
-  describe("getGolfersByStatus", () => {
-    it("filters by status", () => {
-      const g1 = makeGolfer({ id: "g1", status: "playing" });
-      const g2 = makeGolfer({ id: "g2", status: "checking_in" });
-      const g3 = makeGolfer({ id: "g3", status: "playing" });
-      const state = makePoolState({ golfers: [g1, g2, g3] });
-
-      const playing = getGolfersByStatus(state, "playing");
-      expect(playing.length).toBe(2);
-    });
-  });
-
-  describe("getGolfersByType", () => {
-    it("filters by type", () => {
-      const g1 = makeGolfer({ id: "g1", type: "casual" });
-      const g2 = makeGolfer({ id: "g2", type: "professional" });
-      const g3 = makeGolfer({ id: "g3", type: "casual" });
-      const state = makePoolState({ golfers: [g1, g2, g3] });
-
-      const casual = getGolfersByType(state, "casual");
-      expect(casual.length).toBe(2);
-    });
-  });
-
-  describe("getActiveGolferCount", () => {
-    it("counts playing and checking in golfers", () => {
-      const state = makePoolState({
-        golfers: [
-          makeGolfer({ id: "g1", status: "playing" }),
-          makeGolfer({ id: "g2", status: "checking_in" }),
-          makeGolfer({ id: "g3", status: "leaving" })
-        ]
-      });
-      expect(getActiveGolferCount(state)).toBe(2);
-    });
-  });
-
-  describe("getPlayingGolferCount", () => {
-    it("counts only playing golfers", () => {
-      const state = makePoolState({
-        golfers: [
-          makeGolfer({ id: "g1", status: "playing" }),
-          makeGolfer({ id: "g2", status: "checking_in" }),
-          makeGolfer({ id: "g3", status: "playing" })
-        ]
-      });
-      expect(getPlayingGolferCount(state)).toBe(2);
-    });
-  });
-
-  describe("isAtCapacity", () => {
-    it("returns false when under capacity", () => {
-      const state = makePoolState({
-        peakCapacity: 40,
-        golfers: [makeGolfer({ status: "playing" })]
-      });
-      expect(isAtCapacity(state)).toBe(false);
-    });
-
-    it("returns true at capacity", () => {
-      const golfers = Array(40).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-      expect(isAtCapacity(state)).toBe(true);
-    });
-  });
-
-  describe("getAvailableTeeSlots", () => {
-    it("calculates remaining slots", () => {
-      const golfers = Array(15).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-      expect(getAvailableTeeSlots(state)).toBe(25);
-    });
-
-    it("returns 0 at capacity", () => {
-      const golfers = Array(40).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-      expect(getAvailableTeeSlots(state)).toBe(0);
-    });
-  });
-
-  describe("calculateCrowdingLevel", () => {
-    it("returns 0 when empty", () => {
-      const state = makePoolState();
-      expect(calculateCrowdingLevel(state)).toBe(0);
-    });
-
-    it("returns 50 at half capacity", () => {
-      const golfers = Array(20).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-      expect(calculateCrowdingLevel(state)).toBe(50);
-    });
-
-    it("returns 100 at full capacity", () => {
-      const golfers = Array(40).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-      expect(calculateCrowdingLevel(state)).toBe(100);
     });
   });
 
@@ -439,297 +180,6 @@ describe("Golfer System", () => {
       expect(getAverageSatisfaction(state)).toBe(70);
     });
   });
-
-  describe("getGolferStats", () => {
-    it("returns stats for pool", () => {
-      const state = makePoolState({
-        golfers: [
-          makeGolfer({ id: "g1", type: "casual", satisfaction: 80, willReturn: true }),
-          makeGolfer({ id: "g2", type: "regular", satisfaction: 60, willReturn: false })
-        ],
-        totalVisitorsToday: 10,
-        totalRevenueToday: 500
-      });
-
-      const stats = getGolferStats(state);
-      expect(stats.totalGolfers).toBe(10);
-      expect(stats.totalRevenue).toBe(500);
-      expect(stats.averageSatisfaction).toBe(70);
-      expect(stats.returnRate).toBe(50);
-      expect(stats.byType.casual).toBe(1);
-      expect(stats.byType.regular).toBe(1);
-    });
-
-    it("returns default values when pool is empty", () => {
-      const state = makePoolState({ golfers: [] });
-      const stats = getGolferStats(state);
-      expect(stats.averageSatisfaction).toBe(75);
-      expect(stats.returnRate).toBe(0);
-    });
-  });
-
-  // ==========================================================================
-  // Pricing Function Tests
-  // ==========================================================================
-
-  describe("getGreenFee", () => {
-    it("returns weekday rate for weekdays", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 18, false, false);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.weekday18Holes);
-    });
-
-    it("returns weekend rate for weekends", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 18, true, false);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.weekend18Holes);
-    });
-
-    it("returns twilight rate when twilight", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 18, false, true);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.twilight18Holes);
-    });
-
-    it("twilight takes priority over weekend", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 18, true, true);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.twilight18Holes);
-    });
-
-    it("returns 9-hole rate for 9 holes", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, false, false);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.weekday9Holes);
-    });
-
-    it("returns 9-hole weekend rate", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, true, false);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.weekend9Holes);
-    });
-
-    it("returns 9-hole twilight rate", () => {
-      const fee = getGreenFee(DEFAULT_GREEN_FEES, 9, false, true);
-      expect(fee).toBe(DEFAULT_GREEN_FEES.twilight9Holes);
-    });
-  });
-
-  describe("wouldPayFee", () => {
-    it("returns true when fee is under threshold", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, priceThreshold: 100 } });
-      expect(wouldPayFee(golfer, 80)).toBe(true);
-    });
-
-    it("returns true when fee equals threshold", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, priceThreshold: 100 } });
-      expect(wouldPayFee(golfer, 100)).toBe(true);
-    });
-
-    it("returns false when fee exceeds threshold", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, priceThreshold: 100 } });
-      expect(wouldPayFee(golfer, 120)).toBe(false);
-    });
-  });
-
-  describe("calculateOptimalPrice", () => {
-    it("increases price with higher crowding", () => {
-      const lowCrowding = makePoolState({ peakCapacity: 40, golfers: [] });
-      const highCrowding = makePoolState({
-        peakCapacity: 40,
-        golfers: Array(30).fill(null).map((_, i) =>
-          makeGolfer({ id: `g${i}`, status: "playing" })
-        )
-      });
-
-      const lowPrice = calculateOptimalPrice(lowCrowding, 50);
-      const highPrice = calculateOptimalPrice(highCrowding, 50);
-
-      expect(highPrice).toBeGreaterThan(lowPrice);
-    });
-
-    it("increases price with higher rating", () => {
-      const lowRating = makePoolState({ rating: { ...makePoolState().rating, overall: 50 } });
-      const highRating = makePoolState({ rating: { ...makePoolState().rating, overall: 90 } });
-
-      const lowPrice = calculateOptimalPrice(lowRating, 50);
-      const highPrice = calculateOptimalPrice(highRating, 50);
-
-      expect(highPrice).toBeGreaterThan(lowPrice);
-    });
-  });
-
-  describe("calculateTip", () => {
-    it("returns base tip at neutral satisfaction", () => {
-      const golfer = makeGolfer({ satisfaction: 75, preferences: { ...makeGolfer().preferences, tipGenerosity: 1.0 } });
-      const tip = calculateTip(golfer, 5);
-      expect(tip).toBeCloseTo(5, 1);
-    });
-
-    it("increases tip with higher satisfaction", () => {
-      const lowSat = makeGolfer({ satisfaction: 50, preferences: { ...makeGolfer().preferences, tipGenerosity: 1.0 } });
-      const highSat = makeGolfer({ satisfaction: 100, preferences: { ...makeGolfer().preferences, tipGenerosity: 1.0 } });
-
-      expect(calculateTip(highSat, 5)).toBeGreaterThan(calculateTip(lowSat, 5));
-    });
-
-    it("scales with tip generosity", () => {
-      const lowGen = makeGolfer({ satisfaction: 75, preferences: { ...makeGolfer().preferences, tipGenerosity: 0.5 } });
-      const highGen = makeGolfer({ satisfaction: 75, preferences: { ...makeGolfer().preferences, tipGenerosity: 2.0 } });
-
-      expect(calculateTip(highGen, 5)).toBeGreaterThan(calculateTip(lowGen, 5));
-    });
-  });
-
-  // ==========================================================================
-  // Satisfaction Function Tests
-  // ==========================================================================
-
-  describe("calculateSatisfactionFactor", () => {
-    it("returns high satisfaction when course condition meets expectation", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, qualityExpectation: 70 } });
-      const sat = calculateSatisfactionFactor("course_condition", 80, golfer);
-      expect(sat).toBeGreaterThanOrEqual(80);
-    });
-
-    it("returns low satisfaction when course condition below expectation", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, qualityExpectation: 80 } });
-      const sat = calculateSatisfactionFactor("course_condition", 50, golfer);
-      expect(sat).toBeLessThan(70);
-    });
-
-    it("patient golfers tolerate slow pace", () => {
-      const patient = makeGolfer({ preferences: { ...makeGolfer().preferences, patienceLevel: 80 } });
-      const impatient = makeGolfer({ preferences: { ...makeGolfer().preferences, patienceLevel: 20 } });
-
-      const patientSat = calculateSatisfactionFactor("pace_of_play", 50, patient);
-      const impatientSat = calculateSatisfactionFactor("pace_of_play", 50, impatient);
-
-      expect(patientSat).toBeGreaterThan(impatientSat);
-    });
-
-    it("returns value for staff_service factor", () => {
-      const golfer = makeGolfer();
-      const sat = calculateSatisfactionFactor("staff_service", 85, golfer);
-      expect(sat).toBe(85);
-    });
-
-    it("returns value for facilities factor", () => {
-      const golfer = makeGolfer();
-      const sat = calculateSatisfactionFactor("facilities", 90, golfer);
-      expect(sat).toBe(90);
-    });
-
-    it("returns value for weather factor", () => {
-      const golfer = makeGolfer();
-      const sat = calculateSatisfactionFactor("weather", 70, golfer);
-      expect(sat).toBe(70);
-    });
-
-    it("returns 100 for pace_of_play when value is below threshold", () => {
-      const golfer = makeGolfer({ preferences: { ...makeGolfer().preferences, patienceLevel: 80 } });
-      const sat = calculateSatisfactionFactor("pace_of_play", 50, golfer);
-      expect(sat).toBe(100);
-    });
-
-    it("returns value for unknown factor type via default case", () => {
-      const golfer = makeGolfer();
-      const sat = calculateSatisfactionFactor("unknown_factor" as any, 65, golfer);
-      expect(sat).toBe(65);
-    });
-  });
-
-  describe("updateSatisfaction", () => {
-    it("updates satisfaction factors", () => {
-      const golfer = makeGolfer({ satisfactionFactors: {} });
-      const updated = updateSatisfaction(golfer, { course_condition: 80 });
-
-      expect(updated.satisfactionFactors.course_condition).toBeDefined();
-    });
-
-    it("recalculates overall satisfaction", () => {
-      const golfer = makeGolfer({ satisfaction: 50 });
-      const updated = updateSatisfaction(golfer, {
-        course_condition: 90,
-        facilities: 90,
-        staff_service: 90
-      });
-
-      expect(updated.satisfaction).toBeGreaterThan(golfer.satisfaction);
-    });
-
-    it("preserves existing factors", () => {
-      const golfer = makeGolfer({
-        satisfactionFactors: { course_condition: 80 }
-      });
-      const updated = updateSatisfaction(golfer, { facilities: 70 });
-
-      expect(updated.satisfactionFactors.course_condition).toBe(80);
-      expect(updated.satisfactionFactors.facilities).toBeDefined();
-    });
-
-    it("skips factors without defined weights", () => {
-      const golfer = makeGolfer({
-        satisfaction: 60,
-        satisfactionFactors: { unknown_factor: 90 } as any
-      });
-      const updated = updateSatisfaction(golfer, {});
-      // Unknown factor should be skipped, satisfaction should stay same
-      expect(updated.satisfaction).toBe(60);
-    });
-
-    it("keeps original satisfaction when no weighted factors exist", () => {
-      const golfer = makeGolfer({
-        satisfaction: 55,
-        satisfactionFactors: {}
-      });
-      const updated = updateSatisfaction(golfer, {});
-      expect(updated.satisfaction).toBe(55);
-    });
-  });
-
-  describe("calculateWillReturn", () => {
-    it("returns true for high satisfaction", () => {
-      const golfer = makeGolfer({ satisfaction: 90, type: "regular" });
-      expect(calculateWillReturn(golfer)).toBe(true);
-    });
-
-    it("returns false for low satisfaction", () => {
-      const golfer = makeGolfer({ satisfaction: 30, type: "regular" });
-      expect(calculateWillReturn(golfer)).toBe(false);
-    });
-
-    it("tourists are less likely to return", () => {
-      const tourist = makeGolfer({ satisfaction: 70, type: "tourist" });
-      const regular = makeGolfer({ satisfaction: 70, type: "regular" });
-
-      // Run multiple times since there's randomness
-      // Tourist should have lower return probability
-      expect(calculateWillReturn(regular)).toBe(true);
-      // Tourist at 70% with 0.5 modifier = 0.35, should be false
-      expect(calculateWillReturn(tourist)).toBe(false);
-    });
-
-    it("poor value reduces return chance", () => {
-      const goodValue = makeGolfer({
-        satisfaction: 75,
-        type: "regular",
-        satisfactionFactors: { price_value: 80 }
-      });
-      // Good value should return
-      expect(calculateWillReturn(goodValue)).toBe(true);
-    });
-
-    it("poor price value reduces return likelihood", () => {
-      const poorValue = makeGolfer({
-        satisfaction: 60,
-        type: "casual", // 0.8 modifier
-        satisfactionFactors: { price_value: 40 }
-      });
-      // 60% satisfaction / 100 = 0.6
-      // 0.6 * 0.8 (casual) = 0.48
-      // 0.48 * 0.7 (poor value) = 0.336 < 0.5, should not return
-      expect(calculateWillReturn(poorValue)).toBe(false);
-    });
-  });
-
-  // ==========================================================================
-  // Generation Function Tests
-  // ==========================================================================
 
   describe("calculateArrivalRate", () => {
     it("returns higher rate for better rated courses", () => {
@@ -862,7 +312,6 @@ describe("Golfer System", () => {
       const state = makePoolState();
       const arrivals = generateArrivals(state, 5, 0, DEFAULT_GREEN_FEES, false, false);
 
-      // Some might not pay, so should be <= 5
       expect(arrivals.length).toBeLessThanOrEqual(5);
     });
 
@@ -881,10 +330,6 @@ describe("Golfer System", () => {
       }
     });
   });
-
-  // ==========================================================================
-  // State Transformation Tests
-  // ==========================================================================
 
   describe("addGolfer", () => {
     it("adds golfer to pool", () => {
@@ -909,92 +354,6 @@ describe("Golfer System", () => {
       const result = addGolfer(state, golfer);
 
       expect(result.totalRevenueToday).toBe(155);
-    });
-  });
-
-  describe("removeGolfer", () => {
-    it("removes golfer from pool", () => {
-      const golfer = makeGolfer({ id: "g1" });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = removeGolfer(state, "g1");
-
-      expect(result.golfers.length).toBe(0);
-    });
-
-    it("keeps other golfers", () => {
-      const g1 = makeGolfer({ id: "g1" });
-      const g2 = makeGolfer({ id: "g2" });
-      const state = makePoolState({ golfers: [g1, g2] });
-      const result = removeGolfer(state, "g1");
-
-      expect(result.golfers.length).toBe(1);
-      expect(result.golfers[0].id).toBe("g2");
-    });
-  });
-
-  describe("updateGolfer", () => {
-    it("updates golfer fields", () => {
-      const golfer = makeGolfer({ id: "g1", satisfaction: 50 });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = updateGolfer(state, "g1", { satisfaction: 80 });
-
-      expect(result?.golfers[0].satisfaction).toBe(80);
-    });
-
-    it("returns null for nonexistent golfer", () => {
-      const state = makePoolState();
-      expect(updateGolfer(state, "fake", { satisfaction: 80 })).toBeNull();
-    });
-
-    it("only updates matching golfer, leaving others unchanged", () => {
-      const g1 = makeGolfer({ id: "g1", satisfaction: 50 });
-      const g2 = makeGolfer({ id: "g2", satisfaction: 60 });
-      const state = makePoolState({ golfers: [g1, g2] });
-      const result = updateGolfer(state, "g1", { satisfaction: 80 });
-
-      expect(result?.golfers[0].satisfaction).toBe(80);
-      expect(result?.golfers[1].satisfaction).toBe(60);
-    });
-  });
-
-  describe("setGolferStatus", () => {
-    it("updates status", () => {
-      const golfer = makeGolfer({ id: "g1", status: "arriving" });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = setGolferStatus(state, "g1", "playing");
-
-      expect(result?.golfers[0].status).toBe("playing");
-    });
-  });
-
-  describe("advanceGolferProgress", () => {
-    it("increases holes played", () => {
-      const golfer = makeGolfer({ id: "g1", holesPlayed: 5, totalHoles: 18 });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = advanceGolferProgress(state, "g1", 3);
-
-      expect(result?.golfers[0].holesPlayed).toBe(8);
-    });
-
-    it("caps at total holes", () => {
-      const golfer = makeGolfer({ id: "g1", holesPlayed: 16, totalHoles: 18 });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = advanceGolferProgress(state, "g1", 5);
-
-      expect(result?.golfers[0].holesPlayed).toBe(18);
-    });
-
-    it("sets status to finishing when complete", () => {
-      const golfer = makeGolfer({ id: "g1", holesPlayed: 17, totalHoles: 18, status: "playing" });
-      const state = makePoolState({ golfers: [golfer] });
-      const result = advanceGolferProgress(state, "g1", 2);
-
-      expect(result?.golfers[0].status).toBe("finishing");
-    });
-
-    it("returns null for non-existent golfer", () => {
-      const state = makePoolState({ golfers: [] });
-      expect(advanceGolferProgress(state, "nonexistent", 1)).toBeNull();
     });
   });
 
@@ -1124,63 +483,12 @@ describe("Golfer System", () => {
     });
   });
 
-  // ==========================================================================
-  // Utility Function Tests
-  // ==========================================================================
-
-  describe("getGolferTypeName", () => {
-    it("returns display names", () => {
-      expect(getGolferTypeName("casual")).toBe("Casual Golfer");
-      expect(getGolferTypeName("professional")).toBe("Professional");
-      expect(getGolferTypeName("tourist")).toBe("Tourist");
-    });
-  });
-
-  describe("getSatisfactionLevel", () => {
-    it("returns level names", () => {
-      expect(getSatisfactionLevel(95)).toBe("Excellent");
-      expect(getSatisfactionLevel(80)).toBe("Good");
-      expect(getSatisfactionLevel(65)).toBe("Fair");
-      expect(getSatisfactionLevel(45)).toBe("Poor");
-      expect(getSatisfactionLevel(30)).toBe("Very Poor");
-    });
-  });
-
-  describe("formatGreenFee", () => {
-    it("formats with dollar sign", () => {
-      expect(formatGreenFee(55)).toBe("$55");
-      expect(formatGreenFee(100)).toBe("$100");
-    });
-  });
-
-  describe("estimateRoundDuration", () => {
-    it("returns base duration at no crowding", () => {
-      expect(estimateRoundDuration(9, 0)).toBe(120);
-      expect(estimateRoundDuration(18, 0)).toBe(240);
-    });
-
-    it("increases duration with crowding", () => {
-      expect(estimateRoundDuration(18, 100)).toBeGreaterThan(estimateRoundDuration(18, 0));
-    });
-  });
-
-  // ==========================================================================
-  // Price Value Calculation Tests (via tickGolfers)
-  // ==========================================================================
-
   describe("Price Value Branches", () => {
-    // calculatePriceValue compares paidAmount to (rating.overall / 100) * priceThreshold
-    // rating.overall = 70, priceThreshold = 100 → expectedValue = 70
-    // Great value (100): actualValue <= 70 * 0.7 = 49
-    // Fair value (75): actualValue <= 70
-    // Slightly overpriced (50): actualValue <= 70 * 1.3 = 91
-    // Overpriced (25): actualValue > 91
-
     it("assigns great value (100) when paidAmount is much lower than expected", () => {
       const golfer = makeGolfer({
         id: "g1",
         status: "checking_in",
-        paidAmount: 40, // <= 49 is great value (70 * 0.7 = 49)
+        paidAmount: 40,
         preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
       });
       const state = makePoolState({
@@ -1199,7 +507,7 @@ describe("Golfer System", () => {
       const golfer = makeGolfer({
         id: "g1",
         status: "checking_in",
-        paidAmount: 60, // Between 50-70 is fair value
+        paidAmount: 60,
         preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
       });
       const state = makePoolState({
@@ -1218,7 +526,7 @@ describe("Golfer System", () => {
       const golfer = makeGolfer({
         id: "g1",
         status: "checking_in",
-        paidAmount: 85, // Between 71-91 is slightly overpriced
+        paidAmount: 85,
         preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
       });
       const state = makePoolState({
@@ -1237,7 +545,7 @@ describe("Golfer System", () => {
       const golfer = makeGolfer({
         id: "g1",
         status: "checking_in",
-        paidAmount: 100, // > 91 is overpriced
+        paidAmount: 100,
         preferences: { ...makeGolfer().preferences, priceThreshold: 100 }
       });
       const state = makePoolState({
@@ -1253,27 +561,7 @@ describe("Golfer System", () => {
     });
   });
 
-  // ==========================================================================
-  // Edge Cases
-  // ==========================================================================
-
   describe("Edge Cases", () => {
-    it("handles pool at exactly capacity", () => {
-      const golfers = Array(40).fill(null).map((_, i) =>
-        makeGolfer({ id: `g${i}`, status: "playing" })
-      );
-      const state = makePoolState({ peakCapacity: 40, golfers });
-
-      expect(isAtCapacity(state)).toBe(true);
-      expect(getAvailableTeeSlots(state)).toBe(0);
-      expect(calculateCrowdingLevel(state)).toBe(100);
-    });
-
-    it("handles zero capacity edge case", () => {
-      const state = makePoolState({ peakCapacity: 0 });
-      expect(isAtCapacity(state)).toBe(true);
-    });
-
     it("handles golfer completing round in single tick", () => {
       const golfer = makeGolfer({
         id: "g1",
@@ -1284,7 +572,6 @@ describe("Golfer System", () => {
       const state = makePoolState({ golfers: [golfer] });
       const weather = makeWeather();
 
-      // 60 minutes = 2 holes at HOLES_PER_HOUR
       const result = tickGolfers(state, 60, 70, 70, weather);
 
       expect(result.state.golfers[0].holesPlayed).toBe(18);

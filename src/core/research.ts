@@ -1,16 +1,3 @@
-/**
- * Research System - Technology tree for unlocking equipment and upgrades
- *
- * Similar to RollerCoaster Tycoon's research system:
- * - Research categories (equipment, fertilizers, irrigation, landscaping)
- * - Research items with costs and prerequisites
- * - Research progress over time based on funding level
- * - Unlock queue for research priorities
- */
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export type ResearchCategory =
   | "equipment"      // Mowers, vehicles, tools
@@ -53,7 +40,7 @@ export interface EquipmentStats {
   readonly repairTime?: number;      // Minutes for mechanic to repair
 }
 
-export interface UpgradeBonus {
+interface UpgradeBonus {
   readonly type: "speed" | "efficiency" | "capacity" | "quality";
   readonly value: number;            // Multiplier or flat bonus
 }
@@ -74,10 +61,6 @@ export interface ResearchState {
   readonly fundingLevel: FundingLevel;
   readonly totalPointsSpent: number;
 }
-
-// ============================================================================
-// Constants
-// ============================================================================
 
 export const FUNDING_POINTS_PER_MINUTE: Record<FundingLevel, number> = {
   none: 0,
@@ -102,10 +85,6 @@ export const CATEGORY_COLORS: Record<ResearchCategory, string> = {
   management: "#ffa726",
   robotics: "#00bcd4"
 };
-
-// ============================================================================
-// Research Tree Definition
-// ============================================================================
 
 export const RESEARCH_ITEMS: readonly ResearchItem[] = [
   // === EQUIPMENT TIER 1 ===
@@ -616,10 +595,6 @@ export const RESEARCH_ITEMS: readonly ResearchItem[] = [
   }
 ];
 
-// ============================================================================
-// Factory Functions
-// ============================================================================
-
 export function createInitialResearchState(): ResearchState {
   // Start with basic push mower completed
   return {
@@ -631,7 +606,7 @@ export function createInitialResearchState(): ResearchState {
   };
 }
 
-export function createResearchProgress(
+function createResearchProgress(
   itemId: string,
   startTime: number
 ): ResearchProgress | null {
@@ -646,22 +621,8 @@ export function createResearchProgress(
   };
 }
 
-// ============================================================================
-// Query Functions
-// ============================================================================
-
-export function getResearchItem(id: string): ResearchItem | null {
+function getResearchItem(id: string): ResearchItem | null {
   return RESEARCH_ITEMS.find(item => item.id === id) ?? null;
-}
-
-export function getResearchItemsByCategory(
-  category: ResearchCategory
-): readonly ResearchItem[] {
-  return RESEARCH_ITEMS.filter(item => item.category === category);
-}
-
-export function getResearchItemsByTier(tier: number): readonly ResearchItem[] {
-  return RESEARCH_ITEMS.filter(item => item.tier === tier);
 }
 
 export function getResearchStatus(
@@ -693,19 +654,7 @@ export function getAvailableResearch(state: ResearchState): readonly ResearchIte
   );
 }
 
-export function getCompletedResearch(state: ResearchState): readonly ResearchItem[] {
-  return RESEARCH_ITEMS.filter(item =>
-    state.completedResearch.includes(item.id)
-  );
-}
-
-export function getLockedResearch(state: ResearchState): readonly ResearchItem[] {
-  return RESEARCH_ITEMS.filter(item =>
-    getResearchStatus(state, item.id) === "locked"
-  );
-}
-
-export function canStartResearch(state: ResearchState, itemId: string): boolean {
+function canStartResearch(state: ResearchState, itemId: string): boolean {
   return getResearchStatus(state, itemId) === "available";
 }
 
@@ -719,44 +668,8 @@ export function getResearchProgress(state: ResearchState): number {
   );
 }
 
-export function getEstimatedTimeToComplete(state: ResearchState): number | null {
-  if (!state.currentResearch) return null;
-
-  const pointsPerMinute = FUNDING_POINTS_PER_MINUTE[state.fundingLevel];
-  if (pointsPerMinute === 0) return null; // Infinite time
-
-  const remainingPoints =
-    state.currentResearch.pointsRequired - state.currentResearch.pointsEarned;
-
-  return Math.ceil(remainingPoints / pointsPerMinute);
-}
-
 export function getFundingCostPerMinute(state: ResearchState): number {
   return FUNDING_COST_PER_MINUTE[state.fundingLevel];
-}
-
-export function getTotalResearchCount(): number {
-  return RESEARCH_ITEMS.length;
-}
-
-export function getCompletedResearchCount(state: ResearchState): number {
-  return state.completedResearch.length;
-}
-
-export function getUnlockedEquipment(state: ResearchState): readonly string[] {
-  return state.completedResearch
-    .map(id => getResearchItem(id))
-    .filter((item): item is ResearchItem => item !== null)
-    .filter(item => item.unlocks.type === "equipment")
-    .map(item => (item.unlocks as { type: "equipment"; equipmentId: string }).equipmentId);
-}
-
-export function getUnlockedFertilizers(state: ResearchState): readonly string[] {
-  return state.completedResearch
-    .map(id => getResearchItem(id))
-    .filter((item): item is ResearchItem => item !== null)
-    .filter(item => item.unlocks.type === "fertilizer")
-    .map(item => (item.unlocks as { type: "fertilizer"; fertilizerId: string }).fertilizerId);
 }
 
 export function getBestFertilizerEffectiveness(state: ResearchState): number {
@@ -781,7 +694,7 @@ export function getEquipmentEfficiencyBonus(state: ResearchState): number {
   return bonus;
 }
 
-export function getActiveUpgrades(state: ResearchState): readonly UpgradeBonus[] {
+function getActiveUpgrades(state: ResearchState): readonly UpgradeBonus[] {
   return state.completedResearch
     .map(id => getResearchItem(id))
     .filter((item): item is ResearchItem => item !== null)
@@ -800,48 +713,6 @@ export function getUnlockedAutonomousEquipment(state: ResearchState): readonly {
     .map(item => item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats })
     .filter(unlock => unlock.stats.isAutonomous === true)
     .map(unlock => ({ equipmentId: unlock.equipmentId, stats: unlock.stats }));
-}
-
-export function isAutonomousEquipment(equipmentId: string): boolean {
-  for (const item of RESEARCH_ITEMS) {
-    if (item.unlocks.type === "equipment") {
-      const unlock = item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats };
-      if (unlock.equipmentId === equipmentId && unlock.stats.isAutonomous) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-export function getAutonomousEquipmentStats(equipmentId: string): EquipmentStats | null {
-  for (const item of RESEARCH_ITEMS) {
-    if (item.unlocks.type === "equipment") {
-      const unlock = item.unlocks as { type: "equipment"; equipmentId: string; stats: EquipmentStats };
-      if (unlock.equipmentId === equipmentId) {
-        return unlock.stats;
-      }
-    }
-  }
-  return null;
-}
-
-export function calculateRobotOperatingCost(
-  stats: EquipmentStats,
-  hoursOperating: number
-): number {
-  return (stats.operatingCostPerHour ?? 0) * hoursOperating;
-}
-
-export function calculateBreakdownProbability(
-  stats: EquipmentStats,
-  hoursOperating: number,
-  hasFleetAI: boolean = false
-): number {
-  const baseRate = stats.breakdownRate ?? 0;
-  const adjustedRate = hasFleetAI ? baseRate * 0.6 : baseRate; // Fleet AI reduces by 40%
-  // Probability of at least one breakdown = 1 - (1 - rate)^hours
-  return 1 - Math.pow(1 - adjustedRate, hoursOperating);
 }
 
 export function getPrerequisiteChain(itemId: string): readonly string[] {
@@ -868,16 +739,6 @@ export function getPrerequisiteChain(itemId: string): readonly string[] {
   collectPrereqs(itemId);
   return chain;
 }
-
-export function getDependentResearch(itemId: string): readonly ResearchItem[] {
-  return RESEARCH_ITEMS.filter(item =>
-    item.prerequisites.includes(itemId)
-  );
-}
-
-// ============================================================================
-// State Transformation Functions
-// ============================================================================
 
 export function setFundingLevel(
   state: ResearchState,
@@ -908,7 +769,7 @@ export function startResearch(
   };
 }
 
-export function addToQueue(
+function addToQueue(
   state: ResearchState,
   itemId: string
 ): ResearchState | null {
@@ -930,16 +791,6 @@ export function addToQueue(
   return {
     ...state,
     researchQueue: [...state.researchQueue, itemId]
-  };
-}
-
-export function removeFromQueue(
-  state: ResearchState,
-  itemId: string
-): ResearchState {
-  return {
-    ...state,
-    researchQueue: state.researchQueue.filter(id => id !== itemId)
   };
 }
 
@@ -968,7 +819,7 @@ export function cancelResearch(state: ResearchState): ResearchState {
   };
 }
 
-export interface ResearchTickResult {
+interface ResearchTickResult {
   readonly state: ResearchState;
   readonly completed: ResearchItem | null;
   readonly pointsAdded: number;
@@ -1083,38 +934,6 @@ export function completeResearchInstantly(
     researchQueue: newQueue,
     totalPointsSpent: state.totalPointsSpent + item.baseCost
   };
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-export function formatResearchTime(minutes: number): string {
-  if (minutes < 60) {
-    return `${Math.ceil(minutes)} min`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = Math.ceil(minutes % 60);
-
-  if (remainingMinutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${remainingMinutes}m`;
-}
-
-export function getResearchCategoryName(category: ResearchCategory): string {
-  const names: Record<ResearchCategory, string> = {
-    equipment: "Equipment",
-    fertilizers: "Fertilizers",
-    irrigation: "Irrigation",
-    landscaping: "Landscaping",
-    facilities: "Facilities",
-    management: "Management",
-    robotics: "Robotics"
-  };
-  return names[category];
 }
 
 export function describeResearchUnlock(item: ResearchItem): string {

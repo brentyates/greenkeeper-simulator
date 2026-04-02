@@ -1,23 +1,9 @@
-/**
- * Irrigation System - Piped irrigation infrastructure for automated watering
- *
- * SimCity-style piped irrigation system that replaces manual irrigation:
- * - Pipe network with water flow and pressure calculation
- * - Sprinkler heads with coverage patterns
- * - Water sources (municipal, wells, ponds)
- * - Leak detection and repair system
- * - Scheduled watering automation
- */
-
 import { WeatherEffect } from './grass-simulation';
 
-// ============================================================================
-// Types
-// ============================================================================
 
 export type PipeType = 'pvc' | 'metal' | 'industrial';
 export type SprinklerType = 'fixed' | 'rotary' | 'impact' | 'precision';
-export type WaterSourceType = 'municipal' | 'well_shallow' | 'well_deep' | 'pond';
+type WaterSourceType = 'municipal' | 'well_shallow' | 'well_deep' | 'pond';
 export type PressureLevel = 'good' | 'low' | 'none';
 export type Direction = 'north' | 'south' | 'east' | 'west';
 
@@ -71,15 +57,12 @@ export interface IrrigationSystem {
   readonly pressureCache: Map<string, number>;
 }
 
-export interface CoverageTile {
+interface CoverageTile {
   readonly x: number;
   readonly y: number;
   readonly efficiency: number;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
 
 export const PIPE_CONFIGS: Record<PipeType, {
   cost: number;
@@ -147,7 +130,7 @@ export const SPRINKLER_CONFIGS: Record<SprinklerType, {
   }
 };
 
-export const WATER_SOURCE_CONFIGS: Record<WaterSourceType, {
+const WATER_SOURCE_CONFIGS: Record<WaterSourceType, {
   capacityPerDay: number;
   cost: number;
   costPer1000Gal: number;
@@ -179,7 +162,7 @@ export const WATER_SOURCE_CONFIGS: Record<WaterSourceType, {
   }
 };
 
-export const DEFAULT_SCHEDULE: WateringSchedule = {
+const DEFAULT_SCHEDULE: WateringSchedule = {
   enabled: true,
   timeRanges: [
     { start: 5 * 60, end: 7 * 60 },
@@ -189,9 +172,6 @@ export const DEFAULT_SCHEDULE: WateringSchedule = {
   zone: 'default'
 };
 
-// ============================================================================
-// Factory Functions
-// ============================================================================
 
 let sprinklerIdCounter = 0;
 let waterSourceIdCounter = 0;
@@ -207,7 +187,7 @@ export function createInitialIrrigationSystem(): IrrigationSystem {
   };
 }
 
-export function createPipeTile(
+function createPipeTile(
   gridX: number,
   gridY: number,
   pipeType: PipeType,
@@ -226,7 +206,7 @@ export function createPipeTile(
   };
 }
 
-export function createSprinklerHead(
+function createSprinklerHead(
   gridX: number,
   gridY: number,
   sprinklerType: SprinklerType,
@@ -265,11 +245,8 @@ export function createWaterSource(
   };
 }
 
-// ============================================================================
-// Coverage Pattern Functions
-// ============================================================================
 
-export function getSprinklerCoveragePattern(
+function getSprinklerCoveragePattern(
   centerX: number,
   centerY: number,
   sprinklerType: SprinklerType,
@@ -339,11 +316,8 @@ export function getSprinklerCoveragePattern(
   return tiles;
 }
 
-// ============================================================================
-// Connectivity Functions
-// ============================================================================
 
-export function getAdjacentPipes(
+function getAdjacentPipes(
   system: IrrigationSystem,
   pipe: PipeTile
 ): PipeTile[] {
@@ -367,7 +341,7 @@ export function getAdjacentPipes(
   return adjacent;
 }
 
-export function updatePipeConnections(
+function updatePipeConnections(
   system: IrrigationSystem,
   pipe: PipeTile
 ): PipeTile {
@@ -386,7 +360,7 @@ export function updatePipeConnections(
   return { ...pipe, connectedTo };
 }
 
-export function findNearestWaterSource(
+function findNearestWaterSource(
   pipe: PipeTile,
   system: IrrigationSystem
 ): WaterSource | null {
@@ -406,7 +380,7 @@ export function findNearestWaterSource(
   return nearest;
 }
 
-export function calculatePipeDistance(
+function calculatePipeDistance(
   pipe: PipeTile,
   source: WaterSource,
   system: IrrigationSystem
@@ -452,11 +426,8 @@ function findPipePath(
   return null;
 }
 
-// ============================================================================
-// Pressure Calculation
-// ============================================================================
 
-export function calculatePressure(
+function calculatePressure(
   pipe: PipeTile,
   system: IrrigationSystem
 ): number {
@@ -538,11 +509,8 @@ export function updatePipePressures(system: IrrigationSystem): IrrigationSystem 
   };
 }
 
-// ============================================================================
-// Leak System
-// ============================================================================
 
-export function calculateLeakChance(
+function calculateLeakChance(
   pipe: PipeTile,
   currentTime: number,
   weather?: WeatherEffect
@@ -618,9 +586,6 @@ export function repairLeak(
   };
 }
 
-// ============================================================================
-// Water Consumption
-// ============================================================================
 
 export function calculateWaterUsage(
   sprinklerHeads: readonly SprinklerHead[],
@@ -654,9 +619,6 @@ export function calculateWaterCost(
   return thousandsOfGallons * source.costPer1000Gal;
 }
 
-// ============================================================================
-// State Transformation Functions
-// ============================================================================
 
 export function addPipe(
   system: IrrigationSystem,
@@ -751,9 +713,6 @@ export function setSprinklerActive(
   };
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 
 export function getPipeAt(
   system: IrrigationSystem,
@@ -771,15 +730,3 @@ export function getSprinklerHeadAt(
   return system.sprinklerHeads.find(h => h.gridX === gridX && h.gridY === gridY) ?? null;
 }
 
-export function getWaterSourceAt(
-  system: IrrigationSystem,
-  gridX: number,
-  gridY: number
-): WaterSource | null {
-  return system.waterSources.find(s => s.gridX === gridX && s.gridY === gridY) ?? null;
-}
-
-export function resetCounters(): void {
-  sprinklerIdCounter = 0;
-  waterSourceIdCounter = 0;
-}

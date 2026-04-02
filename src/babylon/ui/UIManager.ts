@@ -2171,52 +2171,52 @@ export class UIManager {
     this.minimapPlayerDot.isVisible = true;
   }
 
+  private syncMinimapDots(
+    dots: Ellipse[],
+    count: number,
+    prefix: string,
+    size: string,
+    defaultBg: string,
+    borderColor: string,
+  ): void {
+    while (dots.length > count) {
+      const dot = dots.pop();
+      if (dot) this.minimapMapArea.removeControl(dot);
+    }
+    while (dots.length < count) {
+      const dot = new Ellipse(`${prefix}_${dots.length}`);
+      dot.width = size;
+      dot.height = size;
+      dot.background = defaultBg;
+      dot.color = borderColor;
+      dot.thickness = 1;
+      dot.isPointerBlocker = false;
+      this.minimapMapArea.addControl(dot);
+      dots.push(dot);
+    }
+  }
+
+  private positionMinimapDot(dot: Ellipse, worldX: number, worldZ: number, mapWidth: number, mapHeight: number): void {
+    dot.left = `${(worldX / mapWidth) * this.minimapPixelWidth - this.minimapPixelWidth / 2}px`;
+    dot.top = `${(worldZ / mapHeight) * this.minimapPixelHeight - this.minimapPixelHeight / 2}px`;
+  }
+
   public updateMinimapWorkers(
     workers: readonly { gridX: number; gridY: number; task: string }[],
     mapWidth: number,
     mapHeight: number
   ): void {
-    // Remove excess dots
-    while (this.minimapWorkerDots.length > workers.length) {
-      const dot = this.minimapWorkerDots.pop();
-      if (dot) {
-        this.minimapMapArea.removeControl(dot);
-      }
-    }
-
-    // Add new dots if needed
-    while (this.minimapWorkerDots.length < workers.length) {
-      const dot = new Ellipse(`workerDot_${this.minimapWorkerDots.length}`);
-      dot.width = '6px';
-      dot.height = '6px';
-      dot.background = UI_THEME.colors.legacy.c_ff9933;
-      dot.color = UI_THEME.colors.legacy.c_cc6600;
-      dot.thickness = 1;
-      dot.isPointerBlocker = false;
-      this.minimapMapArea.addControl(dot);
-      this.minimapWorkerDots.push(dot);
-    }
-
-    // Update positions
+    this.syncMinimapDots(this.minimapWorkerDots, workers.length, 'workerDot', '6px', UI_THEME.colors.legacy.c_ff9933, UI_THEME.colors.legacy.c_cc6600);
+    const taskColors: Record<string, string> = {
+      idle: UI_THEME.colors.legacy.c_666666,
+      mow_grass: UI_THEME.colors.legacy.c_44aa44,
+      water_area: UI_THEME.colors.legacy.c_4488cc,
+      fertilize_area: UI_THEME.colors.legacy.c_cc8844,
+    };
     workers.forEach((worker, i) => {
       const dot = this.minimapWorkerDots[i];
-      const relX = (worker.gridX / mapWidth) * this.minimapPixelWidth - this.minimapPixelWidth / 2;
-      const relY = (worker.gridY / mapHeight) * this.minimapPixelHeight - this.minimapPixelHeight / 2;
-      dot.left = `${relX}px`;
-      dot.top = `${relY}px`;
-
-      // Color based on task
-      if (worker.task === 'idle') {
-        dot.background = UI_THEME.colors.legacy.c_666666;
-      } else if (worker.task === 'mow_grass') {
-        dot.background = UI_THEME.colors.legacy.c_44aa44;
-      } else if (worker.task === 'water_area') {
-        dot.background = UI_THEME.colors.legacy.c_4488cc;
-      } else if (worker.task === 'fertilize_area') {
-        dot.background = UI_THEME.colors.legacy.c_cc8844;
-      } else {
-        dot.background = UI_THEME.colors.legacy.c_ff9933;
-      }
+      this.positionMinimapDot(dot, worker.gridX, worker.gridY, mapWidth, mapHeight);
+      dot.background = taskColors[worker.task] ?? UI_THEME.colors.legacy.c_ff9933;
     });
   }
 
@@ -2225,37 +2225,11 @@ export class UIManager {
     mapWidth: number,
     mapHeight: number
   ): void {
-    while (this.minimapRobotDots.length > robots.length) {
-      const dot = this.minimapRobotDots.pop();
-      if (dot) {
-        this.minimapMapArea.removeControl(dot);
-      }
-    }
-
-    while (this.minimapRobotDots.length < robots.length) {
-      const dot = new Ellipse(`robotDot_${this.minimapRobotDots.length}`);
-      dot.width = '6px';
-      dot.height = '6px';
-      dot.background = '#5db3ff';
-      dot.color = '#d8f0ff';
-      dot.thickness = 1;
-      dot.isPointerBlocker = false;
-      this.minimapMapArea.addControl(dot);
-      this.minimapRobotDots.push(dot);
-    }
-
-    robots.forEach((robot, index) => {
-      const dot = this.minimapRobotDots[index];
-      const relX = (robot.worldX / mapWidth) * this.minimapPixelWidth - this.minimapPixelWidth / 2;
-      const relY = (robot.worldZ / mapHeight) * this.minimapPixelHeight - this.minimapPixelHeight / 2;
-      dot.left = `${relX}px`;
-      dot.top = `${relY}px`;
-      dot.background =
-        robot.state === 'broken'
-          ? '#ff7f7f'
-          : robot.state === 'charging'
-            ? '#ffe08a'
-            : '#5db3ff';
+    this.syncMinimapDots(this.minimapRobotDots, robots.length, 'robotDot', '6px', '#5db3ff', '#d8f0ff');
+    robots.forEach((robot, i) => {
+      const dot = this.minimapRobotDots[i];
+      this.positionMinimapDot(dot, robot.worldX, robot.worldZ, mapWidth, mapHeight);
+      dot.background = robot.state === 'broken' ? '#ff7f7f' : robot.state === 'charging' ? '#ffe08a' : '#5db3ff';
     });
   }
 
@@ -2264,31 +2238,9 @@ export class UIManager {
     mapWidth: number,
     mapHeight: number
   ): void {
-    while (this.minimapGolferDots.length > golfers.length) {
-      const dot = this.minimapGolferDots.pop();
-      if (dot) {
-        this.minimapMapArea.removeControl(dot);
-      }
-    }
-
-    while (this.minimapGolferDots.length < golfers.length) {
-      const dot = new Ellipse(`golferDot_${this.minimapGolferDots.length}`);
-      dot.width = '4px';
-      dot.height = '4px';
-      dot.background = '#ffffff';
-      dot.color = '#cccccc';
-      dot.thickness = 1;
-      dot.isPointerBlocker = false;
-      this.minimapMapArea.addControl(dot);
-      this.minimapGolferDots.push(dot);
-    }
-
-    golfers.forEach((golfer, index) => {
-      const dot = this.minimapGolferDots[index];
-      const relX = (golfer.worldX / mapWidth) * this.minimapPixelWidth - this.minimapPixelWidth / 2;
-      const relY = (golfer.worldZ / mapHeight) * this.minimapPixelHeight - this.minimapPixelHeight / 2;
-      dot.left = `${relX}px`;
-      dot.top = `${relY}px`;
+    this.syncMinimapDots(this.minimapGolferDots, golfers.length, 'golferDot', '4px', '#ffffff', '#cccccc');
+    golfers.forEach((golfer, i) => {
+      this.positionMinimapDot(this.minimapGolferDots[i], golfer.worldX, golfer.worldZ, mapWidth, mapHeight);
     });
   }
 

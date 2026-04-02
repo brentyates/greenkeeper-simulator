@@ -1,19 +1,3 @@
-/**
- * Employee System - Staff management for the golf course
- *
- * Similar to RollerCoaster Tycoon's staff system:
- * - Groundskeepers maintain the course (mowing, watering, fertilizing)
- * - Mechanics keep equipment running and repair infrastructure
- * - Every employee is visually present on the course doing work
- * - Hire/fire employees
- * - Wages and payroll
- * - Employee skills and experience
- */
-
-// ============================================================================
-// Types
-// ============================================================================
-
 export type EmployeeRole =
   | "groundskeeper"
   | "mechanic";
@@ -26,7 +10,7 @@ export type EmployeeFocusPreference =
   | "fertilizing"
   | "bunkers";
 
-export interface EmployeeRoleInfo {
+interface EmployeeRoleInfo {
   readonly id: EmployeeRole;
   readonly name: string;
   readonly icon: string;
@@ -75,11 +59,11 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
 
 export type EmployeeStatus = "working" | "idle" | "on_break" | "training" | "withholding_work";
 
-export interface EmployeeSkills {
-  readonly efficiency: number;     // 0.5 - 2.0, work speed multiplier
-  readonly quality: number;        // 0.5 - 2.0, work quality multiplier
-  readonly stamina: number;        // 0.5 - 2.0, how long before needing break
-  readonly reliability: number;    // 0.5 - 1.0, chance of showing up
+interface EmployeeSkills {
+  readonly efficiency: number;
+  readonly quality: number;
+  readonly stamina: number;
+  readonly reliability: number;
 }
 
 export interface Employee {
@@ -88,24 +72,24 @@ export interface Employee {
   readonly role: EmployeeRole;
   readonly skillLevel: SkillLevel;
   readonly skills: EmployeeSkills;
-  readonly hireDate: number;       // Game time when hired
+  readonly hireDate: number;
   readonly hourlyWage: number;
-  readonly experience: number;     // Points toward next skill level
-  readonly happiness: number;      // 0-100, affects performance
-  readonly fatigue: number;        // 0-100, needs break when high
+  readonly experience: number;
+  readonly happiness: number;
+  readonly fatigue: number;
   readonly status: EmployeeStatus;
-  readonly assignedArea: string | null;  // Zone/area assignment
+  readonly assignedArea: string | null;
   readonly assignedFocus?: EmployeeFocusPreference;
 }
 
-export interface EmployeeConfig {
+interface EmployeeConfig {
   readonly baseWage: number;
   readonly wageMultipliers: Record<SkillLevel, number>;
   readonly baseEfficiency: number;
   readonly experienceToLevel: number;
-  readonly breakThreshold: number;       // Fatigue level that triggers break
-  readonly fatigueRecoveryRate: number;  // Per minute during break
-  readonly fatigueAccrualRate: number;   // Per minute while working
+  readonly breakThreshold: number;
+  readonly fatigueRecoveryRate: number;
+  readonly fatigueAccrualRate: number;
 }
 
 export interface EmployeeRoster {
@@ -115,15 +99,10 @@ export interface EmployeeRoster {
   readonly totalWagesPaid: number;
 }
 
-export interface PayrollResult {
+interface PayrollResult {
   readonly roster: EmployeeRoster;
   readonly totalPaid: number;
   readonly breakdown: readonly { employeeId: string; amount: number }[];
-}
-
-export interface HiringPool {
-  readonly candidates: readonly Employee[];
-  readonly refreshTime: number;
 }
 
 export interface ApplicationState {
@@ -143,7 +122,7 @@ export interface JobPosting {
   readonly targetSkillLevel?: SkillLevel;
 }
 
-export interface ApplicationTickResult {
+interface ApplicationTickResult {
   readonly state: ApplicationState;
   readonly newApplicant: Employee | null;
   readonly expiredPostings: readonly JobPosting[];
@@ -151,11 +130,7 @@ export interface ApplicationTickResult {
 
 export type PrestigeTier = 'municipal' | 'public' | 'semi_private' | 'private_club' | 'championship';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-export const EMPLOYEE_CONFIGS: Record<EmployeeRole, EmployeeConfig> = {
+const EMPLOYEE_CONFIGS: Record<EmployeeRole, EmployeeConfig> = {
   groundskeeper: {
     baseWage: 12,
     wageMultipliers: { novice: 1.0, trained: 1.25, experienced: 1.5, expert: 2.0 },
@@ -176,78 +151,74 @@ export const EMPLOYEE_CONFIGS: Record<EmployeeRole, EmployeeConfig> = {
   }
 };
 
-export const SKILL_LEVEL_BONUSES: Record<SkillLevel, number> = {
+const SKILL_LEVEL_BONUSES: Record<SkillLevel, number> = {
   novice: 0,
   trained: 0.15,
   experienced: 0.3,
   expert: 0.5
 };
 
-export const SKILL_LEVELS_ORDER: readonly SkillLevel[] = [
+const SKILL_LEVELS_ORDER: readonly SkillLevel[] = [
   "novice",
   "trained",
   "experienced",
   "expert"
 ] as const;
 
-export const DEFAULT_MAX_EMPLOYEES = 20;
-export const PAYROLL_INTERVAL_MINUTES = 60; // Pay every game hour
-export const PAYROLL_SHIFT_HOURS = 8; // Scale hourly wages to a playable in-game shift
-export const HIRING_POOL_SIZE = 5;
-export const HIRING_POOL_REFRESH_INTERVAL = 480; // 8 game hours
+const DEFAULT_MAX_EMPLOYEES = 20;
+const PAYROLL_INTERVAL_MINUTES = 60;
+const PAYROLL_SHIFT_HOURS = 8;
 
-// Prestige-based hiring configuration
 export const PRESTIGE_HIRING_CONFIG: Record<PrestigeTier, {
-  applicationRate: number;          // Game hours between natural applications
-  maxApplications: number;          // Max pending applications at once
-  skillDistribution: Record<SkillLevel, number>;  // Probability weights
-  postingCost: number;             // Cost to post a job opening
-  postingDuration: number;         // Hours posting stays active
-  postingApplicationRate: number;  // Hours between applications when posting is active
+  applicationRate: number;
+  maxApplications: number;
+  skillDistribution: Record<SkillLevel, number>;
+  postingCost: number;
+  postingDuration: number;
+  postingApplicationRate: number;
 }> = {
   municipal: {
-    applicationRate: 8,   // ~4 real minutes at 1x speed
+    applicationRate: 8,
     maxApplications: 2,
     skillDistribution: { novice: 85, trained: 13, experienced: 2, expert: 0 },
     postingCost: 500,
-    postingDuration: 72,  // 3 game days
-    postingApplicationRate: 4   // ~2 real minutes at 1x speed
+    postingDuration: 72,
+    postingApplicationRate: 4
   },
   public: {
-    applicationRate: 6,   // ~3 real minutes at 1x speed
+    applicationRate: 6,
     maxApplications: 3,
     skillDistribution: { novice: 60, trained: 28, experienced: 10, expert: 2 },
     postingCost: 350,
-    postingDuration: 48,  // 2 game days
-    postingApplicationRate: 2   // ~1 real minute at 1x speed
+    postingDuration: 48,
+    postingApplicationRate: 2
   },
   semi_private: {
-    applicationRate: 4,   // ~2 real minutes at 1x speed
+    applicationRate: 4,
     maxApplications: 5,
     skillDistribution: { novice: 30, trained: 40, experienced: 23, expert: 7 },
     postingCost: 250,
-    postingDuration: 36,  // 1.5 game days
-    postingApplicationRate: 1   // ~30 real seconds at 1x speed
+    postingDuration: 36,
+    postingApplicationRate: 1
   },
   private_club: {
-    applicationRate: 2,   // ~1 real minute at 1x speed
+    applicationRate: 2,
     maxApplications: 7,
     skillDistribution: { novice: 12, trained: 33, experienced: 38, expert: 17 },
     postingCost: 150,
-    postingDuration: 24,  // 1 game day
-    postingApplicationRate: 0.5 // ~15 real seconds at 1x speed
+    postingDuration: 24,
+    postingApplicationRate: 0.5
   },
   championship: {
-    applicationRate: 1,   // ~30 real seconds at 1x speed
+    applicationRate: 1,
     maxApplications: 10,
     skillDistribution: { novice: 3, trained: 17, experienced: 42, expert: 38 },
     postingCost: 100,
-    postingDuration: 24,  // 1 game day
-    postingApplicationRate: 0.25 // ~7.5 real seconds at 1x speed
+    postingDuration: 24,
+    postingApplicationRate: 0.25
   }
 };
 
-// First names for random generation
 const FIRST_NAMES = [
   "James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda",
   "William", "Barbara", "David", "Elizabeth", "Richard", "Susan", "Joseph", "Jessica",
@@ -261,10 +232,6 @@ const LAST_NAMES = [
   "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson",
   "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker"
 ];
-
-// ============================================================================
-// Factory Functions
-// ============================================================================
 
 let employeeIdCounter = 0;
 
@@ -280,7 +247,7 @@ export function createInitialRoster(maxEmployees: number = DEFAULT_MAX_EMPLOYEES
 export function generateRandomName(seed?: number): string {
   const getSeed = () => seed !== undefined ? seed : Math.random();
   const firstIndex = Math.floor(getSeed() * FIRST_NAMES.length);
-  const lastIndex = Math.floor((getSeed() * 7919) % LAST_NAMES.length); // Different prime for variety
+  const lastIndex = Math.floor((getSeed() * 7919) % LAST_NAMES.length);
   return `${FIRST_NAMES[firstIndex]} ${LAST_NAMES[lastIndex]}`;
 }
 
@@ -291,7 +258,6 @@ export function generateRandomSkills(
   const getRandom = () => seed !== undefined ? (seed * 9301 + 49297) % 233280 / 233280 : Math.random();
   const bonus = SKILL_LEVEL_BONUSES[skillLevel];
 
-  // Base values with skill level bonus, plus random variation
   const baseValue = 0.7 + bonus;
   const variation = 0.3;
 
@@ -331,58 +297,11 @@ export function createEmployee(
   };
 }
 
-export function generateHiringPool(
-  currentTime: number,
-  count: number = HIRING_POOL_SIZE
-): HiringPool {
-  const candidates: Employee[] = [];
-  const roles: EmployeeRole[] = [
-    "groundskeeper", "groundskeeper", "groundskeeper", "mechanic", "mechanic"
-  ];
-
-  const skillLevels: SkillLevel[] = ["novice", "novice", "novice", "trained", "experienced"];
-
-  for (let i = 0; i < count; i++) {
-    const role = roles[Math.floor(Math.random() * roles.length)];
-    const skillLevel = skillLevels[Math.floor(Math.random() * skillLevels.length)];
-    candidates.push(createEmployee(role, skillLevel, currentTime));
-  }
-
-  return {
-    candidates,
-    refreshTime: currentTime
-  };
-}
-
-// ============================================================================
-// Query Functions
-// ============================================================================
-
 export function getEmployee(roster: EmployeeRoster, employeeId: string): Employee | null {
   return roster.employees.find(e => e.id === employeeId) ?? null;
 }
 
-export function getEmployeesByRole(roster: EmployeeRoster, role: EmployeeRole): readonly Employee[] {
-  return roster.employees.filter(e => e.role === role);
-}
-
-export function getEmployeesByStatus(roster: EmployeeRoster, status: EmployeeStatus): readonly Employee[] {
-  return roster.employees.filter(e => e.status === status);
-}
-
-export function getWorkingEmployees(roster: EmployeeRoster): readonly Employee[] {
-  return roster.employees.filter(e => e.status === "working");
-}
-
-export function getEmployeeCount(roster: EmployeeRoster): number {
-  return roster.employees.length;
-}
-
-export function getEmployeeCountByRole(roster: EmployeeRoster, role: EmployeeRole): number {
-  return roster.employees.filter(e => e.role === role).length;
-}
-
-export function canHire(roster: EmployeeRoster): boolean {
+function canHire(roster: EmployeeRoster): boolean {
   return roster.employees.length < roster.maxEmployees;
 }
 
@@ -390,56 +309,18 @@ export function getAvailableSlots(roster: EmployeeRoster): number {
   return roster.maxEmployees - roster.employees.length;
 }
 
-export function getTotalHourlyWages(roster: EmployeeRoster): number {
-  return roster.employees.reduce((sum, e) => sum + e.hourlyWage, 0);
-}
-
-export function getAverageHappiness(roster: EmployeeRoster): number {
-  if (roster.employees.length === 0) return 100;
-  return roster.employees.reduce((sum, e) => sum + e.happiness, 0) / roster.employees.length;
-}
-
-export function getAverageEfficiency(roster: EmployeeRoster): number {
-  if (roster.employees.length === 0) return 1;
-  return roster.employees.reduce((sum, e) => sum + e.skills.efficiency, 0) / roster.employees.length;
-}
-
-export function getEmployeesNeedingBreak(roster: EmployeeRoster): readonly Employee[] {
-  return roster.employees.filter(e => {
-    const config = EMPLOYEE_CONFIGS[e.role];
-    return e.fatigue >= config.breakThreshold && e.status === "working";
-  });
-}
-
 export function calculateEffectiveEfficiency(employee: Employee): number {
-  // Linear happiness modifier (0.0 to 1.0)
   const happinessModifier = employee.happiness / 100;
-
-  // Fatigue modifier (0.7 to 1.0)
   const fatigueModifier = 1 - (employee.fatigue / 100) * 0.3;
-
   return employee.skills.efficiency * happinessModifier * fatigueModifier;
 }
 
-export function getNextSkillLevel(current: SkillLevel): SkillLevel | null {
+function getNextSkillLevel(current: SkillLevel): SkillLevel | null {
   const index = SKILL_LEVELS_ORDER.indexOf(current);
   if (index === -1 || index >= SKILL_LEVELS_ORDER.length - 1) {
     return null;
   }
   return SKILL_LEVELS_ORDER[index + 1];
-}
-
-export function getExperienceForNextLevel(employee: Employee): number {
-  const config = EMPLOYEE_CONFIGS[employee.role];
-  const nextLevel = getNextSkillLevel(employee.skillLevel);
-  if (!nextLevel) return 0;
-  return config.experienceToLevel - employee.experience;
-}
-
-export function isEligibleForPromotion(employee: Employee): boolean {
-  const config = EMPLOYEE_CONFIGS[employee.role];
-  const nextLevel = getNextSkillLevel(employee.skillLevel);
-  return nextLevel !== null && employee.experience >= config.experienceToLevel;
 }
 
 export function awardExperience(
@@ -479,11 +360,6 @@ export function awardExperience(
   };
 }
 
-
-// ============================================================================
-// State Transformation Functions
-// ============================================================================
-
 export function hireEmployee(
   roster: EmployeeRoster,
   employee: Employee
@@ -515,7 +391,7 @@ export function fireEmployee(
   };
 }
 
-export function updateEmployee(
+function updateEmployee(
   roster: EmployeeRoster,
   employeeId: string,
   updates: Partial<Omit<Employee, "id">>
@@ -531,14 +407,6 @@ export function updateEmployee(
       e.id === employeeId ? { ...e, ...updates } : e
     )
   };
-}
-
-export function setEmployeeStatus(
-  roster: EmployeeRoster,
-  employeeId: string,
-  status: EmployeeStatus
-): EmployeeRoster | null {
-  return updateEmployee(roster, employeeId, { status });
 }
 
 export function assignEmployeeToArea(
@@ -557,26 +425,7 @@ export function assignEmployeeFocus(
   return updateEmployee(roster, employeeId, { assignedFocus: focus });
 }
 
-export function startEmployeeBreak(
-  roster: EmployeeRoster,
-  employeeId: string
-): EmployeeRoster | null {
-  return setEmployeeStatus(roster, employeeId, "on_break");
-}
-
-export function endEmployeeBreak(
-  roster: EmployeeRoster,
-  employeeId: string
-): EmployeeRoster | null {
-  const employee = getEmployee(roster, employeeId);
-  if (!employee || employee.status !== "on_break") {
-    return null;
-  }
-
-  return setEmployeeStatus(roster, employeeId, "working");
-}
-
-export interface EmployeeTickResult {
+interface EmployeeTickResult {
   readonly roster: EmployeeRoster;
   readonly promotions: readonly { employeeId: string; newLevel: SkillLevel }[];
   readonly breaksTaken: readonly string[];
@@ -595,7 +444,6 @@ export function tickEmployees(
     let updated = { ...employee };
 
     if (employee.status === "working") {
-      // Training reduces fatigue (better techniques) and boosts experience gain
       const fatigueMultiplier = 1 / trainingBonus;
       const experienceMultiplier = trainingBonus;
 
@@ -605,25 +453,21 @@ export function tickEmployees(
         experience: updated.experience + deltaMinutes * updated.skills.efficiency * experienceMultiplier
       };
 
-      // Check if needs break
       if (updated.fatigue >= config.breakThreshold) {
         updated = { ...updated, status: "on_break" as EmployeeStatus };
         breaksTaken.push(employee.id);
       }
     } else if (employee.status === "on_break") {
-      // Recover fatigue
       updated = {
         ...updated,
         fatigue: Math.max(0, updated.fatigue - config.fatigueRecoveryRate * deltaMinutes)
       };
 
-      // Return to work when recovered
       if (updated.fatigue <= 20) {
         updated = { ...updated, status: "working" as EmployeeStatus };
       }
     }
 
-    // Check for promotion
     if (updated.experience >= config.experienceToLevel) {
       const nextLevel = getNextSkillLevel(updated.skillLevel);
       if (nextLevel) {
@@ -631,9 +475,7 @@ export function tickEmployees(
           ...updated,
           skillLevel: nextLevel,
           experience: updated.experience - config.experienceToLevel,
-          // Update wage for new level
           hourlyWage: Math.round(config.baseWage * config.wageMultipliers[nextLevel] * 100) / 100,
-          // Slight skill improvement on promotion
           skills: {
             ...updated.skills,
             efficiency: Math.min(2.0, updated.skills.efficiency + 0.05),
@@ -668,7 +510,6 @@ export function processPayroll(
     };
   }
 
-  // Calculate hours worked (game hours), then scale to an in-game work shift.
   const hoursWorked = minutesSinceLastPayroll / 60;
   const payrollHours = hoursWorked / PAYROLL_SHIFT_HOURS;
 
@@ -733,105 +574,6 @@ export function resumeEmployeesAfterPayroll(
   };
 }
 
-export function promoteEmployee(
-  roster: EmployeeRoster,
-  employeeId: string
-): EmployeeRoster | null {
-  const employee = getEmployee(roster, employeeId);
-  if (!employee) return null;
-
-  if (!isEligibleForPromotion(employee)) return null;
-
-  const nextLevel = getNextSkillLevel(employee.skillLevel)!;
-
-  const config = EMPLOYEE_CONFIGS[employee.role];
-  const newWage = Math.round(config.baseWage * config.wageMultipliers[nextLevel] * 100) / 100;
-
-  return updateEmployee(roster, employeeId, {
-    skillLevel: nextLevel,
-    experience: 0,
-    hourlyWage: newWage,
-    happiness: Math.min(100, employee.happiness + 10),
-    skills: {
-      ...employee.skills,
-      efficiency: Math.min(2.0, employee.skills.efficiency + 0.05),
-      quality: Math.min(2.0, employee.skills.quality + 0.05)
-    }
-  });
-}
-
-export function adjustHappiness(
-  roster: EmployeeRoster,
-  employeeId: string,
-  delta: number
-): EmployeeRoster | null {
-  const employee = getEmployee(roster, employeeId);
-  if (!employee) return null;
-
-  const newHappiness = Math.max(0, Math.min(100, employee.happiness + delta));
-  return updateEmployee(roster, employeeId, { happiness: newHappiness });
-}
-
-export function giveRaise(
-  roster: EmployeeRoster,
-  employeeId: string,
-  percentIncrease: number
-): EmployeeRoster | null {
-  const employee = getEmployee(roster, employeeId);
-  if (!employee) return null;
-
-  const newWage = Math.round(employee.hourlyWage * (1 + percentIncrease / 100) * 100) / 100;
-  return updateEmployee(roster, employeeId, {
-    hourlyWage: newWage,
-    happiness: Math.min(100, employee.happiness + 5)
-  });
-}
-
-export function refreshHiringPool(
-  pool: HiringPool,
-  currentTime: number
-): HiringPool {
-  if (currentTime - pool.refreshTime < HIRING_POOL_REFRESH_INTERVAL) {
-    return pool;
-  }
-
-  return generateHiringPool(currentTime, HIRING_POOL_SIZE);
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-export function getRoleName(role: EmployeeRole): string {
-  const names: Record<EmployeeRole, string> = {
-    groundskeeper: "Groundskeeper",
-    mechanic: "Mechanic",
-  };
-  return names[role];
-}
-
-export function getSkillLevelName(level: SkillLevel): string {
-  const names: Record<SkillLevel, string> = {
-    novice: "Novice",
-    trained: "Trained",
-    experienced: "Experienced",
-    expert: "Expert"
-  };
-  return names[level];
-}
-
-export function formatWage(hourlyWage: number): string {
-  return `$${hourlyWage.toFixed(2)}/hr`;
-}
-
-export function resetEmployeeCounter(): void {
-  employeeIdCounter = 0;
-}
-
-// ============================================================================
-// Prestige-Based Hiring Functions
-// ============================================================================
-
 let jobPostingIdCounter = 0;
 
 export function createInitialApplicationState(currentTime: number = 0, prestigeTier: PrestigeTier = 'municipal'): ApplicationState {
@@ -845,23 +587,16 @@ export function createInitialApplicationState(currentTime: number = 0, prestigeT
   };
 }
 
-export function resetJobPostingCounter(): void {
-  jobPostingIdCounter = 0;
-}
-
 function selectSkillLevelByPrestige(prestigeTier: PrestigeTier, targetSkillLevel?: SkillLevel): SkillLevel {
   const distribution = PRESTIGE_HIRING_CONFIG[prestigeTier].skillDistribution;
 
-  // If there's a target skill level from a job posting, bias towards it
   if (targetSkillLevel) {
     const roll = Math.random() * 100;
-    // 60% chance to match target skill level, 40% use normal distribution
     if (roll < 60) {
       return targetSkillLevel;
     }
   }
 
-  // Weighted random selection
   const totalWeight = distribution.novice + distribution.trained + distribution.experienced + distribution.expert;
   const roll = Math.random() * totalWeight;
 
@@ -873,16 +608,13 @@ function selectSkillLevelByPrestige(prestigeTier: PrestigeTier, targetSkillLevel
 }
 
 function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
-  // Default weighted role distribution
   const roles: EmployeeRole[] = [
-    'groundskeeper', 'groundskeeper', 'groundskeeper',  // Most common
+    'groundskeeper', 'groundskeeper', 'groundskeeper',
     'mechanic', 'mechanic',
   ];
 
-  // If there's a job posting, boost chance of that role
   if (posting) {
     const roll = Math.random() * 100;
-    // 65% chance to match posted role, 35% use natural distribution
     if (roll < 65) {
       return posting.role;
     }
@@ -891,7 +623,7 @@ function selectRoleForApplication(posting?: JobPosting): EmployeeRole {
   return roles[Math.floor(Math.random() * roles.length)];
 }
 
-export function generateApplication(
+function generateApplication(
   currentTime: number,
   prestigeTier: PrestigeTier,
   targetPosting?: JobPosting
@@ -962,7 +694,6 @@ export function postJobOpening(
   const newState: ApplicationState = {
     ...state,
     activeJobPostings: [...state.activeJobPostings, posting],
-    // Recalculate next application time with posting bonus
     nextApplicationTime: Math.min(
       state.nextApplicationTime,
       currentTime + config.postingApplicationRate * 60
@@ -985,6 +716,14 @@ export function acceptApplication(
   };
 }
 
+export function hasActivePosting(state: ApplicationState, role: EmployeeRole): boolean {
+  return state.activeJobPostings.some(p => p.role === role);
+}
+
+export function getPostingCost(prestigeTier: PrestigeTier): number {
+  return PRESTIGE_HIRING_CONFIG[prestigeTier].postingCost;
+}
+
 export function rejectApplication(
   state: ApplicationState,
   applicationId: string
@@ -1002,14 +741,10 @@ export function getTimeUntilNextApplication(state: ApplicationState, currentTime
   return Math.max(0, state.nextApplicationTime - currentTime);
 }
 
-export function getActivePostingsCount(state: ApplicationState): number {
-  return state.activeJobPostings.length;
+export function resetEmployeeCounter(): void {
+  employeeIdCounter = 0;
 }
 
-export function hasActivePosting(state: ApplicationState, role: EmployeeRole): boolean {
-  return state.activeJobPostings.some(p => p.role === role);
-}
-
-export function getPostingCost(prestigeTier: PrestigeTier): number {
-  return PRESTIGE_HIRING_CONFIG[prestigeTier].postingCost;
+export function resetJobPostingCounter(): void {
+  jobPostingIdCounter = 0;
 }

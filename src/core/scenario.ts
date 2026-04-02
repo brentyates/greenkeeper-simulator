@@ -1,28 +1,27 @@
 import { getOverallCondition } from './grass-simulation';
 import { FaceState, getAverageFaceStats } from './face-state';
 
-export type ScenarioType = 'economic' | 'attendance' | 'satisfaction' | 'restoration';
 
-export interface EconomicObjective {
+interface EconomicObjective {
   type: 'economic';
   targetProfit?: number;
   targetRevenue?: number;
   targetCash?: number;
 }
 
-export interface AttendanceObjective {
+interface AttendanceObjective {
   type: 'attendance';
   targetGolfers?: number;
   targetRounds?: number;
 }
 
-export interface SatisfactionObjective {
+interface SatisfactionObjective {
   type: 'satisfaction';
   targetRating: number;
   maintainForDays?: number;
 }
 
-export interface RestorationObjective {
+interface RestorationObjective {
   type: 'restoration';
   targetHealth: number;
   targetCondition?: 'Excellent' | 'Good' | 'Fair' | 'Poor';
@@ -57,7 +56,7 @@ export interface ScenarioProgress {
   daysAtTargetRating: number;
 }
 
-export interface ScenarioResult {
+interface ScenarioResult {
   completed: boolean;
   failed: boolean;
   message?: string;

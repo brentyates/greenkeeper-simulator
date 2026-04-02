@@ -117,7 +117,7 @@ function isInBounds(
   return x >= 0 && x < course.width && y >= 0 && y < course.height;
 }
 
-export function resolveRefillAnchor(
+function resolveRefillAnchor(
   course: Pick<CourseData, "width" | "height">,
   preferredX?: number,
   preferredY?: number

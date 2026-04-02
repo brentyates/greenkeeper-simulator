@@ -18,7 +18,7 @@ import {
 import { findPathWasm } from './navigation-wasm';
 import { isWasmAvailable } from './navigation-backend';
 
-export type RobotType = 'mower' | 'sprayer' | 'spreader' | 'raker';
+type RobotType = 'mower' | 'sprayer' | 'spreader' | 'raker';
 export type RobotState = 'idle' | 'working' | 'moving' | 'charging' | 'broken';
 
 export interface Waypoint {
@@ -50,13 +50,13 @@ export interface AutonomousEquipmentState {
   readonly chargingStationY: number;
 }
 
-export interface RobotTickResult {
+interface RobotTickResult {
   readonly state: AutonomousEquipmentState;
   readonly effects: readonly RobotEffect[];
   readonly operatingCost: number;
 }
 
-export interface RobotEffect {
+interface RobotEffect {
   readonly type: RobotType;
   readonly equipmentId: string;
   readonly worldX: number;
@@ -64,7 +64,7 @@ export interface RobotEffect {
   readonly efficiency: number;
 }
 
-export type RobotTraversalRule = TraversalRule<RobotUnit>;
+type RobotTraversalRule = TraversalRule<RobotUnit>;
 
 interface RankedRobotTarget {
   readonly x: number;
@@ -85,7 +85,7 @@ export function createInitialAutonomousState(
   };
 }
 
-export function getRobotTypeFromEquipmentId(equipmentId: string): RobotType {
+function getRobotTypeFromEquipmentId(equipmentId: string): RobotType {
   if (equipmentId.includes('mower')) return 'mower';
   if (equipmentId.includes('sprayer') || equipmentId.includes('sprinkler')) return 'sprayer';
   if (equipmentId.includes('fertilizer') || equipmentId.includes('spreader')) return 'spreader';
@@ -147,10 +147,6 @@ export function sellRobot(
     },
     refund,
   };
-}
-
-export function countRobotsByType(state: AutonomousEquipmentState, type: RobotType): number {
-  return state.robots.filter(r => r.type === type).length;
 }
 
 export function countWorkingRobots(state: AutonomousEquipmentState): number {
@@ -1420,18 +1416,3 @@ export function getAvailableRobotsToPurchase(
   }));
 }
 
-export function getRobotStatus(state: AutonomousEquipmentState): {
-  total: number;
-  working: number;
-  idle: number;
-  charging: number;
-  broken: number;
-} {
-  return {
-    total: state.robots.length,
-    working: state.robots.filter(r => r.state === 'working' || r.state === 'moving').length,
-    idle: state.robots.filter(r => r.state === 'idle').length,
-    charging: state.robots.filter(r => r.state === 'charging').length,
-    broken: state.robots.filter(r => r.state === 'broken').length,
-  };
-}

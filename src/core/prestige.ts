@@ -2,11 +2,11 @@ import { TerrainType, getTerrainType } from './terrain';
 import { FaceState, isGrassFace } from './face-state';
 import { AmenityState, AmenityUpgrade, createInitialAmenityState, calculateAmenityScore, applyUpgrade as applyAmenityUpgrade } from './amenities';
 import { ReputationState, createInitialReputationState, calculateReputationScore } from './reputation';
-import { ExclusivityState, createInitialExclusivityState, calculateExclusivityScore, MembershipModel, DressCode, setMembershipModel, setWaitlistLength, setAdvanceBookingDays, setDressCode, earnAward as earnExclusivityAward, removeAward as removeExclusivityAward } from './exclusivity';
+import { ExclusivityState, createInitialExclusivityState, calculateExclusivityScore, MembershipModel, DressCode } from './exclusivity';
 
 export type PrestigeTier = 'municipal' | 'public' | 'semi_private' | 'private_club' | 'championship';
 
-export interface CurrentConditionsScore {
+interface CurrentConditionsScore {
   averageHealth: number;
   greenScore: number;
   fairwayScore: number;
@@ -16,13 +16,13 @@ export interface CurrentConditionsScore {
   composite: number;
 }
 
-export interface GreenFeeTolerance {
+interface GreenFeeTolerance {
   sweetSpot: number;
   maxTolerance: number;
   rejectionThreshold: number;
 }
 
-export type ConditionRating = 'excellent' | 'good' | 'fair' | 'poor';
+type ConditionRating ='excellent' | 'good' | 'fair' | 'poor';
 
 export interface DailySnapshot {
   day: number;
@@ -32,7 +32,7 @@ export interface DailySnapshot {
   conditionRating: ConditionRating;
 }
 
-export interface HistoricalExcellenceState {
+interface HistoricalExcellenceState {
   dailySnapshots: DailySnapshot[];
   consecutiveExcellentDays: number;
   consecutiveGoodDays: number;
@@ -69,21 +69,13 @@ export interface PrestigeState {
   revenueLostToday: number;
 }
 
-export const CONDITION_WEIGHTS = {
+const CONDITION_WEIGHTS = {
   averageHealth: 0.30,
   greenScore: 0.25,
   fairwayScore: 0.20,
   bunkerScore: 0.10,
   hazardScore: 0.10,
   teeBoxScore: 0.05,
-} as const;
-
-export const TIER_THRESHOLDS: Record<PrestigeTier, { min: number; max: number }> = {
-  municipal: { min: 0, max: 199 },
-  public: { min: 200, max: 399 },
-  semi_private: { min: 400, max: 599 },
-  private_club: { min: 600, max: 799 },
-  championship: { min: 800, max: 1000 },
 } as const;
 
 export const TIER_LABELS: Record<PrestigeTier, string> = {
@@ -102,24 +94,24 @@ export const TIER_TOLERANCES: Record<PrestigeTier, GreenFeeTolerance> = {
   championship: { sweetSpot: 200, rejectionThreshold: 350, maxTolerance: 500 },
 } as const;
 
-export const MAX_DAILY_INCREASE = 5;
-export const MAX_DAILY_DECREASE = 15;
+const MAX_DAILY_INCREASE = 5;
+const MAX_DAILY_DECREASE = 15;
 
-export const STREAK_BONUSES = {
+const STREAK_BONUSES = {
   good7Days: 25,
   good30Days: 75,
   excellent7Days: 50,
   excellent30Days: 150,
 } as const;
 
-export const RECOVERY_PENALTIES = {
+const RECOVERY_PENALTIES = {
   day1to7: -200,
   day8to14: -150,
   day15to30: -100,
   day31to60: -50,
 } as const;
 
-export const PRESTIGE_COMPONENT_WEIGHTS = {
+const PRESTIGE_COMPONENT_WEIGHTS = {
   currentConditions: 0.25,
   historicalExcellence: 0.25,
   amenities: 0.20,
@@ -127,16 +119,16 @@ export const PRESTIGE_COMPONENT_WEIGHTS = {
   exclusivity: 0.10,
 } as const;
 
-export const HISTORICAL_WEIGHTS = {
+const HISTORICAL_WEIGHTS = {
   rollingAverage: 0.40,
   consistency: 0.25,
   streakBonus: 0.20,
   recoveryPenalty: 0.15,
 } as const;
 
-export const MAX_DAILY_SNAPSHOTS = 365;
+const MAX_DAILY_SNAPSHOTS = 365;
 
-export function createInitialHistoricalState(): HistoricalExcellenceState {
+function createInitialHistoricalState(): HistoricalExcellenceState {
   return {
     dailySnapshots: [],
     consecutiveExcellentDays: 0,
@@ -189,7 +181,7 @@ export function createInitialPrestigeState(startingScore: number = 100): Prestig
   };
 }
 
-export function getPrestigeTier(score: number): PrestigeTier {
+function getPrestigeTier(score: number): PrestigeTier {
   if (score >= 800) return 'championship';
   if (score >= 600) return 'private_club';
   if (score >= 400) return 'semi_private';
@@ -197,7 +189,7 @@ export function getPrestigeTier(score: number): PrestigeTier {
   return 'municipal';
 }
 
-export function calculateStarRating(score: number): number {
+function calculateStarRating(score: number): number {
   const clampedScore = Math.max(0, Math.min(1000, score));
   return Math.max(0.5, Math.min(5, (clampedScore / 200) + 0.5));
 }
@@ -278,7 +270,7 @@ export function calculateDemandMultiplier(price: number, tolerance: GreenFeeTole
   }
 }
 
-export function calculateMasterPrestigeScore(
+function calculateMasterPrestigeScore(
   conditionsComposite: number,
   historicalComposite: number,
   amenityScore: number,
@@ -338,26 +330,6 @@ export function updatePrestigeScore(
   };
 }
 
-export function processGolferArrival(
-  state: PrestigeState,
-  greenFee: number,
-  wouldPay: boolean
-): PrestigeState {
-  if (wouldPay) {
-    return {
-      ...state,
-      golfersToday: state.golfersToday + 1,
-      revenueToday: state.revenueToday + greenFee,
-    };
-  } else {
-    return {
-      ...state,
-      golfersRejectedToday: state.golfersRejectedToday + 1,
-      revenueLostToday: state.revenueLostToday + greenFee,
-    };
-  }
-}
-
 export function resetDailyStats(state: PrestigeState): PrestigeState {
   return {
     ...state,
@@ -368,33 +340,7 @@ export function resetDailyStats(state: PrestigeState): PrestigeState {
   };
 }
 
-export function setGreenFee(state: PrestigeState, fee: number): PrestigeState {
-  return {
-    ...state,
-    greenFee: Math.max(0, fee),
-  };
-}
-
-export function getGreenFeeAdvice(state: PrestigeState): {
-  recommended: { min: number; max: number };
-  current: number;
-  isOverpriced: boolean;
-  expectedRejectionRate: number;
-} {
-  const tolerance = state.tolerance;
-  const current = state.greenFee;
-  const demandMultiplier = calculateDemandMultiplier(current, tolerance);
-  const expectedRejectionRate = Math.round((1 - demandMultiplier) * 100);
-
-  return {
-    recommended: { min: tolerance.sweetSpot * 0.8, max: tolerance.rejectionThreshold },
-    current,
-    isOverpriced: current > tolerance.rejectionThreshold,
-    expectedRejectionRate,
-  };
-}
-
-export function getConditionRating(health: number): ConditionRating {
+function getConditionRating(health: number): ConditionRating {
   if (health >= 80) return 'excellent';
   if (health >= 60) return 'good';
   if (health >= 40) return 'fair';
@@ -529,10 +475,6 @@ export function updateHistoricalExcellence(
   };
 }
 
-export function calculateHistoricalExcellence(state: HistoricalExcellenceState): number {
-  return state.composite;
-}
-
 export function upgradeAmenity(state: PrestigeState, upgrade: AmenityUpgrade): PrestigeState {
   const newAmenities = applyAmenityUpgrade(state.amenities, upgrade);
   const newAmenityScore = calculateAmenityScore(newAmenities);
@@ -541,64 +483,6 @@ export function upgradeAmenity(state: PrestigeState, upgrade: AmenityUpgrade): P
     ...state,
     amenities: newAmenities,
     amenityScore: newAmenityScore,
-  };
-}
-
-export function updateMembership(
-  state: PrestigeState,
-  model: MembershipModel,
-  cost: number = 0
-): PrestigeState {
-  const newExclusivity = setMembershipModel(state.exclusivity, model, cost);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
-  };
-}
-
-export function updateWaitlist(state: PrestigeState, months: number): PrestigeState {
-  const newExclusivity = setWaitlistLength(state.exclusivity, months);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
-  };
-}
-
-export function updateBookingWindow(state: PrestigeState, days: number): PrestigeState {
-  const newExclusivity = setAdvanceBookingDays(state.exclusivity, days);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
-  };
-}
-
-export function updateDressCode(state: PrestigeState, dressCode: DressCode): PrestigeState {
-  const newExclusivity = setDressCode(state.exclusivity, dressCode);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
-  };
-}
-
-export function awardPrestige(state: PrestigeState, awardId: string, day: number): PrestigeState {
-  const newExclusivity = earnExclusivityAward(state.exclusivity, awardId, day);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
-  };
-}
-
-export function revokeAward(state: PrestigeState, awardId: string): PrestigeState {
-  const newExclusivity = removeExclusivityAward(state.exclusivity, awardId);
-  return {
-    ...state,
-    exclusivity: newExclusivity,
-    exclusivityScore: newExclusivity.composite,
   };
 }
 
