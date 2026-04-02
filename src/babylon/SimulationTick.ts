@@ -13,6 +13,7 @@ import { tickJobExecution } from "../core/job-execution";
 import {
   addIncome,
   addExpense,
+  TransactionCategory,
 } from "../core/economy";
 import {
   updatePipePressures,
@@ -81,6 +82,22 @@ import {
 
 function pick<T>(variants: T[]): T {
   return variants[Math.floor(Math.random() * variants.length)];
+}
+
+function recordExpense(
+  state: GameState,
+  amount: number,
+  category: TransactionCategory,
+  description: string,
+  timestamp: number,
+  dailyStatsKey?: keyof GameState['dailyStats']['expenses'],
+): void {
+  const result = addExpense(state.economyState, amount, category, description, timestamp);
+  if (result) {
+    state.economyState = result;
+    if (dailyStatsKey) state.dailyStats.expenses[dailyStatsKey] += amount;
+    state.scenarioManager?.addExpense?.(amount);
+  }
 }
 
 export interface SimulationSystems {
@@ -594,19 +611,7 @@ function tickEmployees(
 
     const supplyCost = TASK_SUPPLY_COSTS[completion.task];
     if (supplyCost > 0) {
-      const ts = state.gameDay * 24 * 60 + state.gameTime;
-      const expenseResult = addExpense(
-        state.economyState,
-        supplyCost,
-        "supplies",
-        `Maintenance: ${completion.task}`,
-        ts
-      );
-      if (expenseResult) {
-        state.economyState = expenseResult;
-        state.dailyStats.expenses.supplies += supplyCost;
-        state.scenarioManager?.addExpense?.(supplyCost);
-      }
+      recordExpense(state, supplyCost, "supplies", `Maintenance: ${completion.task}`, state.gameDay * 24 * 60 + state.gameTime, "supplies");
     }
   }
 
@@ -631,17 +636,7 @@ function tickResearch(state: GameState, systems: SimulationSystems, gameMinutes:
       const fundingCost =
         getFundingCostPerMinute(state.researchState) * researchMinutes;
       if (fundingCost > 0 && state.economyState.cash >= fundingCost) {
-        const expenseResult = addExpense(
-          state.economyState,
-          fundingCost,
-          "research",
-          "Research funding",
-          timestamp
-        );
-        if (expenseResult) {
-          state.economyState = expenseResult;
-          state.scenarioManager?.addExpense?.(fundingCost);
-        }
+        recordExpense(state, fundingCost, "research", "Research funding", timestamp);
         const researchResult = coreTickResearch(
           state.researchState,
           researchMinutes,
@@ -731,17 +726,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
     state.autonomousState = robotResult.state;
 
     if (robotResult.operatingCost > 0) {
-      const expenseResult = addExpense(
-        state.economyState,
-        robotResult.operatingCost,
-        "equipment_maintenance",
-        "Robot operating costs",
-        timestamp
-      );
-      if (expenseResult) {
-        state.economyState = expenseResult;
-        state.scenarioManager?.addExpense?.(robotResult.operatingCost);
-      }
+      recordExpense(state, robotResult.operatingCost, "equipment_maintenance", "Robot operating costs", timestamp);
     }
 
     for (const effect of robotResult.effects) {
@@ -821,17 +806,7 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
   state.irrigationSystem = updatePipePressures(state.irrigationSystem);
 
   const weatherEffect = state.weather
-    ? {
-        type:
-          state.weather.type === "rainy"
-            ? ("rainy" as const)
-            : state.weather.type === "stormy"
-            ? ("stormy" as const)
-            : state.weather.type === "cloudy"
-            ? ("cloudy" as const)
-            : ("sunny" as const),
-        temperature: state.weather.temperature ?? 70,
-      }
+    ? { type: state.weather.type as "rainy" | "stormy" | "cloudy" | "sunny", temperature: state.weather.temperature ?? 70 }
     : undefined;
   state.irrigationSystem = checkForLeaks(
     state.irrigationSystem,
@@ -893,18 +868,7 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
     const waterCost = calculateWaterCost(waterUsage, source);
 
     if (waterCost > 0) {
-      const expenseResult = addExpense(
-        state.economyState,
-        waterCost,
-        "utilities",
-        "Irrigation water",
-        timestamp
-      );
-      if (expenseResult) {
-        state.economyState = expenseResult;
-        state.dailyStats.expenses.utilities += waterCost;
-        state.scenarioManager?.addExpense?.(waterCost);
-      }
+      recordExpense(state, waterCost, "utilities", "Irrigation water", timestamp, "utilities");
     }
   }
 
