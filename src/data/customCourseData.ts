@@ -146,13 +146,6 @@ export function listCustomCourses(): CustomCourseData[] {
   return courses.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function deleteCustomCourse(id: string): void {
-  localStorage.removeItem(`course_${id}`);
-  const index = getStorageIndex();
-  delete index[id];
-  setStorageIndex(index);
-}
-
 export function customCourseToCourseData(course: CustomCourseData): CourseData {
   const par = calculateCoursePar(course.holes);
   return {
