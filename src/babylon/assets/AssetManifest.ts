@@ -7,7 +7,6 @@
 
 // Core units - 1 unit = 1 game tile = ~1 meter
 export const TILE_SIZE = 1.0;
-export const CHARACTER_HEIGHT = 1.8;
 
 export interface AssetSpec {
   path: string;
@@ -18,7 +17,7 @@ export interface AssetSpec {
   notes: string;
 }
 
-export const ASSET_MANIFEST: Record<string, AssetSpec> = {
+const ASSET_MANIFEST: Record<string, AssetSpec> = {
   // ===========================================================================
   // CHARACTERS
   // ===========================================================================
@@ -804,9 +803,6 @@ export function getAssetSpec(assetId: AssetId): AssetSpec {
 export function getAssetPath(assetId: AssetId): string {
   return ASSET_MANIFEST[assetId].path;
 }
-
-// Total asset count
-export const ASSET_COUNT = Object.keys(ASSET_MANIFEST).length;
 
 const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   character: 'Characters',

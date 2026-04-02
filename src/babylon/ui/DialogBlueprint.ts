@@ -8,7 +8,7 @@ import { configureDialogScrollViewer, DialogScrollOptions } from './LayoutUtils'
 import { UIParent } from './UIParent';
 import { UI_THEME } from './UITheme';
 
-export interface DialogSectionTitle {
+interface DialogSectionTitle {
   text: string;
   color?: string;
   fontSize?: number;
@@ -17,7 +17,7 @@ export interface DialogSectionTitle {
   paddingTop?: number;
 }
 
-export interface DialogBlockConfig {
+interface DialogBlockConfig {
   id: string;
   title?: DialogSectionTitle;
   width: number;
@@ -71,7 +71,7 @@ export interface DialogActionBarResult {
   buttons: Button[];
 }
 
-export function addDialogTitle(parent: StackPanel, title: DialogSectionTitle): TextBlock {
+function addDialogTitle(parent: StackPanel, title: DialogSectionTitle): TextBlock {
   const sectionLabel = new TextBlock(`${title.text}_label`);
   sectionLabel.text = title.text;
   sectionLabel.color = title.color ?? UI_THEME.colors.text.info;
@@ -124,7 +124,7 @@ export function addDialogSectionLabel(parent: UIParent, config: DialogLabelConfi
   return label;
 }
 
-export function addDialogPanelBlock(parent: StackPanel, block: DialogBlockConfig) {
+function addDialogPanelBlock(parent: StackPanel, block: DialogBlockConfig) {
   if (block.title) {
     addDialogTitle(parent, block.title);
   }
