@@ -173,15 +173,6 @@ export function completeJob(state: JobSystemState, jobId: string, gameTime: numb
   return true;
 }
 
-export function cancelJob(state: JobSystemState, jobId: string): boolean {
-  const job = state.jobs.find(j => j.id === jobId);
-  if (!job || job.status === 'completed' || job.status === 'cancelled') return false;
-
-  job.status = 'cancelled';
-  state.regionLocks.delete(job.regionId);
-  return true;
-}
-
 export function getAvailableJobs(
   state: JobSystemState,
   _workerType: JobWorkerType,
@@ -202,24 +193,6 @@ export function getJobForRegion(state: JobSystemState, regionId: string): Job | 
     j.regionId === regionId &&
     (j.status === 'pending' || j.status === 'assigned' || j.status === 'in_progress')
   ) ?? null;
-}
-
-export function getJobById(state: JobSystemState, jobId: string): Job | null {
-  return state.jobs.find(j => j.id === jobId) ?? null;
-}
-
-export function getActivePlayerJob(state: JobSystemState): Job | null {
-  return state.jobs.find(j =>
-    j.workerType === 'player' &&
-    (j.status === 'assigned' || j.status === 'in_progress')
-  ) ?? null;
-}
-
-export function getJobsForWorker(state: JobSystemState, workerId: string): Job[] {
-  return state.jobs.filter(j =>
-    j.assignedWorkerId === workerId &&
-    (j.status === 'assigned' || j.status === 'in_progress')
-  );
 }
 
 export function cleanupCompletedJobs(state: JobSystemState, maxAge: number, gameTime: number): void {

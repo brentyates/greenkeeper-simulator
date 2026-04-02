@@ -1,16 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  WeatherState,
   createInitialWeatherState,
   getSeasonFromDay,
-  generateWeatherCondition,
-  generateForecast,
   tickWeather,
   getWeatherDescription,
   getWeatherImpactDescription,
-  shouldReduceGolferArrivals,
-  getArrivalMultiplierFromWeather,
 } from './weather';
+import type { WeatherState } from './weather';
 
 describe('weather', () => {
   describe('getSeasonFromDay', () => {
@@ -75,70 +71,6 @@ describe('weather', () => {
     it('initializes lastChangeTime to 0', () => {
       const state = createInitialWeatherState();
       expect(state.lastChangeTime).toBe(0);
-    });
-  });
-
-  describe('generateWeatherCondition', () => {
-    it('generates sunny weather for high random values', () => {
-      const seasonal = getSeasonFromDay(100);
-      const weather = generateWeatherCondition(seasonal, 0.99);
-      expect(weather.type).toBe('sunny');
-    });
-
-    it('generates stormy weather for low random values', () => {
-      const seasonal = getSeasonFromDay(100);
-      const weather = generateWeatherCondition(seasonal, 0.01);
-      expect(weather.type).toBe('stormy');
-    });
-
-    it('generates temperature within seasonal range', () => {
-      const seasonal = getSeasonFromDay(100);
-      for (let i = 0; i < 20; i++) {
-        const weather = generateWeatherCondition(seasonal, Math.random());
-        expect(weather.temperature).toBeGreaterThanOrEqual(
-          seasonal.baseTemperature - seasonal.temperatureVariance - 1
-        );
-        expect(weather.temperature).toBeLessThanOrEqual(
-          seasonal.baseTemperature + seasonal.temperatureVariance + 1
-        );
-      }
-    });
-
-    it('generates higher wind for stormy weather', () => {
-      const seasonal = getSeasonFromDay(100);
-      const stormyWeather = generateWeatherCondition(seasonal, 0.01);
-      expect(stormyWeather.windSpeed).toBeGreaterThanOrEqual(20);
-    });
-  });
-
-  describe('generateForecast', () => {
-    it('generates correct number of forecast days', () => {
-      const seasonal = getSeasonFromDay(100);
-      const forecast = generateForecast(seasonal, 5);
-      expect(forecast).toHaveLength(5);
-    });
-
-    it('assigns correct day offsets', () => {
-      const seasonal = getSeasonFromDay(100);
-      const forecast = generateForecast(seasonal, 3);
-      expect(forecast[0].dayOffset).toBe(1);
-      expect(forecast[1].dayOffset).toBe(2);
-      expect(forecast[2].dayOffset).toBe(3);
-    });
-
-    it('decreases confidence for further days', () => {
-      const seasonal = getSeasonFromDay(100);
-      const forecast = generateForecast(seasonal, 3);
-      expect(forecast[0].confidence).toBeGreaterThan(forecast[1].confidence);
-      expect(forecast[1].confidence).toBeGreaterThan(forecast[2].confidence);
-    });
-
-    it('keeps confidence above minimum threshold', () => {
-      const seasonal = getSeasonFromDay(100);
-      const forecast = generateForecast(seasonal, 10);
-      forecast.forEach((f) => {
-        expect(f.confidence).toBeGreaterThanOrEqual(0.5);
-      });
     });
   });
 
@@ -428,54 +360,6 @@ describe('weather', () => {
       const desc = getWeatherImpactDescription({ type: 'sunny', temperature: 85, windSpeed: 5 });
       expect(desc).toContain('Warm');
       expect(desc).toContain('sunny');
-    });
-  });
-
-  describe('shouldReduceGolferArrivals', () => {
-    it('returns true for stormy weather', () => {
-      expect(shouldReduceGolferArrivals({ type: 'stormy', temperature: 60, windSpeed: 30 })).toBe(true);
-    });
-
-    it('returns true for rainy weather', () => {
-      expect(shouldReduceGolferArrivals({ type: 'rainy', temperature: 65, windSpeed: 10 })).toBe(true);
-    });
-
-    it('returns false for cloudy weather', () => {
-      expect(shouldReduceGolferArrivals({ type: 'cloudy', temperature: 70, windSpeed: 8 })).toBe(false);
-    });
-
-    it('returns false for sunny weather', () => {
-      expect(shouldReduceGolferArrivals({ type: 'sunny', temperature: 75, windSpeed: 5 })).toBe(false);
-    });
-  });
-
-  describe('getArrivalMultiplierFromWeather', () => {
-    it('returns 0.1 for stormy weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'stormy', temperature: 60, windSpeed: 30 })).toBe(0.1);
-    });
-
-    it('returns 0.4 for rainy weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'rainy', temperature: 65, windSpeed: 10 })).toBe(0.4);
-    });
-
-    it('returns 0.9 for cloudy weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'cloudy', temperature: 70, windSpeed: 8 })).toBe(0.9);
-    });
-
-    it('returns 1.0 for pleasant sunny weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'sunny', temperature: 75, windSpeed: 5 })).toBe(1.0);
-    });
-
-    it('returns 0.6 for extreme heat', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'sunny', temperature: 100, windSpeed: 5 })).toBe(0.6);
-    });
-
-    it('returns 0.8 for hot weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'sunny', temperature: 92, windSpeed: 5 })).toBe(0.8);
-    });
-
-    it('returns 0.7 for cold weather', () => {
-      expect(getArrivalMultiplierFromWeather({ type: 'sunny', temperature: 45, windSpeed: 5 })).toBe(0.7);
     });
   });
 });

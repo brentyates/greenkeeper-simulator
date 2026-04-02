@@ -6,11 +6,8 @@ import {
   startJob,
   advanceJobProgress,
   completeJob,
-  cancelJob,
   getAvailableJobs,
   getJobForRegion,
-  getActivePlayerJob,
-  getJobsForWorker,
   isRegionLocked,
   getPatternForTask,
   cleanupCompletedJobs,
@@ -144,34 +141,6 @@ describe('completeJob', () => {
   });
 });
 
-describe('cancelJob', () => {
-  it('cancels job and releases lock', () => {
-    const state = makeState();
-    const job = createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0)!;
-    const ok = cancelJob(state, job.id);
-    expect(ok).toBe(true);
-    expect(job.status).toBe('cancelled');
-    expect(isRegionLocked(state, 'r1')).toBe(false);
-  });
-
-  it('allows new job on cancelled region', () => {
-    const state = makeState();
-    const j1 = createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0)!;
-    cancelJob(state, j1.id);
-    const j2 = createJob(state, 'r1', 'water', FACE_IDS, 'perimeter_first', WAYPOINTS, 0);
-    expect(j2).not.toBeNull();
-  });
-
-  it('cannot cancel completed job', () => {
-    const state = makeState();
-    const job = createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0)!;
-    assignJob(state, job.id, 'w1', 'groundskeeper');
-    startJob(state, job.id, 0);
-    completeJob(state, job.id, 100);
-    expect(cancelJob(state, job.id)).toBe(false);
-  });
-});
-
 describe('getAvailableJobs', () => {
   it('returns only pending jobs', () => {
     const state = makeState();
@@ -211,34 +180,6 @@ describe('getJobForRegion', () => {
   it('returns null for region with no active job', () => {
     const state = makeState();
     expect(getJobForRegion(state, 'r1')).toBeNull();
-  });
-});
-
-describe('getActivePlayerJob', () => {
-  it('returns player-assigned job', () => {
-    const state = makeState();
-    const job = createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0)!;
-    assignJob(state, job.id, 'player', 'player');
-    expect(getActivePlayerJob(state)).toBe(job);
-  });
-
-  it('returns null when no player job', () => {
-    const state = makeState();
-    createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0);
-    expect(getActivePlayerJob(state)).toBeNull();
-  });
-});
-
-describe('getJobsForWorker', () => {
-  it('returns jobs assigned to a specific worker', () => {
-    const state = makeState();
-    const j1 = createJob(state, 'r1', 'mow', FACE_IDS, 'linear_stripes', WAYPOINTS, 0)!;
-    const j2 = createJob(state, 'r2', 'water', FACE_IDS, 'perimeter_first', WAYPOINTS, 0)!;
-    assignJob(state, j1.id, 'w1', 'groundskeeper');
-    assignJob(state, j2.id, 'w2', 'groundskeeper');
-
-    expect(getJobsForWorker(state, 'w1')).toHaveLength(1);
-    expect(getJobsForWorker(state, 'w1')[0].id).toBe(j1.id);
   });
 });
 

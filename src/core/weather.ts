@@ -7,13 +7,13 @@ export interface WeatherState {
   readonly seasonalModifier: SeasonalModifier;
 }
 
-export interface WeatherForecast {
+interface WeatherForecast {
   readonly dayOffset: number;
   readonly predictedType: WeatherCondition['type'];
   readonly confidence: number;
 }
 
-export interface SeasonalModifier {
+interface SeasonalModifier {
   readonly season: 'spring' | 'summer' | 'fall' | 'winter';
   readonly baseTemperature: number;
   readonly temperatureVariance: number;
@@ -48,7 +48,7 @@ export function createInitialWeatherState(gameDay: number = 1): WeatherState {
   };
 }
 
-export function generateWeatherCondition(
+function generateWeatherCondition(
   seasonal: SeasonalModifier,
   random: number
 ): WeatherCondition {
@@ -73,7 +73,7 @@ export function generateWeatherCondition(
   return { type, temperature, windSpeed };
 }
 
-export function generateForecast(seasonal: SeasonalModifier, days: number): WeatherForecast[] {
+function generateForecast(seasonal: SeasonalModifier, days: number): WeatherForecast[] {
   const forecasts: WeatherForecast[] = [];
 
   for (let i = 1; i <= days; i++) {
@@ -102,7 +102,7 @@ export function generateForecast(seasonal: SeasonalModifier, days: number): Weat
   return forecasts;
 }
 
-export interface WeatherChangeResult {
+interface WeatherChangeResult {
   state: WeatherState;
   changed: boolean;
   previousType: WeatherCondition['type'] | null;
@@ -230,22 +230,3 @@ export function getWeatherImpactDescription(weather: WeatherCondition): string {
   }
 }
 
-export function shouldReduceGolferArrivals(weather: WeatherCondition): boolean {
-  return weather.type === 'stormy' || weather.type === 'rainy';
-}
-
-export function getArrivalMultiplierFromWeather(weather: WeatherCondition): number {
-  switch (weather.type) {
-    case 'stormy':
-      return 0.1;
-    case 'rainy':
-      return 0.4;
-    case 'cloudy':
-      return 0.9;
-    case 'sunny':
-      if (weather.temperature > 95) return 0.6;
-      if (weather.temperature > 90) return 0.8;
-      if (weather.temperature < 50) return 0.7;
-      return 1.0;
-  }
-}

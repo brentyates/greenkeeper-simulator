@@ -9,7 +9,7 @@ export interface GreenFeeStructure {
   demandMultiplierRange: [number, number];
 }
 
-export const DEFAULT_GREEN_FEE_STRUCTURE: GreenFeeStructure = {
+const DEFAULT_GREEN_FEE_STRUCTURE: GreenFeeStructure = {
   weekdayRate: 45,
   weekendRate: 65,
   twilightRate: 30,
@@ -31,7 +31,7 @@ export interface CartFeeStructure {
   cartIncluded: boolean;
 }
 
-export const DEFAULT_CART_FEE_STRUCTURE: CartFeeStructure = {
+const DEFAULT_CART_FEE_STRUCTURE: CartFeeStructure = {
   pricingModel: 'per_person',
   standardCartFee: 20,
   walkingDiscount: 0,
@@ -51,7 +51,7 @@ export interface AddOnService {
   prestigeUptakeBonus: number;
 }
 
-export const STANDARD_ADDONS: AddOnService[] = [
+const STANDARD_ADDONS: AddOnService[] = [
   {
     id: 'range_balls',
     name: 'Range Balls',
@@ -104,8 +104,6 @@ export const STANDARD_ADDONS: AddOnService[] = [
   },
 ] as const;
 
-export type TippableStaff = 'caddie' | 'cart_attendant' | 'beverage_cart' | 'pro_shop';
-
 export interface TipConfig {
   baseTipPercentage: number;
   satisfactionModifier: number;
@@ -113,7 +111,7 @@ export interface TipConfig {
   housePercentage: number;
 }
 
-export const DEFAULT_TIP_CONFIG: TipConfig = {
+const DEFAULT_TIP_CONFIG: TipConfig = {
   baseTipPercentage: 0.15,
   satisfactionModifier: 1.0,
   tipPooling: false,
@@ -135,7 +133,7 @@ export interface DailyRevenue {
   netRevenue: number;
 }
 
-export function createEmptyDailyRevenue(): DailyRevenue {
+function createEmptyDailyRevenue(): DailyRevenue {
   return {
     greenFees: 0,
     cartFees: 0,
@@ -246,146 +244,12 @@ export function calculateCartFee(
   return feePerPerson * groupSize;
 }
 
-export function calculateAddOnUptake(
-  addOn: AddOnService,
-  prestigeScore: number,
-  randomValue: number = Math.random()
-): boolean {
-  const prestigeBonus = (prestigeScore / 1000) * addOn.prestigeUptakeBonus;
-  const uptakeRate = Math.min(1.0, addOn.baseUptakeRate + prestigeBonus);
-  return randomValue < uptakeRate;
-}
-
-export function generateAddOnsForGolfer(
-  availableAddOns: AddOnService[],
-  phase: 'booking' | 'check_in' | 'during_round',
-  prestigeScore: number,
-  randomFn: () => number = Math.random
-): AddOnService[] {
-  const selectedAddOns: AddOnService[] = [];
-
-  for (const addOn of availableAddOns) {
-    const offered =
-      (phase === 'booking' && addOn.offeredAtBooking) ||
-      (phase === 'check_in' && addOn.offeredAtCheckIn) ||
-      (phase === 'during_round' && addOn.offeredDuringRound);
-
-    if (offered && calculateAddOnUptake(addOn, prestigeScore, randomFn())) {
-      selectedAddOns.push(addOn);
-    }
-  }
-
-  return selectedAddOns;
-}
-
-export function calculateTotalAddOnRevenue(addOns: AddOnService[]): number {
-  return addOns.reduce((sum, a) => sum + a.price, 0);
-}
-
-export function calculateTip(
-  serviceValue: number,
-  golferSatisfaction: number,
-  tipConfig: TipConfig
-): number {
-  const baseTip = serviceValue * tipConfig.baseTipPercentage;
-  const satisfactionMod = 1 + (golferSatisfaction / 100) * tipConfig.satisfactionModifier;
-  const grossTip = baseTip * Math.max(0, satisfactionMod);
-  const netTip = grossTip * (1 - tipConfig.housePercentage);
-  return Math.round(netTip * 100) / 100;
-}
-
-export function calculateRoundRevenue(
-  greenFee: number,
-  cartFee: number,
-  addOns: AddOnService[],
-  tipableServiceValue: number,
-  satisfaction: number,
-  tipConfig: TipConfig
-): {
-  greenFees: number;
-  cartFees: number;
-  addOnServices: number;
-  tips: number;
-  total: number;
-} {
-  const addOnServices = calculateTotalAddOnRevenue(addOns);
-  const tips = calculateTip(tipableServiceValue, satisfaction, tipConfig);
-  const total = greenFee + cartFee + addOnServices + tips;
-
-  return {
-    greenFees: greenFee,
-    cartFees: cartFee,
-    addOnServices,
-    tips,
-    total,
-  };
-}
-
-export function addRevenueToDaily(
-  daily: DailyRevenue,
-  revenue: {
-    greenFees?: number;
-    cartFees?: number;
-    addOnServices?: number;
-    tips?: number;
-    proShop?: number;
-    foodAndBeverage?: number;
-    rangeRevenue?: number;
-    lessonRevenue?: number;
-    eventFees?: number;
-  }
-): DailyRevenue {
-  const updated: DailyRevenue = {
-    greenFees: daily.greenFees + (revenue.greenFees ?? 0),
-    cartFees: daily.cartFees + (revenue.cartFees ?? 0),
-    addOnServices: daily.addOnServices + (revenue.addOnServices ?? 0),
-    tips: daily.tips + (revenue.tips ?? 0),
-    proShop: daily.proShop + (revenue.proShop ?? 0),
-    foodAndBeverage: daily.foodAndBeverage + (revenue.foodAndBeverage ?? 0),
-    rangeRevenue: daily.rangeRevenue + (revenue.rangeRevenue ?? 0),
-    lessonRevenue: daily.lessonRevenue + (revenue.lessonRevenue ?? 0),
-    eventFees: daily.eventFees + (revenue.eventFees ?? 0),
-    grossRevenue: 0,
-    operatingCosts: daily.operatingCosts,
-    netRevenue: 0,
-  };
-
-  updated.grossRevenue =
-    updated.greenFees +
-    updated.cartFees +
-    updated.addOnServices +
-    updated.tips +
-    updated.proShop +
-    updated.foodAndBeverage +
-    updated.rangeRevenue +
-    updated.lessonRevenue +
-    updated.eventFees;
-
-  updated.netRevenue = updated.grossRevenue - updated.operatingCosts;
-
-  return updated;
-}
-
-export function setOperatingCosts(daily: DailyRevenue, costs: number): DailyRevenue {
-  return {
-    ...daily,
-    operatingCosts: costs,
-    netRevenue: daily.grossRevenue - costs,
-  };
-}
-
 export function finalizeDailyRevenue(state: RevenueState): RevenueState {
   return {
     ...state,
     revenueHistory: [...state.revenueHistory, state.todaysRevenue],
     todaysRevenue: createEmptyDailyRevenue(),
   };
-}
-
-export function getRevenueForDay(state: RevenueState, daysAgo: number): DailyRevenue | undefined {
-  if (daysAgo === 0) return state.todaysRevenue;
-  const index = state.revenueHistory.length - daysAgo;
-  return index >= 0 ? state.revenueHistory[index] : undefined;
 }
 
 export function calculateAverageRevenue(
@@ -425,26 +289,6 @@ export function calculateAverageRevenue(
     grossRevenue: Math.round((totals.grossRevenue / count) * 100) / 100,
     operatingCosts: Math.round((totals.operatingCosts / count) * 100) / 100,
     netRevenue: Math.round((totals.netRevenue / count) * 100) / 100,
-  };
-}
-
-export function updateGreenFeeStructure(
-  state: RevenueState,
-  structure: Partial<GreenFeeStructure>
-): RevenueState {
-  return {
-    ...state,
-    greenFeeStructure: { ...state.greenFeeStructure, ...structure },
-  };
-}
-
-export function updateCartFeeStructure(
-  state: RevenueState,
-  structure: Partial<CartFeeStructure>
-): RevenueState {
-  return {
-    ...state,
-    cartFeeStructure: { ...state.cartFeeStructure, ...structure },
   };
 }
 

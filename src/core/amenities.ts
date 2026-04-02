@@ -1,20 +1,3 @@
-/**
- * MIGRATION NOTE: This abstract amenity system will be replaced by the grid-based
- * PlaceableEntity system defined in docs/PLACEABLE_ASSETS_SPEC.md.
- *
- * Current approach: Amenities are boolean flags and tier numbers without grid positions.
- * Future approach: All amenities become PlaceableEntity instances with physical locations.
- *
- * Migration path:
- * 1. Create PlaceableEntity system in src/core/placeable-entity.ts
- * 2. Implement EntityManager for CRUD operations
- * 3. Create migration function: migrateAmenityState(old: AmenityState) => PlaceableEntity[]
- * 4. Update UI to use placement-based building menu
- * 5. Deprecate this module once migration is complete
- *
- * Until migration is complete, this module continues to function for prestige calculations.
- */
-
 export type ClubhouseTier = 0 | 1 | 2 | 3 | 4;
 export type ProShopTier = 0 | 1 | 2 | 3;
 export type DiningTier = 0 | 1 | 2 | 3 | 4;
@@ -57,12 +40,7 @@ export interface AmenityState {
   courseFeatures: CourseFeatures;
 }
 
-export interface AmenityCost {
-  oneTime: number;
-  monthly: number;
-}
-
-export const CLUBHOUSE_DATA: Record<ClubhouseTier, { name: string; cost: number; prestige: number }> = {
+const CLUBHOUSE_DATA: Record<ClubhouseTier, { name: string; cost: number; prestige: number }> = {
   0: { name: 'Starter Shack', cost: 0, prestige: 0 },
   1: { name: 'Basic Clubhouse', cost: 50000, prestige: 50 },
   2: { name: 'Full Clubhouse', cost: 150000, prestige: 100 },
@@ -70,14 +48,14 @@ export const CLUBHOUSE_DATA: Record<ClubhouseTier, { name: string; cost: number;
   4: { name: 'Grand Clubhouse', cost: 1000000, prestige: 250 },
 } as const;
 
-export const PRO_SHOP_DATA: Record<ProShopTier, { name: string; cost: number; prestige: number }> = {
+const PRO_SHOP_DATA: Record<ProShopTier, { name: string; cost: number; prestige: number }> = {
   0: { name: 'None', cost: 0, prestige: 0 },
   1: { name: 'Basic Pro Shop', cost: 25000, prestige: 25 },
   2: { name: 'Full Pro Shop', cost: 75000, prestige: 50 },
   3: { name: 'Premium Pro Shop', cost: 200000, prestige: 100 },
 } as const;
 
-export const DINING_DATA: Record<DiningTier, { name: string; cost: number; prestige: number }> = {
+const DINING_DATA: Record<DiningTier, { name: string; cost: number; prestige: number }> = {
   0: { name: 'Vending Machines', cost: 1000, prestige: 0 },
   1: { name: 'Snack Bar', cost: 15000, prestige: 20 },
   2: { name: 'Grill Room', cost: 50000, prestige: 50 },
@@ -85,7 +63,7 @@ export const DINING_DATA: Record<DiningTier, { name: string; cost: number; prest
   4: { name: 'Celebrity Chef Restaurant', cost: 500000, prestige: 175 },
 } as const;
 
-export const FACILITY_DATA: Record<keyof Facilities, { name: string; cost: number; prestige: number }> = {
+const FACILITY_DATA: Record<keyof Facilities, { name: string; cost: number; prestige: number }> = {
   drivingRange: { name: 'Driving Range', cost: 30000, prestige: 30 },
   puttingGreen: { name: 'Putting Green', cost: 10000, prestige: 15 },
   chippingArea: { name: 'Chipping Area', cost: 15000, prestige: 15 },
@@ -94,7 +72,7 @@ export const FACILITY_DATA: Record<keyof Facilities, { name: string; cost: numbe
   tourLevelRange: { name: 'Tour-Level Range', cost: 250000, prestige: 75 },
 } as const;
 
-export const SERVICE_DATA: Record<keyof Services, { name: string; cost: number; monthly: number; prestige: number }> = {
+const SERVICE_DATA: Record<keyof Services, { name: string; cost: number; monthly: number; prestige: number }> = {
   caddieProgram: { name: 'Caddie Program', cost: 10000, monthly: 5000, prestige: 40 },
   valetParking: { name: 'Valet Parking', cost: 5000, monthly: 3000, prestige: 25 },
   bagStorage: { name: 'Bag Storage', cost: 15000, monthly: 500, prestige: 20 },
@@ -103,7 +81,7 @@ export const SERVICE_DATA: Record<keyof Services, { name: string; cost: number; 
   concierge: { name: 'Concierge Service', cost: 0, monthly: 6000, prestige: 35 },
 } as const;
 
-export const CART_DATA: Record<CartType, { name: string; cost: number; prestige: number }> = {
+const CART_DATA: Record<CartType, { name: string; cost: number; prestige: number }> = {
   walking: { name: 'Walking Only', cost: 0, prestige: 0 },
   pull_carts: { name: 'Pull Carts', cost: 5000, prestige: 5 },
   basic_carts: { name: 'Basic Golf Carts', cost: 50000, prestige: 15 },
@@ -111,7 +89,7 @@ export const CART_DATA: Record<CartType, { name: string; cost: number; prestige:
   luxury_carts: { name: 'Luxury Carts w/ GPS', cost: 200000, prestige: 50 },
 } as const;
 
-export const COMFORT_STATION_DATA: Record<ComfortStationTier, { name: string; cost: number; prestige: number }> = {
+const COMFORT_STATION_DATA: Record<ComfortStationTier, { name: string; cost: number; prestige: number }> = {
   0: { name: 'None', cost: 0, prestige: 0 },
   1: { name: 'Basic Restroom', cost: 10000, prestige: 10 },
   2: { name: 'Standard Facilities', cost: 25000, prestige: 20 },
@@ -119,7 +97,7 @@ export const COMFORT_STATION_DATA: Record<ComfortStationTier, { name: string; co
   4: { name: 'Luxury Comfort Stations', cost: 100000, prestige: 50 },
 } as const;
 
-export const COURSE_FEATURE_DATA = {
+const COURSE_FEATURE_DATA = {
   beverageService: { name: 'Beverage Cart Service', cost: 20000, monthly: 2000, prestige: 20 },
   halfwayHouse: { name: 'Halfway House', cost: 75000, monthly: 3000, prestige: 35 },
   signatureMarkers: { name: 'Signature Hole Markers', cost: 15000, prestige: 15 },
@@ -196,30 +174,6 @@ export function calculateAmenityScore(state: AmenityState): number {
   return Math.min(score, 1000);
 }
 
-export function getMaxPossibleAmenityScore(): number {
-  let max = 0;
-
-  max += CLUBHOUSE_DATA[4].prestige;
-  max += PRO_SHOP_DATA[3].prestige;
-  max += DINING_DATA[4].prestige;
-
-  for (const data of Object.values(FACILITY_DATA)) {
-    max += data.prestige;
-  }
-  for (const data of Object.values(SERVICE_DATA)) {
-    max += data.prestige;
-  }
-
-  max += CART_DATA.luxury_carts.prestige;
-  max += COMFORT_STATION_DATA[4].prestige;
-  max += COURSE_FEATURE_DATA.beverageService.prestige;
-  max += COURSE_FEATURE_DATA.halfwayHouse.prestige;
-  max += COURSE_FEATURE_DATA.signatureMarkers.prestige;
-  max += COURSE_FEATURE_DATA.tournamentTees.prestige;
-
-  return max;
-}
-
 export function getUpgradeCost(_state: AmenityState, upgrade: AmenityUpgrade): number {
   switch (upgrade.type) {
     case 'clubhouse':
@@ -292,25 +246,6 @@ export function applyUpgrade(state: AmenityState, upgrade: AmenityUpgrade): Amen
         courseFeatures: { ...state.courseFeatures, [upgrade.feature]: true },
       };
   }
-}
-
-export function getMonthlyAmenityCost(state: AmenityState): number {
-  let monthly = 0;
-
-  for (const [key, value] of Object.entries(state.services)) {
-    if (value) {
-      monthly += SERVICE_DATA[key as keyof Services].monthly;
-    }
-  }
-
-  if (state.courseFeatures.beverageService) {
-    monthly += COURSE_FEATURE_DATA.beverageService.monthly;
-  }
-  if (state.courseFeatures.halfwayHouse) {
-    monthly += COURSE_FEATURE_DATA.halfwayHouse.monthly;
-  }
-
-  return monthly;
 }
 
 export function getAvailableUpgrades(state: AmenityState): AmenityUpgrade[] {
