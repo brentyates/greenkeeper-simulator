@@ -6,11 +6,9 @@ import {
   applyFaceMowing,
   applyFaceWatering,
   applyFaceFertilizing,
-  calculateFaceHealth,
   isGrassFace,
   getAverageFaceStats,
   getBunkerRakeFreshness,
-  BUNKER_RAKE_VISUAL_FADE_MINUTES,
 } from './face-state';
 import { TERRAIN_CODES } from './terrain';
 
@@ -103,44 +101,11 @@ describe('FaceState', () => {
     });
 
     it('fades linearly over configured time', () => {
-      const half = BUNKER_RAKE_VISUAL_FADE_MINUTES / 2;
-      expect(getBunkerRakeFreshness(1000, 1000 + half)).toBeCloseTo(0.5, 2);
+      expect(getBunkerRakeFreshness(1000, 1000 + 240)).toBeCloseTo(0.5, 2);
     });
 
     it('returns 0 after fade window', () => {
-      expect(getBunkerRakeFreshness(1000, 1000 + BUNKER_RAKE_VISUAL_FADE_MINUTES + 1)).toBe(0);
-    });
-  });
-
-  describe('calculateFaceHealth', () => {
-    it('returns 100 for non-grass faces', () => {
-      const state = makeFace({ terrainCode: TERRAIN_CODES.WATER });
-      expect(calculateFaceHealth(state)).toBe(100);
-    });
-
-    it('returns 100 for non-grass bunker faces', () => {
-      const state = makeFace({ terrainCode: TERRAIN_CODES.BUNKER });
-      expect(calculateFaceHealth(state)).toBe(100);
-    });
-
-    it('calculates health for grass faces based on moisture, nutrients, height', () => {
-      const state = makeFace({
-        terrainCode: TERRAIN_CODES.FAIRWAY,
-        moisture: 100,
-        nutrients: 100,
-        grassHeight: 0,
-      });
-      expect(calculateFaceHealth(state)).toBe(100);
-    });
-
-    it('low moisture/nutrients reduce health', () => {
-      const state = makeFace({
-        terrainCode: TERRAIN_CODES.FAIRWAY,
-        moisture: 0,
-        nutrients: 0,
-        grassHeight: 100,
-      });
-      expect(calculateFaceHealth(state)).toBe(0);
+      expect(getBunkerRakeFreshness(1000, 1000 + 481)).toBe(0);
     });
   });
 

@@ -9,14 +9,14 @@ export interface TerrainVertex {
   position: Vec3;
 }
 
-export interface TerrainEdge {
+interface TerrainEdge {
   id: number;
   v1: number;
   v2: number;
   triangles: number[];
 }
 
-export interface TerrainTriangle {
+interface TerrainTriangle {
   id: number;
   vertices: [number, number, number];
   edges: [number, number, number];
@@ -35,7 +35,7 @@ export interface TerrainMeshTopology {
   worldHeight: number;
 }
 
-export function createEmptyTopology(worldWidth: number, worldHeight: number): TerrainMeshTopology {
+function createEmptyTopology(worldWidth: number, worldHeight: number): TerrainMeshTopology {
   return {
     vertices: new Map(),
     edges: new Map(),
@@ -49,7 +49,7 @@ export function createEmptyTopology(worldWidth: number, worldHeight: number): Te
   };
 }
 
-export function findEdge(topology: TerrainMeshTopology, v1: number, v2: number): number | undefined {
+function findEdge(topology: TerrainMeshTopology, v1: number, v2: number): number | undefined {
   const eids = topology.vertexEdges.get(v1);
   if (eids) for (const eid of eids) {
     const e = topology.edges.get(eid);
@@ -57,8 +57,6 @@ export function findEdge(topology: TerrainMeshTopology, v1: number, v2: number):
   }
   return undefined;
 }
-
-export function edgeKey(v1: number, v2: number): string { return `${Math.min(v1, v2)},${Math.max(v1, v2)}`; }
 
 function addVertexEdge(topology: TerrainMeshTopology, vid: number, eid: number): void {
   let set = topology.vertexEdges.get(vid);
@@ -71,7 +69,7 @@ function removeVertexEdge(topology: TerrainMeshTopology, vid: number, eid: numbe
   if (set) { set.delete(eid); if (set.size === 0) topology.vertexEdges.delete(vid); }
 }
 
-export function getVertexNeighbors(topology: TerrainMeshTopology, vid: number): Set<number> {
+function getVertexNeighbors(topology: TerrainMeshTopology, vid: number): Set<number> {
   const n = new Set<number>(), eids = topology.vertexEdges.get(vid);
   if (eids) for (const eid of eids) { const e = topology.edges.get(eid); if (e) n.add(e.v1 === vid ? e.v2 : e.v1); }
   return n;
@@ -168,98 +166,6 @@ export function recomputeNormalsLocally(
   }
 }
 
-export function gridToTopology(
-  vertexPositions: Vec3[][],
-  worldWidth: number,
-  worldHeight: number
-): TerrainMeshTopology {
-  const topology = createEmptyTopology(worldWidth, worldHeight);
-  const vertexHeight = vertexPositions.length;
-  const vertexWidth = vertexPositions[0]?.length ?? 0;
-
-  const gridVertexMap = new Map<string, number>();
-
-  for (let vy = 0; vy < vertexHeight; vy++) {
-    for (let vx = 0; vx < vertexWidth; vx++) {
-      const pos = vertexPositions[vy][vx];
-      const vertexId = topology.nextVertexId++;
-
-      const vertex: TerrainVertex = {
-        id: vertexId,
-        position: { ...pos },
-      };
-
-      topology.vertices.set(vertexId, vertex);
-      gridVertexMap.set(`${vx},${vy}`, vertexId);
-    }
-  }
-
-  function getOrCreateEdge(v1: number, v2: number): number {
-    let eid = findEdge(topology, v1, v2);
-    if (eid === undefined) {
-      eid = topology.nextEdgeId++;
-      const edge: TerrainEdge = {
-        id: eid,
-        v1: Math.min(v1, v2),
-        v2: Math.max(v1, v2),
-        triangles: [],
-      };
-      topology.edges.set(eid, edge);
-      addVertexEdge(topology, v1, eid);
-      addVertexEdge(topology, v2, eid);
-    }
-    return eid;
-  }
-
-  const gridH = vertexHeight - 1;
-  const gridW = vertexWidth - 1;
-
-  for (let gy = 0; gy < gridH; gy++) {
-    for (let gx = 0; gx < gridW; gx++) {
-      const topLeftId = gridVertexMap.get(`${gx},${gy}`)!;
-      const topRightId = gridVertexMap.get(`${gx + 1},${gy}`)!;
-      const bottomLeftId = gridVertexMap.get(`${gx},${gy + 1}`)!;
-      const bottomRightId = gridVertexMap.get(`${gx + 1},${gy + 1}`)!;
-
-      const e1 = getOrCreateEdge(topLeftId, bottomLeftId);
-      const e2 = getOrCreateEdge(bottomLeftId, topRightId);
-      const e3 = getOrCreateEdge(topRightId, topLeftId);
-
-      const tri1Id = topology.nextTriangleId++;
-      const tri1: TerrainTriangle = {
-        id: tri1Id,
-        vertices: [topLeftId, bottomLeftId, topRightId],
-        edges: [e1, e2, e3],
-        terrainCode: 0, // Default terrain code
-      };
-      topology.triangles.set(tri1Id, tri1);
-
-      topology.edges.get(e1)!.triangles.push(tri1Id);
-      topology.edges.get(e2)!.triangles.push(tri1Id);
-      topology.edges.get(e3)!.triangles.push(tri1Id);
-
-      const e4 = getOrCreateEdge(topRightId, bottomLeftId);
-      const e5 = getOrCreateEdge(bottomLeftId, bottomRightId);
-      const e6 = getOrCreateEdge(bottomRightId, topRightId);
-
-      const tri2Id = topology.nextTriangleId++;
-      const tri2: TerrainTriangle = {
-        id: tri2Id,
-        vertices: [topRightId, bottomLeftId, bottomRightId],
-        edges: [e4, e5, e6],
-        terrainCode: 0, // Default terrain code
-      };
-      topology.triangles.set(tri2Id, tri2);
-
-      topology.edges.get(e4)!.triangles.push(tri2Id);
-      topology.edges.get(e5)!.triangles.push(tri2Id);
-      topology.edges.get(e6)!.triangles.push(tri2Id);
-    }
-  }
-
-  return topology;
-}
-
 export function findNearestEdge(
   topology: TerrainMeshTopology,
   worldX: number,
@@ -317,7 +223,7 @@ function pointToEdgeDistanceSq(
   return { distSq: dSq, t };
 }
 
-export interface SubdivideResult {
+interface SubdivideResult {
   newVertexId: number;
   newEdgeIds: [number, number];
   newTriangleIds: number[];
@@ -508,7 +414,7 @@ function findTriangleEdges(
   return edges as [number, number, number];
 }
 
-export function isBoundaryVertex(topology: TerrainMeshTopology, vertexId: number): boolean {
+function isBoundaryVertex(topology: TerrainMeshTopology, vertexId: number): boolean {
   const vertex = topology.vertices.get(vertexId);
   if (!vertex) return true;
 
@@ -1409,7 +1315,7 @@ export function computeFaceSlopeAngle(
   return Math.acos(Math.min(1, Math.max(-1, normalY))) * (180 / Math.PI);
 }
 
-export function validateTopology(topology: TerrainMeshTopology): void {
+function validateTopology(topology: TerrainMeshTopology): void {
   for (const [eid, edge] of topology.edges) {
     if (!topology.vertices.has(edge.v1) || !topology.vertices.has(edge.v2)) throw new Error(`Edge ${eid} has non-existent vertex`);
     for (const tid of edge.triangles) if (!topology.triangles.has(tid)) throw new Error(`Edge ${eid} has non-existent triangle ${tid}`);

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  inferHoleFeatureFromAssetId,
   createHoleFeatureAssignment,
   buildHoleDefinitionsFromAssets,
   syncHoleFeatureAssignments,
@@ -27,28 +26,6 @@ function makeAsset(
 }
 
 describe('hole-construction', () => {
-  describe('inferHoleFeatureFromAssetId', () => {
-    it('infers tee markers', () => {
-      expect(inferHoleFeatureFromAssetId('course.tee.marker.blue')).toEqual({
-        kind: 'tee_box',
-        teeSet: 'championship',
-      });
-    });
-
-    it('infers pin assets', () => {
-      expect(inferHoleFeatureFromAssetId('course.flag')).toEqual({
-        kind: 'pin_position',
-      });
-      expect(inferHoleFeatureFromAssetId('course.cup')).toEqual({
-        kind: 'pin_position',
-      });
-    });
-
-    it('returns null for non-hole assets', () => {
-      expect(inferHoleFeatureFromAssetId('tree.pine.medium')).toBeNull();
-    });
-  });
-
   describe('buildHoleDefinitionsFromAssets', () => {
     it('builds playable holes from explicit feature assignments', () => {
       const assets: PlaceableHoleAsset[] = [

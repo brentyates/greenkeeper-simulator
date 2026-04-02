@@ -11,7 +11,7 @@ import {
   TerrainType,
   TERRAIN_CODES,
 } from './terrain';
-import { gridToTopology, Vec3 } from './mesh-topology';
+import { deserializeTopology, Vec3 } from './mesh-topology';
 
 describe('Terrain Type Mapping', () => {
   it('maps code 0 to fairway', () => {
@@ -256,12 +256,40 @@ describe('getTerrainCode', () => {
 });
 
 describe('isFaceWalkableBySlope', () => {
+  function makeSimpleTopology(positions: Vec3[][]) {
+    const verts: { id: number; position: Vec3 }[] = [];
+    const tris: { id: number; vertices: [number, number, number]; terrainCode: number }[] = [];
+    let nextV = 0;
+    let nextT = 0;
+    const ids: number[][] = [];
+
+    for (let gy = 0; gy < positions.length; gy++) {
+      const row: number[] = [];
+      for (let gx = 0; gx < positions[gy].length; gx++) {
+        const id = nextV++;
+        verts.push({ id, position: positions[gy][gx] });
+        row.push(id);
+      }
+      ids.push(row);
+    }
+
+    for (let gy = 0; gy < ids.length - 1; gy++) {
+      for (let gx = 0; gx < ids[0].length - 1; gx++) {
+        const tl = ids[gy][gx], tr = ids[gy][gx + 1];
+        const bl = ids[gy + 1][gx], br = ids[gy + 1][gx + 1];
+        tris.push({ id: nextT++, vertices: [tl, bl, tr], terrainCode: 0 });
+        tris.push({ id: nextT++, vertices: [tr, bl, br], terrainCode: 0 });
+      }
+    }
+
+    return deserializeTopology({ vertices: verts, triangles: tris, worldWidth: 1, worldHeight: 1 });
+  }
+
   it('returns false for water face regardless of slope', () => {
-    const grid: Vec3[][] = [
+    const topology = makeSimpleTopology([
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-    ];
-    const topology = gridToTopology(grid, 1, 1);
+    ]);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.WATER;
 
@@ -269,11 +297,10 @@ describe('isFaceWalkableBySlope', () => {
   });
 
   it('returns true for flat grass face', () => {
-    const grid: Vec3[][] = [
+    const topology = makeSimpleTopology([
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-    ];
-    const topology = gridToTopology(grid, 1, 1);
+    ]);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
 
@@ -281,11 +308,10 @@ describe('isFaceWalkableBySlope', () => {
   });
 
   it('returns false for steep grass face above 45 degrees', () => {
-    const grid: Vec3[][] = [
+    const topology = makeSimpleTopology([
       [{ x: 0, y: 2, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 2, z: 1 }, { x: 1, y: 0, z: 1 }],
-    ];
-    const topology = gridToTopology(grid, 1, 1);
+    ]);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.FAIRWAY;
 
@@ -293,11 +319,10 @@ describe('isFaceWalkableBySlope', () => {
   });
 
   it('returns true for bunker below threshold', () => {
-    const grid: Vec3[][] = [
+    const topology = makeSimpleTopology([
       [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }],
       [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }],
-    ];
-    const topology = gridToTopology(grid, 1, 1);
+    ]);
     const faceId = Array.from(topology.triangles.keys())[0];
     topology.triangles.get(faceId)!.terrainCode = TERRAIN_CODES.BUNKER;
 

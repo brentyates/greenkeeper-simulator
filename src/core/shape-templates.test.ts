@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { generateStampTopology, stampIntoTopology, ShapeTemplate } from './shape-templates';
 import { TERRAIN_CODES } from './terrain';
 import { pointInPolygon } from './delaunay-topology';
-import { gridToTopology, Vec3 } from './mesh-topology';
+import { deserializeTopology, type SerializedTopology } from './mesh-topology';
 
 const simpleTemplate: ShapeTemplate = {
   name: 'Test',
@@ -70,15 +70,32 @@ describe('shape-templates', () => {
     function createGridTopology() {
       const size = 20;
       const step = 2;
-      const grid: Vec3[][] = [];
+      const vertices: SerializedTopology['vertices'] = [];
+      const triangles: SerializedTopology['triangles'] = [];
+      const grid: number[][] = [];
+      let nextId = 0;
+      let nextTriId = 0;
+
       for (let z = 0; z <= size; z += step) {
-        const row: Vec3[] = [];
+        const row: number[] = [];
         for (let x = 0; x <= size; x += step) {
-          row.push({ x, y: 0, z });
+          const id = nextId++;
+          vertices.push({ id, position: { x, y: 0, z } });
+          row.push(id);
         }
         grid.push(row);
       }
-      return gridToTopology(grid, size, size);
+
+      for (let gy = 0; gy < grid.length - 1; gy++) {
+        for (let gx = 0; gx < grid[0].length - 1; gx++) {
+          const tl = grid[gy][gx], tr = grid[gy][gx + 1];
+          const bl = grid[gy + 1][gx], br = grid[gy + 1][gx + 1];
+          triangles.push({ id: nextTriId++, vertices: [tl, bl, tr], terrainCode: 0 });
+          triangles.push({ id: nextTriId++, vertices: [tr, bl, br], terrainCode: 0 });
+        }
+      }
+
+      return deserializeTopology({ vertices, triangles, worldWidth: size, worldHeight: size });
     }
 
     const smallTemplate: ShapeTemplate = {

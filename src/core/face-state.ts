@@ -19,7 +19,7 @@ export interface FaceState {
   lastRaked: number;
 }
 
-export const BUNKER_RAKE_VISUAL_FADE_MINUTES = 8 * 60;
+const BUNKER_RAKE_VISUAL_FADE_MINUTES = 8 * 60;
 
 export function createFaceState(faceId: number, terrainCode: number): FaceState {
   const terrainType = getTerrainType(terrainCode);
@@ -59,7 +59,7 @@ export function isGrassFace(terrainCode: number): boolean {
   return isGrassTerrain(getTerrainType(terrainCode));
 }
 
-export function calculateFaceHealth(state: FaceState): number {
+function calculateFaceHealth(state: FaceState): number {
   return calculateHealth({
     type: getTerrainType(state.terrainCode),
     moisture: state.moisture,
@@ -68,7 +68,7 @@ export function calculateFaceHealth(state: FaceState): number {
   });
 }
 
-export interface FaceGrowthResult {
+interface FaceGrowthResult {
   grassHeight: number;
   moisture: number;
   nutrients: number;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildDelaunayTopology, pointInPolygon, TerrainRegion } from './delaunay-topology';
-import { deserializeTopology, serializeTopology, barycentricInterpolateY, Vec3, getVertexNeighbors } from './mesh-topology';
+import { deserializeTopology, serializeTopology, barycentricInterpolateY, Vec3 } from './mesh-topology';
 import { TERRAIN_CODES } from './terrain';
 
 describe('delaunay-topology', () => {
@@ -172,7 +172,9 @@ describe('delaunay-topology', () => {
       expect(deserialized.edges.size).toBeGreaterThan(0);
 
       for (const [, v] of deserialized.vertices) {
-        expect(getVertexNeighbors(deserialized, v.id).size).toBeGreaterThan(0);
+        const edgeIds = deserialized.vertexEdges.get(v.id);
+        expect(edgeIds).toBeDefined();
+        expect(edgeIds!.size).toBeGreaterThan(0);
       }
     });
 

@@ -6,7 +6,7 @@ import {
 } from './mesh-topology';
 import { pointInPolygon } from './delaunay-topology';
 
-export interface TemplateRing {
+interface TemplateRing {
   radiusFraction: number;
   pointCount: number;
   terrainCode: number;
@@ -25,7 +25,7 @@ export interface ShapeTemplate {
   kidneyStrength?: number;
 }
 
-export interface GeneratedStamp {
+interface GeneratedStamp {
   vertices: Array<{ x: number; y: number; z: number }>;
   outerRingIndices: number[];
   boundaryPolygon: Array<{ x: number; z: number }>;

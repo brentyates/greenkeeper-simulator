@@ -1,4 +1,4 @@
-export type HoleFeatureKind = 'tee_box' | 'pin_position';
+type HoleFeatureKind = 'tee_box' | 'pin_position';
 
 export type HoleTeeSet =
   | 'championship'
@@ -24,7 +24,7 @@ export interface PlaceableHoleAsset {
   };
 }
 
-export interface HoleTeeBoxDefinition {
+interface HoleTeeBoxDefinition {
   assetId: string;
   x: number;
   y: number;
@@ -34,7 +34,7 @@ export interface HoleTeeBoxDefinition {
   yardageToPrimaryPin: number;
 }
 
-export interface HolePinPositionDefinition {
+interface HolePinPositionDefinition {
   assetId: string;
   x: number;
   y: number;
@@ -52,7 +52,7 @@ export interface CourseHoleDefinition {
   validationIssues: string[];
 }
 
-export interface HoleGameplaySummary {
+interface HoleGameplaySummary {
   totalHoles: number;
   playableHoles: number;
   totalTeeBoxes: number;
@@ -100,7 +100,7 @@ const TEE_LABEL: Record<HoleTeeSet, string> = {
   custom: 'Custom',
 };
 
-export const YARDS_PER_WORLD_UNIT = 10;
+const YARDS_PER_WORLD_UNIT = 10;
 
 function getDistance(
   x1: number,
@@ -132,7 +132,7 @@ function getFeatureKey(asset: PlaceableHoleAsset): string {
   return `${asset.assetId}:${asset.x}:${asset.y}:${asset.z}:${asset.rotation}`;
 }
 
-export function inferHoleFeatureFromAssetId(
+function inferHoleFeatureFromAssetId(
   assetId: string
 ): Omit<HoleFeatureAssignment, 'holeNumber'> | null {
   if (PIN_ASSET_IDS.has(assetId)) {

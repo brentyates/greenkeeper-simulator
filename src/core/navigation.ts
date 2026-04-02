@@ -9,12 +9,7 @@ export interface PathPoint {
   readonly z: number;
 }
 
-export interface SegmentTraversalOptions {
-  readonly sampleStep?: number;
-  readonly maxSteps?: number;
-}
-
-export interface MoveTowardOptions {
+interface MoveTowardOptions {
   readonly sampleStep?: number;
   readonly detourAnglesDegrees?: readonly number[];
   readonly escapeStepLengths?: readonly number[];
@@ -22,7 +17,7 @@ export interface MoveTowardOptions {
   readonly includeAxisFallback?: boolean;
 }
 
-export interface NavigationStepResult {
+interface NavigationStepResult {
   readonly worldX: number;
   readonly worldZ: number;
   readonly arrived: boolean;
@@ -30,9 +25,6 @@ export interface NavigationStepResult {
   readonly moved: boolean;
   readonly distanceMoved: number;
 }
-
-const DEFAULT_PATH_CHECK_SAMPLE_STEP = 1.0;
-const DEFAULT_MAX_PATH_CHECK_STEPS = 24;
 
 const DEFAULT_MOVE_SAMPLE_STEP = 0.25;
 const DEFAULT_DETOUR_ANGLES_DEGREES: readonly number[] = [
@@ -51,42 +43,6 @@ const DEFAULT_DETOUR_ANGLES_DEGREES: readonly number[] = [
 ];
 const DEFAULT_ESCAPE_STEP_LENGTHS: readonly number[] = [0.5, 0.75, 1.0, 1.25];
 const DEFAULT_ESCAPE_RADIAL_ANGLE_STEP_DEGREES = 30;
-
-export function isDirectSegmentTraversable<TEntity>(
-  entity: TEntity,
-  startX: number,
-  startZ: number,
-  targetX: number,
-  targetZ: number,
-  canTraverse?: TraversalRule<TEntity>,
-  options: SegmentTraversalOptions = {}
-): boolean {
-  if (!canTraverse) return true;
-
-  const sampleStep = options.sampleStep ?? DEFAULT_PATH_CHECK_SAMPLE_STEP;
-  const maxSteps = options.maxSteps ?? DEFAULT_MAX_PATH_CHECK_STEPS;
-  const dx = targetX - startX;
-  const dz = targetZ - startZ;
-  const maxAxisDistance = Math.max(Math.abs(dx), Math.abs(dz));
-  if (maxAxisDistance <= sampleStep) {
-    return canTraverse(entity, targetX, targetZ);
-  }
-
-  const steps = Math.max(
-    1,
-    Math.min(maxSteps, Math.ceil(maxAxisDistance / sampleStep))
-  );
-
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const sampleX = startX + dx * t;
-    const sampleZ = startZ + dz * t;
-    if (!canTraverse(entity, sampleX, sampleZ)) {
-      return false;
-    }
-  }
-  return true;
-}
 
 export function advanceTowardPoint<TEntity>(
   entity: TEntity,

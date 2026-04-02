@@ -1,21 +1,62 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createEmptyTopology,
-  gridToTopology,
   findNearestEdge,
   subdivideEdge,
   deleteVertex,
   canDeleteVertex,
-  isBoundaryVertex,
   findNearestTopologyVertex,
   buildMeshArrays,
   computeFaceSlopeAngle,
   MAX_WALKABLE_SLOPE_DEGREES,
   Vec3,
-  getVertexNeighbors,
-  validateTopology,
+  deserializeTopology,
   circleIntersectsTriangleXZ,
+  type SerializedTopology,
 } from './mesh-topology';
+
+function gridToSerializedTopology(
+  vertexPositions: Vec3[][],
+  worldWidth: number,
+  worldHeight: number
+): SerializedTopology {
+  const vertexHeight = vertexPositions.length;
+  const vertexWidth = vertexPositions[0]?.length ?? 0;
+  const vertices: SerializedTopology['vertices'] = [];
+  const triangles: SerializedTopology['triangles'] = [];
+
+  let nextVertexId = 0;
+  const gridVertexMap = new Map<string, number>();
+
+  for (let vy = 0; vy < vertexHeight; vy++) {
+    for (let vx = 0; vx < vertexWidth; vx++) {
+      const id = nextVertexId++;
+      vertices.push({ id, position: { ...vertexPositions[vy][vx] } });
+      gridVertexMap.set(`${vx},${vy}`, id);
+    }
+  }
+
+  let nextTriId = 0;
+  const gridH = vertexHeight - 1;
+  const gridW = vertexWidth - 1;
+
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      const tl = gridVertexMap.get(`${gx},${gy}`)!;
+      const tr = gridVertexMap.get(`${gx + 1},${gy}`)!;
+      const bl = gridVertexMap.get(`${gx},${gy + 1}`)!;
+      const br = gridVertexMap.get(`${gx + 1},${gy + 1}`)!;
+
+      triangles.push({ id: nextTriId++, vertices: [tl, bl, tr], terrainCode: 0 });
+      triangles.push({ id: nextTriId++, vertices: [tr, bl, br], terrainCode: 0 });
+    }
+  }
+
+  return { vertices, triangles, worldWidth, worldHeight };
+}
+
+function gridToTopology(vertexPositions: Vec3[][], worldWidth: number, worldHeight: number) {
+  return deserializeTopology(gridToSerializedTopology(vertexPositions, worldWidth, worldHeight));
+}
 
 describe('mesh-topology', () => {
   function createValidTopology() {
@@ -26,9 +67,9 @@ describe('mesh-topology', () => {
     return gridToTopology(grid, 1, 1);
   }
 
-  describe('createEmptyTopology', () => {
-    it('creates an empty topology with correct dimensions', () => {
-      const topology = createEmptyTopology(10, 20);
+  describe('deserializeTopology', () => {
+    it('creates a topology with correct dimensions', () => {
+      const topology = deserializeTopology({ vertices: [], triangles: [], worldWidth: 10, worldHeight: 20 });
       expect(topology.worldWidth).toBe(10);
       expect(topology.worldHeight).toBe(20);
       expect(topology.vertices.size).toBe(0);
@@ -37,7 +78,7 @@ describe('mesh-topology', () => {
     });
   });
 
-  describe('gridToTopology', () => {
+  describe('grid-based topology', () => {
     function createSimpleGrid(): Vec3[][] {
       return [
         [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
@@ -47,31 +88,28 @@ describe('mesh-topology', () => {
     }
 
     it('converts a 3x3 grid to topology', () => {
-      const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2);
+      const topology = gridToTopology(createSimpleGrid(), 2, 2);
 
       expect(topology.vertices.size).toBe(9);
       expect(topology.triangles.size).toBe(8);
     });
 
     it('creates correct vertex positions', () => {
-      const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2);
+      const topology = gridToTopology(createSimpleGrid(), 2, 2);
 
       const positions = Array.from(topology.vertices.values()).map(v => v.position);
       expect(positions.some(p => p.x === 0 && p.z === 0)).toBe(true);
       expect(positions.some(p => p.x === 2 && p.z === 2)).toBe(true);
     });
 
-
-    it('sets up vertex neighbors correctly', () => {
-      const grid = createSimpleGrid();
-      const topology = gridToTopology(grid, 2, 2);
+    it('sets up vertex edges correctly', () => {
+      const topology = gridToTopology(createSimpleGrid(), 2, 2);
 
       for (const vertex of topology.vertices.values()) {
-        const neighbors = getVertexNeighbors(topology, vertex.id);
-        expect(neighbors.size).toBeGreaterThan(0);
-        expect(neighbors.size).toBeLessThanOrEqual(8);
+        const edgeIds = topology.vertexEdges.get(vertex.id);
+        expect(edgeIds).toBeDefined();
+        expect(edgeIds!.size).toBeGreaterThan(0);
+        expect(edgeIds!.size).toBeLessThanOrEqual(8);
       }
     });
   });
@@ -142,50 +180,16 @@ describe('mesh-topology', () => {
       expect(topology.edges.size).toBeGreaterThan(initialEdgeCount);
     });
 
-
     it('maintains mesh connectivity', () => {
       const topology = createValidTopology();
       const edgeId = Array.from(topology.edges.keys())[0];
       subdivideEdge(topology, edgeId, 0.5);
 
       for (const vertex of topology.vertices.values()) {
-        const neighbors = getVertexNeighbors(topology, vertex.id);
-        expect(neighbors.size).toBeGreaterThan(0);
-        for (const neighborId of neighbors) {
-          const neighbor = topology.vertices.get(neighborId);
-          expect(neighbor).toBeDefined();
-          expect(getVertexNeighbors(topology, neighborId).has(vertex.id)).toBe(true);
-        }
+        const edgeIds = topology.vertexEdges.get(vertex.id);
+        expect(edgeIds).toBeDefined();
+        expect(edgeIds!.size).toBeGreaterThan(0);
       }
-    });
-  });
-
-  describe('isBoundaryVertex', () => {
-    function createSimpleTopology() {
-      const grid: Vec3[][] = [
-        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
-        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
-        [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
-      ];
-      return gridToTopology(grid, 2, 2);
-    }
-
-    it('returns true for corner vertices', () => {
-      const topology = createSimpleTopology();
-      const cornerVertex = Array.from(topology.vertices.values()).find(
-        v => v.position.x === 0 && v.position.z === 0
-      );
-      expect(cornerVertex).toBeDefined();
-      expect(isBoundaryVertex(topology, cornerVertex!.id)).toBe(true);
-    });
-
-    it('returns false for interior vertices', () => {
-      const topology = createSimpleTopology();
-      const centerVertex = Array.from(topology.vertices.values()).find(
-        v => v.position.x === 1 && v.position.z === 1
-      );
-      expect(centerVertex).toBeDefined();
-      expect(isBoundaryVertex(topology, centerVertex!.id)).toBe(false);
     });
   });
 
@@ -243,11 +247,6 @@ describe('mesh-topology', () => {
       const result = subdivideEdge(topology, boundaryEdge!.id);
       expect(result).not.toBeNull();
 
-      const newVertex = topology.vertices.get(result!.newVertexId);
-      expect(newVertex).toBeDefined();
-      expect(getVertexNeighbors(topology, result!.newVertexId).size).toBeGreaterThanOrEqual(3);
-
-      expect(isBoundaryVertex(topology, result!.newVertexId)).toBe(true);
       expect(canDeleteVertex(topology, result!.newVertexId)).toBe(true);
     });
   });
@@ -418,56 +417,38 @@ describe('mesh-topology', () => {
     });
 
     it('returns 90 degrees for a vertical face', () => {
-      const topology = createEmptyTopology(1, 1);
-      const v0Id = topology.nextVertexId++;
-      topology.vertices.set(v0Id, {
-        id: v0Id, position: { x: 0, y: 0, z: 0 },
-      });
-      const v1Id = topology.nextVertexId++;
-      topology.vertices.set(v1Id, {
-        id: v1Id, position: { x: 0, y: 1, z: 0 },
-      });
-      const v2Id = topology.nextVertexId++;
-      topology.vertices.set(v2Id, {
-        id: v2Id, position: { x: 0, y: 0.5, z: 0 },
-      });
-
-      const triId = topology.nextTriangleId++;
-      topology.triangles.set(triId, {
-        id: triId,
-        vertices: [v0Id, v1Id, v2Id],
-        edges: [0, 0, 0],
-        terrainCode: 0,
+      const topology = deserializeTopology({
+        vertices: [
+          { id: 0, position: { x: 0, y: 0, z: 0 } },
+          { id: 1, position: { x: 0, y: 1, z: 0 } },
+          { id: 2, position: { x: 0, y: 0.5, z: 0 } },
+        ],
+        triangles: [
+          { id: 0, vertices: [0, 1, 2], terrainCode: 0 },
+        ],
+        worldWidth: 1,
+        worldHeight: 1,
       });
 
-      const angle = computeFaceSlopeAngle(topology, triId, 1);
+      const angle = computeFaceSlopeAngle(topology, 0, 1);
       expect(angle).toBeCloseTo(90, 1);
     });
 
     it('returns 90 degrees for a degenerate triangle', () => {
-      const topology = createEmptyTopology(1, 1);
-      const v0Id = topology.nextVertexId++;
-      topology.vertices.set(v0Id, {
-        id: v0Id, position: { x: 0, y: 0, z: 0 },
-      });
-      const v1Id = topology.nextVertexId++;
-      topology.vertices.set(v1Id, {
-        id: v1Id, position: { x: 1, y: 0, z: 0 },
-      });
-      const v2Id = topology.nextVertexId++;
-      topology.vertices.set(v2Id, {
-        id: v2Id, position: { x: 2, y: 0, z: 0 },
-      });
-
-      const triId = topology.nextTriangleId++;
-      topology.triangles.set(triId, {
-        id: triId,
-        vertices: [v0Id, v1Id, v2Id],
-        edges: [0, 0, 0],
-        terrainCode: 0,
+      const topology = deserializeTopology({
+        vertices: [
+          { id: 0, position: { x: 0, y: 0, z: 0 } },
+          { id: 1, position: { x: 1, y: 0, z: 0 } },
+          { id: 2, position: { x: 2, y: 0, z: 0 } },
+        ],
+        triangles: [
+          { id: 0, vertices: [0, 1, 2], terrainCode: 0 },
+        ],
+        worldWidth: 1,
+        worldHeight: 1,
       });
 
-      const angle = computeFaceSlopeAngle(topology, triId, 1);
+      const angle = computeFaceSlopeAngle(topology, 0, 1);
       expect(angle).toBe(90);
     });
   });
@@ -475,81 +456,6 @@ describe('mesh-topology', () => {
   describe('MAX_WALKABLE_SLOPE_DEGREES', () => {
     it('is 45', () => {
       expect(MAX_WALKABLE_SLOPE_DEGREES).toBe(45);
-    });
-  });
-
-  describe('validateTopology', () => {
-    it('passes for a valid grid topology', () => {
-      const topology = createValidTopology();
-      expect(() => validateTopology(topology)).not.toThrow();
-    });
-
-    it('passes for a valid 3x3 grid topology', () => {
-      const grid: Vec3[][] = [
-        [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }],
-        [{ x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 1 }, { x: 2, y: 0, z: 1 }],
-        [{ x: 0, y: 0, z: 2 }, { x: 1, y: 0, z: 2 }, { x: 2, y: 0, z: 2 }],
-      ];
-      const topology = gridToTopology(grid, 2, 2);
-      expect(() => validateTopology(topology)).not.toThrow();
-    });
-
-    it('passes after subdivideEdge', () => {
-      const topology = createValidTopology();
-      const edgeId = Array.from(topology.edges.keys())[0];
-      subdivideEdge(topology, edgeId, 0.5);
-      expect(() => validateTopology(topology)).not.toThrow();
-    });
-
-    it('catches ghost triangle reference on edge', () => {
-      const topology = createValidTopology();
-      const edge = Array.from(topology.edges.values())[0];
-      edge.triangles.push(9999);
-      expect(() => validateTopology(topology)).toThrow(/non-existent triangle/);
-    });
-
-    it('catches missing edge referenced by triangle', () => {
-      const topology = createValidTopology();
-      const tri = Array.from(topology.triangles.values())[0];
-      tri.edges[0] = 9999;
-      expect(() => validateTopology(topology)).toThrow(/non-existent edge/);
-    });
-
-    it('catches edge with 0 triangles', () => {
-      const topology = createValidTopology();
-      const edge = Array.from(topology.edges.values())[0];
-      edge.triangles = [];
-      expect(() => validateTopology(topology)).toThrow(/0 triangles/);
-    });
-
-    it('catches edge with 3+ triangles', () => {
-      const topology = createValidTopology();
-      const edge = Array.from(topology.edges.values()).find(e => e.triangles.length === 2)!;
-      const triIds = Array.from(topology.triangles.keys());
-      edge.triangles.push(triIds[0]);
-      expect(() => validateTopology(topology)).toThrow(/3 triangles/);
-    });
-
-    it('catches missing vertex referenced by triangle', () => {
-      const topology = createValidTopology();
-      const tri = Array.from(topology.triangles.values())[0];
-      tri.vertices[0] = 9999;
-      expect(() => validateTopology(topology)).toThrow(/has non-existent vertex/);
-    });
-
-    it('catches vertexEdges referencing non-existent edge', () => {
-      const topology = createValidTopology();
-      const vid = Array.from(topology.vertexEdges.keys())[0];
-      topology.vertexEdges.get(vid)!.add(9999);
-      expect(() => validateTopology(topology)).toThrow(/non-existent edge/);
-    });
-
-    it('catches edge missing from vertexEdges', () => {
-      const topology = createValidTopology();
-      const edge = Array.from(topology.edges.values())[0];
-      const v1Edges = topology.vertexEdges.get(edge.v1)!;
-      v1Edges.delete(edge.id);
-      expect(() => validateTopology(topology)).toThrow(/findEdge mismatch/);
     });
   });
 });

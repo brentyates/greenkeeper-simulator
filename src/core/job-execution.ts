@@ -8,7 +8,7 @@ export interface WorkerPosition {
   worldZ: number;
 }
 
-export interface JobWorkEffect {
+interface JobWorkEffect {
   worldX: number;
   worldZ: number;
   radius: number;
@@ -16,7 +16,7 @@ export interface JobWorkEffect {
   efficiency: number;
 }
 
-export interface JobExecutionResult {
+interface JobExecutionResult {
   effects: JobWorkEffect[];
   workerMoves: WorkerPosition[];
 }
@@ -118,6 +118,3 @@ function advanceWorkerAlongPattern(
   return { moved: true, newPos, effect: null, completed: false };
 }
 
-export function getJobEffectRadius(taskType: JobTaskType): number {
-  return WORK_RADII[taskType];
-}
