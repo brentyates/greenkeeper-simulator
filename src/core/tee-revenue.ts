@@ -20,9 +20,9 @@ const DEFAULT_GREEN_FEE_STRUCTURE: GreenFeeStructure = {
   demandMultiplierRange: [0.8, 1.3],
 } as const;
 
-export type CartPricingModel = 'per_person' | 'per_cart';
+type CartPricingModel = 'per_person' | 'per_cart';
 
-export interface CartFeeStructure {
+interface CartFeeStructure {
   pricingModel: CartPricingModel;
   standardCartFee: number;
   walkingDiscount: number;
@@ -40,7 +40,7 @@ const DEFAULT_CART_FEE_STRUCTURE: CartFeeStructure = {
   cartIncluded: false,
 } as const;
 
-export interface AddOnService {
+interface AddOnService {
   id: string;
   name: string;
   price: number;
@@ -104,7 +104,7 @@ const STANDARD_ADDONS: AddOnService[] = [
   },
 ] as const;
 
-export interface TipConfig {
+interface TipConfig {
   baseTipPercentage: number;
   satisfactionModifier: number;
   tipPooling: boolean;
@@ -182,7 +182,7 @@ export function isTwilightHour(hour: number, twilightStart: number = 14): boolea
   return hour >= twilightStart;
 }
 
-export type MembershipType = 'public' | 'member' | 'guest_of_member';
+type MembershipType = 'public' | 'member' | 'guest_of_member';
 
 export function calculateGreenFee(
   structure: GreenFeeStructure,

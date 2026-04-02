@@ -1,6 +1,6 @@
-export type RatingTrend = 'rising' | 'stable' | 'falling';
+type RatingTrend = 'rising' | 'stable' | 'falling';
 
-export interface GolferReview {
+interface GolferReview {
   golferId: string;
   date: number;
   overallRating: number;

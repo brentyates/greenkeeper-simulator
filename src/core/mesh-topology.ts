@@ -445,7 +445,7 @@ export function canDeleteVertex(topology: TerrainMeshTopology, vertexId: number)
   return true;
 }
 
-export interface DeleteVertexResult {
+interface DeleteVertexResult {
   removedTriangleIds: number[];
   removedEdgeIds: number[];
   newTriangleIds: number[];
@@ -757,7 +757,7 @@ export function circleIntersectsTriangleXZ(
   return false;
 }
 
-export function retriangulateHole(
+function retriangulateHole(
   topology: TerrainMeshTopology,
   holeVertices: number[]
 ): { newTriangleIds: number[] } {

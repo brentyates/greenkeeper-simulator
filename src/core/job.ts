@@ -2,8 +2,8 @@ import type { Point2D } from './spline-math';
 
 export type JobTaskType = 'mow' | 'water' | 'fertilize' | 'rake';
 export type MovementPatternType = 'linear_stripes' | 'diagonal_stripes' | 'concentric_circles' | 'perimeter_first' | 'random_coverage';
-export type JobStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
-export type JobWorkerType = 'player' | 'groundskeeper' | 'robot';
+type JobStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+type JobWorkerType = 'player' | 'groundskeeper' | 'robot';
 
 export interface Job {
   id: string;
@@ -46,8 +46,8 @@ export type RegionSelector =
   | { type: 'hole'; holeNumber: number }
   | { type: 'all' };
 
-export type ConditionMetric = 'avgGrassHeight' | 'avgMoisture' | 'avgNutrients' | 'avgHealth';
-export type ConditionOp = 'above' | 'below';
+type ConditionMetric = 'avgGrassHeight' | 'avgMoisture' | 'avgNutrients' | 'avgHealth';
+type ConditionOp = 'above' | 'below';
 
 export interface JobSystemState {
   jobs: Job[];
