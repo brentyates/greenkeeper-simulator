@@ -89,30 +89,15 @@ interface FaceState {
 
 ## Health Calculation
 
-Health is the primary metric for course quality, calculated from three factors:
+Health is the primary metric for course quality, calculated from three factors: **moisture**, **nutrients**, and **grass height** (inverse -- freshly mown is best). Non-grass terrain is always considered healthy.
 
-```typescript
-function calculateHealth(cell: CellState): number {
-  if (!isGrassTerrain(cell.type)) {
-    return 100; // Non-grass always "healthy"
-  }
+The exact weights are defined in `src/core/terrain.ts` in `calculateHealth()`. The three factors are:
 
-  // Weight factors
-  const moistureScore = cell.moisture * 0.30;      // 30% weight
-  const nutrientScore = cell.nutrients * 0.30;    // 30% weight
-  const heightScore = (100 - Math.min(cell.height, 100)) * 0.40; // 40% weight
-
-  return clamp(moistureScore + nutrientScore + heightScore, 0, 100);
-}
-```
-
-### Health Breakdown
-
-| Factor | Weight | Optimal | Impact |
-|--------|--------|---------|--------|
-| Moisture | 30% | 100 | Low moisture = stressed grass |
-| Nutrients | 30% | 100 | Low nutrients = weak growth |
-| Height | 40% | 0 (freshly mown) | Overgrown = unhealthy appearance |
+| Factor | Optimal | Impact |
+|--------|---------|--------|
+| Moisture | 100 | Low moisture = stressed grass |
+| Nutrients | 100 | Low nutrients = weak growth |
+| Height | 0 (freshly mown) | Overgrown = unhealthy appearance |
 
 ### Health States
 

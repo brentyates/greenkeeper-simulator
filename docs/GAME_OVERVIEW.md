@@ -4,7 +4,7 @@
 
 **"From pushing a mower to running a resort."**
 
-Greenkeeper Simulator is a first-person management game where you begin as a hands-on course greenkeeper and grow into a golf resort tycoon. Unlike god-game management sims, you start at ground level - literally mowing grass yourself - and progressively delegate responsibilities as your operation scales.
+Greenkeeper Simulator is an isometric management game where you begin as a hands-on course greenkeeper and grow into a golf resort tycoon. Unlike god-game management sims, you have a personal character on the course - literally mowing grass yourself - and progressively delegate responsibilities as your operation scales.
 
 ---
 
@@ -168,18 +168,16 @@ Multiple courses, tournament hosting, five-star prestige:
 
 ## Core Design Principles
 
-### 1. First-Person Perspective
+### 1. Ground-Level Perspective
 
-Unlike RollerCoaster Tycoon's god-view, you experience the course at ground level:
+Unlike RollerCoaster Tycoon's god-view, you have a personal character on the course:
 - Walk the fairways yourself
 - See the grass quality up close
 - Feel the scale of the maintenance challenge
 - Personal connection to your creation
 
-**Camera options:**
-- Third-person follow (default)
-- First-person view (immersive)
-- Overview mode (for planning, unlocked later)
+**Camera:**
+- Isometric orthographic view (60-degree angle, RCT-style) with the camera following the player character
 
 ### 2. Player Character Advantages
 
@@ -202,10 +200,10 @@ Your character is always the best worker on the course:
 
 The game naturally pushes you toward delegation:
 
-**Course growth:**
-- Starter course: 3 holes, ~500 tiles (manageable solo)
-- Standard course: 9 holes, ~1500 tiles (needs 2-3 crew)
-- Championship course: 18 holes, ~3000 tiles (needs 6-10 crew)
+**Course growth** (see `scenarioData.ts` for exact sizes):
+- Starter course: 3 holes (manageable solo)
+- Standard course: 9 holes (needs a small crew)
+- Championship course: 18 holes (needs a full team)
 - Resort complex: 27+ holes (department structure)
 
 **Time pressure:**
@@ -299,7 +297,7 @@ Annual budgeting → Tournament calendar → Expansion planning → Legacy build
 ### vs. RollerCoaster Tycoon
 | Aspect | RCT | Greenkeeper Simulator |
 |--------|-----|----------------------|
-| Perspective | God view | First-person |
+| Perspective | God view | Isometric with player character |
 | Player role | Invisible hand | Physical character |
 | Starting point | Build park | Maintain course |
 | Early gameplay | Construction | Manual labor |
@@ -316,7 +314,7 @@ Annual budgeting → Tournament calendar → Expansion planning → Legacy build
 ### vs. Two Point Hospital
 | Aspect | TPH | Greenkeeper Simulator |
 |--------|-----|----------------------|
-| Perspective | Isometric overview | First-person on ground |
+| Perspective | Isometric overview | Isometric with player character |
 | Player actions | Placement/hiring | Physical work + management |
 | Staff importance | Core mechanic | Progression unlock |
 | Humor | Silly | Authentic (with charm) |
