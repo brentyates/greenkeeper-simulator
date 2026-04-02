@@ -38,22 +38,6 @@ test.describe('Terrain and Grass Integration', () => {
     expect(finalStats.moisture).toBeLessThan(initialStats.moisture);
   });
 
-  test('mowing updates course stats', async ({ page }) => {
-    const initialStats = await page.evaluate(() => window.game.getCourseStats());
-
-    await page.evaluate(async () => {
-      window.game.selectEquipment(1);
-      for (let i = 0; i < 20; i++) {
-        window.game.movePlayer('right');
-        await window.game.waitForPlayerIdle();
-      }
-    });
-
-    const finalStats = await page.evaluate(() => window.game.getCourseStats());
-
-    expect(finalStats.height).toBeLessThan(initialStats.height);
-  });
-
   test('elevation is accessible', async ({ page }) => {
     const elevation = await page.evaluate(() => window.game.getElevationAt(10, 10));
     expect(typeof elevation).toBe('number');
@@ -62,22 +46,6 @@ test.describe('Terrain and Grass Integration', () => {
   test('terrain type is accessible', async ({ page }) => {
     const type = await page.evaluate(() => window.game.getTerrainTypeAt(10, 10));
     expect(['fairway', 'rough', 'green', 'bunker', 'water', 'tee']).toContain(type);
-  });
-
-  test('grass rendering updates when terrain changes', async ({ page }) => {
-    const initialCount = await page.evaluate(() => window.game.getGrassRenderUpdateCount());
-
-    await page.evaluate(async () => {
-      window.game.selectEquipment(1);
-      for (let i = 0; i < 5; i++) {
-        window.game.movePlayer('right');
-        await window.game.waitForPlayerIdle();
-      }
-    });
-
-    const finalCount = await page.evaluate(() => window.game.getGrassRenderUpdateCount());
-
-    expect(finalCount).toBeGreaterThan(initialCount);
   });
 
   test('overlay modes can be changed', async ({ page }) => {

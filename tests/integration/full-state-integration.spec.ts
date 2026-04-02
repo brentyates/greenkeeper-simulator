@@ -20,18 +20,6 @@ test.describe('Full Game State Integration', () => {
     test('getFullGameState returns all components', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getFullGameState());
 
-      // Player state
-      expect(state.player).toBeDefined();
-      expect(typeof state.player.x).toBe('number');
-      expect(typeof state.player.y).toBe('number');
-      expect(typeof state.player.isMoving).toBe('boolean');
-
-      // Equipment state
-      expect(state.equipment).toBeDefined();
-      expect(state.equipment.mower).toBeDefined();
-      expect(state.equipment.sprinkler).toBeDefined();
-      expect(state.equipment.spreader).toBeDefined();
-
       // Time state
       expect(state.time).toBeDefined();
       expect(typeof state.time.day).toBe('number');
@@ -53,24 +41,6 @@ test.describe('Full Game State Integration', () => {
       expect(typeof state.editorEnabled).toBe('boolean');
     });
 
-    test('state is consistent before and after actions', async ({ page }) => {
-      const before = await page.evaluate(() => window.game.getFullGameState());
-
-      // Perform some actions
-      await page.evaluate(async () => {
-        window.game.selectEquipment(1);
-        window.game.movePlayer('right');
-        await window.game.waitForPlayerIdle();
-      });
-
-      const after = await page.evaluate(() => window.game.getFullGameState());
-
-      // Player position should have changed
-      expect(after.player.y).toBe(before.player.y + 1);
-
-      // Equipment should be active
-      expect(after.equipment.selectedSlot).toBe(0);
-    });
   });
 
   test.describe('Terrain State', () => {
@@ -103,45 +73,6 @@ test.describe('Full Game State Integration', () => {
           expect(['fairway', 'rough', 'green', 'bunker', 'water', 'tee']).toContain(type);
         }
       }
-    });
-  });
-
-  test.describe('Equipment State', () => {
-    test('all equipment has valid resource levels', async ({ page }) => {
-      const state = await page.evaluate(() => window.game.getEquipmentState());
-
-      if (state.mower) {
-        expect(state.mower.resource).toBeGreaterThanOrEqual(0);
-        expect(state.mower.resource).toBeLessThanOrEqual(state.mower.max);
-      }
-
-      if (state.sprinkler) {
-        expect(state.sprinkler.resource).toBeGreaterThanOrEqual(0);
-        expect(state.sprinkler.resource).toBeLessThanOrEqual(state.sprinkler.max);
-      }
-
-      if (state.spreader) {
-        expect(state.spreader.resource).toBeGreaterThanOrEqual(0);
-        expect(state.spreader.resource).toBeLessThanOrEqual(state.spreader.max);
-      }
-    });
-
-    test('equipment selection cycles correctly', async ({ page }) => {
-      // Select each equipment type
-      await page.evaluate(() => window.game.selectEquipment(1));
-      let state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.selectedSlot).toBe(0);
-      expect(state.mower?.active).toBe(true);
-
-      await page.evaluate(() => window.game.selectEquipment(2));
-      state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.selectedSlot).toBe(1);
-      expect(state.sprinkler?.active).toBe(true);
-
-      await page.evaluate(() => window.game.selectEquipment(3));
-      state = await page.evaluate(() => window.game.getEquipmentState());
-      expect(state.selectedSlot).toBe(2);
-      expect(state.spreader?.active).toBe(true);
     });
   });
 
@@ -191,12 +122,6 @@ test.describe('State Manipulation', () => {
     expect(state.cash).toBe(12345);
   });
 
-  test('setEquipmentResource updates resource levels', async ({ page }) => {
-    await page.evaluate(() => window.game.setEquipmentResource('mower', 50));
-    const state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.mower?.resource).toBe(50);
-  });
-
   test('setElevationAt modifies terrain', async ({ page }) => {
     await page.evaluate(() => window.game.setElevationAt(5, 5, 3));
     const elev = await page.evaluate(() => window.game.getElevationAt(5, 5));
@@ -218,50 +143,6 @@ test.describe('Edge Cases', () => {
     await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-  });
-
-  test('moving at boundary positions', async ({ page }) => {
-    // Move to a corner
-    await page.evaluate(() => window.game.teleport(0, 0));
-
-    // Try moving into boundary
-    await page.evaluate(async () => {
-      window.game.movePlayer('up');
-      await window.game.waitForPlayerIdle();
-      window.game.movePlayer('left');
-      await window.game.waitForPlayerIdle();
-    });
-
-    const pos = await page.evaluate(() => window.game.getPlayerPosition());
-    // Should still be at or near origin
-    expect(pos.x).toBeGreaterThanOrEqual(0);
-    expect(pos.y).toBeGreaterThanOrEqual(0);
-  });
-
-  test('equipment with low resources', async ({ page }) => {
-    await page.evaluate(() => {
-      window.game.setEquipmentResource('mower', 5);
-      window.game.selectEquipment(1);
-    });
-
-    const state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.mower?.resource).toBeLessThanOrEqual(5);
-    // Equipment should still be selected
-    expect(state.selectedSlot).toBe(0);
-  });
-
-  test('rapid equipment switching', async ({ page }) => {
-    await page.evaluate(() => {
-      for (let i = 0; i < 10; i++) {
-        window.game.selectEquipment(1);
-        window.game.selectEquipment(2);
-        window.game.selectEquipment(3);
-      }
-    });
-
-    // Should end on spreader (slot 3)
-    const state = await page.evaluate(() => window.game.getEquipmentState());
-    expect(state.selectedSlot).toBe(2);
   });
 
   test('terrain editor operations sequence', async ({ page }) => {

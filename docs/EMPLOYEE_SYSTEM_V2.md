@@ -2,7 +2,7 @@
 
 ## Design Philosophy
 
-Employees exist to serve **course condition**. They are a scaling tool that lets the player maintain a pristine, satisfying-looking course as it grows beyond what one person can handle. The player should never feel like they're babysitting staff -- employees are hired, paid, assigned to areas, and they work.
+Employees exist to serve **course condition**. They are the primary workforce that maintains a pristine, satisfying-looking course. The player manages staffing decisions while employees handle the physical work autonomously.
 
 **The interesting decisions are economic and strategic:**
 - How many employees do I need at this course size?
@@ -106,15 +106,15 @@ If happiness drops to 0, the employee quits. This is the only consequence of neg
 ## Part 4: Progression Arc
 
 ```
-PHASE 1: Solo Greenkeeper (Day 1-30)
-+-- You do everything yourself
-+-- Cash is tight, no room for hires
-+-- The "I need help" moment: course degrades faster than you can maintain
+PHASE 1: Skeleton Crew (Day 1-30)
++-- Minimal staff, tight budget
++-- Course degrades faster than your crew can maintain
++-- The "I need more help" moment
 
-PHASE 2: First Employees (Day 30-90)
+PHASE 2: First Real Team (Day 30-90)
 +-- Hire 1-2 groundskeepers
-+-- They're slow (novice) but cover ground you can't
-+-- Economic squeeze: wages eat profits, but coverage improves
++-- They're slow (novice) but provide essential coverage
++-- Economic squeeze: wages eat profits, but conditions improve
 
 PHASE 3: Growing Team (Day 90-180)
 +-- 3-5 employees, maybe a mechanic
@@ -125,18 +125,17 @@ PHASE 4: Full Staff (Day 180-365)
 +-- 5-8 employees across groundskeepers and mechanics
 +-- Employees reaching trained/experienced levels, working noticeably faster
 +-- Experienced mechanics keeping equipment and robots running smoothly
-+-- You focus on course design, not mowing
 
 PHASE 5: Automation (Day 365+)
 +-- Robots supplement employees
 +-- Mechanics become critical (robot repair)
 +-- Course mostly maintains itself
-+-- Your attention is on design and prestige
++-- Your attention is on strategy and prestige
 
 PHASE 6: Endgame (Year 2+)
 +-- Full robot fleet + expert staff
 +-- The economic engine hums
-+-- You step onto the course with a mower sometimes, just because
++-- Championship-quality course running itself
 ```
 
 ### The Robot-Employee Dependency

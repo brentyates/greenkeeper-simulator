@@ -9,7 +9,6 @@ import { Ellipse } from '@babylonjs/gui/2D/controls/ellipse';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 import { UI_THEME } from './UITheme';
 
-import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
 import { OverlayMode } from '../../core/terrain';
 import { FocusManager } from './FocusManager';
@@ -28,8 +27,6 @@ export class UIManager {
   private nutrientsBar!: Rectangle;
   private nutrientsText!: TextBlock;
 
-  private equipmentSlots: Rectangle[] = [];
-  private equipmentTexts: TextBlock[] = [];
 
   private dayText!: TextBlock;
   private timeText!: TextBlock;
@@ -268,103 +265,7 @@ export class UIManager {
     return grid;
   }
 
-  private createEquipmentSelector(): void {
-    const container = new Rectangle('equipmentContainer');
-    container.width = '220px';
-    container.height = '70px';
-    container.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    container.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-    container.top = '10px';
-    container.background = 'transparent';
-    container.thickness = 0;
-    this.advancedTexture.addControl(container);
 
-    const grid = new Grid('equipmentGrid');
-    grid.addColumnDefinition(1/3);
-    grid.addColumnDefinition(1/3);
-    grid.addColumnDefinition(1/3);
-    container.addControl(grid);
-
-    const equipmentData = [
-      { key: '1', name: 'Mower', icon: '🚜', color: '#DC143C' },
-      { key: '2', name: 'Sprinkler', icon: '💦', color: '#00CED1' },
-      { key: '3', name: 'Spreader', icon: '🌾', color: '#FFD700' },
-    ];
-
-    equipmentData.forEach((eq, index) => {
-      const slot = new Rectangle(`slot${index}`);
-      slot.width = '65px';
-      slot.height = '60px';
-      slot.cornerRadius = UI_THEME.radii.scale.r5;
-      slot.background = UI_THEME.colors.legacy.c_1a3a2a;
-      slot.color = UI_THEME.colors.legacy.c_3a5a4a;
-      slot.thickness = 2;
-
-      const stack = new StackPanel();
-      stack.paddingTop = '5px';
-      slot.addControl(stack);
-
-      const badge = new Ellipse(`badge${index}`);
-      badge.width = '16px';
-      badge.height = '16px';
-      badge.background = UI_THEME.colors.legacy.c_2a5a3a;
-      badge.color = UI_THEME.colors.legacy.c_4a8a5a;
-      badge.thickness = 1;
-      badge.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-      badge.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-      badge.left = '3px';
-      badge.top = '3px';
-      slot.addControl(badge);
-
-      const keyText = new TextBlock();
-      keyText.text = eq.key;
-      keyText.color = 'white';
-      keyText.fontSize = UI_THEME.typography.scale.s9;
-      badge.addControl(keyText);
-
-      const iconBg = new Rectangle();
-      iconBg.width = '40px';
-      iconBg.height = '24px';
-      iconBg.cornerRadius = UI_THEME.radii.scale.r3;
-      iconBg.background = eq.color;
-      iconBg.alpha = 0.8;
-      stack.addControl(iconBg);
-
-      const iconText = new TextBlock();
-      iconText.text = eq.icon;
-      iconText.fontSize = UI_THEME.typography.scale.s14;
-      iconBg.addControl(iconText);
-
-      const nameText = new TextBlock(`name${index}`);
-      nameText.text = eq.name;
-      nameText.color = UI_THEME.colors.legacy.c_999999;
-      nameText.fontSize = UI_THEME.typography.scale.s10;
-      nameText.fontFamily = 'Arial, sans-serif';
-      nameText.height = '18px';
-      nameText.paddingTop = '4px';
-      stack.addControl(nameText);
-
-      this.equipmentSlots.push(slot);
-      this.equipmentTexts.push(nameText);
-      grid.addControl(slot, 0, index);
-    });
-
-    this.updateEquipmentSelection(0);
-  }
-
-  private updateEquipmentSelection(index: number): void {
-    this.equipmentSlots.forEach((slot, i) => {
-      if (i === index) {
-        slot.color = UI_THEME.colors.legacy.c_7fff7f;
-        slot.thickness = 3;
-        slot.background = UI_THEME.colors.legacy.c_2a5a3a;
-      } else {
-        slot.color = UI_THEME.colors.legacy.c_3a5a4a;
-        slot.thickness = 2;
-        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
-      }
-    });
-  }
 
   private createTimePanel(): void {
     const panel = new Rectangle('timePanel');
@@ -1360,29 +1261,6 @@ export class UIManager {
     const width = Math.max(0, Math.min(100, percent)) * 0.7;
     bar.width = `${width}px`;
     bar.background = color;
-  }
-
-  public updateEquipment(type: EquipmentType | null, isActive: boolean): void {
-    if (type === null) {
-      this.equipmentSlots.forEach((slot) => {
-        slot.color = UI_THEME.colors.legacy.c_666666;
-        slot.thickness = 1;
-        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
-        slot.alpha = 0.7;
-      });
-      return;
-    }
-
-    const typeIndex: Record<EquipmentType, number> = {
-      mower: 0,
-      sprinkler: 1,
-      spreader: 2,
-    };
-    this.updateEquipmentSelection(typeIndex[type]);
-
-    if (isActive) {
-      this.equipmentSlots[typeIndex[type]].alpha = 1;
-    }
   }
 
   public updateResources(fuel: number, water: number, fert: number): void {

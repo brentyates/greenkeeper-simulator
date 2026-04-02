@@ -21,8 +21,6 @@ export interface SaveGameState {
 
   gameTime: number;
   gameDay: number;
-  playerX: number;
-  playerY: number;
   score: number;
 
   economyState: EconomyState;
@@ -50,8 +48,6 @@ export function createSaveState(
   scenarioId: string,
   gameTime: number,
   gameDay: number,
-  playerX: number,
-  playerY: number,
   score: number,
   economyState: EconomyState,
   employeeRoster: EmployeeRoster,
@@ -75,8 +71,6 @@ export function createSaveState(
     scenarioId,
     gameTime,
     gameDay,
-    playerX,
-    playerY,
     score,
     economyState,
     employeeRoster,

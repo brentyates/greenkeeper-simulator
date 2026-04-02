@@ -107,7 +107,6 @@ test.describe('Game Control Integration', () => {
     test('getFullGameState returns complete state', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getFullGameState());
 
-      expect(state.player).toBeDefined();
       expect(state.equipment).toBeDefined();
       expect(state.terrain).toBeDefined();
       expect(state.economy).toBeDefined();
@@ -143,16 +142,6 @@ test.describe('Game Control Integration', () => {
   });
 
   test.describe('Direct API Control', () => {
-    test('movePlayer moves player position', async ({ page }) => {
-      const initialPos = await page.evaluate(() => window.game.getPlayerPosition());
-
-      await page.evaluate(() => window.game.movePlayer('right'));
-      await page.evaluate(() => window.game.waitForPlayerIdle());
-
-      const finalPos = await page.evaluate(() => window.game.getPlayerPosition());
-      expect(finalPos.y).toBe(initialPos.y + 1);
-    });
-
     test('selectEquipment selects equipment slot', async ({ page }) => {
       await page.evaluate(() => window.game.selectEquipment(1));
 

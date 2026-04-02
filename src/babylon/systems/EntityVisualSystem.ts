@@ -39,11 +39,6 @@ export interface ElevationProvider {
   getElevationAt(gridX: number, gridY: number, defaultValue?: number): number;
 }
 
-export const PLAYER_APPEARANCE: EntityAppearance = {
-  assetId: "character.greenkeeper",
-  scale: 1.0,
-};
-
 export const EMPLOYEE_APPEARANCE: EntityAppearance = {
   assetId: "character.employee",
   scale: 1.0,

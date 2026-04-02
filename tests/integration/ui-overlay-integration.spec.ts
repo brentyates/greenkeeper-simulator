@@ -241,38 +241,6 @@ test.describe('Audio Control', () => {
   });
 });
 
-test.describe('Equipment Refill', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForFunction(() => window.app !== undefined);
-    await page.evaluate(() => window.startScenario('tutorial_basics'));
-    await page.waitForFunction(() => window.game !== null);
-    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
-    await page.evaluate(() => {
-      window.game.setAllCellsState({ height: 50, moisture: 50, nutrients: 50, health: 80 });
-      window.game.setEquipmentResource('mower', 10);
-      window.game.setEquipmentResource('sprinkler', 10);
-      window.game.setEquipmentResource('spreader', 10);
-    });
-    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
-  });
-
-  test('refillEquipment does not throw', async ({ page }) => {
-    await page.evaluate(() => window.game.refillEquipment());
-    expect(true).toBe(true);
-  });
-
-  test('isAtRefillStation returns boolean', async ({ page }) => {
-    const atStation = await page.evaluate(() => window.game.isAtRefillStation());
-    expect(typeof atStation).toBe('boolean');
-  });
-
-  test('getRefillStations returns array', async ({ page }) => {
-    const stations = await page.evaluate(() => window.game.getRefillStations());
-    expect(Array.isArray(stations)).toBe(true);
-  });
-});
-
 test.describe('Game Running State', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');

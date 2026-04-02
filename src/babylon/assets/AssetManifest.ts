@@ -22,14 +22,6 @@ export const ASSET_MANIFEST: Record<string, AssetSpec> = {
   // ===========================================================================
   // CHARACTERS
   // ===========================================================================
-  "character.greenkeeper": {
-    path: "/assets/models/characters/greenkeeper.glb",
-    heightRange: [0.6, 0.7],
-    footprint: [0.2, 0.2],
-    origin: "base_center",
-    animations: ["idle", "walk", "push"],
-    notes: "Main player character. Green polo shirt, khaki pants.",
-  },
   "character.employee": {
     path: "/assets/models/characters/employee.glb",
     heightRange: [0.6, 0.7],
