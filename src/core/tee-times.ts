@@ -333,99 +333,39 @@ export function bookTeeTime(
   return state;
 }
 
-export function checkInTeeTime(
+function updateSlot(
   state: TeeTimeSystemState,
-  teeTimeId: string
+  teeTimeId: string,
+  requiredStatus: TeeTimeStatus,
+  updater: (slot: TeeTime) => Partial<TeeTime>,
 ): TeeTimeSystemState {
   const newTeeTimes = new Map(state.teeTimes);
-
   for (const [day, slots] of newTeeTimes) {
     const slotIndex = slots.findIndex(s => s.id === teeTimeId);
     if (slotIndex >= 0) {
       const slot = slots[slotIndex];
-      if (slot.status !== 'reserved') {
-        return state;
-      }
-
-      const updatedSlot: TeeTime = {
-        ...slot,
-        status: 'checked_in',
-        checkedIn: true,
-      };
-
+      if (slot.status !== requiredStatus) return state;
       const newSlots = [...slots];
-      newSlots[slotIndex] = updatedSlot;
+      newSlots[slotIndex] = { ...slot, ...updater(slot) };
       newTeeTimes.set(day, newSlots);
-
       return { ...state, teeTimes: newTeeTimes };
     }
   }
-
   return state;
 }
 
-export function cancelTeeTime(
-  state: TeeTimeSystemState,
-  teeTimeId: string
-): TeeTimeSystemState {
-  const newTeeTimes = new Map(state.teeTimes);
-
-  for (const [day, slots] of newTeeTimes) {
-    const slotIndex = slots.findIndex(s => s.id === teeTimeId);
-    if (slotIndex >= 0) {
-      const slot = slots[slotIndex];
-      if (slot.status !== 'reserved') {
-        return state;
-      }
-
-      const updatedSlot: TeeTime = {
-        ...slot,
-        status: 'cancelled',
-        golfers: [],
-        groupSize: 0,
-        totalRevenue: 0,
-        pricePerGolfer: 0,
-      };
-
-      const newSlots = [...slots];
-      newSlots[slotIndex] = updatedSlot;
-      newTeeTimes.set(day, newSlots);
-
-      return { ...state, teeTimes: newTeeTimes };
-    }
-  }
-
-  return state;
+export function checkInTeeTime(state: TeeTimeSystemState, teeTimeId: string): TeeTimeSystemState {
+  return updateSlot(state, teeTimeId, 'reserved', () => ({ status: 'checked_in' as const, checkedIn: true }));
 }
 
-export function markNoShow(
-  state: TeeTimeSystemState,
-  teeTimeId: string
-): TeeTimeSystemState {
-  const newTeeTimes = new Map(state.teeTimes);
+export function cancelTeeTime(state: TeeTimeSystemState, teeTimeId: string): TeeTimeSystemState {
+  return updateSlot(state, teeTimeId, 'reserved', () => ({
+    status: 'cancelled' as const, golfers: [], groupSize: 0, totalRevenue: 0, pricePerGolfer: 0,
+  }));
+}
 
-  for (const [day, slots] of newTeeTimes) {
-    const slotIndex = slots.findIndex(s => s.id === teeTimeId);
-    if (slotIndex >= 0) {
-      const slot = slots[slotIndex];
-      if (slot.status !== 'reserved') {
-        return state;
-      }
-
-      const updatedSlot: TeeTime = {
-        ...slot,
-        status: 'no_show',
-      };
-
-      const newSlots = [...slots];
-      newSlots[slotIndex] = updatedSlot;
-      newTeeTimes.set(day, newSlots);
-
-      return { ...state, teeTimes: newTeeTimes };
-    }
-  }
-
-  return state;
+export function markNoShow(state: TeeTimeSystemState, teeTimeId: string): TeeTimeSystemState {
+  return updateSlot(state, teeTimeId, 'reserved', () => ({ status: 'no_show' as const }));
 }
 
 export function getDailyStats(state: TeeTimeSystemState, day: number): {
