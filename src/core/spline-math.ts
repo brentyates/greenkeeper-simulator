@@ -3,7 +3,7 @@ export interface Point2D {
   z: number;
 }
 
-export function evaluateCatmullRom(
+function evaluateCatmullRom(
   p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D, t: number
 ): Point2D {
   const t2 = t * t;
@@ -24,7 +24,7 @@ export function evaluateCatmullRom(
   };
 }
 
-export function splineToPolyline(
+function splineToPolyline(
   points: Point2D[], segmentsPerSpan = 8
 ): Point2D[] {
   if (points.length < 2) return [...points];
@@ -57,7 +57,7 @@ export function splineToPolyline(
   return result;
 }
 
-export function interpolateWidth(
+function interpolateWidth(
   widths: number[], pointCount: number, segmentsPerSpan: number, index: number
 ): number {
   const totalSegments = (pointCount - 1) * segmentsPerSpan;
@@ -86,7 +86,7 @@ function polylineNormalAt(polyline: Point2D[], index: number): Point2D {
   return { x: -dz / len, z: dx / len };
 }
 
-export function offsetPolyline(
+function offsetPolyline(
   polyline: Point2D[],
   leftWidths: number[],
   rightWidths: number[]

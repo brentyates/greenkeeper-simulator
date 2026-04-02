@@ -127,14 +127,3 @@ export function findRegionAtPosition(
   return null;
 }
 
-export function getRegionsByHole(
-  regions: NamedRegion[], holeNumber: number
-): NamedRegion[] {
-  return regions.filter(r => r.holeNumber === holeNumber);
-}
-
-export function getRegionsByTerrain(
-  regions: NamedRegion[], terrainCode: number
-): NamedRegion[] {
-  return regions.filter(r => r.terrainCode === terrainCode);
-}

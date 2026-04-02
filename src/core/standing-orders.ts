@@ -1,4 +1,4 @@
-import type { JobSystemState, StandingOrder, JobTaskType, RegionSelector, ConditionMetric } from './job';
+import type { JobSystemState, StandingOrder, RegionSelector } from './job';
 import { createJob, isRegionLocked, getPatternForTask, getJobForRegion } from './job';
 import type { NamedRegion } from './named-region';
 import { generateWaypoints } from './movement-patterns';
@@ -103,40 +103,3 @@ export function evaluateStandingOrders(
   return jobsCreated;
 }
 
-export function createStandingOrder(
-  jobState: JobSystemState,
-  taskType: JobTaskType,
-  regionSelector: RegionSelector,
-  metric: ConditionMetric,
-  op: 'above' | 'below',
-  threshold: number,
-  cooldownMinutes = 30,
-): StandingOrder {
-  const id = `order_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const order: StandingOrder = {
-    id,
-    taskType,
-    regionSelector,
-    condition: { metric, op, threshold },
-    assignTo: 'any_groundskeeper',
-    enabled: true,
-    lastEvaluatedAt: -Infinity,
-    cooldownMinutes,
-  };
-  jobState.standingOrders.push(order);
-  return order;
-}
-
-export function removeStandingOrder(jobState: JobSystemState, orderId: string): boolean {
-  const idx = jobState.standingOrders.findIndex(o => o.id === orderId);
-  if (idx === -1) return false;
-  jobState.standingOrders.splice(idx, 1);
-  return true;
-}
-
-export function toggleStandingOrder(jobState: JobSystemState, orderId: string): boolean {
-  const order = jobState.standingOrders.find(o => o.id === orderId);
-  if (!order) return false;
-  order.enabled = !order.enabled;
-  return true;
-}

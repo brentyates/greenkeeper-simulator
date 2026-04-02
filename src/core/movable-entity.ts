@@ -8,15 +8,13 @@ export interface GridPosition {
   readonly y: number;
 }
 
-export interface MovableEntity {
+interface MovableEntity {
   readonly id: string;
   readonly gridX: number;
   readonly gridY: number;
   readonly path: readonly GridPosition[];
   readonly moveProgress: number;
 }
-
-export type EntityType = 'employee' | 'golfer';
 
 export type EmployeeTask =
   | 'mow_grass'
@@ -37,29 +35,6 @@ export interface EmployeeEntity extends MovableEntity {
   readonly targetZ: number | null;
   readonly workProgress: number;
   readonly assignedAreaId: string | null;
-}
-
-export interface GolferEntity extends MovableEntity {
-  readonly entityType: 'golfer';
-  readonly currentHole: number;
-  readonly satisfaction: number;
-  readonly isWalking: boolean;
-}
-
-export interface EmployeeMoveResult {
-  readonly entity: EmployeeEntity;
-  readonly arrived: boolean;
-  readonly blocked: boolean;
-}
-
-export type AnyEntity = EmployeeEntity | GolferEntity;
-
-export function isEmployee(entity: MovableEntity & { entityType?: EntityType }): entity is EmployeeEntity {
-  return (entity as EmployeeEntity).entityType === 'employee';
-}
-
-export function isGolfer(entity: MovableEntity & { entityType?: EntityType }): entity is GolferEntity {
-  return (entity as GolferEntity).entityType === 'golfer';
 }
 
 export function createEmployeeEntity(
@@ -86,29 +61,13 @@ export function createEmployeeEntity(
   };
 }
 
-export function moveEmployeeToward(
-  employee: EmployeeEntity,
-  targetWorldX: number,
-  targetWorldZ: number,
-  distanceThisFrame: number,
-  canTraverse?: TraversalRule<EmployeeEntity>
-): EmployeeEntity {
-  return moveEmployeeTowardWithNavigation(
-    employee,
-    targetWorldX,
-    targetWorldZ,
-    distanceThisFrame,
-    canTraverse
-  ).entity;
-}
-
 export function moveEmployeeTowardWithNavigation(
   employee: EmployeeEntity,
   targetWorldX: number,
   targetWorldZ: number,
   distanceThisFrame: number,
   canTraverse?: TraversalRule<EmployeeEntity>
-): EmployeeMoveResult {
+) {
   const navigation = advanceTowardPoint(
     employee,
     employee.worldX,
@@ -135,98 +94,5 @@ export function moveEmployeeTowardWithNavigation(
   };
 }
 
-export function createGolferEntity(
-  id: string,
-  gridX: number,
-  gridY: number,
-  currentHole: number = 1
-): GolferEntity {
-  return {
-    id,
-    entityType: 'golfer',
-    gridX,
-    gridY,
-    path: [],
-    moveProgress: 0,
-    currentHole,
-    satisfaction: 100,
-    isWalking: true,
-  };
-}
-
 export const MOVE_SPEED = 3.0;
 export const MOVE_DURATION_MS = 150;
-
-export function getNextPosition(entity: MovableEntity): GridPosition | null {
-  return entity.path.length > 0 ? entity.path[0] : null;
-}
-
-export function getVisualPosition(entity: MovableEntity): {
-  gridX: number;
-  gridY: number;
-  nextX: number | null;
-  nextY: number | null;
-  moveProgress: number;
-} {
-  const next = getNextPosition(entity);
-  return {
-    gridX: entity.gridX,
-    gridY: entity.gridY,
-    nextX: next?.x ?? null,
-    nextY: next?.y ?? null,
-    moveProgress: entity.moveProgress,
-  };
-}
-
-export function moveEntityAlongPath<T extends MovableEntity>(
-  entity: T,
-  deltaMinutes: number
-): T {
-  if (entity.path.length === 0) {
-    return entity;
-  }
-
-  const moveAmount = MOVE_SPEED * deltaMinutes;
-  const newMoveProgress = entity.moveProgress + moveAmount;
-
-  if (newMoveProgress >= 1) {
-    const nextTile = entity.path[0];
-    return {
-      ...entity,
-      gridX: nextTile.x,
-      gridY: nextTile.y,
-      path: entity.path.slice(1),
-      moveProgress: 0,
-    };
-  }
-
-  return {
-    ...entity,
-    moveProgress: newMoveProgress,
-  };
-}
-
-export function setEntityPath<T extends MovableEntity>(
-  entity: T,
-  path: readonly GridPosition[]
-): T {
-  return {
-    ...entity,
-    path,
-    moveProgress: path.length > 0 ? 0.01 : 0,
-  };
-}
-
-export function teleportEntity<T extends MovableEntity>(
-  entity: T,
-  gridX: number,
-  gridY: number
-): T {
-  return {
-    ...entity,
-    gridX,
-    gridY,
-    path: [],
-    moveProgress: 0,
-  };
-}

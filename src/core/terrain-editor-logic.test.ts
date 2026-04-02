@@ -4,20 +4,9 @@ import {
   isSculptTool,
   isTerrainBrush,
   getTerrainTypeFromBrush,
-  selectVertex,
-  toggleVertex,
   isVertexSelected,
   selectAll,
   deselectAll,
-  invertSelection,
-  selectVerticesInBox,
-  selectVerticesInBrush,
-  getSelectedVerticesList,
-  applyRaiseVertex,
-  applyLowerVertex,
-  applySmoothVertices,
-  applyFlattenVertices,
-  applyLevelVertices,
   applySculptTool,
 } from './terrain-editor-logic';
 import { Vec3 } from './mesh-topology';
@@ -83,194 +72,33 @@ describe('Tool Type Detection', () => {
   });
 });
 
-describe('Vertex Sculpt Operations', () => {
-  describe('applyRaiseVertex', () => {
-    it('raises vertex elevation', () => {
-      const topo = createTestTopology([{ id: 0, x: 0, y: 0, z: 0 }]);
-      const mod = applyRaiseVertex(0, topo, 1);
+describe('applySculptTool', () => {
+  it('applies raise tool', () => {
+    const topo = createTestTopology([{ id: 0, x: 0, y: 0, z: 0 }]);
+    const mods = applySculptTool('raise', [0], topo, 1);
 
-      expect(mod).not.toBeNull();
-      expect(mod!.vertexId).toBe(0);
-      expect(mod!.oldY).toBe(0);
-      expect(mod!.newY).toBe(1);
-      expect(topo.vertices.get(0)!.position.y).toBe(1);
-    });
-
-    it('returns null for missing vertex', () => {
-      const topo = createTestTopology([]);
-      const mod = applyRaiseVertex(99, topo);
-
-      expect(mod).toBeNull();
-    });
+    expect(mods.length).toBe(1);
+    expect(mods[0].newY).toBe(1);
   });
 
-  describe('applyLowerVertex', () => {
-    it('lowers vertex elevation', () => {
-      const topo = createTestTopology([{ id: 0, x: 0, y: 2, z: 0 }]);
-      const mod = applyLowerVertex(0, topo, 1);
+  it('applies lower tool', () => {
+    const topo = createTestTopology([{ id: 0, x: 0, y: 2, z: 0 }]);
+    const mods = applySculptTool('lower', [0], topo, 1);
 
-      expect(mod).not.toBeNull();
-      expect(mod!.oldY).toBe(2);
-      expect(mod!.newY).toBe(1);
-    });
-
-    it('clamps to minimum elevation', () => {
-      const topo = createTestTopology([{ id: 0, x: 0, y: -10, z: 0 }]);
-      const mod = applyLowerVertex(0, topo, 1, -10);
-
-      expect(mod).toBeNull();
-    });
+    expect(mods.length).toBe(1);
+    expect(mods[0].newY).toBe(1);
   });
 
-  describe('applySmoothVertices', () => {
-    it('smooths vertices to average', () => {
-      const topo = createGridTopology(5, 5, 0);
-      const centerId = 2 * 5 + 2;
-      topo.vertices.get(centerId)!.position.y = 4;
-      const ids = Array.from(topo.vertices.keys());
-      const mods = applySmoothVertices(ids, topo);
+  it('applies with multiple vertices', () => {
+    const topo = createGridTopology(5, 5, 0);
+    const ids = Array.from(topo.vertices.keys()).slice(0, 5);
+    const mods = applySculptTool('raise', ids, topo, 1);
 
-      expect(mods.length).toBeGreaterThan(0);
-    });
-
-    it('returns empty when already smooth', () => {
-      const topo = createGridTopology(5, 5, 1);
-      const ids = Array.from(topo.vertices.keys());
-      const mods = applySmoothVertices(ids, topo);
-
-      expect(mods.length).toBe(0);
-    });
-  });
-
-  describe('applyFlattenVertices', () => {
-    it('flattens to first vertex elevation', () => {
-      const topo = createTestTopology([
-        { id: 0, x: 0, y: 3, z: 0 },
-        { id: 1, x: 1, y: 0, z: 0 },
-        { id: 2, x: 2, y: 0, z: 0 },
-      ]);
-      const mods = applyFlattenVertices([0, 1, 2], topo);
-
-      expect(mods.length).toBe(2);
-      for (const mod of mods) {
-        expect(mod.newY).toBe(3);
-      }
-    });
-
-    it('flattens to specified target', () => {
-      const topo = createTestTopology([
-        { id: 0, x: 0, y: 0, z: 0 },
-        { id: 1, x: 1, y: 0, z: 0 },
-      ]);
-      const mods = applyFlattenVertices([0, 1], topo, 5);
-
-      expect(mods.length).toBe(2);
-      for (const mod of mods) {
-        expect(mod.newY).toBe(5);
-      }
-    });
-  });
-
-  describe('applyLevelVertices', () => {
-    it('levels selected vertices to average', () => {
-      const topo = createTestTopology([
-        { id: 0, x: 0, y: 2, z: 0 },
-        { id: 1, x: 1, y: 4, z: 0 },
-      ]);
-      const selected = new Set([0, 1]);
-
-      const mods = applyLevelVertices(selected, topo);
-
-      expect(mods.length).toBe(2);
-      expect(mods[0].newY).toBe(3);
-      expect(mods[1].newY).toBe(3);
-    });
-
-    it('returns empty for no selection', () => {
-      const topo = createGridTopology(5, 5, 0);
-      const mods = applyLevelVertices(new Set(), topo);
-
-      expect(mods.length).toBe(0);
-    });
-  });
-
-  describe('applySculptTool', () => {
-    it('applies raise tool', () => {
-      const topo = createTestTopology([{ id: 0, x: 0, y: 0, z: 0 }]);
-      const mods = applySculptTool('raise', [0], topo, 1);
-
-      expect(mods.length).toBe(1);
-      expect(mods[0].newY).toBe(1);
-    });
-
-    it('applies lower tool', () => {
-      const topo = createTestTopology([{ id: 0, x: 0, y: 2, z: 0 }]);
-      const mods = applySculptTool('lower', [0], topo, 1);
-
-      expect(mods.length).toBe(1);
-      expect(mods[0].newY).toBe(1);
-    });
-
-    it('applies with multiple vertices', () => {
-      const topo = createGridTopology(5, 5, 0);
-      const ids = Array.from(topo.vertices.keys()).slice(0, 5);
-      const mods = applySculptTool('raise', ids, topo, 1);
-
-      expect(mods.length).toBe(5);
-    });
+    expect(mods.length).toBe(5);
   });
 });
 
 describe('Vertex Selection', () => {
-  describe('selectVertex', () => {
-    it('selects a single vertex when not additive', () => {
-      const state = createInitialEditorState();
-      selectVertex(state, 5, false);
-
-      expect(state.selectedVertices.size).toBe(1);
-      expect(state.selectedVertices.has(5)).toBe(true);
-    });
-
-    it('clears previous selection when not additive', () => {
-      const state = createInitialEditorState();
-      state.selectedVertices.add(1);
-      state.selectedVertices.add(2);
-
-      selectVertex(state, 5, false);
-
-      expect(state.selectedVertices.size).toBe(1);
-      expect(state.selectedVertices.has(5)).toBe(true);
-    });
-
-    it('adds to selection when additive', () => {
-      const state = createInitialEditorState();
-      state.selectedVertices.add(1);
-
-      selectVertex(state, 5, true);
-
-      expect(state.selectedVertices.size).toBe(2);
-      expect(state.selectedVertices.has(1)).toBe(true);
-      expect(state.selectedVertices.has(5)).toBe(true);
-    });
-  });
-
-  describe('toggleVertex', () => {
-    it('adds vertex if not selected', () => {
-      const state = createInitialEditorState();
-      toggleVertex(state, 5);
-
-      expect(state.selectedVertices.has(5)).toBe(true);
-    });
-
-    it('removes vertex if already selected', () => {
-      const state = createInitialEditorState();
-      state.selectedVertices.add(5);
-      toggleVertex(state, 5);
-
-      expect(state.selectedVertices.has(5)).toBe(false);
-    });
-  });
-
   describe('isVertexSelected', () => {
     it('returns true for selected vertex', () => {
       const state = createInitialEditorState();
@@ -309,98 +137,6 @@ describe('Vertex Selection', () => {
       deselectAll(state);
 
       expect(state.selectedVertices.size).toBe(0);
-    });
-  });
-
-  describe('invertSelection', () => {
-    it('inverts the selection', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(2, 2);
-      state.selectedVertices.add(0);
-      state.selectedVertices.add(3);
-
-      invertSelection(state, topo);
-
-      expect(state.selectedVertices.size).toBe(2);
-      expect(state.selectedVertices.has(0)).toBe(false);
-      expect(state.selectedVertices.has(3)).toBe(false);
-      expect(state.selectedVertices.has(1)).toBe(true);
-      expect(state.selectedVertices.has(2)).toBe(true);
-    });
-  });
-
-  describe('selectVerticesInBox', () => {
-    it('selects vertices in rectangular region', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(10, 10);
-
-      selectVerticesInBox(state, 1, 1, 3, 2, topo, false);
-
-      expect(state.selectedVertices.size).toBe(6);
-    });
-
-    it('handles reversed coordinates', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(10, 10);
-
-      selectVerticesInBox(state, 3, 2, 1, 1, topo, false);
-
-      expect(state.selectedVertices.size).toBe(6);
-    });
-
-    it('adds to selection when additive', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(10, 10);
-      state.selectedVertices.add(0);
-
-      selectVerticesInBox(state, 2, 2, 3, 3, topo, true);
-
-      expect(state.selectedVertices.has(0)).toBe(true);
-      expect(state.selectedVertices.size).toBeGreaterThan(1);
-    });
-  });
-
-  describe('selectVerticesInBrush', () => {
-    it('selects vertices in circular brush pattern', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(10, 10);
-
-      selectVerticesInBrush(state, 5, 5, 2, topo, false);
-
-      expect(state.selectedVertices.size).toBeGreaterThan(1);
-    });
-
-    it('adds to selection when additive', () => {
-      const state = createInitialEditorState();
-      const topo = createGridTopology(10, 10);
-      state.selectedVertices.add(0);
-
-      selectVerticesInBrush(state, 5, 5, 1, topo, true);
-
-      expect(state.selectedVertices.has(0)).toBe(true);
-      expect(state.selectedVertices.size).toBeGreaterThan(1);
-    });
-  });
-
-  describe('getSelectedVerticesList', () => {
-    it('returns array of selected vertex IDs', () => {
-      const state = createInitialEditorState();
-      state.selectedVertices.add(1);
-      state.selectedVertices.add(3);
-
-      const list = getSelectedVerticesList(state);
-
-      expect(list.length).toBe(2);
-      expect(list).toContain(1);
-      expect(list).toContain(3);
-    });
-
-    it('returns empty array when nothing selected', () => {
-      const state = createInitialEditorState();
-
-      const list = getSelectedVerticesList(state);
-
-      expect(list).toEqual([]);
     });
   });
 });

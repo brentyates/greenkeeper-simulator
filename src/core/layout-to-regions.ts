@@ -49,7 +49,7 @@ function featureShapeToRegion(feature: FeatureShape): TerrainRegion {
   };
 }
 
-export function courseLayoutToRegions(layout: CourseLayout): TerrainRegion[] {
+function courseLayoutToRegions(layout: CourseLayout): TerrainRegion[] {
   const regions: TerrainRegion[] = [];
   for (const hole of layout.holes) {
     regions.push(holeShapeToRegion(hole));
@@ -60,7 +60,7 @@ export function courseLayoutToRegions(layout: CourseLayout): TerrainRegion[] {
   return regions;
 }
 
-export function courseLayoutToTopologyOptions(layout: CourseLayout): DelaunayTopologyOptions {
+function courseLayoutToTopologyOptions(layout: CourseLayout): DelaunayTopologyOptions {
   return {
     worldWidth: layout.worldWidth,
     worldHeight: layout.worldHeight,
@@ -72,7 +72,7 @@ export function courseLayoutToTopologyOptions(layout: CourseLayout): DelaunayTop
   };
 }
 
-export function courseLayoutToTopology(layout: CourseLayout) {
+function courseLayoutToTopology(layout: CourseLayout) {
   return buildDelaunayTopology(courseLayoutToTopologyOptions(layout));
 }
 

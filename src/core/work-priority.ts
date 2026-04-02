@@ -1,4 +1,4 @@
-export interface WorkPriorityConfig {
+interface WorkPriorityConfig {
   readonly localWorkRadius: number;
   readonly extremeNeedThreshold: number;
   readonly needWeight: number;
@@ -7,7 +7,7 @@ export interface WorkPriorityConfig {
   readonly localStickinessBonus: number;
 }
 
-export const DEFAULT_WORK_PRIORITY_CONFIG: Readonly<WorkPriorityConfig> = {
+const DEFAULT_WORK_PRIORITY_CONFIG: Readonly<WorkPriorityConfig> = {
   localWorkRadius: 8,
   extremeNeedThreshold: 95,
   needWeight: 1.4,
@@ -16,7 +16,7 @@ export const DEFAULT_WORK_PRIORITY_CONFIG: Readonly<WorkPriorityConfig> = {
   localStickinessBonus: 12,
 };
 
-export function getDistancePenalty(
+function getDistancePenalty(
   distance: number,
   config: WorkPriorityConfig = DEFAULT_WORK_PRIORITY_CONFIG
 ): number {
@@ -25,7 +25,7 @@ export function getDistancePenalty(
   return nearDistance * config.nearDistanceWeight + farDistance * config.farDistanceWeight;
 }
 
-export function getLocalityBonus(
+function getLocalityBonus(
   distance: number,
   config: WorkPriorityConfig = DEFAULT_WORK_PRIORITY_CONFIG
 ): number {

@@ -1,23 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   createInitialApplicationState,
   tickApplications,
   postJobOpening,
   acceptApplication,
-  rejectApplication,
-  getTimeUntilNextApplication,
   getPostingCost,
   PRESTIGE_HIRING_CONFIG,
   PrestigeTier,
-  resetEmployeeCounter,
-  resetJobPostingCounter,
 } from './employees';
 
 describe('Prestige-Based Hiring System', () => {
-  beforeEach(() => {
-    resetEmployeeCounter();
-    resetJobPostingCounter();
-  });
 
   describe('createInitialApplicationState', () => {
     it('should create initial state with correct next application time', () => {
@@ -160,38 +152,6 @@ describe('Prestige-Based Hiring System', () => {
       const updated = acceptApplication(state, 'invalid_id');
 
       expect(updated).toBeNull();
-    });
-  });
-
-  describe('rejectApplication', () => {
-    it('should remove application from list', () => {
-      let state = createInitialApplicationState(0, 'public');
-      state = tickApplications(state, 2000, 'public').state;
-
-      const applicationId = state.applications[0].id;
-      const updated = rejectApplication(state, applicationId);
-
-      expect(updated).not.toBeNull();
-      if (!updated) return;
-      expect(updated.applications).toHaveLength(0);
-    });
-  });
-
-  describe('getTimeUntilNextApplication', () => {
-    it('should return correct time remaining', () => {
-      const state = createInitialApplicationState(0, 'public');
-      const timeUntil = getTimeUntilNextApplication(state, 100);
-
-      const config = PRESTIGE_HIRING_CONFIG.public;
-      const expected = config.applicationRate * 60 - 100;
-      expect(timeUntil).toBe(expected);
-    });
-
-    it('should return 0 if time has passed', () => {
-      const state = createInitialApplicationState(0, 'public');
-      const timeUntil = getTimeUntilNextApplication(state, 99999);
-
-      expect(timeUntil).toBe(0);
     });
   });
 

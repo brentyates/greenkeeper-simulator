@@ -1,98 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  evaluateCatmullRom,
-  splineToPolyline,
-  offsetPolyline,
   splineToBoundaryPolygon,
   makeEllipseBoundary,
   makeRectBoundary,
   pointInPolygon,
-  interpolateWidth,
   type Point2D,
 } from './spline-math';
-
-describe('evaluateCatmullRom', () => {
-  it('returns p1 at t=0', () => {
-    const p = evaluateCatmullRom(
-      { x: 0, z: 0 }, { x: 10, z: 10 }, { x: 20, z: 20 }, { x: 30, z: 30 }, 0
-    );
-    expect(p.x).toBeCloseTo(10);
-    expect(p.z).toBeCloseTo(10);
-  });
-
-  it('returns p2 at t=1', () => {
-    const p = evaluateCatmullRom(
-      { x: 0, z: 0 }, { x: 10, z: 10 }, { x: 20, z: 20 }, { x: 30, z: 30 }, 1
-    );
-    expect(p.x).toBeCloseTo(20);
-    expect(p.z).toBeCloseTo(20);
-  });
-
-  it('returns midpoint at t=0.5 for collinear points', () => {
-    const p = evaluateCatmullRom(
-      { x: 0, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }, { x: 30, z: 0 }, 0.5
-    );
-    expect(p.x).toBeCloseTo(15);
-    expect(p.z).toBeCloseTo(0);
-  });
-});
-
-describe('splineToPolyline', () => {
-  it('returns empty for empty input', () => {
-    expect(splineToPolyline([])).toEqual([]);
-  });
-
-  it('returns single point for single input', () => {
-    const result = splineToPolyline([{ x: 5, z: 5 }]);
-    expect(result).toHaveLength(1);
-  });
-
-  it('interpolates two points linearly', () => {
-    const result = splineToPolyline([{ x: 0, z: 0 }, { x: 10, z: 0 }], 4);
-    expect(result).toHaveLength(5);
-    expect(result[0].x).toBeCloseTo(0);
-    expect(result[4].x).toBeCloseTo(10);
-  });
-
-  it('produces smooth curve for 4 control points', () => {
-    const points: Point2D[] = [
-      { x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 10 }, { x: 20, z: 10 }
-    ];
-    const result = splineToPolyline(points, 4);
-    expect(result.length).toBeGreaterThan(4);
-    expect(result[0].x).toBeCloseTo(0);
-    expect(result[0].z).toBeCloseTo(0);
-    const last = result[result.length - 1];
-    expect(last.x).toBeCloseTo(20);
-    expect(last.z).toBeCloseTo(10);
-  });
-});
-
-describe('interpolateWidth', () => {
-  it('returns constant width for uniform widths', () => {
-    expect(interpolateWidth([5, 5, 5], 3, 4, 0)).toBeCloseTo(5);
-    expect(interpolateWidth([5, 5, 5], 3, 4, 4)).toBeCloseTo(5);
-  });
-
-  it('interpolates between widths', () => {
-    const w = interpolateWidth([2, 6], 2, 4, 2);
-    expect(w).toBeCloseTo(4);
-  });
-});
-
-describe('offsetPolyline', () => {
-  it('produces left/right offsets for straight line', () => {
-    const polyline: Point2D[] = [
-      { x: 0, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }
-    ];
-    const widths = [3, 3, 3];
-    const { left, right } = offsetPolyline(polyline, widths, widths);
-    expect(left).toHaveLength(3);
-    expect(right).toHaveLength(3);
-    for (const p of left) expect(p.z).toBeCloseTo(3);
-    for (const p of right) expect(p.z).toBeCloseTo(-3);
-  });
-});
 
 describe('splineToBoundaryPolygon', () => {
   it('produces closed polygon for simple straight hole', () => {

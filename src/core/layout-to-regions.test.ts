@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { courseLayoutToRegions, courseLayoutToTopology, courseLayoutToCourseData } from './layout-to-regions';
+import { courseLayoutToCourseData } from './layout-to-regions';
 import { deriveNamedRegions, findRegionAtPosition } from './named-region';
 import type { CourseLayout } from './course-layout';
 
@@ -49,51 +49,6 @@ function makeSimpleLayout(): CourseLayout {
   };
 }
 
-describe('courseLayoutToRegions', () => {
-  it('produces regions for each shape', () => {
-    const layout = makeSimpleLayout();
-    const regions = courseLayoutToRegions(layout);
-    expect(regions).toHaveLength(4);
-    expect(regions[0].terrainCode).toBe(0);
-    expect(regions[1].terrainCode).toBe(2);
-    expect(regions[2].terrainCode).toBe(5);
-    expect(regions[3].terrainCode).toBe(3);
-  });
-
-  it('regions have valid boundaries', () => {
-    const layout = makeSimpleLayout();
-    const regions = courseLayoutToRegions(layout);
-    for (const region of regions) {
-      expect(region.boundary.length).toBeGreaterThan(2);
-      for (const p of region.boundary) {
-        expect(typeof p.x).toBe('number');
-        expect(typeof p.z).toBe('number');
-        expect(isNaN(p.x)).toBe(false);
-        expect(isNaN(p.z)).toBe(false);
-      }
-    }
-  });
-});
-
-describe('courseLayoutToTopology', () => {
-  it('produces valid topology with triangles and vertices', () => {
-    const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
-    expect(topology.vertices.length).toBeGreaterThan(0);
-    expect(topology.triangles.length).toBeGreaterThan(0);
-    expect(topology.worldWidth).toBe(60);
-    expect(topology.worldHeight).toBe(80);
-  });
-
-  it('topology contains multiple terrain codes', () => {
-    const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
-    const codes = new Set(topology.triangles.map(t => t.terrainCode));
-    expect(codes.has(0)).toBe(true);
-    expect(codes.has(1)).toBe(true);
-  });
-});
-
 describe('courseLayoutToCourseData', () => {
   it('produces valid CourseData', () => {
     const layout = makeSimpleLayout();
@@ -120,7 +75,7 @@ describe('courseLayoutToCourseData', () => {
 describe('deriveNamedRegions', () => {
   it('creates named regions from layout', () => {
     const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
+    const topology = courseLayoutToCourseData(layout).topology;
     const regions = deriveNamedRegions(layout, topology);
     expect(regions).toHaveLength(4);
     expect(regions[0].name).toBe('Fairway 1');
@@ -131,7 +86,7 @@ describe('deriveNamedRegions', () => {
 
   it('maps faces to regions', () => {
     const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
+    const topology = courseLayoutToCourseData(layout).topology;
     const regions = deriveNamedRegions(layout, topology);
     const totalMapped = regions.reduce((sum, r) => sum + r.faceIds.length, 0);
     expect(totalMapped).toBeGreaterThan(0);
@@ -143,7 +98,7 @@ describe('deriveNamedRegions', () => {
 describe('findRegionAtPosition', () => {
   it('finds region containing a point', () => {
     const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
+    const topology = courseLayoutToCourseData(layout).topology;
     const regions = deriveNamedRegions(layout, topology);
     const r = findRegionAtPosition(regions, 30, 40);
     expect(r).not.toBeNull();
@@ -152,7 +107,7 @@ describe('findRegionAtPosition', () => {
 
   it('returns null for point outside all regions', () => {
     const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
+    const topology = courseLayoutToCourseData(layout).topology;
     const regions = deriveNamedRegions(layout, topology);
     const r = findRegionAtPosition(regions, 5, 5);
     expect(r).toBeNull();
@@ -160,7 +115,7 @@ describe('findRegionAtPosition', () => {
 
   it('finds feature region that overlays hole', () => {
     const layout = makeSimpleLayout();
-    const topology = courseLayoutToTopology(layout);
+    const topology = courseLayoutToCourseData(layout).topology;
     const regions = deriveNamedRegions(layout, topology);
     const r = findRegionAtPosition(regions, 30, 62);
     expect(r).not.toBeNull();

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   createInitialWorkSystemState,
   createDefaultCourseAreas,
@@ -8,7 +8,7 @@ import {
   getWorkerPositions,
 } from './employee-work';
 import { createEmployeeEntity } from './movable-entity';
-import { createEmployee, resetEmployeeCounter } from './employees';
+import { createEmployee } from './employees';
 import { TERRAIN_CODES } from './terrain';
 import type { TerrainSystem, FaceStateSample, WorkCandidate } from '../babylon/systems/TerrainSystemInterface';
 
@@ -104,9 +104,6 @@ function createSampleWithWork(type: 'mow' | 'water' | 'fertilize' | 'bunker'): F
 }
 
 describe('employee-work', () => {
-  beforeEach(() => {
-    resetEmployeeCounter();
-  });
 
   describe('createInitialWorkSystemState', () => {
     it('creates empty state with maintenance shed position', () => {

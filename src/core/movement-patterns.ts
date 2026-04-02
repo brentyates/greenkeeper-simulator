@@ -23,7 +23,7 @@ export function generateWaypoints(
   }
 }
 
-export function generateLinearStripes(
+function generateLinearStripes(
   boundary: Point2D[],
   stripeWidth: number,
   angleDeg: number,
@@ -83,7 +83,7 @@ export function generateLinearStripes(
   return waypoints;
 }
 
-export function generateConcentricCircles(
+function generateConcentricCircles(
   boundary: Point2D[],
   ringSpacing: number,
 ): Point2D[] {
@@ -119,7 +119,7 @@ export function generateConcentricCircles(
   return waypoints;
 }
 
-export function generatePerimeterFirst(
+function generatePerimeterFirst(
   boundary: Point2D[],
   fillSpacing: number,
 ): Point2D[] {
@@ -147,7 +147,7 @@ export function generatePerimeterFirst(
   return waypoints;
 }
 
-export function generateRandomCoverage(
+function generateRandomCoverage(
   faceIds: readonly number[],
   topology?: SerializedTopology,
 ): Point2D[] {

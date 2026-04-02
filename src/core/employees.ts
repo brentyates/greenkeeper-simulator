@@ -724,27 +724,3 @@ export function getPostingCost(prestigeTier: PrestigeTier): number {
   return PRESTIGE_HIRING_CONFIG[prestigeTier].postingCost;
 }
 
-export function rejectApplication(
-  state: ApplicationState,
-  applicationId: string
-): ApplicationState | null {
-  const application = state.applications.find(a => a.id === applicationId);
-  if (!application) return null;
-
-  return {
-    ...state,
-    applications: state.applications.filter(a => a.id !== applicationId)
-  };
-}
-
-export function getTimeUntilNextApplication(state: ApplicationState, currentTime: number): number {
-  return Math.max(0, state.nextApplicationTime - currentTime);
-}
-
-export function resetEmployeeCounter(): void {
-  employeeIdCounter = 0;
-}
-
-export function resetJobPostingCounter(): void {
-  jobPostingIdCounter = 0;
-}

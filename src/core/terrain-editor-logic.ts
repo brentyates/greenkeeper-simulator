@@ -28,7 +28,7 @@ export interface EditorState {
   selectedVertices: Set<number>;
 }
 
-export interface VertexModification {
+interface VertexModification {
   vertexId: number;
   oldY: number;
   newY: number;
@@ -53,25 +53,6 @@ export function createInitialEditorState(): EditorState {
   };
 }
 
-export function selectVertex(
-  state: EditorState,
-  vertexId: number,
-  additive: boolean = false
-): void {
-  if (!additive) {
-    state.selectedVertices.clear();
-  }
-  state.selectedVertices.add(vertexId);
-}
-
-export function toggleVertex(state: EditorState, vertexId: number): void {
-  if (state.selectedVertices.has(vertexId)) {
-    state.selectedVertices.delete(vertexId);
-  } else {
-    state.selectedVertices.add(vertexId);
-  }
-}
-
 export function isVertexSelected(state: EditorState, vertexId: number): boolean {
   return state.selectedVertices.has(vertexId);
 }
@@ -88,70 +69,6 @@ export function selectAll(
 
 export function deselectAll(state: EditorState): void {
   state.selectedVertices.clear();
-}
-
-export function invertSelection(
-  state: EditorState,
-  topology: { vertices: Map<number, any> }
-): void {
-  const newSelection = new Set<number>();
-  for (const vertexId of topology.vertices.keys()) {
-    if (!state.selectedVertices.has(vertexId)) {
-      newSelection.add(vertexId);
-    }
-  }
-  state.selectedVertices = newSelection;
-}
-
-export function selectVerticesInBox(
-  state: EditorState,
-  minX: number,
-  minZ: number,
-  maxX: number,
-  maxZ: number,
-  topology: { vertices: Map<number, { position: Vec3 }> },
-  additive: boolean = false
-): void {
-  if (!additive) {
-    state.selectedVertices.clear();
-  }
-
-  const x1 = Math.min(minX, maxX);
-  const x2 = Math.max(minX, maxX);
-  const z1 = Math.min(minZ, maxZ);
-  const z2 = Math.max(minZ, maxZ);
-
-  for (const [vertexId, vertex] of topology.vertices) {
-    const pos = vertex.position;
-    if (pos.x >= x1 && pos.x <= x2 && pos.z >= z1 && pos.z <= z2) {
-      state.selectedVertices.add(vertexId);
-    }
-  }
-}
-
-export function selectVerticesInBrush(
-  state: EditorState,
-  worldX: number,
-  worldZ: number,
-  radius: number,
-  topology: { vertices: Map<number, { position: Vec3 }> },
-  additive: boolean = true
-): void {
-  if (!additive) {
-    state.selectedVertices.clear();
-  }
-  const radiusSq = radius * radius;
-  for (const [vertexId, vertex] of topology.vertices) {
-    const dx = vertex.position.x - worldX;
-    const dz = vertex.position.z - worldZ;
-    if (dx * dx + dz * dz <= radiusSq) {
-      state.selectedVertices.add(vertexId);
-    }
-  }
-}
-
-export function getSelectedVerticesList(state: EditorState): number[] {
-  return Array.from(state.selectedVertices);
 }
 
 export function isSculptTool(tool: EditorTool): tool is SculptTool {
@@ -206,7 +123,7 @@ export function getEdgesInBrush(
 }
 
 
-export function applyRaiseVertex(
+function applyRaiseVertex(
   vertexId: number,
   topology: { vertices: Map<number, { position: Vec3 }> },
   amount: number = 1
@@ -221,7 +138,7 @@ export function applyRaiseVertex(
   return { vertexId, oldY, newY };
 }
 
-export function applyLowerVertex(
+function applyLowerVertex(
   vertexId: number,
   topology: { vertices: Map<number, { position: Vec3 }> },
   amount: number = 1,
@@ -238,7 +155,7 @@ export function applyLowerVertex(
   return { vertexId, oldY, newY };
 }
 
-export function applySmoothVertices(
+function applySmoothVertices(
   vertexIds: number[],
   topology: { vertices: Map<number, { position: Vec3 }> },
   brushStrength: number = 1.0
@@ -270,7 +187,7 @@ export function applySmoothVertices(
   return modifications;
 }
 
-export function applyFlattenVertices(
+function applyFlattenVertices(
   vertexIds: number[],
   topology: { vertices: Map<number, { position: Vec3 }> },
   targetY?: number
@@ -295,7 +212,7 @@ export function applyFlattenVertices(
   return modifications;
 }
 
-export function applyLevelVertices(
+function applyLevelVertices(
   selectedVertexIds: Set<number>,
   topology: { vertices: Map<number, { position: Vec3 }> }
 ): VertexModification[] {
