@@ -1,10 +1,7 @@
-import { Direction, EquipmentSlot } from "./engine/InputManager";
-import { OverlayMode, getTerrainType } from "../core/terrain";
+import { getTerrainType } from "../core/terrain";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
-import { EquipmentManager } from "./systems/EquipmentManager";
 import { TerrainEditorSystem } from "./systems/TerrainEditorSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
-import { EntityVisualState } from "./systems/EntityVisualSystem";
 import { UIManager } from "./ui/UIManager";
 import { BabylonEngine } from "./engine/BabylonEngine";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -58,7 +55,6 @@ import {
   syncWorkersWithRoster,
   getWorkerPositions,
 } from "../core/employee-work";
-import { PlayerEntity, teleportEntity } from "../core/movable-entity";
 import {
   getActiveGolferCount,
   getAverageSatisfaction,
@@ -124,37 +120,21 @@ import {
 } from "../core/reputation";
 
 export interface GameSystems {
-  player: PlayerEntity;
-  playerVisual: EntityVisualState | null;
-  clickToMoveWaypoints: Array<{ x: number; z: number }>;
-  lastEquipmentFaceId: number | null;
-  getPlayer(): PlayerEntity;
-  setPlayer(player: PlayerEntity): void;
-  getPlayerVisual(): EntityVisualState | null;
-  getClickToMoveWaypoints(): Array<{ x: number; z: number }>;
-  setClickToMoveWaypoints(waypoints: Array<{ x: number; z: number }>): void;
-  getLastEquipmentFaceId(): number | null;
-  setLastEquipmentFaceId(faceId: number | null): void;
-  equipmentManager: EquipmentManager;
   terrainSystem: TerrainSystem;
   terrainEditorSystem: TerrainEditorSystem | null;
   irrigationRenderSystem: IrrigationRenderSystem | null;
   uiManager: UIManager;
   babylonEngine: BabylonEngine;
   teeSheetViewDay: number;
-  handleMove(direction: Direction): void;
   handleEmployeePanel(): void;
   handleResearchPanel(): void;
   handleTeeSheetPanel(): void;
   handleOverlayCycle(): void;
-  handleRefill(): void;
   handleMute(): void;
-  isPlayerMoving(): boolean;
   pauseGame(): void;
   resumeGame(): void;
   updateEconomySystems(deltaMs: number): void;
   updateIrrigationVisibility(): void;
-  updatePlayerPosition(): void;
   saveCurrentGame(): void;
   hasSavedGame(): boolean;
   showRobotInspector(robot: RobotUnit): void;
@@ -165,33 +145,6 @@ export interface GameSystems {
 
 export class GameAPI {
   constructor(private state: GameState, private systems: GameSystems) {}
-
-  public teleport(x: number, y: number): void {
-    const course = this.state.currentCourse;
-    if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
-
-      return;
-    }
-
-    this.systems.setPlayer({
-      ...teleportEntity(this.systems.getPlayer(), x, y),
-      worldX: x + 0.5,
-      worldZ: y + 0.5,
-    });
-    this.systems.setClickToMoveWaypoints([]);
-    this.systems.setLastEquipmentFaceId(null);
-
-    const playerVisual = this.systems.getPlayerVisual();
-    if (playerVisual) {
-      playerVisual.lastGridX = x;
-      playerVisual.lastGridY = y;
-      playerVisual.targetGridX = x;
-      playerVisual.targetGridY = y;
-      playerVisual.visualProgress = 1;
-    }
-
-    this.systems.updatePlayerPosition();
-  }
 
   public setRunning(running: boolean): void {
     if (running) {
@@ -377,116 +330,6 @@ export class GameAPI {
     return true;
   }
 
-  public movePlayer(
-    direction: "up" | "down" | "left" | "right" | "w" | "a" | "s" | "d"
-  ): void {
-    const dirMap: Record<string, Direction> = {
-      up: "up",
-      w: "up",
-      down: "down",
-      s: "down",
-      left: "left",
-      a: "left",
-      right: "right",
-      d: "right",
-    };
-    const dir = dirMap[direction];
-    if (dir) {
-      this.systems.handleMove(dir);
-    }
-  }
-
-  public getPlayerPosition(): { x: number; y: number } {
-    const player = this.systems.getPlayer();
-    return { x: player.gridX, y: player.gridY };
-  }
-
-  public selectEquipment(slot: 1 | 2 | 3): void {
-    const wasSelected = this.systems.equipmentManager.getSelected();
-    this.systems.equipmentManager.handleSlot(slot);
-    const nowSelected = this.systems.equipmentManager.getSelected();
-
-    if (nowSelected !== null && nowSelected !== wasSelected) {
-      const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
-        1: null,
-        2: "moisture",
-        3: "nutrients",
-      };
-      const targetOverlay = overlayMap[slot];
-      if (targetOverlay && this.systems.terrainSystem.getOverlayMode() !== targetOverlay) {
-        this.systems.terrainSystem.setOverlayMode(targetOverlay);
-        this.systems.uiManager.updateOverlayLegend(targetOverlay);
-        this.state.overlayAutoSwitched = true;
-        this.systems.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.state.overlayAutoSwitched) {
-        this.systems.terrainSystem.setOverlayMode("normal");
-        this.systems.uiManager.updateOverlayLegend("normal");
-        this.state.overlayAutoSwitched = false;
-        this.systems.updateIrrigationVisibility();
-      }
-    } else if (nowSelected === null && this.state.overlayAutoSwitched) {
-      this.systems.terrainSystem.setOverlayMode("normal");
-      this.systems.uiManager.updateOverlayLegend("normal");
-      this.state.overlayAutoSwitched = false;
-      this.systems.updateIrrigationVisibility();
-    }
-  }
-
-  public toggleEquipment(): void {
-    const selected = this.systems.equipmentManager.getSelected();
-    if (selected === null) return;
-
-    const slotMap: Record<string, 1 | 2 | 3> = {
-      mower: 1,
-      sprinkler: 2,
-      spreader: 3,
-    };
-    this.selectEquipment(slotMap[selected]);
-  }
-
-  public getEquipmentState(): {
-    selectedSlot: number | null;
-    mower: { active: boolean; resource: number; max: number } | null;
-    sprinkler: { active: boolean; resource: number; max: number } | null;
-    spreader: { active: boolean; resource: number; max: number } | null;
-  } {
-    const mowerState = this.systems.equipmentManager.getState("mower");
-    const sprinklerState = this.systems.equipmentManager.getState("sprinkler");
-    const spreaderState = this.systems.equipmentManager.getState("spreader");
-
-    const selected = this.systems.equipmentManager.getSelected();
-    const slotMap: Record<string, number> = {
-      mower: 0,
-      sprinkler: 1,
-      spreader: 2,
-    };
-
-    return {
-      selectedSlot: selected ? slotMap[selected] : null,
-      mower: mowerState
-        ? {
-            active: selected === "mower",
-            resource: mowerState.resourceCurrent,
-            max: mowerState.resourceMax,
-          }
-        : null,
-      sprinkler: sprinklerState
-        ? {
-            active: selected === "sprinkler",
-            resource: sprinklerState.resourceCurrent,
-            max: sprinklerState.resourceMax,
-          }
-        : null,
-      spreader: spreaderState
-        ? {
-            active: selected === "spreader",
-            resource: spreaderState.resourceCurrent,
-            max: spreaderState.resourceMax,
-          }
-        : null,
-    };
-  }
-
   public setTerrainEditor(enabled: boolean): void {
     if (!this.systems.terrainEditorSystem) return;
     if (enabled) {
@@ -632,19 +475,6 @@ export class GameAPI {
     return this.systems.terrainSystem.getOverlayMode();
   }
 
-  public async waitForPlayerIdle(): Promise<void> {
-    return new Promise((resolve) => {
-      const checkIdle = () => {
-        if (!this.systems.isPlayerMoving()) {
-          resolve();
-        } else {
-          setTimeout(checkIdle, 16);
-        }
-      };
-      checkIdle();
-    });
-  }
-
   public toggleEmployeePanel(): void {
     this.systems.handleEmployeePanel();
   }
@@ -659,10 +489,6 @@ export class GameAPI {
 
   public cycleOverlay(): void {
     this.systems.handleOverlayCycle();
-  }
-
-  public refillEquipment(): void {
-    this.systems.handleRefill();
   }
 
   public toggleMute(): void {
@@ -701,22 +527,13 @@ export class GameAPI {
   }
 
   public getFullGameState(): {
-    player: { x: number; y: number; isMoving: boolean };
-    equipment: ReturnType<GameAPI["getEquipmentState"]>;
     time: { day: number; hours: number; minutes: number };
     economy: ReturnType<GameAPI["getEconomyState"]>;
     terrain: { width: number; height: number };
     editorEnabled: boolean;
   } {
     const dims = this.systems.terrainSystem.getWorldDimensions();
-    const player = this.systems.getPlayer();
     return {
-      player: {
-        x: player.worldX,
-        y: player.worldZ,
-        isMoving: this.systems.isPlayerMoving(),
-      },
-      equipment: this.getEquipmentState(),
       time: {
         day: this.state.gameDay,
         hours: Math.floor(this.state.gameTime / 60),
@@ -925,13 +742,6 @@ export class GameAPI {
     return this.systems.terrainSystem.getCourseStats();
   }
 
-  public setEquipmentResource(
-    type: "mower" | "sprinkler" | "spreader",
-    amount: number
-  ): void {
-    this.systems.equipmentManager.setResource(type, amount);
-  }
-
   public advanceTimeByMinutes(minutes: number): void {
     const deltaMs = minutes * 60 * 1000 / this.state.timeScale;
     this.state.gameTime += (deltaMs / 1000) * 2 * this.state.timeScale;
@@ -1107,9 +917,6 @@ export class GameAPI {
     return this.state.scenarioManager.getProgress();
   }
 
-  public hasActiveParticles(): boolean {
-    return this.systems.equipmentManager.hasParticles();
-  }
 
   public getUIState(): {
     isPaused: boolean;
@@ -1138,41 +945,6 @@ export class GameAPI {
     }));
   }
 
-  public refillAtCurrentPosition(): { success: boolean; cost: number } {
-    const player = this.systems.getPlayer();
-    const playerPos = { x: player.gridX, y: player.gridY };
-    const isAtStation = this.getResolvedRefillStations().some(
-      (station) => station.x === playerPos.x && station.y === playerPos.y
-    );
-
-    if (!isAtStation) {
-      return { success: false, cost: 0 };
-    }
-
-    const cost = this.systems.equipmentManager.refill();
-    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
-    const expenseResult = addExpense(
-      this.state.economyState,
-      cost,
-      "supplies",
-      "Equipment refill",
-      timestamp,
-      false
-    );
-    if (expenseResult) {
-      this.state.economyState = expenseResult;
-    }
-
-    return { success: true, cost };
-  }
-
-  public isAtRefillStation(): boolean {
-    const player = this.systems.getPlayer();
-    const playerPos = { x: player.gridX, y: player.gridY };
-    return this.getResolvedRefillStations().some(
-      (station) => station.x === playerPos.x && station.y === playerPos.y
-    );
-  }
 
   public getRefillStations(): Array<{ x: number; y: number }> {
     return this.getResolvedRefillStations();

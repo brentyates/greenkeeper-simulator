@@ -16,17 +16,7 @@ export interface MovableEntity {
   readonly moveProgress: number;
 }
 
-export type EntityType = 'player' | 'employee' | 'golfer';
-
-export interface PlayerEntity extends MovableEntity {
-  readonly entityType: 'player';
-  readonly efficiency: number;
-  readonly pendingDirection: 'up' | 'down' | 'left' | 'right' | null;
-  readonly equipmentSlot: number;
-  readonly equipmentActive: boolean;
-  readonly worldX: number;
-  readonly worldZ: number;
-}
+export type EntityType = 'employee' | 'golfer';
 
 export type EmployeeTask =
   | 'mow_grass'
@@ -62,11 +52,7 @@ export interface EmployeeMoveResult {
   readonly blocked: boolean;
 }
 
-export type AnyEntity = PlayerEntity | EmployeeEntity | GolferEntity;
-
-export function isPlayer(entity: MovableEntity & { entityType?: EntityType }): entity is PlayerEntity {
-  return (entity as PlayerEntity).entityType === 'player';
-}
+export type AnyEntity = EmployeeEntity | GolferEntity;
 
 export function isEmployee(entity: MovableEntity & { entityType?: EntityType }): entity is EmployeeEntity {
   return (entity as EmployeeEntity).entityType === 'employee';
@@ -74,28 +60,6 @@ export function isEmployee(entity: MovableEntity & { entityType?: EntityType }):
 
 export function isGolfer(entity: MovableEntity & { entityType?: EntityType }): entity is GolferEntity {
   return (entity as GolferEntity).entityType === 'golfer';
-}
-
-export function createPlayerEntity(
-  id: string,
-  gridX: number,
-  gridY: number,
-  efficiency: number = 1.0
-): PlayerEntity {
-  return {
-    id,
-    entityType: 'player',
-    gridX,
-    gridY,
-    path: [],
-    moveProgress: 0,
-    efficiency,
-    pendingDirection: null,
-    equipmentSlot: 0,
-    equipmentActive: false,
-    worldX: gridX + 0.5,
-    worldZ: gridY + 0.5,
-  };
 }
 
 export function createEmployeeEntity(
@@ -192,7 +156,6 @@ export function createGolferEntity(
 
 export const MOVE_SPEED = 3.0;
 export const MOVE_DURATION_MS = 150;
-export const PLAYER_BASE_SPEED = 6.5;
 
 export function getNextPosition(entity: MovableEntity): GridPosition | null {
   return entity.path.length > 0 ? entity.path[0] : null;

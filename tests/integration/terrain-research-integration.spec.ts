@@ -122,20 +122,12 @@ test.describe('Terrain System Integration', () => {
     });
 
     test('mowing affects terrain', async ({ page }) => {
-      const pos = await page.evaluate(() => window.game.getPlayerPosition());
-
       await page.evaluate(() => {
         window.game.selectEquipment(1);
         window.game.toggleEquipment();
       });
 
-      await page.evaluate(() => window.game.movePlayer('right'));
-      await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
-
-      const cell = await page.evaluate(
-        ({ x, y }) => window.game.getTerrainAt(x + 1, y),
-        pos
-      );
+      const cell = await page.evaluate(() => window.game.getTerrainAt(25, 19));
 
       if (cell) {
         expect(cell.lastMowed).toBeGreaterThanOrEqual(0);
@@ -145,20 +137,12 @@ test.describe('Terrain System Integration', () => {
 
   test.describe('Terrain Modifications', () => {
     test('watering affects terrain moisture', async ({ page }) => {
-      const pos = await page.evaluate(() => window.game.getPlayerPosition());
-
       await page.evaluate(() => {
         window.game.selectEquipment(2);
         window.game.toggleEquipment();
       });
 
-      await page.evaluate(() => window.game.movePlayer('right'));
-      await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
-
-      const after = await page.evaluate(
-        ({ x, y }) => window.game.getTerrainAt(x + 1, y),
-        pos
-      );
+      const after = await page.evaluate(() => window.game.getTerrainAt(25, 19));
 
       if (after) {
         expect(after.moisture).toBeGreaterThanOrEqual(0);
@@ -167,20 +151,12 @@ test.describe('Terrain System Integration', () => {
     });
 
     test('fertilizing affects nutrients', async ({ page }) => {
-      const pos = await page.evaluate(() => window.game.getPlayerPosition());
-
       await page.evaluate(() => {
         window.game.selectEquipment(3);
         window.game.toggleEquipment();
       });
 
-      await page.evaluate(() => window.game.movePlayer('right'));
-      await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
-
-      const cell = await page.evaluate(
-        ({ x, y }) => window.game.getTerrainAt(x + 1, y),
-        pos
-      );
+      const cell = await page.evaluate(() => window.game.getTerrainAt(25, 19));
 
       if (cell) {
         expect(cell.nutrients).toBeGreaterThanOrEqual(0);

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   // Types
   EconomyState,
@@ -45,8 +45,6 @@ import {
 
   // Utility functions
   formatCurrency,
-  resetTransactionCounter,
-  resetLoanCounter
 } from "./economy";
 
 // ============================================================================
@@ -93,10 +91,6 @@ function makeTransaction(overrides: Partial<Transaction> = {}): Transaction {
 // ============================================================================
 
 describe("Economy System", () => {
-  beforeEach(() => {
-    resetTransactionCounter();
-    resetLoanCounter();
-  });
 
   // ==========================================================================
   // Constants Tests

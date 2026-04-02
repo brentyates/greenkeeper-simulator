@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createPlayerEntity,
   createEmployeeEntity,
   createGolferEntity,
-  isPlayer,
   isEmployee,
   isGolfer,
   getNextPosition,
@@ -11,38 +9,12 @@ import {
   moveEntityAlongPath,
   setEntityPath,
   teleportEntity,
-  PlayerEntity,
   EmployeeEntity,
   GolferEntity,
   MOVE_SPEED,
-  PLAYER_BASE_SPEED,
 } from './movable-entity';
 
 describe('movable-entity', () => {
-  describe('createPlayerEntity', () => {
-    it('creates a player with default values', () => {
-      const player = createPlayerEntity('player1', 10, 20);
-
-      expect(player.id).toBe('player1');
-      expect(player.entityType).toBe('player');
-      expect(player.gridX).toBe(10);
-      expect(player.gridY).toBe(20);
-      expect(player.path).toEqual([]);
-      expect(player.moveProgress).toBe(0);
-      expect(player.efficiency).toBe(1.0);
-      expect(player.pendingDirection).toBeNull();
-      expect(player.equipmentSlot).toBe(0);
-      expect(player.equipmentActive).toBe(false);
-      expect(player.worldX).toBe(10.5);
-      expect(player.worldZ).toBe(20.5);
-    });
-
-    it('creates a player with custom efficiency', () => {
-      const player = createPlayerEntity('player1', 5, 5, 1.5);
-      expect(player.efficiency).toBe(1.5);
-    });
-  });
-
   describe('createEmployeeEntity', () => {
     it('creates an employee with default values', () => {
       const employee = createEmployeeEntity('emp1', 15, 25);
@@ -84,23 +56,14 @@ describe('movable-entity', () => {
   });
 
   describe('type guards', () => {
-    it('isPlayer returns true for player entities', () => {
-      const player = createPlayerEntity('player1', 0, 0);
-      expect(isPlayer(player)).toBe(true);
-      expect(isEmployee(player)).toBe(false);
-      expect(isGolfer(player)).toBe(false);
-    });
-
     it('isEmployee returns true for employee entities', () => {
       const employee = createEmployeeEntity('emp1', 0, 0);
-      expect(isPlayer(employee)).toBe(false);
       expect(isEmployee(employee)).toBe(true);
       expect(isGolfer(employee)).toBe(false);
     });
 
     it('isGolfer returns true for golfer entities', () => {
       const golfer = createGolferEntity('golfer1', 0, 0);
-      expect(isPlayer(golfer)).toBe(false);
       expect(isEmployee(golfer)).toBe(false);
       expect(isGolfer(golfer)).toBe(true);
     });
@@ -108,13 +71,13 @@ describe('movable-entity', () => {
 
   describe('getNextPosition', () => {
     it('returns null for empty path', () => {
-      const entity = createPlayerEntity('player1', 0, 0);
+      const entity = createEmployeeEntity('emp1', 0, 0);
       expect(getNextPosition(entity)).toBeNull();
     });
 
     it('returns first path position', () => {
-      const entity: PlayerEntity = {
-        ...createPlayerEntity('player1', 0, 0),
+      const entity: EmployeeEntity = {
+        ...createEmployeeEntity('emp1', 0, 0),
         path: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
       };
       expect(getNextPosition(entity)).toEqual({ x: 1, y: 0 });
@@ -151,7 +114,7 @@ describe('movable-entity', () => {
 
   describe('moveEntityAlongPath', () => {
     it('does nothing for empty path', () => {
-      const entity = createPlayerEntity('player1', 5, 5);
+      const entity = createEmployeeEntity('emp1', 5, 5);
       const moved = moveEntityAlongPath(entity, 0.1);
 
       expect(moved.gridX).toBe(5);
@@ -160,8 +123,8 @@ describe('movable-entity', () => {
     });
 
     it('increases move progress during movement', () => {
-      const entity: PlayerEntity = {
-        ...createPlayerEntity('player1', 0, 0),
+      const entity: EmployeeEntity = {
+        ...createEmployeeEntity('emp1', 0, 0),
         path: [{ x: 1, y: 0 }],
         moveProgress: 0.01,
       };
@@ -216,8 +179,8 @@ describe('movable-entity', () => {
 
   describe('teleportEntity', () => {
     it('moves entity to new position and clears path', () => {
-      const entity: PlayerEntity = {
-        ...createPlayerEntity('player1', 0, 0),
+      const entity: EmployeeEntity = {
+        ...createEmployeeEntity('emp1', 0, 0),
         path: [{ x: 1, y: 0 }],
         moveProgress: 0.5,
       };
@@ -234,20 +197,6 @@ describe('movable-entity', () => {
   describe('MOVE_SPEED', () => {
     it('is defined and positive', () => {
       expect(MOVE_SPEED).toBeGreaterThan(0);
-    });
-  });
-
-  describe('PLAYER_BASE_SPEED', () => {
-    it('is defined and positive', () => {
-      expect(PLAYER_BASE_SPEED).toBeGreaterThan(0);
-    });
-  });
-
-  describe('world coordinates', () => {
-    it('creates player with cell-center world coordinates', () => {
-      const player = createPlayerEntity('player1', 3, 7);
-      expect(player.worldX).toBe(3.5);
-      expect(player.worldZ).toBe(7.5);
     });
   });
 });

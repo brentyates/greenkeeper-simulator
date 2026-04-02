@@ -561,7 +561,7 @@ The designer UI coordinates between:
 |------|----------------|
 | `src/core/mesh-topology.ts` | Data structures and operations |
 | `src/core/terrain-editor-logic.ts` | Sculpting algorithms |
-| `src/babylon/systems/VectorTerrainSystem.ts` | 3D mesh rendering |
+| `src/babylon/systems/TerrainMeshSystem.ts` | 3D mesh rendering |
 | `src/babylon/systems/TerrainEditorSystem.ts` | Editor coordination |
 
 ---

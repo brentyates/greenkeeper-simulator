@@ -10,7 +10,6 @@ import { Button } from '@babylonjs/gui/2D/controls/button';
 import { Vector2WithInfo } from '@babylonjs/gui/2D/math2D';
 import { UI_THEME } from './UITheme';
 
-import { EquipmentType } from '../../core/equipment-logic';
 import { PrestigeState, getStarDisplay, TIER_LABELS } from '../../core/prestige';
 import { OverlayMode } from '../../core/terrain';
 import { FocusManager } from './FocusManager';
@@ -44,7 +43,6 @@ export class UIManager {
   private nutrientsBar!: Rectangle;
   private nutrientsText!: TextBlock;
 
-  private equipmentSlots: Rectangle[] = [];
 
   private dayText!: TextBlock;
   private timeText!: TextBlock;
@@ -449,19 +447,6 @@ export class UIManager {
     return grid;
   }
 
-  private updateEquipmentSelection(index: number): void {
-    this.equipmentSlots.forEach((slot, i) => {
-      if (i === index) {
-        slot.color = UI_THEME.colors.legacy.c_7fff7f;
-        slot.thickness = 3;
-        slot.background = UI_THEME.colors.legacy.c_2a5a3a;
-      } else {
-        slot.color = UI_THEME.colors.legacy.c_3a5a4a;
-        slot.thickness = 2;
-        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
-      }
-    });
-  }
 
   private createTimePanel(): void {
     const panel = new Rectangle('timePanel');
@@ -1938,32 +1923,6 @@ export class UIManager {
     const width = Math.max(0, Math.min(100, percent)) * 0.7;
     bar.width = `${width}px`;
     bar.background = color;
-  }
-
-  public updateEquipment(type: EquipmentType | null, isActive: boolean): void {
-    if (this.equipmentSlots.length === 0) {
-      return;
-    }
-    if (type === null) {
-      this.equipmentSlots.forEach((slot) => {
-        slot.color = UI_THEME.colors.legacy.c_666666;
-        slot.thickness = 1;
-        slot.background = UI_THEME.colors.legacy.c_1a3a2a;
-        slot.alpha = 0.7;
-      });
-      return;
-    }
-
-    const typeIndex: Record<EquipmentType, number> = {
-      mower: 0,
-      sprinkler: 1,
-      spreader: 2,
-    };
-    this.updateEquipmentSelection(typeIndex[type]);
-
-    if (isActive) {
-      this.equipmentSlots[typeIndex[type]].alpha = 1;
-    }
   }
 
   public updateResources(fuel: number, water: number, fert: number): void {

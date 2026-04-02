@@ -1,7 +1,7 @@
 # Future Systems & Strategic Depth Considerations
 
 **Status:** Future Consideration
-**Last Updated:** 2026-01-04
+**Last Updated:** 2026-04-02
 **Purpose:** This document captures potential systems and gameplay elements that could enhance strategic depth and challenge in future iterations.
 
 ---
@@ -19,26 +19,18 @@
 
 ### 1. Weather System (High Impact)
 
-**Current State:** Not documented or implemented.
-
-**Proposed System:**
-- **Rain Events:** Increase moisture rapidly, reduce need for watering but may cause over-saturation
-- **Drought Periods:** Accelerate moisture decay, increase watering costs
-- **Temperature Effects:** Hot weather increases evaporation rates, cold weather slows grass growth
-- **Wind:** Affects sprinkler efficiency and coverage patterns
-- **Frost/Snow:** Halts growth, prevents mowing, potential damage to grass
-
-**Strategic Impact:**
-- Forces reactive decision-making (can't just optimize once and repeat)
-- Weather forecasting becomes valuable (3-7 day predictions)
-- Emergency responses required (frost protection, drainage management)
-- Seasonal equipment needs (drainage tiles, frost blankets)
-
-**Integration Points:**
-- Course Maintenance: Weather modifies moisture/nutrient decay rates
-- Equipment: New weather-specific equipment (drainage systems, frost protection)
-- Economy: Weather damage creates repair costs, insurance options
-- Research: Weather prediction accuracy, drought-resistant varieties
+> **IMPLEMENTED:** The core weather system is implemented in `src/core/weather.ts`. It includes:
+> - Seasonal modifiers (spring/summer/fall/winter) with temperature, rain chance, and storm chance
+> - Weather state management with current conditions and multi-day forecasts
+> - Weather condition generation based on seasonal probabilities
+> - Integration with the golfer system via `WeatherCondition`
+>
+> **Remaining future work:**
+> - Wind effects on sprinkler efficiency and coverage patterns
+> - Frost/snow mechanics (halting growth, preventing mowing, damage)
+> - Weather-specific equipment (drainage systems, frost protection)
+> - Weather damage creating repair costs, insurance options
+> - Research integration for weather prediction accuracy and drought-resistant varieties
 
 ---
 
@@ -74,7 +66,7 @@ Risk = (Conditions Favorability) × (Prevention Investment⁻¹) × (Spread Rate
 
 ### 3. Seasonal Cycles (High Impact)
 
-**Current State:** Partially mentioned in ECONOMY_SYSTEM_SPEC.md but not fully designed.
+**Current State:** Basic seasonal framework exists in `weather.ts` (`getSeasonFromDay()` maps game days to spring/summer/fall/winter with temperature and precipitation modifiers). Full seasonal gameplay effects are not yet designed.
 
 **Proposed System:**
 - **Four Seasons:** Spring (growth surge), Summer (peak play), Fall (transition), Winter (dormancy)
@@ -592,9 +584,9 @@ interface MembershipManagement {
 
 ### Current Gaps
 
-**Dynamic Strategy (Weak):**
-- No reactive systems (weather, disease, competition)
-- No randomness or uncertainty to respond to
+**Dynamic Strategy (Emerging):**
+- Weather system implemented (seasons, forecasts, conditions) but gameplay effects still limited
+- No disease/pest or competition systems yet
 - No crisis management or contingency planning needed
 - Limited replay variability
 
@@ -627,12 +619,12 @@ interface MembershipManagement {
 ### Tier 1: High Impact, Core Experience Enhancers
 **Recommend for near-term consideration**
 
-1. **Weather System**
+1. **Weather System** *(Core implemented in `weather.ts` -- extend with gameplay effects)*
    - **Why:** Adds dynamic challenge without new UI complexity
-   - **Effort:** Medium (modify decay rates, add weather events)
+   - **Effort:** Low-Medium (core exists; add effects on decay rates, equipment, economy)
    - **Impact:** Transforms static optimization into reactive management
 
-2. **Seasonal Cycles**
+2. **Seasonal Cycles** *(Framework exists in `weather.ts` -- extend with gameplay effects)*
    - **Why:** Creates natural planning cycles and variety
    - **Effort:** Medium (modify growth rates, demand curves)
    - **Impact:** Adds replay value and annual rhythm

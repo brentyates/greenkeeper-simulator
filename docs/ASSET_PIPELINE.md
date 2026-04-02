@@ -33,13 +33,12 @@ src/babylon/assets/
   PlaceholderMeshes.ts  # Fallback for missing GLB files
 
 public/assets/models/
-  characters/           # Player, employees, golfers
-  equipment/            # Mowers, sprinklers, spreaders
-  irrigation/           # Pipes, sprinkler heads, valves
-  trees/                # All tree varieties and sizes
   buildings/            # Clubhouse, sheds, stations
-  props/                # Flags, markers, decorations
-  golf/                 # Balls, tees, cups
+  characters/           # Player, employees, golfers
+  course/               # Flags, markers, tee markers, hole cups
+  equipments/           # Mowers, sprinklers, spreaders, rakes
+  trees/                # All tree varieties and sizes
+  vehicles/             # Riding mowers, carts, utility vehicles
 
 tools/blender/
   ASSET_CONVENTIONS.md  # Modeling guidelines
@@ -85,15 +84,25 @@ This allows full gameplay development while art assets are in progress.
 
 ## Asset Categories
 
+Assets are organized by category using dot-notation IDs. See `AssetManifest.ts` for the full list. The naming convention is `category.type[.variant]`:
+
 | Category | ID Pattern | Example |
 |----------|------------|---------|
 | Characters | `character.*` | `character.greenkeeper` |
 | Trees | `tree.[species].[size]` | `tree.oak.medium` |
-| Equipment | `equipment.*` | `equipment.mower` |
+| Shrubs | `shrub.*` | `shrub.hedge` |
+| Flowers | `flower.*` | `flower.bed.mixed` |
+| Equipment | `equipment.*` | `equipment.mower.push` |
+| Vehicles | `vehicle.*` | `vehicle.mower.riding` |
 | Irrigation | `irrigation.*` | `irrigation.pipe.straight` |
-| Buildings | `building.*` | `building.clubhouse.tier2` |
-| Props | `prop.*` | `prop.flag` |
-| Golf | `golf.*` | `golf.ball` |
+| Course Features | `course.*` | `course.flag` |
+| Amenities | `amenity.*` | `amenity.bench` |
+| Buildings | `building.*` | `building.clubhouse.small` |
+| Decorative | `decor.*` | `decor.rock.small` |
+| Fencing | `fence.*` | `fence.wood.section` |
+| Bridges & Paths | `bridge.*` / `path.*` | `bridge.wood.small` |
+| Water Features | `water.*` | `water.fountain.aerator` |
+| Wildlife | `wildlife.*` | `wildlife.bird.bath` |
 
 ## Blender Conventions Summary
 
