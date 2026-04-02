@@ -328,10 +328,7 @@ void main() {
 }
 `;
 
-/**
- * Default terrain colors (can be customized)
- */
-export const defaultTerrainColors = {
+const defaultTerrainColors = {
   rough: { r: 0.35, g: 0.55, b: 0.25 },
   fairway: { r: 0.4, g: 0.7, b: 0.3 },
   green: { r: 0.3, g: 0.8, b: 0.35 },
@@ -341,10 +338,7 @@ export const defaultTerrainColors = {
   tee: { r: 0.35, g: 0.65, b: 0.3 },
 };
 
-/**
- * Shader uniform configuration helper
- */
-export interface TerrainShaderUniforms {
+interface TerrainShaderUniforms {
   worldSize: [number, number];
   time: number;
   overlayMode: number;
