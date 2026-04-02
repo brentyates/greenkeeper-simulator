@@ -7,6 +7,7 @@ import { AssetPlacementSystem } from './systems/AssetPlacementSystem';
 import { TerrainEditorUI } from './ui/TerrainEditorUI';
 import { AssetBrowserUI } from './ui/AssetBrowserUI';
 import { OverlayPanelUI } from './ui/OverlayPanelUI';
+import { UI_THEME } from './ui/UITheme';
 import { createFileInput, loadImageAsTexture } from './utils/imageOverlayLoader';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture';
@@ -99,7 +100,7 @@ export class CourseDesigner {
     this.terrainEditorSystem = this.setupTerrainEditor();
     this.assetPlacementSystem = new AssetPlacementSystem(scene, {
       onSelect: (asset) => this.handleAssetSelect(asset),
-      onPlace: () => {},
+      onPlace: () => this.updateActiveHoleLabel(this.assetPlacementSystem.getActiveHoleNumber()),
       onHoleNumberChange: (holeNumber) => this.updateActiveHoleLabel(holeNumber),
       getTerrainElevation: (wx, wz) => this.getTerrainElevation(wx, wz),
     });
@@ -315,6 +316,7 @@ export class CourseDesigner {
         this.overlayFlipY = false;
         this.overlayRotation = 0;
         this.overlayPanelUI?.resetControls();
+        this.overlayPanelUI?.setLoadedState(false);
       },
     });
 
@@ -336,6 +338,7 @@ export class CourseDesigner {
         this.terrainMeshSystem.setImageOverlayOpacity(this.overlayOpacity / 100);
 
         this.overlayPanelUI?.resetControls();
+        this.overlayPanelUI?.setLoadedState(true);
         this.overlayPanelUI?.show();
       });
     });
@@ -360,20 +363,20 @@ export class CourseDesigner {
 
     this.courseNameText = new TextBlock('courseName');
     this.courseNameText.text = this.courseData.name;
-    this.courseNameText.color = '#7FFF7F';
-    this.courseNameText.fontSize = 14;
-    this.courseNameText.fontFamily = 'Arial, sans-serif';
-    this.courseNameText.width = '200px';
+    this.courseNameText.color = UI_THEME.colors.text.success;
+    this.courseNameText.fontSize = 16;
+    this.courseNameText.fontFamily = UI_THEME.typography.fontFamily;
+    this.courseNameText.width = '240px';
     this.courseNameText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     this.courseNameText.paddingLeft = '15px';
     row.addControl(this.courseNameText);
 
     const dimText = new TextBlock('dimText');
     dimText.text = `${this.courseData.width}x${this.courseData.height}`;
-    dimText.color = '#88aa88';
+    dimText.color = UI_THEME.colors.text.secondary;
     dimText.fontSize = 11;
-    dimText.fontFamily = 'Arial, sans-serif';
-    dimText.width = '80px';
+    dimText.fontFamily = UI_THEME.typography.fontFamily;
+    dimText.width = '84px';
     row.addControl(dimText);
 
     const spacer = new Rectangle();
@@ -392,11 +395,11 @@ export class CourseDesigner {
     this.createHoleStepButton(row, '-', () => this.changeActiveHole(-1));
 
     this.holeNumberText = new TextBlock('activeHoleLabel');
-    this.holeNumberText.text = 'Hole: 1';
-    this.holeNumberText.color = '#c9f2c9';
+    this.holeNumberText.text = 'Active Hole 1';
+    this.holeNumberText.color = UI_THEME.colors.text.primary;
     this.holeNumberText.fontSize = 11;
-    this.holeNumberText.fontFamily = 'Arial, sans-serif';
-    this.holeNumberText.width = '75px';
+    this.holeNumberText.fontFamily = UI_THEME.typography.fontFamily;
+    this.holeNumberText.width = '92px';
     this.holeNumberText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     row.addControl(this.holeNumberText);
 
@@ -412,20 +415,23 @@ export class CourseDesigner {
   private createToolbarButton(parent: StackPanel, label: string, active: boolean): Rectangle {
     const btn = new Rectangle(`tb_${label}`);
     btn.width = '80px';
-    btn.height = '30px';
-    btn.cornerRadius = 4;
-    btn.background = active ? '#2a5a3a' : '#1a2a20';
-    btn.color = active ? '#7FFF7F' : '#4a6a5a';
-    btn.thickness = 1;
+    btn.height = '32px';
+    btn.cornerRadius = UI_THEME.radii.scale.r4;
+    btn.background = active ? UI_THEME.colors.launch.cardSelected : UI_THEME.colors.editor.buttonBase;
+    btn.color = active ? UI_THEME.colors.launch.selectedBorder : UI_THEME.colors.border.muted;
+    btn.thickness = 2;
     btn.paddingLeft = '4px';
     btn.paddingRight = '4px';
     btn.isPointerBlocker = true;
+    btn.shadowColor = UI_THEME.colors.effects.shadow;
+    btn.shadowBlur = 6;
+    btn.shadowOffsetY = 2;
 
     const text = new TextBlock();
     text.text = label;
-    text.color = active ? '#7FFF7F' : '#aaccaa';
+    text.color = active ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
     text.fontSize = 11;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
     text.isPointerBlocker = false;
     btn.addControl(text);
 
@@ -436,20 +442,23 @@ export class CourseDesigner {
   private createToolbarActionButton(parent: StackPanel, label: string, bg: string, onClick: () => void): void {
     const btn = new Rectangle(`tb_${label}`);
     btn.width = '65px';
-    btn.height = '30px';
-    btn.cornerRadius = 4;
+    btn.height = '32px';
+    btn.cornerRadius = UI_THEME.radii.scale.r4;
     btn.background = bg;
-    btn.color = '#7FFF7F';
-    btn.thickness = 1;
+    btn.color = UI_THEME.colors.border.strong;
+    btn.thickness = 2;
     btn.paddingLeft = '4px';
     btn.paddingRight = '4px';
     btn.isPointerBlocker = true;
+    btn.shadowColor = UI_THEME.colors.effects.shadow;
+    btn.shadowBlur = 6;
+    btn.shadowOffsetY = 2;
 
     const text = new TextBlock();
     text.text = label;
-    text.color = 'white';
+    text.color = UI_THEME.colors.text.primary;
     text.fontSize = 11;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
     text.isPointerBlocker = false;
     btn.addControl(text);
 
@@ -462,19 +471,19 @@ export class CourseDesigner {
 
   private createHoleStepButton(parent: StackPanel, label: string, onClick: () => void): void {
     const btn = new Rectangle(`holeBtn_${label}`);
-    btn.width = '24px';
-    btn.height = '24px';
-    btn.cornerRadius = 4;
-    btn.background = '#1f3f2b';
-    btn.color = '#5f8f6f';
-    btn.thickness = 1;
+    btn.width = '26px';
+    btn.height = '26px';
+    btn.cornerRadius = UI_THEME.radii.scale.r4;
+    btn.background = UI_THEME.colors.editor.buttonBase;
+    btn.color = UI_THEME.colors.border.muted;
+    btn.thickness = 2;
     btn.isPointerBlocker = true;
 
     const text = new TextBlock();
     text.text = label;
-    text.color = '#d7f7d7';
+    text.color = UI_THEME.colors.text.primary;
     text.fontSize = 14;
-    text.fontFamily = 'Arial, sans-serif';
+    text.fontFamily = UI_THEME.typography.fontFamily;
     text.isPointerBlocker = false;
     btn.addControl(text);
 
@@ -489,16 +498,16 @@ export class CourseDesigner {
     this.mode = mode;
 
     if (this.terrainModeBtn) {
-      this.terrainModeBtn.background = mode === 'terrain' ? '#2a5a3a' : '#1a2a20';
-      this.terrainModeBtn.color = mode === 'terrain' ? '#7FFF7F' : '#4a6a5a';
+      this.terrainModeBtn.background = mode === 'terrain' ? UI_THEME.colors.launch.cardSelected : UI_THEME.colors.editor.buttonBase;
+      this.terrainModeBtn.color = mode === 'terrain' ? UI_THEME.colors.launch.selectedBorder : UI_THEME.colors.border.muted;
       const text = this.terrainModeBtn.children[0] as TextBlock;
-      if (text) text.color = mode === 'terrain' ? '#7FFF7F' : '#aaccaa';
+      if (text) text.color = mode === 'terrain' ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
     }
     if (this.assetModeBtn) {
-      this.assetModeBtn.background = mode === 'asset' ? '#2a5a3a' : '#1a2a20';
-      this.assetModeBtn.color = mode === 'asset' ? '#7FFF7F' : '#4a6a5a';
+      this.assetModeBtn.background = mode === 'asset' ? UI_THEME.colors.launch.cardSelected : UI_THEME.colors.editor.buttonBase;
+      this.assetModeBtn.color = mode === 'asset' ? UI_THEME.colors.launch.selectedBorder : UI_THEME.colors.border.muted;
       const text = this.assetModeBtn.children[0] as TextBlock;
-      if (text) text.color = mode === 'asset' ? '#7FFF7F' : '#aaccaa';
+      if (text) text.color = mode === 'asset' ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
     }
 
     if (mode === 'terrain') {
@@ -711,13 +720,32 @@ export class CourseDesigner {
   }
 
   private changeActiveHole(delta: number): void {
-    const nextHole = this.assetPlacementSystem.getActiveHoleNumber() + delta;
+    const maxSelectableHole = Math.max(1, this.assetPlacementSystem.getMaxAssignedHoleNumber() + 1);
+    const nextHole = Math.max(
+      1,
+      Math.min(maxSelectableHole, this.assetPlacementSystem.getActiveHoleNumber() + delta)
+    );
     this.assetPlacementSystem.setActiveHoleNumber(nextHole);
   }
 
   private updateActiveHoleLabel(holeNumber: number): void {
     if (!this.holeNumberText) return;
-    this.holeNumberText.text = `Hole: ${holeNumber}`;
+    const assignedHoleNumbers = this.assetPlacementSystem.getAssignedHoleNumbers();
+    const maxAssignedHole = assignedHoleNumbers.length > 0
+      ? assignedHoleNumbers[assignedHoleNumbers.length - 1]
+      : 0;
+
+    if (assignedHoleNumbers.includes(holeNumber)) {
+      this.holeNumberText.text = `Hole ${holeNumber}`;
+      return;
+    }
+
+    if (holeNumber === maxAssignedHole + 1) {
+      this.holeNumberText.text = `New Hole ${holeNumber}`;
+      return;
+    }
+
+    this.holeNumberText.text = `Empty Hole ${holeNumber}`;
   }
 
   private handleAssetSelect(asset: PlacedAsset | null): void {

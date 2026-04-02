@@ -27,6 +27,10 @@ export function gridTo3D(
 }
 
 export class BabylonEngine {
+  private static readonly DEFAULT_CAMERA_ALPHA = Math.PI / 4;
+  private static readonly DEFAULT_CAMERA_BETA = Math.PI / 3;
+  private static readonly MIN_CAMERA_BETA = Math.PI / 5;
+  private static readonly MAX_CAMERA_BETA = Math.PI / 2.2;
   private canvas: HTMLCanvasElement;
   private engine: Engine;
   private scene: Scene;
@@ -34,7 +38,7 @@ export class BabylonEngine {
   private mapWidth: number;
   private mapHeight: number;
   private cameraDistance: number = 100;
-  private cameraRotationY: number = Math.PI / 4;
+  private cameraRotationY: number = BabylonEngine.DEFAULT_CAMERA_ALPHA;
   private cameraTarget: Vector3 = Vector3.Zero();
   private resizeHandler: (() => void) | null = null;
 
@@ -82,7 +86,7 @@ export class BabylonEngine {
     const centerZ = (this.mapHeight * TILE_SIZE) / 2;
     this.cameraTarget = new Vector3(centerX, 0, centerZ);
 
-    const rctAngle = Math.PI / 3; // 60 degrees from vertical - side-on RCT-style view
+    const rctAngle = BabylonEngine.DEFAULT_CAMERA_BETA; // 60 degrees from vertical - side-on RCT-style view
 
     const camera = new ArcRotateCamera(
       "camera",
@@ -193,9 +197,42 @@ export class BabylonEngine {
 
   public rotateCamera(deltaAngle: number): void {
     this.camera.alpha += deltaAngle;
-    // We don't track cameraRotationY manually anymore as source of truth,
-    // but if we need it for persistence:
     this.cameraRotationY = this.camera.alpha;
+  }
+
+  public tiltCamera(deltaAngle: number): void {
+    this.camera.beta = Math.max(
+      BabylonEngine.MIN_CAMERA_BETA,
+      Math.min(BabylonEngine.MAX_CAMERA_BETA, this.camera.beta + deltaAngle)
+    );
+  }
+
+  public setCameraHeadingDegrees(headingDegrees: number): void {
+    this.camera.alpha = (headingDegrees * Math.PI) / 180;
+    this.cameraRotationY = this.camera.alpha;
+  }
+
+  public setCameraTiltDegrees(tiltDegrees: number): void {
+    const radians = (tiltDegrees * Math.PI) / 180;
+    this.camera.beta = Math.max(
+      BabylonEngine.MIN_CAMERA_BETA,
+      Math.min(BabylonEngine.MAX_CAMERA_BETA, radians)
+    );
+  }
+
+  public resetCameraView(): void {
+    this.camera.alpha = BabylonEngine.DEFAULT_CAMERA_ALPHA;
+    this.camera.beta = BabylonEngine.DEFAULT_CAMERA_BETA;
+    this.cameraRotationY = this.camera.alpha;
+  }
+
+  public getCameraHeadingDegrees(): number {
+    const normalized = ((this.camera.alpha % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return Math.round((normalized * 180) / Math.PI);
+  }
+
+  public getCameraTiltDegrees(): number {
+    return Math.round((this.camera.beta * 180) / Math.PI);
   }
 
   public setCameraTarget(target: Vector3): void {
@@ -264,6 +301,48 @@ export class BabylonEngine {
     if (directions.left) delta.subtractInPlace(right);
 
     delta.scaleInPlace(moveDist);
+
+    this.camera.target.addInPlace(delta);
+    this.camera.position.addInPlace(delta);
+  }
+
+  public nudgeCamera(direction: "up" | "down" | "left" | "right", distance?: number): void {
+    const moveDist = distance ?? Math.max(0.75, this.getOrthoSize() * 0.32);
+    const forward = this.camera.getDirection(Vector3.Forward());
+    const right = this.camera.getDirection(Vector3.Right());
+
+    forward.y = 0;
+    forward.normalize();
+    right.y = 0;
+    right.normalize();
+
+    const delta = Vector3.Zero();
+    if (direction === "up") delta.addInPlace(forward.scale(moveDist));
+    if (direction === "down") delta.addInPlace(forward.scale(-moveDist));
+    if (direction === "right") delta.addInPlace(right.scale(moveDist));
+    if (direction === "left") delta.addInPlace(right.scale(-moveDist));
+
+    this.camera.target.addInPlace(delta);
+    this.camera.position.addInPlace(delta);
+  }
+
+  public panCameraByScreenDelta(deltaX: number, deltaY: number): void {
+    if (deltaX === 0 && deltaY === 0) return;
+
+    const aspectRatio = this.canvas.width / this.canvas.height;
+    const worldUnitsPerPixelY = (this.getOrthoSize() * 2) / Math.max(1, this.canvas.height);
+    const worldUnitsPerPixelX = ((this.getOrthoSize() * 2) * aspectRatio) / Math.max(1, this.canvas.width);
+
+    const forward = this.camera.getDirection(Vector3.Forward());
+    const right = this.camera.getDirection(Vector3.Right());
+    forward.y = 0;
+    right.y = 0;
+    forward.normalize();
+    right.normalize();
+
+    const delta = Vector3.Zero();
+    delta.addInPlace(right.scale(-deltaX * worldUnitsPerPixelX));
+    delta.addInPlace(forward.scale(deltaY * worldUnitsPerPixelY));
 
     this.camera.target.addInPlace(delta);
     this.camera.position.addInPlace(delta);

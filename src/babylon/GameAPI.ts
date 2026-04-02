@@ -17,6 +17,7 @@ import {
 } from "../core/hole-construction";
 
 import { GameState, getRuntimeRefillStationsFromState } from "./GameState";
+import { TransactionCategory } from "../core/economy";
 export { GameState } from "./GameState";
 
 import {
@@ -157,6 +158,9 @@ export interface GameSystems {
   saveCurrentGame(): void;
   hasSavedGame(): boolean;
   showRobotInspector(robot: RobotUnit): void;
+  getGolferVisualCount(): number;
+  getSceneryObjectCount(): number;
+  getActiveEffectCount(): number;
 }
 
 export class GameAPI {
@@ -165,7 +169,7 @@ export class GameAPI {
   public teleport(x: number, y: number): void {
     const course = this.state.currentCourse;
     if (x < 0 || x >= course.width || y < 0 || y >= course.height) {
-      console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
+
       return;
     }
 
@@ -1211,6 +1215,18 @@ export class GameAPI {
     };
   }
 
+  public getGolferVisualCount(): number {
+    return this.systems.getGolferVisualCount();
+  }
+
+  public getSceneryObjectCount(): number {
+    return this.systems.getSceneryObjectCount();
+  }
+
+  public getActiveEffectCount(): number {
+    return this.systems.getActiveEffectCount();
+  }
+
   public getAvailableRobots(): Array<{ equipmentId: string; ownedCount: number }> {
     return getAvailableRobotsToPurchase(this.state.researchState, this.state.autonomousState);
   }
@@ -1567,7 +1583,7 @@ export class GameAPI {
     return getTransactionsInRange(this.state.economyState, start, end).map((t) => ({
       id: t.id,
       amount: t.amount,
-      category: t.category,
+      category: t.category as TransactionCategory,
       description: t.description,
       timestamp: t.timestamp,
     }));
@@ -1689,7 +1705,7 @@ export class GameAPI {
     this.state.economyState = addIncome(
       this.state.economyState,
       amount,
-      category as any,
+      category as TransactionCategory,
       "Test revenue",
       this.state.gameTime
     );
@@ -1702,7 +1718,7 @@ export class GameAPI {
     const result = addExpense(
       this.state.economyState,
       amount,
-      category as any,
+      category as TransactionCategory,
       "Test expense",
       this.state.gameTime,
       true

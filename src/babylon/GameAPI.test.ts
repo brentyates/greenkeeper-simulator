@@ -458,31 +458,23 @@ describe("GameAPI", () => {
     });
 
     it("rejects x < 0", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       api.teleport(-1, 5);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
+      expect(sys.updatePlayerPosition).not.toHaveBeenCalled();
     });
 
     it("rejects x >= width", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       api.teleport(20, 5);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
+      expect(sys.updatePlayerPosition).not.toHaveBeenCalled();
     });
 
     it("rejects y < 0", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       api.teleport(5, -1);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
+      expect(sys.updatePlayerPosition).not.toHaveBeenCalled();
     });
 
     it("rejects y >= height", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       api.teleport(5, 20);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
+      expect(sys.updatePlayerPosition).not.toHaveBeenCalled();
     });
 
     it("updates playerVisual when present", () => {

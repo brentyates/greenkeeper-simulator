@@ -46,7 +46,7 @@ export const PLAYER_APPEARANCE: EntityAppearance = {
 
 export const EMPLOYEE_APPEARANCE: EntityAppearance = {
   assetId: "character.employee",
-  scale: 1.0,
+  scale: 1.8,
 };
 
 /**
@@ -101,8 +101,8 @@ export function createEntityMesh(
       instance.root.rotation.y = state.facingAngle;
       state.meshInstance = instance;
     })
-    .catch((error) => {
-      console.error(`[EntityVisualSystem] Failed to load asset ${appearance.assetId}:`, error);
+    .catch(() => {
+
     });
 
   return state;

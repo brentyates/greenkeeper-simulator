@@ -1,6 +1,6 @@
 import type { Point2D } from './spline-math';
 import type { JobSystemState, Job, JobTaskType } from './job';
-import { startJob, advanceJobProgress, completeJob } from './job';
+import { startJob, completeJob } from './job';
 
 export interface WorkerPosition {
   workerId: string;

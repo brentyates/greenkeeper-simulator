@@ -1,6 +1,6 @@
 import { TerrainType, ObstacleType } from '../core/terrain';
 import { SerializedTopology } from '../core/mesh-topology';
-import { buildDelaunayTopology, TerrainRegion } from '../core/delaunay-topology';
+import { buildDelaunayTopology } from '../core/delaunay-topology';
 import { loadCustomCourse, customCourseToCourseData } from './customCourseData';
 import type { CourseHoleDefinition } from '../core/hole-construction';
 import type { CourseLayout } from '../core/course-layout';

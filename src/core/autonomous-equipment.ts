@@ -4,6 +4,7 @@ import {
   type WorkCandidateTerrainStats,
 } from '../babylon/systems/TerrainSystemInterface';
 import { TERRAIN_CODES } from './terrain';
+import type { CourseArea } from './employee-work';
 import {
   isExtremeNeed,
   scoreNeedWithDistance,
@@ -40,6 +41,7 @@ export interface RobotUnit {
   readonly path: readonly Waypoint[] | null;
   readonly pathIndex: number;
   readonly breakdownTimeRemaining: number;
+  readonly assignedAreaId?: string | null;
 }
 
 export interface AutonomousEquipmentState {
@@ -117,6 +119,7 @@ export function purchaseRobot(
     path: null,
     pathIndex: 0,
     breakdownTimeRemaining: 0,
+    assignedAreaId: null,
   };
 
   return {
@@ -156,6 +159,24 @@ export function countWorkingRobots(state: AutonomousEquipmentState): number {
 
 export function countBrokenRobots(state: AutonomousEquipmentState): number {
   return state.robots.filter(r => r.state === 'broken').length;
+}
+
+export function assignRobotToArea(
+  state: AutonomousEquipmentState,
+  robotId: string,
+  areaId: string | null
+): AutonomousEquipmentState {
+  return {
+    ...state,
+    robots: state.robots.map((robot) =>
+      robot.id === robotId ? { ...robot, assignedAreaId: areaId } : robot
+    ),
+  };
+}
+
+function isInAssignedArea(worldX: number, worldZ: number, area: CourseArea | null): boolean {
+  if (!area) return true;
+  return worldX >= area.minX && worldX <= area.maxX && worldZ >= area.minY && worldZ <= area.maxY;
 }
 
 function targetKey(worldX: number, worldZ: number): string {
@@ -472,8 +493,9 @@ function findNeedsWork(
   currentX: number,
   currentZ: number,
   claimedTargets: Set<string>,
+  assignedArea: CourseArea | null,
 ): { x: number; z: number } | null {
-  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets);
+  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets, assignedArea);
   return pool.length > 0 ? { x: pool[0].x, z: pool[0].z } : null;
 }
 
@@ -486,9 +508,10 @@ function findReachableWork(
   currentX: number,
   currentZ: number,
   claimedTargets: Set<string>,
+  assignedArea: CourseArea | null,
   canTraverse: RobotTraversalRule
 ): { x: number; z: number; path: readonly PathPoint[] } | null {
-  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets);
+  const pool = rankWorkCandidates(candidates, robot, currentX, currentZ, claimedTargets, assignedArea);
   const limit = pool.length;
   for (let i = 0; i < limit; i++) {
     const target = pool[i];
@@ -506,6 +529,7 @@ function rankWorkCandidates(
   currentX: number,
   currentZ: number,
   claimedTargets: Set<string>,
+  assignedArea: CourseArea | null,
 ): RankedRobotTarget[] {
   const type = robot.type;
   const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(robot.equipmentId, type);
@@ -514,6 +538,7 @@ function rankWorkCandidates(
 
   for (const c of candidates) {
     if (isWaterOnlyCandidate(c)) continue;
+    if (!isInAssignedArea(c.worldX, c.worldZ, assignedArea)) continue;
 
     const focusedCandidate = projectCandidateForRobot(c, type, allowedTerrainCodes);
     if (!focusedCandidate) continue;
@@ -555,12 +580,14 @@ function hasWorkAtPosition(
   robot: RobotUnit,
   worldX: number,
   worldZ: number,
+  assignedArea: CourseArea | null,
 ): boolean {
   const type = robot.type;
   const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(robot.equipmentId, type);
   const key = targetKey(worldX, worldZ);
   for (const c of candidates) {
     if (isWaterOnlyCandidate(c)) continue;
+    if (!isInAssignedArea(c.worldX, c.worldZ, assignedArea)) continue;
     const focused = projectCandidateForRobot(c, type, allowedTerrainCodes);
     if (!focused) continue;
     if (targetKey(focused.targetX, focused.targetZ) !== key) continue;
@@ -644,6 +671,7 @@ function findAlternateTargetAfterBlock(
   worldZ: number,
   claimedTargets: Set<string>,
   blockedKey: string,
+  assignedArea: CourseArea | null,
   canTraverse?: RobotTraversalRule
 ): { x: number; z: number; path?: readonly PathPoint[] } | null {
   const blockedClaims = new Set(claimedTargets);
@@ -656,6 +684,7 @@ function findAlternateTargetAfterBlock(
       worldX,
       worldZ,
       blockedClaims,
+      assignedArea,
       canTraverse
     );
     if (alternate) return alternate;
@@ -666,6 +695,8 @@ function findAlternateTargetAfterBlock(
       worldX,
       worldZ,
       blockedClaims
+      ,
+      assignedArea
     );
     if (alternate) return alternate;
   }
@@ -675,6 +706,7 @@ function findAlternateTargetAfterBlock(
 function tickRobot(
   robot: RobotUnit,
   candidates: WorkCandidate[],
+  assignedArea: CourseArea | null,
   chargingX: number,
   chargingZ: number,
   deltaMinutes: number,
@@ -906,7 +938,8 @@ function tickRobot(
         candidates,
         robot,
         robot.worldX,
-        robot.worldZ
+        robot.worldZ,
+        assignedArea
       );
       const settledEffect: RobotEffect | null = currentCellNeedsWork
         ? {
@@ -947,6 +980,7 @@ function tickRobot(
         robot.worldX,
         robot.worldZ,
         selectionClaims,
+        assignedArea,
         canTraverse
       );
       if (reachable) target = { x: reachable.x, z: reachable.z, path: reachable.path };
@@ -956,11 +990,12 @@ function tickRobot(
         robot,
         robot.worldX,
         robot.worldZ,
-        selectionClaims
+        selectionClaims,
+        assignedArea
       );
     }
 
-    const currentCellNeedsWork = hasWorkAtPosition(candidates, robot, robot.worldX, robot.worldZ);
+    const currentCellNeedsWork = hasWorkAtPosition(candidates, robot, robot.worldX, robot.worldZ, assignedArea);
     const localEffect: RobotEffect | null = currentCellNeedsWork ? {
       type: robot.type,
       equipmentId: robot.equipmentId,
@@ -1082,6 +1117,7 @@ function tickRobot(
         result.worldZ,
         claimedTargets,
         blockedKey,
+        assignedArea,
         canTraverse
       );
       if (alternateTarget) {
@@ -1181,6 +1217,7 @@ function tickRobot(
           result.worldZ,
           claimedTargets,
           blockedKey,
+          assignedArea,
           canTraverse
         );
         if (alternateTarget) {
@@ -1314,7 +1351,8 @@ export function tickAutonomousEquipment(
   candidates: WorkCandidate[],
   deltaMinutes: number,
   fleetAIActive: boolean = false,
-  canTraverse?: RobotTraversalRule
+  canTraverse?: RobotTraversalRule,
+  areas: readonly CourseArea[] = []
 ): RobotTickResult {
   const effects: RobotEffect[] = [];
   let totalOperatingCost = 0;
@@ -1341,6 +1379,9 @@ export function tickAutonomousEquipment(
     const result = tickRobot(
       updatedRobot,
       candidates,
+      updatedRobot.assignedAreaId
+        ? areas.find((area) => area.id === updatedRobot.assignedAreaId) ?? null
+        : null,
       state.chargingStationX,
       state.chargingStationY,
       deltaMinutes,

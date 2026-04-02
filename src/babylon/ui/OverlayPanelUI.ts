@@ -40,6 +40,7 @@ export class OverlayPanelUI {
   private scaleText: TextBlock | null = null;
   private offsetXText: TextBlock | null = null;
   private offsetZText: TextBlock | null = null;
+  private stateText: TextBlock | null = null;
   private flipXText: TextBlock | null = null;
   private flipYText: TextBlock | null = null;
   private rotationText: TextBlock | null = null;
@@ -53,8 +54,8 @@ export class OverlayPanelUI {
   private createPanel(): Rectangle {
     const { panel, stack } = createDockedPanel(this.parent, {
       name: 'overlay',
-      width: 250,
-      height: 480,
+      width: 308,
+      height: 560,
       colors: POPUP_COLORS.green,
       horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_RIGHT,
       verticalAlignment: Control.VERTICAL_ALIGNMENT_BOTTOM,
@@ -64,6 +65,7 @@ export class OverlayPanelUI {
     });
 
     this.createHeader(stack);
+    this.createStateSection(stack);
     this.createLoadButton(stack);
     this.createSpacer(stack, 12);
 
@@ -88,11 +90,6 @@ export class OverlayPanelUI {
       this.offsetZText!.text = `${this.offsetZValue.toFixed(0)}`;
       this.callbacks.onOffsetZChange(this.offsetZValue);
     });
-    this.offsetZText = this.createAdjustRow(stack, 'Offset Z', `${this.offsetZValue.toFixed(0)}`, -1, 1, (delta) => {
-      this.offsetZValue += delta;
-      this.offsetZText!.text = `${this.offsetZValue.toFixed(0)}`;
-      this.callbacks.onOffsetZChange(this.offsetZValue);
-    });
 
     this.createSpacer(stack, 12);
     addDialogSectionLabel(stack, { id: 'orientationLabel', text: 'ORIENTATION', tone: 'info', fontSize: 10, fontWeight: 'bold' });
@@ -108,18 +105,51 @@ export class OverlayPanelUI {
     createPopupHeader(parent, {
       title: 'IMAGE OVERLAY',
       titleColor: UI_THEME.colors.editor.buttonTextActive,
-      width: 200,
+      width: 284,
       onClose: () => this.hide(),
     });
+  }
+
+  private createStateSection(parent: StackPanel): void {
+    const stateBox = new Rectangle('overlayStateBox');
+    stateBox.width = '284px';
+    stateBox.height = '58px';
+    stateBox.cornerRadius = UI_THEME.radii.section;
+    stateBox.thickness = 1;
+    stateBox.color = UI_THEME.colors.border.info;
+    stateBox.background = UI_THEME.colors.surfaces.panelInset;
+    parent.addControl(stateBox);
+
+    const stateStack = new StackPanel('overlayStateStack');
+    stateStack.width = '260px';
+    stateBox.addControl(stateStack);
+
+    const title = new TextBlock('overlayStateTitle');
+    title.text = 'Alignment Status';
+    title.color = UI_THEME.colors.text.info;
+    title.fontSize = UI_THEME.typography.scale.s11;
+    title.fontWeight = 'bold';
+    title.height = '20px';
+    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stateStack.addControl(title);
+
+    this.stateText = new TextBlock('overlayStateText');
+    this.stateText.text = 'No image loaded. Import a blueprint or satellite reference to align the course footprint.';
+    this.stateText.color = UI_THEME.colors.text.secondary;
+    this.stateText.fontSize = UI_THEME.typography.scale.s10;
+    this.stateText.height = '30px';
+    this.stateText.textWrapping = true;
+    this.stateText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stateStack.addControl(this.stateText);
   }
 
   private createLoadButton(parent: StackPanel): void {
     const btn = createActionButton({
       id: 'loadImageBtn',
-      label: '📂 Load Blueprint Image',
+      label: 'Import Reference Image',
       tone: 'primary',
-      width: 210,
-      height: 34,
+      width: 284,
+      height: 36,
       fontSize: 12,
       onClick: () => this.callbacks.onLoadImage(),
     });
@@ -135,10 +165,10 @@ export class OverlayPanelUI {
     onChange: (delta: number) => void
   ): TextBlock {
     const row = new Grid(`overlay_${label}_row`);
-    row.width = '210px';
+    row.width = '284px';
     row.height = '32px';
     row.paddingTop = '4px';
-    row.addColumnDefinition(80, true);
+    row.addColumnDefinition(112, true);
     row.addColumnDefinition(32, true);
     row.addColumnDefinition(1);
     row.addColumnDefinition(32, true);
@@ -192,11 +222,11 @@ export class OverlayPanelUI {
   private createOrientationControls(parent: StackPanel): void {
     const ROTATION_LABELS = ['0°', '90°', '180°', '270°'];
 
-    const row = createHorizontalRow(parent, { name: 'overlayOrientation', widthPx: 210, heightPx: 32 });
+    const row = createHorizontalRow(parent, { name: 'overlayOrientation', widthPx: 284, heightPx: 32 });
     row.paddingTop = '4px';
 
     const btns = addUniformButtons(row, {
-      rowWidthPx: 210,
+      rowWidthPx: 284,
       rowHeightPx: 28,
       gapPx: UI_SPACING.xs,
       specs: [
@@ -224,17 +254,17 @@ export class OverlayPanelUI {
   }
 
   private createActionButtons(parent: StackPanel): void {
-    const row = createHorizontalRow(parent, { name: 'overlayActions', widthPx: 210, heightPx: 36 });
+    const row = createHorizontalRow(parent, { name: 'overlayActions', widthPx: 284, heightPx: 36 });
     
     addUniformButtons(row, {
-      rowWidthPx: 210,
+      rowWidthPx: 284,
       rowHeightPx: 32,
       gapPx: UI_SPACING.sm,
       specs: [
-        { id: 'overlayToggleBtn', label: 'Toggle View', onClick: () => this.callbacks.onToggle() },
+        { id: 'overlayToggleBtn', label: 'Show / Hide', onClick: () => this.callbacks.onToggle() },
         { 
           id: 'overlayClearBtn', 
-          label: 'Clear Target', 
+          label: 'Remove Image', 
           onClick: () => this.callbacks.onClear(), 
           background: UI_THEME.colors.action.danger.normal, 
           hoverBackground: UI_THEME.colors.action.danger.hover 
@@ -290,6 +320,14 @@ export class OverlayPanelUI {
     if (this.flipXText) this.flipXText.text = 'Flip X';
     if (this.flipYText) this.flipYText.text = 'Flip Y';
     if (this.rotationText) this.rotationText.text = 'Rot 0°';
+    this.setLoadedState(false);
+  }
+
+  public setLoadedState(loaded: boolean): void {
+    if (!this.stateText) return;
+    this.stateText.text = loaded
+      ? 'Reference image loaded. Use transforms to align it with the course footprint before tracing features.'
+      : 'No image loaded. Import a blueprint or satellite reference to align the course footprint.';
   }
 
   public dispose(): void {

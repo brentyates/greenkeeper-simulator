@@ -6,6 +6,7 @@ import {
   syncHoleFeatureAssignments,
   calculateCoursePar,
   summarizeHoleGameplay,
+  getMinAssignedHoleNumber,
   type PlaceableHoleAsset,
 } from './hole-construction';
 
@@ -140,6 +141,23 @@ describe('hole-construction', () => {
       expect(summary.playableHoles).toBe(1);
       expect(summary.totalTeeBoxes).toBe(2);
       expect(summary.totalPinPositions).toBe(1);
+    });
+  });
+
+  describe('assigned hole helpers', () => {
+    it('returns the first assigned hole number', () => {
+      const assets = [
+        makeAsset('course.flag', 0, 0, createHoleFeatureAssignment('course.flag', 4)),
+        makeAsset('course.tee.marker.blue', 0, 10, createHoleFeatureAssignment('course.tee.marker.blue', 2)),
+      ];
+
+      expect(getMinAssignedHoleNumber(assets)).toBe(2);
+    });
+
+    it('falls back to hole 1 when nothing is assigned', () => {
+      expect(getMinAssignedHoleNumber([
+        makeAsset('tree.pine.medium', 0, 0),
+      ])).toBe(1);
     });
   });
 });

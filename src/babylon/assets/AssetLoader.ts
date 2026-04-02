@@ -76,7 +76,7 @@ async function loadAssetInternal(
   const fileExists = await assetFileExists(path);
   if (!fileExists) {
     if (usePlaceholder) {
-      console.log(`[AssetLoader] GLB not found: ${path}, using placeholder`);
+
       return createPlaceholderAsset(scene, assetId);
     } else {
       throw new Error(`Asset file not found: ${path}`);
@@ -91,7 +91,7 @@ async function loadAssetInternal(
     result = await SceneLoader.ImportMeshAsync("", directory, filename, scene);
   } catch (loadError) {
     if (usePlaceholder) {
-      console.log(`[AssetLoader] Failed to parse GLB: ${path}, using placeholder`);
+
       return createPlaceholderAsset(scene, assetId);
     }
     throw loadError;

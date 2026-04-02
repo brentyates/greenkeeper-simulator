@@ -98,7 +98,7 @@ export const DEFAULT_LOAN_TERMS: Record<"small" | "medium" | "large", LoanTerms>
 };
 
 export const MAX_LOANS = 3;
-export const MIN_CASH_FOR_OPERATIONS = -10000; // Allow small overdraft
+export const MIN_CASH_FOR_OPERATIONS = 0;
 
 // ============================================================================
 // Factory Functions
@@ -453,12 +453,4 @@ export function formatCurrency(amount: number): string {
     maximumFractionDigits: 0
   });
   return amount < 0 ? `-${formatted}` : formatted;
-}
-
-export function resetTransactionCounter(): void {
-  transactionIdCounter = 0;
-}
-
-export function resetLoanCounter(): void {
-  loanIdCounter = 0;
 }

@@ -8,15 +8,17 @@ import { createActionButton, createDockedPanel, createPopupHeader, POPUP_COLORS 
 import { addDialogSectionLabel } from './DialogBlueprint';
 import { addUniformButtons, createHorizontalRow, UI_SPACING } from './LayoutUtils';
 import { UI_THEME } from './UITheme';
+import type { PlacedAsset } from '../../data/customCourseData';
 
 export const HOLE_BUILDER_TOOLBAR_BOUNDS = {
   width: 352,
-  height: 322,
+  height: 392,
   left: 10,
   top: 10,
 };
 
 export type HoleBuilderTool =
+  | 'select'
   | 'tee_blue'
   | 'tee_white'
   | 'tee_red'
@@ -27,6 +29,10 @@ export type HoleBuilderTool =
 export interface HoleBuilderToolbarCallbacks {
   onToolSelect: (tool: HoleBuilderTool | null) => void;
   onHoleNumberChange: (holeNumber: number) => void;
+  onOpenTerrainEditor?: () => void;
+  onOpenAssetBuilder?: () => void;
+  onRotateSelected?: () => void;
+  onClearSelection?: () => void;
   onClose: () => void;
 }
 
@@ -37,8 +43,10 @@ export class HoleBuilderToolbar {
   private panel: Rectangle | null = null;
   private activeTool: HoleBuilderTool | null = null;
   private activeHoleNumber = 1;
+  private definedHoleNumbers: number[] = [];
   private holeNumberText: TextBlock | null = null;
   private holeMetricsText: TextBlock | null = null;
+  private selectedAssetText: TextBlock | null = null;
   private toolButtons = new Map<HoleBuilderTool, Button>();
 
   constructor(
@@ -55,13 +63,30 @@ export class HoleBuilderToolbar {
   }
 
   public setActiveHoleNumber(holeNumber: number): void {
-    const normalized = Math.max(1, Math.floor(holeNumber));
+    const normalized = this.clampHoleNumber(holeNumber);
     if (normalized === this.activeHoleNumber) return;
     this.activeHoleNumber = normalized;
-    if (this.holeNumberText) {
-      this.holeNumberText.text = `Hole: ${this.activeHoleNumber}`;
-    }
+    this.updateHoleNumberText();
     this.callbacks.onHoleNumberChange(this.activeHoleNumber);
+  }
+
+  public setHoleCatalog(holeNumbers: number[]): void {
+    this.definedHoleNumbers = Array.from(
+      new Set(
+        holeNumbers
+          .filter((holeNumber) => Number.isFinite(holeNumber) && holeNumber >= 1)
+          .map((holeNumber) => Math.floor(holeNumber))
+      )
+    ).sort((a, b) => a - b);
+
+    const clampedActiveHole = this.clampHoleNumber(this.activeHoleNumber);
+    const holeChanged = clampedActiveHole !== this.activeHoleNumber;
+    this.activeHoleNumber = clampedActiveHole;
+    this.updateHoleNumberText();
+
+    if (holeChanged) {
+      this.callbacks.onHoleNumberChange(this.activeHoleNumber);
+    }
   }
 
   public getActiveTool(): HoleBuilderTool | null {
@@ -96,12 +121,72 @@ export class HoleBuilderToolbar {
     });
 
     const toolHelp = new TextBlock('holeBuilderToolHelp');
-    toolHelp.text = 'Place tee sets and the pin, switch holes, and shape a complete playable route.';
+    toolHelp.text = 'Each hole keeps one pin and one marker per tee set. Place again to move that slot, or use Select / Move to reposition it.';
     toolHelp.color = UI_THEME.colors.text.secondary;
     toolHelp.fontSize = UI_THEME.typography.scale.s10;
-    toolHelp.height = '30px';
+    toolHelp.height = '38px';
     toolHelp.textWrapping = true;
     stack.addControl(toolHelp);
+
+    const switchRow = createHorizontalRow(stack, {
+      name: 'holeBuilderSwitchRow',
+      widthPx: 332,
+      heightPx: 32,
+    });
+    const switchButtons = addUniformButtons(switchRow, {
+      rowWidthPx: 332,
+      rowHeightPx: 28,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'holeSwitchTerrain', label: 'Open Terrain (T)', onClick: () => this.callbacks.onOpenTerrainEditor?.(), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+        { id: 'holeSwitchAssets', label: 'Open Assets (K)', onClick: () => this.callbacks.onOpenAssetBuilder?.(), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+      ],
+    });
+    switchButtons.forEach((button) => {
+      if (button) {
+        button.background = UI_THEME.colors.action.neutral.normal;
+        button.color = UI_THEME.colors.text.secondary;
+      }
+    });
+
+    addDialogSectionLabel(stack, {
+      id: 'holeBuilderEditLabel',
+      text: 'Edit',
+      tone: 'info',
+      fontSize: 11,
+      height: 18,
+    });
+
+    const editRow = createHorizontalRow(stack, {
+      name: 'holeBuilderEditRow',
+      widthPx: 332,
+      heightPx: 32,
+    });
+    const editButtons = addUniformButtons(editRow, {
+      rowWidthPx: 332,
+      rowHeightPx: 28,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'holeTool_select', label: 'Select / Move', onClick: () => this.selectTool('select'), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+        { id: 'holeTool_pin', label: 'Pin', onClick: () => this.selectTool('pin'), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+        { id: 'holeTool_delete', label: 'Delete', onClick: () => this.selectTool('delete'), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+      ],
+    });
+    const selectButton = editButtons[0];
+    if (selectButton) {
+      this.toolButtons.set('select', selectButton);
+      selectButton.metadata = { activeColor: '#2f6f60' };
+    }
+    const pinButton = editButtons[1];
+    if (pinButton) {
+      this.toolButtons.set('pin', pinButton);
+      pinButton.metadata = { activeColor: '#2e6a5a' };
+    }
+    const deleteButton = editButtons[2];
+    if (deleteButton) {
+      this.toolButtons.set('delete', deleteButton);
+      deleteButton.metadata = { activeColor: '#6a3535' };
+    }
 
     addDialogSectionLabel(stack, {
       id: 'holeBuilderTeeLabel',
@@ -148,40 +233,6 @@ export class HoleBuilderToolbar {
       teeGoldButton.metadata = { activeColor: '#8b7430' };
     }
 
-    addDialogSectionLabel(stack, {
-      id: 'holeBuilderOtherLabel',
-      text: 'Pin / Edit',
-      tone: 'info',
-      fontSize: 11,
-      height: 18,
-    });
-
-    const actionRow = createHorizontalRow(stack, {
-      name: 'holeBuilderActionRow',
-      widthPx: 332,
-      heightPx: 32,
-    });
-    const actionButtons = addUniformButtons(actionRow, {
-      rowWidthPx: 220,
-      rowHeightPx: 28,
-      gapPx: UI_SPACING.sm,
-      specs: [
-        { id: 'holeTool_pin', label: 'Pin', onClick: () => this.selectTool('pin'), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
-        { id: 'holeTool_delete', label: 'Delete', onClick: () => this.selectTool('delete'), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
-      ],
-    });
-    const pinButton = actionButtons[0];
-    if (pinButton) {
-      this.toolButtons.set('pin', pinButton);
-      pinButton.metadata = { activeColor: '#2e6a5a' };
-    }
-    const deleteButton = actionButtons[1];
-    if (deleteButton) {
-      this.toolButtons.set('delete', deleteButton);
-      deleteButton.metadata = { activeColor: '#6a3535' };
-    }
-    actionRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-
     const holeRow = new StackPanel('holeBuilderHoleRow');
     holeRow.isVertical = false;
     holeRow.height = '36px';
@@ -201,7 +252,7 @@ export class HoleBuilderToolbar {
     holeRow.addControl(minusBtn);
 
     this.holeNumberText = new TextBlock('holeBuilderHoleNumber');
-    this.holeNumberText.text = `Hole: ${this.activeHoleNumber}`;
+    this.updateHoleNumberText();
     this.holeNumberText.color = UI_THEME.colors.miscButton.holeBuilderText;
     this.holeNumberText.fontSize = UI_THEME.typography.scale.s12;
     this.holeNumberText.width = '90px';
@@ -220,17 +271,61 @@ export class HoleBuilderToolbar {
     plusBtn.color = UI_THEME.colors.miscButton.holeBuilderText;
     holeRow.addControl(plusBtn);
 
+    const selectedCard = new Rectangle('holeBuilderSelectedCard');
+    selectedCard.width = '332px';
+    selectedCard.height = '62px';
+    selectedCard.cornerRadius = UI_THEME.radii.section;
+    selectedCard.thickness = 1;
+    selectedCard.color = UI_THEME.colors.border.info;
+    selectedCard.background = UI_THEME.colors.surfaces.panelInset;
+    selectedCard.paddingTop = '6px';
+    selectedCard.paddingBottom = '4px';
+    selectedCard.paddingLeft = '8px';
+    selectedCard.paddingRight = '8px';
+    stack.addControl(selectedCard);
+
+    this.selectedAssetText = new TextBlock('holeBuilderSelectedText');
+    this.selectedAssetText.text = 'No marker selected. Use Select / Move, then drag a tee or pin to reposition it.';
+    this.selectedAssetText.color = UI_THEME.colors.text.secondary;
+    this.selectedAssetText.fontSize = UI_THEME.typography.scale.s10;
+    this.selectedAssetText.textWrapping = true;
+    this.selectedAssetText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    selectedCard.addControl(this.selectedAssetText);
+
+    const selectionActions = createHorizontalRow(stack, {
+      name: 'holeBuilderSelectionActions',
+      widthPx: 332,
+      heightPx: 32,
+    });
+    selectionActions.paddingTop = '4px';
+    const selectionButtons = addUniformButtons(selectionActions, {
+      rowWidthPx: 332,
+      rowHeightPx: 28,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'holeSelectionRotate', label: 'Rotate 90°', onClick: () => this.callbacks.onRotateSelected?.(), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+        { id: 'holeSelectionClear', label: 'Clear Selection', onClick: () => this.callbacks.onClearSelection?.(), background: '#2a3f35', hoverBackground: '#355244', fontSize: 11 },
+      ],
+    });
+    selectionButtons.forEach((button) => {
+      if (button) {
+        button.background = UI_THEME.colors.action.neutral.normal;
+        button.color = UI_THEME.colors.text.secondary;
+      }
+    });
+
     const hotkeyText = new TextBlock('holeBuilderHotkey');
-    hotkeyText.text = 'J toggles the designer';
+    hotkeyText.text = 'J toggles the designer. Drag in Select / Move to reposition markers.';
     hotkeyText.color = UI_THEME.colors.text.info;
     hotkeyText.fontSize = UI_THEME.typography.scale.s10;
-    hotkeyText.height = '18px';
+    hotkeyText.height = '28px';
+    hotkeyText.textWrapping = true;
     hotkeyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     hotkeyText.paddingTop = '6px';
     stack.addControl(hotkeyText);
 
     this.holeMetricsText = new TextBlock('holeBuilderMetrics');
-    this.holeMetricsText.text = 'Hole 1: place a tee set and a pin to establish yardage, par, and playability.';
+    this.holeMetricsText.text = 'Hole 1: add one pin and at least one tee set to make the hole playable.';
     this.holeMetricsText.color = UI_THEME.colors.text.secondary;
     this.holeMetricsText.fontSize = UI_THEME.typography.scale.s10;
     this.holeMetricsText.height = '44px';
@@ -248,6 +343,32 @@ export class HoleBuilderToolbar {
     }
   }
 
+  public setSelectedAsset(asset: PlacedAsset | null): void {
+    if (!this.selectedAssetText) return;
+    if (!asset) {
+      this.selectedAssetText.text = 'No marker selected. Use Select / Move, then drag a tee or pin to reposition it.';
+      return;
+    }
+
+    const feature = asset.gameplay?.holeFeature;
+    const holeLabel = feature ? `Hole ${feature.holeNumber}` : 'Unassigned';
+    const markerLabel =
+      feature?.kind === 'pin_position'
+        ? 'Pin'
+        : feature?.teeSet
+          ? `${feature.teeSet[0].toUpperCase()}${feature.teeSet.slice(1)} tee`
+          : 'Tee';
+    this.selectedAssetText.text =
+      `${markerLabel} selected on ${holeLabel}.\n` +
+      `Drag to move it. Rotate tees to line them up with the approach; pins stay fixed.`;
+  }
+
+  public setActiveTool(tool: HoleBuilderTool | null): void {
+    this.activeTool = tool;
+    this.callbacks.onToolSelect(tool);
+    this.updateButtonStates();
+  }
+
   private selectTool(tool: HoleBuilderTool): void {
     this.activeTool = this.activeTool === tool ? null : tool;
     this.callbacks.onToolSelect(this.activeTool);
@@ -262,6 +383,35 @@ export class HoleBuilderToolbar {
       button.color = selected ? UI_THEME.colors.text.primary : UI_THEME.colors.text.secondary;
       button.thickness = selected ? 2 : 1;
     });
+  }
+
+  private clampHoleNumber(holeNumber: number): number {
+    const normalized = Math.max(1, Math.floor(holeNumber));
+    const maxSelectableHole = Math.max(1, this.getMaxDefinedHoleNumber() + 1);
+    return Math.min(normalized, maxSelectableHole);
+  }
+
+  private getMaxDefinedHoleNumber(): number {
+    return this.definedHoleNumbers.length > 0
+      ? this.definedHoleNumbers[this.definedHoleNumbers.length - 1]
+      : 0;
+  }
+
+  private updateHoleNumberText(): void {
+    if (!this.holeNumberText) return;
+
+    const maxDefinedHole = this.getMaxDefinedHoleNumber();
+    if (this.definedHoleNumbers.includes(this.activeHoleNumber)) {
+      this.holeNumberText.text = `Hole: ${this.activeHoleNumber}`;
+      return;
+    }
+
+    if (this.activeHoleNumber === maxDefinedHole + 1) {
+      this.holeNumberText.text = `New: ${this.activeHoleNumber}`;
+      return;
+    }
+
+    this.holeNumberText.text = `Empty: ${this.activeHoleNumber}`;
   }
 
   public show(): void {

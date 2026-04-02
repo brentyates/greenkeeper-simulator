@@ -24,6 +24,7 @@ import {
   IrrigationSchedulePanel,
   IRRIGATION_SCHEDULE_PANEL_BOUNDS,
 } from "./ui/IrrigationSchedulePanel";
+import { UI_THEME } from "./ui/UITheme";
 import { UIManager } from "./ui/UIManager";
 import { RegionInfoPanel } from "./ui/RegionInfoPanel";
 import { GameState, getRuntimeRefillStationsFromState } from "./GameState";
@@ -50,9 +51,12 @@ import {
 } from "../core/irrigation";
 import {
   EmployeeRole,
+  EmployeeFocusPreference,
   EMPLOYEE_ROLE_INFO,
   hireEmployee,
   fireEmployee,
+  assignEmployeeToArea,
+  assignEmployeeFocus,
   createInitialApplicationState,
   postJobOpening,
   acceptApplication,
@@ -60,8 +64,10 @@ import {
   Employee,
 } from "../core/employees";
 import {
+  assignWorkerToArea,
   syncWorkersWithRoster,
 } from "../core/employee-work";
+import { Golfer } from "../core/golfers";
 import {
   startResearch,
   cancelResearch,
@@ -84,15 +90,20 @@ import {
 import {
   purchaseRobot,
   sellRobot,
+  assignRobotToArea,
   RobotUnit,
 } from "../core/autonomous-equipment";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
+import { PlacedAsset } from "../data/customCourseData";
 
 export interface UIPanelSystems {
   uiManager: UIManager;
   irrigationRenderSystem: IrrigationRenderSystem | null;
   resetDailyStats: () => void;
-  pauseGame: () => void;
+  onTerrainEditor?: () => void;
+  onHoleBuilder?: () => void;
+  onAssetBuilder?: () => void;
+  onDeleteScenarioAsset?: (asset: PlacedAsset) => void;
 }
 
 export class UIPanelCoordinator {
@@ -165,7 +176,7 @@ export class UIPanelCoordinator {
           this.systems.uiManager.showNotification(
             `Hired ${employee.name} as ${employee.role}`
           );
-          this.employeePanel?.update(this.state.employeeRoster);
+          this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
           this.employeePanel?.updateApplications(
             this.state.applicationState,
             this.state.prestigeState.tier,
@@ -189,8 +200,40 @@ export class UIPanelCoordinator {
           if (employee) {
             this.systems.uiManager.showNotification(`Fired ${employee.name}`);
           }
-          this.employeePanel?.update(this.state.employeeRoster);
+          this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
         }
+      },
+      onAssignArea: (employeeId: string, areaId: string | null) => {
+        const employee = this.state.employeeRoster.employees.find((candidate) => candidate.id === employeeId);
+        const nextRoster = assignEmployeeToArea(this.state.employeeRoster, employeeId, areaId);
+        if (!employee || !nextRoster) {
+          return;
+        }
+
+        this.state.employeeRoster = nextRoster;
+        this.state.employeeWorkState = assignWorkerToArea(
+          this.state.employeeWorkState,
+          employeeId,
+          areaId
+        );
+
+        const areaName =
+          areaId === null
+            ? 'All Course'
+            : this.state.employeeWorkState.areas.find((area) => area.id === areaId)?.name ?? 'Assigned Area';
+        this.systems.uiManager.showNotification(`${employee.name} now covers ${areaName}`);
+        this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
+      },
+      onAssignFocus: (employeeId: string, focus: EmployeeFocusPreference) => {
+        const employee = this.state.employeeRoster.employees.find((candidate) => candidate.id === employeeId);
+        const nextRoster = assignEmployeeFocus(this.state.employeeRoster, employeeId, focus);
+        if (!employee || !nextRoster) {
+          return;
+        }
+
+        this.state.employeeRoster = nextRoster;
+        this.systems.uiManager.showNotification(`${employee.name} focus set to ${focus}`);
+        this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
       },
       onClose: () => {
         this.employeePanel?.hide();
@@ -242,7 +285,7 @@ export class UIPanelCoordinator {
       },
     });
 
-    this.employeePanel.update(this.state.employeeRoster);
+    this.employeePanel.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
 
     this.state.applicationState = createInitialApplicationState(
       this.state.gameTime + this.state.gameDay * 24 * 60,
@@ -386,7 +429,8 @@ export class UIPanelCoordinator {
           this.equipmentStorePanel?.update(
             this.state.researchState,
             this.state.autonomousState,
-            this.state.economyState.cash
+            this.state.economyState.cash,
+            this.state.employeeWorkState.areas
           );
           this.systems.uiManager.showNotification(`Purchased ${equipmentId}!`);
           return true;
@@ -412,7 +456,8 @@ export class UIPanelCoordinator {
           this.equipmentStorePanel?.update(
             this.state.researchState,
             this.state.autonomousState,
-            this.state.economyState.cash
+            this.state.economyState.cash,
+            this.state.employeeWorkState.areas
           );
           this.systems.uiManager.showNotification(
             `Sold robot for $${result.refund.toLocaleString()}`
@@ -420,6 +465,22 @@ export class UIPanelCoordinator {
           return true;
         }
         return false;
+      },
+      onAssignRobotArea: (robotId: string, areaId: string | null) => {
+        const robot = this.state.autonomousState.robots.find((candidate) => candidate.id === robotId);
+        if (!robot) return;
+        this.state.autonomousState = assignRobotToArea(this.state.autonomousState, robotId, areaId);
+        this.equipmentStorePanel?.update(
+          this.state.researchState,
+          this.state.autonomousState,
+          this.state.economyState.cash,
+          this.state.employeeWorkState.areas
+        );
+        const areaName =
+          areaId === null
+            ? 'All Course'
+            : this.state.employeeWorkState.areas.find((area) => area.id === areaId)?.name ?? 'Assigned Area';
+        this.systems.uiManager.showNotification(`${robot.id} now covers ${areaName}`);
       },
       onClose: () => {
         this.equipmentStorePanel?.hide();
@@ -475,6 +536,18 @@ export class UIPanelCoordinator {
       onClose: () => {
         this.courseLayoutPanel?.hide();
       },
+      onOpenHoleBuilder: () => {
+        this.courseLayoutPanel?.hide();
+        this.systems.onHoleBuilder?.();
+      },
+      onOpenTerrainShaper: () => {
+        this.courseLayoutPanel?.hide();
+        this.systems.onTerrainEditor?.();
+      },
+      onOpenAssetBuilder: () => {
+        this.courseLayoutPanel?.hide();
+        this.systems.onAssetBuilder?.();
+      },
     });
     this.courseLayoutPanel.update(this.state.currentCourse?.holes ?? []);
   }
@@ -491,7 +564,67 @@ export class UIPanelCoordinator {
   }
 
   showRobotInspector(robot: RobotUnit): void {
-    this.entityInspectorPanel?.showRobot(robot);
+    this.entityInspectorPanel?.showRobot(
+      robot,
+      this.getAreaName(robot.assignedAreaId ?? null),
+      {
+        label: 'Sell Robot',
+        tone: 'danger',
+        onClick: () => {
+          if (this.sellRobotById(robot.id)) {
+            this.entityInspectorPanel?.hide();
+          }
+        },
+      }
+    );
+  }
+
+  showEmployeeInspector(employee: Employee, currentTask: import("../core/employee-work").EmployeeTask, worldX: number, worldZ: number): void {
+    this.entityInspectorPanel?.showEmployee(
+      employee,
+      currentTask,
+      worldX,
+      worldZ,
+      this.getAreaName(employee.assignedArea),
+      employee.assignedFocus ?? 'balanced',
+      {
+        label: 'Fire Employee',
+        tone: 'danger',
+        onClick: () => {
+          if (this.fireEmployeeById(employee.id)) {
+            this.entityInspectorPanel?.hide();
+          }
+        },
+      }
+    );
+  }
+
+  showGolferInspector(golfer: Golfer, worldX: number, worldZ: number): void {
+    this.entityInspectorPanel?.showGolfer(
+      golfer,
+      worldX,
+      worldZ,
+      null
+    );
+  }
+
+  showAssetInspector(asset: PlacedAsset, canDelete: boolean = true): void {
+    const facilitySnapshot = this.getFacilitySnapshot(asset.assetId);
+    this.entityInspectorPanel?.showAsset(
+      asset,
+      canDelete,
+      facilitySnapshot,
+      canDelete
+        ? {
+            label: 'Delete Asset',
+            tone: 'danger',
+            onClick: () => {
+              this.systems.onDeleteScenarioAsset?.(asset);
+              this.entityInspectorPanel?.hide();
+            },
+          }
+        : null
+    );
   }
 
   hideEntityInspector(): void {
@@ -499,7 +632,7 @@ export class UIPanelCoordinator {
   }
 
   updateEntityInspector(robot: RobotUnit): void {
-    this.entityInspectorPanel?.update(robot);
+    this.entityInspectorPanel?.update(robot, this.getAreaName(robot.assignedAreaId ?? null));
   }
 
   isEntityInspectorVisible(): boolean {
@@ -644,6 +777,240 @@ export class UIPanelCoordinator {
     });
   }
 
+  private getAreaName(areaId: string | null): string {
+    return areaId === null
+      ? 'All Course'
+      : this.state.employeeWorkState.areas.find((area) => area.id === areaId)?.name ?? 'Assigned Area';
+  }
+
+  private fireEmployeeById(employeeId: string): boolean {
+    const employee = this.state.employeeRoster.employees.find(
+      (candidate) => candidate.id === employeeId
+    );
+    const result = fireEmployee(this.state.employeeRoster, employeeId);
+    if (!result) {
+      this.systems.uiManager.showNotification("Cannot fire employee");
+      return false;
+    }
+
+    this.state.employeeRoster = result;
+    this.state.employeeWorkState = syncWorkersWithRoster(
+      this.state.employeeWorkState,
+      this.state.employeeRoster.employees
+    );
+    if (employee) {
+      this.systems.uiManager.showNotification(`Fired ${employee.name}`);
+    }
+    this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
+    return true;
+  }
+
+  private sellRobotById(robotId: string): boolean {
+    const result = sellRobot(this.state.autonomousState, robotId);
+    if (!result) {
+      this.systems.uiManager.showNotification("Cannot sell robot");
+      return false;
+    }
+
+    this.state.autonomousState = result.state;
+    const timestamp = this.state.gameDay * 24 * 60 + this.state.gameTime;
+    const incomeResult = addIncome(
+      this.state.economyState,
+      result.refund,
+      "other_income",
+      `Robot sold: ${robotId}`,
+      timestamp
+    );
+    if (incomeResult) {
+      this.state.economyState = incomeResult;
+      this.state.dailyStats.revenue.other += result.refund;
+    }
+    this.equipmentStorePanel?.update(
+      this.state.researchState,
+      this.state.autonomousState,
+      this.state.economyState.cash,
+      this.state.employeeWorkState.areas
+    );
+    this.systems.uiManager.showNotification(
+      `Sold robot for $${result.refund.toLocaleString()}`
+    );
+    return true;
+  }
+
+  private getFacilitySnapshot(assetId: string): {
+    category: 'facility' | 'utility' | 'prop';
+    status: string;
+    sectionTitle: string;
+    metrics: Array<{
+      label: string;
+      value: string;
+      tone?: string;
+    }>;
+    note: string;
+  } | null {
+    const golfers = this.state.golferPool?.golfers ?? [];
+    const activeGolfers = golfers.filter(
+      (golfer) => golfer.status !== 'leaving'
+    ).length;
+    const servedGolfers = this.state.golferPool?.totalVisitorsToday ?? 0;
+    const peakCapacity = this.state.golferPool?.peakCapacity ?? 0;
+    const avgSatisfaction = activeGolfers > 0
+      ? Math.round(
+          golfers
+            .filter((golfer) => golfer.status !== 'leaving')
+            .reduce((total, golfer) => total + golfer.satisfaction, 0) / activeGolfers
+        )
+      : 0;
+    const dailyRevenue = this.state.revenueState?.todaysRevenue ?? {
+      greenFees: 0,
+      cartFees: 0,
+      addOnServices: 0,
+      tips: 0,
+      proShop: 0,
+      grossRevenue: 0,
+      foodAndBeverage: 0,
+      rangeRevenue: 0,
+      lessonRevenue: 0,
+      eventFees: 0,
+      operatingCosts: 0,
+      netRevenue: 0,
+    };
+    const crewSize = this.state.employeeRoster.employees.length;
+    const assignedCrew = this.state.employeeRoster.employees.filter(
+      (employee) => employee.assignedArea !== null
+    ).length;
+    const robots = this.state.autonomousState.robots;
+    const workingRobots = robots.filter(
+      (robot) => robot.state === 'working' || robot.state === 'moving'
+    ).length;
+    const serviceHubCount = this.state.currentCourse
+      ? getRuntimeRefillStationsFromState(this.state).length
+      : 0;
+    const utilization = peakCapacity > 0
+      ? `${Math.min(999, Math.round((activeGolfers / peakCapacity) * 100))}%`
+      : 'n/a';
+
+    if (assetId.startsWith('building.clubhouse')) {
+      return {
+        category: 'facility',
+        status: activeGolfers > 0 ? 'Open and serving guests' : 'Ready for the next wave',
+        sectionTitle: 'Operations',
+        metrics: [
+          {
+            label: 'Active Golfers',
+            value: `${activeGolfers}`,
+          },
+          {
+            label: 'Utilization',
+            value: utilization,
+          },
+          {
+            label: 'Amenity Score',
+            value: `${Math.round(this.state.prestigeState.amenityScore)}`,
+            tone: UI_THEME.colors.text.info,
+          },
+          {
+            label: 'Today Gross',
+            value: `$${Math.round(dailyRevenue.grossRevenue)}`,
+          },
+        ],
+        note: 'The clubhouse is the anchor facility. Even before full room-by-room simulation exists, this card should tell you whether the course is converting guest traffic into a stronger experience and better spend.',
+      };
+    }
+
+    if (assetId === 'amenity.snack.bar' || assetId === 'amenity.cooler') {
+      return {
+        category: 'facility',
+        status: activeGolfers > 0 ? 'Serving the course' : 'Standing by',
+        sectionTitle: 'Service Load',
+        metrics: [
+          {
+            label: 'F&B Today',
+            value: `$${Math.round(dailyRevenue.foodAndBeverage)}`,
+            tone: UI_THEME.colors.text.info,
+          },
+          {
+            label: 'Active Golfers',
+            value: `${activeGolfers}`,
+          },
+          {
+            label: 'Served Today',
+            value: `${servedGolfers}`,
+          },
+          {
+            label: 'Avg Satisfaction',
+            value: avgSatisfaction > 0 ? `${avgSatisfaction}%` : 'n/a',
+          },
+        ],
+        note: 'Food-and-beverage assets should eventually expose throughput, queue pressure, and stocking. For now this shows the demand signal already present in the sim.',
+      };
+    }
+
+    if (
+      assetId === 'building.maintenance.shed' ||
+      assetId === 'building.pump.house' ||
+      assetId === 'building.cart.barn' ||
+      assetId === 'building.refill.station' ||
+      assetId === 'building.starter.hut'
+    ) {
+      return {
+        category: 'utility',
+        status: workingRobots > 0 || assignedCrew > 0 ? 'Supporting active operations' : 'Ready for demand',
+        sectionTitle: 'Ops Support',
+        metrics: [
+          {
+            label: 'Crew Size',
+            value: `${crewSize}`,
+          },
+          {
+            label: 'Assigned Crew',
+            value: `${assignedCrew}`,
+          },
+          {
+            label: 'Working Robots',
+            value: `${workingRobots}`,
+            tone: workingRobots > 0 ? UI_THEME.colors.text.success : UI_THEME.colors.text.secondary,
+          },
+          {
+            label: 'Service Hubs',
+            value: `${serviceHubCount}`,
+          },
+        ],
+        note: 'This is an operational support building. Later this should surface real maintenance load, equipment utilization, and queueing at the service hub.',
+      };
+    }
+
+    if (assetId === 'amenity.restroom' || assetId === 'amenity.shelter.small' || assetId === 'amenity.drinking.fountain') {
+      return {
+        category: 'utility',
+        status: activeGolfers > 0 ? 'Available to guests' : 'Idle',
+        sectionTitle: 'Guest Impact',
+        metrics: [
+          {
+            label: 'Active Golfers',
+            value: `${activeGolfers}`,
+          },
+          {
+            label: 'Served Today',
+            value: `${servedGolfers}`,
+          },
+          {
+            label: 'Amenity Score',
+            value: `${Math.round(this.state.prestigeState.amenityScore)}`,
+            tone: UI_THEME.colors.text.info,
+          },
+          {
+            label: 'Avg Satisfaction',
+            value: avgSatisfaction > 0 ? `${avgSatisfaction}%` : 'n/a',
+          },
+        ],
+        note: 'Guest-comfort assets are now inspectable. The next step is tying them to satisfaction pressure instead of only broad amenity score.',
+      };
+    }
+
+    return null;
+  }
+
   private onRegionTaskAssigned: ((region: import('../core/named-region').NamedRegion, taskType: import('../core/job').JobTaskType) => void) | null = null;
 
   setOnRegionTaskAssigned(cb: (region: import('../core/named-region').NamedRegion, taskType: import('../core/job').JobTaskType) => void): void {
@@ -699,12 +1066,22 @@ export class UIPanelCoordinator {
     this.systems.uiManager.updateCurrentPrice(this.state.greenFees.weekday18Holes);
   }
 
+  private closeAllManagementPanels(): void {
+    if (this.employeePanel?.isVisible()) this.employeePanel.hide();
+    if (this.researchPanel?.isVisible()) this.researchPanel.hide();
+    if (this.teeSheetPanel?.isVisible()) this.teeSheetPanel.hide();
+    if (this.equipmentStorePanel?.isVisible()) this.equipmentStorePanel.hide();
+    if (this.amenityPanel?.isVisible()) this.amenityPanel.hide();
+    if (this.courseLayoutPanel?.isVisible()) this.courseLayoutPanel.hide();
+  }
+
   handleEmployeePanel(): void {
     if (this.employeePanel?.isVisible()) {
       this.employeePanel.hide();
     } else {
+      this.closeAllManagementPanels();
       const currentTime = this.state.gameTime + this.state.gameDay * 24 * 60;
-      this.employeePanel?.update(this.state.employeeRoster);
+      this.employeePanel?.update(this.state.employeeRoster, this.state.employeeWorkState, this.state.autonomousState);
       this.employeePanel?.updateApplications(
         this.state.applicationState,
         this.state.prestigeState.tier,
@@ -714,10 +1091,31 @@ export class UIPanelCoordinator {
     }
   }
 
+  refreshLivePanels(): void {
+    if (this.employeePanel?.isVisible()) {
+      const currentTime = this.state.gameTime + this.state.gameDay * 24 * 60;
+      this.employeePanel.updateApplications(
+        this.state.applicationState,
+        this.state.prestigeState.tier,
+        currentTime
+      );
+    }
+
+    if (this.equipmentStorePanel?.isVisible()) {
+      this.equipmentStorePanel.update(
+        this.state.researchState,
+        this.state.autonomousState,
+        this.state.economyState.cash,
+        this.state.employeeWorkState.areas
+      );
+    }
+  }
+
   handleResearchPanel(): void {
     if (this.researchPanel?.isVisible()) {
       this.researchPanel.hide();
     } else {
+      this.closeAllManagementPanels();
       this.researchPanel?.update(this.state.researchState);
       this.researchPanel?.show();
     }
@@ -727,6 +1125,7 @@ export class UIPanelCoordinator {
     if (this.teeSheetPanel?.isVisible()) {
       this.teeSheetPanel.hide();
     } else {
+      this.closeAllManagementPanels();
       this.teeSheetViewDay = this.state.gameDay;
       this.teeSheetPanel?.update(this.state.teeTimeState, this.teeSheetViewDay);
       this.teeSheetPanel?.show();
@@ -737,10 +1136,12 @@ export class UIPanelCoordinator {
     if (this.equipmentStorePanel?.isVisible()) {
       this.equipmentStorePanel.hide();
     } else {
+      this.closeAllManagementPanels();
       this.equipmentStorePanel?.update(
         this.state.researchState,
         this.state.autonomousState,
-        this.state.economyState.cash
+        this.state.economyState.cash,
+        this.state.employeeWorkState.areas
       );
       this.equipmentStorePanel?.show();
     }
@@ -750,6 +1151,7 @@ export class UIPanelCoordinator {
     if (this.amenityPanel?.isVisible()) {
       this.amenityPanel.hide();
     } else {
+      this.closeAllManagementPanels();
       this.amenityPanel?.update(this.state.prestigeState, this.state.economyState.cash);
       this.amenityPanel?.show();
     }
@@ -761,6 +1163,7 @@ export class UIPanelCoordinator {
       return;
     }
 
+    this.closeAllManagementPanels();
     const holes = this.state.currentCourse?.holes ?? [];
     this.courseLayoutPanel?.update(holes);
     this.courseLayoutPanel?.show();
@@ -839,6 +1242,50 @@ export class UIPanelCoordinator {
       (this.courseLayoutPanel?.isVisible() ?? false) ||
       (this.irrigationSchedulePanel?.isVisible() ?? false)
     );
+  }
+
+  closeTopmostPanel(): boolean {
+    if (this.irrigationSchedulePanel?.isVisible()) {
+      this.irrigationSchedulePanel.hide();
+      return true;
+    }
+    if (this.courseLayoutPanel?.isVisible()) {
+      this.courseLayoutPanel.hide();
+      return true;
+    }
+    if (this.amenityPanel?.isVisible()) {
+      this.amenityPanel.hide();
+      return true;
+    }
+    if (this.equipmentStorePanel?.isVisible()) {
+      this.equipmentStorePanel.hide();
+      return true;
+    }
+    if (this.teeSheetPanel?.isVisible()) {
+      this.teeSheetPanel.hide();
+      return true;
+    }
+    if (this.researchPanel?.isVisible()) {
+      this.researchPanel.hide();
+      return true;
+    }
+    if (this.employeePanel?.isVisible()) {
+      this.employeePanel.hide();
+      return true;
+    }
+    if (this.irrigationInfoPanel?.isVisible()) {
+      this.irrigationInfoPanel.hide();
+      return true;
+    }
+    if (this.entityInspectorPanel?.isVisible()) {
+      this.entityInspectorPanel.hide();
+      return true;
+    }
+    if (this.regionInfoPanel?.isVisible()) {
+      this.regionInfoPanel.hide();
+      return true;
+    }
+    return false;
   }
 
   isIrrigationUIBlockingPointer(screenX: number, screenY: number): boolean {
@@ -1062,8 +1509,11 @@ export class UIPanelCoordinator {
   }
 
   showDaySummary(data: DaySummaryData): void {
+    this.closeAllManagementPanels();
+    this.hideRegionInfo();
+    this.hideEntityInspector();
     this.daySummaryPopup?.show(data);
-    this.systems.pauseGame();
+    this.state.isPaused = true;
   }
 
   getIrrigationToolbar(): IrrigationToolbar | null {
@@ -1080,6 +1530,23 @@ export class UIPanelCoordinator {
 
   getTeeSheetViewDay(): number {
     return this.teeSheetViewDay;
+  }
+
+  getAutomationPanelState(): Record<string, boolean> {
+    return {
+      employee: this.employeePanel?.isVisible() ?? false,
+      research: this.researchPanel?.isVisible() ?? false,
+      daySummary: this.daySummaryPopup?.isVisible() ?? false,
+      teeSheet: this.teeSheetPanel?.isVisible() ?? false,
+      equipmentStore: this.equipmentStorePanel?.isVisible() ?? false,
+      amenity: this.amenityPanel?.isVisible() ?? false,
+      courseLayout: this.courseLayoutPanel?.isVisible() ?? false,
+      irrigationToolbar: this.irrigationToolbar?.isVisible() ?? false,
+      irrigationInfo: this.irrigationInfoPanel?.isVisible() ?? false,
+      irrigationSchedule: this.irrigationSchedulePanel?.isVisible() ?? false,
+      entityInspector: this.entityInspectorPanel?.isVisible() ?? false,
+      regionInfo: this.regionInfoPanel?.isVisible() ?? false,
+    };
   }
 
   setTeeSheetViewDay(v: number): void {

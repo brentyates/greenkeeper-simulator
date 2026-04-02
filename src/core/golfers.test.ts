@@ -72,6 +72,7 @@ import {
 function makeGolfer(overrides: Partial<Golfer> = {}): Golfer {
   return {
     id: "golfer_test",
+    name: "Test Golfer",
     type: "regular",
     preferences: {
       priceThreshold: 75,
@@ -771,6 +772,22 @@ describe("Golfer System", () => {
       const noonRate = calculateArrivalRate(state, weather, false, 12);
 
       expect(morningRate).toBeGreaterThan(noonRate);
+    });
+
+    it("drops sharply when course condition collapses", () => {
+      const weather = makeWeather();
+      const healthy = makePoolState({
+        rating: { ...makePoolState().rating, overall: 75, condition: 72 }
+      });
+      const neglected = makePoolState({
+        rating: { ...makePoolState().rating, overall: 75, condition: 18 }
+      });
+
+      const healthyRate = calculateArrivalRate(healthy, weather, false, 9);
+      const neglectedRate = calculateArrivalRate(neglected, weather, false, 9);
+
+      expect(healthyRate).toBeGreaterThan(neglectedRate);
+      expect(neglectedRate).toBeLessThan(healthyRate * 0.25);
     });
 
     it("drops when crowded", () => {

@@ -1,4 +1,5 @@
 import { Scene, Vector3 } from "@babylonjs/core";
+import { ShapeTemplate } from "../../core/shape-templates";
 
 import {
   EditorTool,
@@ -56,7 +57,7 @@ export interface TerrainModifier {
   findFaceAtPosition?(worldX: number, worldZ: number): number | null;
   moveSelectedFaces?(dx: number, dy: number, dz: number): void;
   rotateSelectedVertices?(angleX: number, angleY: number, angleZ: number): void;
-  stampTemplate?(template: any, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
+  stampTemplate?(template: ShapeTemplate, centerX: number, centerZ: number, scale?: number): { faceIds: number[]; vertexIds: number[] };
   collapseEdge?(edgeId: number): void;
   getFacesInBrush?(worldX: number, worldZ: number, radius: number): number[];
   setBrushHoveredFaces?(faceIds: number[]): void;

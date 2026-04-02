@@ -184,7 +184,7 @@ export function cancelJob(state: JobSystemState, jobId: string): boolean {
 
 export function getAvailableJobs(
   state: JobSystemState,
-  workerType: JobWorkerType,
+  _workerType: JobWorkerType,
   terrainCode?: number,
 ): Job[] {
   return state.jobs.filter(j => {

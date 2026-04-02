@@ -79,6 +79,18 @@ const mockIrrigationSchedulePanel = {
   dispose: vi.fn(),
 };
 
+const mockEntityInspectorPanel = {
+  showRobot: vi.fn(),
+  showEmployee: vi.fn(),
+  showGolfer: vi.fn(),
+  showAsset: vi.fn(),
+  update: vi.fn(),
+  hide: vi.fn(),
+  isVisible: vi.fn(),
+  getTrackedRobotId: vi.fn(),
+  dispose: vi.fn(),
+};
+
 let capturedEmployeeCallbacks: any;
 let capturedResearchCallbacks: any;
 let capturedDaySummaryCallbacks: any;
@@ -159,6 +171,13 @@ vi.mock("./ui/IrrigationSchedulePanel", () => ({
   IrrigationSchedulePanel: vi.fn().mockImplementation(function (_tex: any, callbacks: any) {
     capturedIrrigationScheduleCallbacks = callbacks;
     return mockIrrigationSchedulePanel;
+  }),
+}));
+
+vi.mock("./ui/EntityInspectorPanel", () => ({
+  ENTITY_INSPECTOR_BOUNDS: { width: 332, height: 352, right: 12, top: 148 },
+  EntityInspectorPanel: vi.fn().mockImplementation(function () {
+    return mockEntityInspectorPanel;
   }),
 }));
 
@@ -268,15 +287,37 @@ function createMockState(): GameState {
   const state = {
     gameTime: 720,
     gameDay: 5,
+    currentCourse: { width: 100, height: 100 },
     economyState: { cash: 10000, transactions: [] },
     employeeRoster: { employees: [], maxEmployees: 10 },
-    employeeWorkState: { workers: [] },
+    employeeWorkState: { workers: [], areas: [], maintenanceShedX: 10, maintenanceShedY: 12 },
     applicationState: { postings: [], applications: [] },
     researchState: { currentResearch: null, researchQueue: [], completedResearch: [], fundingLevel: "normal" },
-    prestigeState: { tier: "bronze", amenities: {} },
+    prestigeState: { tier: "bronze", amenities: {}, amenityScore: 42 },
     teeTimeState: { teeTimes: [], spacing: 10 },
-    revenueState: { totalRevenue: 0 },
-    autonomousState: { robots: [] },
+    revenueState: {
+      totalRevenue: 0,
+      todaysRevenue: {
+        greenFees: 0,
+        cartFees: 0,
+        addOnServices: 0,
+        tips: 0,
+        proShop: 0,
+        foodAndBeverage: 120,
+        rangeRevenue: 0,
+        lessonRevenue: 0,
+        eventFees: 0,
+        grossRevenue: 650,
+        operatingCosts: 0,
+        netRevenue: 650,
+      },
+    },
+    autonomousState: { robots: [], chargingStationX: 10, chargingStationY: 12 },
+    golferPool: {
+      golfers: [],
+      totalVisitorsToday: 14,
+      peakCapacity: 72,
+    },
     irrigationSystem: {
       pipes: [],
       sprinklerHeads: [],
@@ -315,7 +356,7 @@ function createMockSystems(): UIPanelSystems {
     } as any,
     irrigationRenderSystem: null,
     resetDailyStats: vi.fn(),
-    pauseGame: vi.fn(),
+    onDeleteScenarioAsset: vi.fn(),
   };
 }
 
@@ -337,7 +378,7 @@ describe("UIPanelCoordinator", () => {
     it("constructs all panels", () => {
       coordinator.setupAll();
 
-      expect(mockEmployeePanel.update).toHaveBeenCalledWith(state.employeeRoster);
+      expect(mockEmployeePanel.update).toHaveBeenCalledWith(state.employeeRoster, state.employeeWorkState, state.autonomousState);
       expect(mockResearchPanel.update).toHaveBeenCalledWith(state.researchState);
       expect(systems.uiManager.setPriceCallback).toHaveBeenCalled();
       expect(systems.uiManager.updateCurrentPrice).toHaveBeenCalledWith(50);
@@ -356,7 +397,7 @@ describe("UIPanelCoordinator", () => {
     it("shows and updates when not visible", () => {
       mockEmployeePanel.isVisible.mockReturnValue(false);
       coordinator.handleEmployeePanel();
-      expect(mockEmployeePanel.update).toHaveBeenCalledWith(state.employeeRoster);
+      expect(mockEmployeePanel.update).toHaveBeenCalledWith(state.employeeRoster, state.employeeWorkState, state.autonomousState);
       expect(mockEmployeePanel.updateApplications).toHaveBeenCalled();
       expect(mockEmployeePanel.show).toHaveBeenCalled();
     });
@@ -445,7 +486,7 @@ describe("UIPanelCoordinator", () => {
       };
       coordinator.showDaySummary(data);
       expect(mockDaySummaryPopup.show).toHaveBeenCalledWith(data);
-      expect(systems.pauseGame).toHaveBeenCalled();
+      expect(state.isPaused).toBe(true);
     });
   });
 
@@ -462,7 +503,7 @@ describe("UIPanelCoordinator", () => {
       };
       coordinator.showDaySummary(data);
       expect(mockDaySummaryPopup.show).not.toHaveBeenCalled();
-      expect(systems.pauseGame).toHaveBeenCalled();
+      expect(state.isPaused).toBe(true);
     });
   });
 
@@ -502,11 +543,194 @@ describe("UIPanelCoordinator", () => {
       expect(mockIrrigationToolbar.dispose).toHaveBeenCalled();
       expect(mockIrrigationInfoPanel.dispose).toHaveBeenCalled();
       expect(mockIrrigationSchedulePanel.dispose).toHaveBeenCalled();
+      expect(mockEntityInspectorPanel.dispose).toHaveBeenCalled();
     });
 
     it("handles null panels gracefully without setup", () => {
       coordinator.dispose();
       expect(mockEmployeePanel.dispose).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("entity inspector", () => {
+    beforeEach(() => coordinator.setupAll());
+
+    it("fires employee from inspector action", () => {
+      const employee = {
+        id: "emp_1",
+        name: "Alex Green",
+        role: "groundskeeper",
+        skillLevel: "trained",
+        hourlyWage: 18,
+        happiness: 80,
+        fatigue: 20,
+        experience: 120,
+        skills: { efficiency: 1, quality: 1, stamina: 1, reliability: 1 },
+        status: "working",
+        assignedArea: null,
+        assignedFocus: "balanced",
+      } as any;
+      state.employeeRoster = { ...state.employeeRoster, employees: [employee] };
+      const previousRoster = state.employeeRoster;
+      (fireEmployee as any).mockReturnValue({
+        ...state.employeeRoster,
+        employees: [],
+      });
+
+      coordinator.showEmployeeInspector(employee, "mow_grass", 10, 20);
+
+      const action = mockEntityInspectorPanel.showEmployee.mock.calls[0][6];
+      action.onClick();
+
+      expect(fireEmployee).toHaveBeenCalledWith(previousRoster, "emp_1");
+      expect(mockEmployeePanel.update).toHaveBeenCalledWith(state.employeeRoster, state.employeeWorkState, state.autonomousState);
+      expect(mockEntityInspectorPanel.hide).toHaveBeenCalled();
+    });
+
+    it("sells robot from inspector action", () => {
+      const robot = {
+        id: "robot_mower_1",
+        type: "mower",
+        assignedAreaId: null,
+      } as any;
+      state.autonomousState = { ...state.autonomousState, robots: [robot] };
+      const previousAutonomousState = state.autonomousState;
+      (sellRobot as any).mockReturnValue({
+        state: { ...state.autonomousState, robots: [] },
+        refund: 2500,
+      });
+      (addIncome as any).mockReturnValue({ cash: 12500, transactions: [] });
+
+      coordinator.showRobotInspector(robot);
+
+      const action = mockEntityInspectorPanel.showRobot.mock.calls[0][2];
+      action.onClick();
+
+      expect(sellRobot).toHaveBeenCalledWith(previousAutonomousState, "robot_mower_1");
+      expect(addIncome).toHaveBeenCalled();
+      expect(mockEquipmentStorePanel.update).toHaveBeenCalled();
+      expect(mockEntityInspectorPanel.hide).toHaveBeenCalled();
+    });
+
+    it("routes asset delete through system callback", () => {
+      const asset = {
+        assetId: "amenity.bench",
+        x: 12,
+        y: 0,
+        z: 8,
+        rotation: 0,
+      } as any;
+
+      coordinator.showAssetInspector(asset);
+
+      const action = mockEntityInspectorPanel.showAsset.mock.calls[0][3];
+      action.onClick();
+
+      expect(systems.onDeleteScenarioAsset).toHaveBeenCalledWith(asset);
+      expect(mockEntityInspectorPanel.hide).toHaveBeenCalled();
+    });
+
+    it("shows golfer inspector with clicked golfer data", () => {
+      const golfer = {
+        id: "golfer_1",
+        name: "Pat Flynn",
+        type: "regular",
+        status: "playing",
+        holesPlayed: 5,
+        totalHoles: 18,
+        paidAmount: 78,
+        satisfaction: 84,
+        satisfactionFactors: { facilities: 8, pace_of_play: -6 },
+        willReturn: true,
+        preferences: { priceThreshold: 95 },
+      } as any;
+
+      coordinator.showGolferInspector(golfer, 32, 14);
+
+      expect(mockEntityInspectorPanel.showGolfer).toHaveBeenCalledWith(
+        golfer,
+        32,
+        14,
+        null
+      );
+    });
+
+    it("passes facility metrics into snack bar inspector", () => {
+      state.golferPool = {
+        ...state.golferPool,
+        golfers: [
+          { id: "g1", status: "playing", satisfaction: 82 },
+          { id: "g2", status: "waiting", satisfaction: 76 },
+          { id: "g3", status: "leaving", satisfaction: 55 },
+        ],
+        totalVisitorsToday: 18,
+        peakCapacity: 60,
+      } as any;
+
+      coordinator.showAssetInspector({
+        assetId: "amenity.snack.bar",
+        x: 4,
+        y: 0,
+        z: 7,
+        rotation: 0,
+      } as any, false);
+
+      expect(mockEntityInspectorPanel.showAsset).toHaveBeenCalledWith(
+        expect.objectContaining({ assetId: "amenity.snack.bar" }),
+        false,
+        expect.objectContaining({
+          category: "facility",
+          sectionTitle: "Service Load",
+          metrics: expect.arrayContaining([
+            expect.objectContaining({ label: "F&B Today", value: "$120" }),
+            expect.objectContaining({ label: "Active Golfers", value: "2" }),
+            expect.objectContaining({ label: "Served Today", value: "18" }),
+            expect.objectContaining({ label: "Avg Satisfaction", value: "79%" }),
+          ]),
+        }),
+        null
+      );
+    });
+
+    it("passes utility metrics into maintenance shed inspector", () => {
+      state.employeeRoster = {
+        ...state.employeeRoster,
+        employees: [
+          { id: "e1", assignedArea: "north" },
+          { id: "e2", assignedArea: null },
+        ],
+      } as any;
+      state.autonomousState = {
+        ...state.autonomousState,
+        robots: [
+          { id: "r1", state: "working" },
+          { id: "r2", state: "idle" },
+        ],
+      } as any;
+
+      coordinator.showAssetInspector({
+        assetId: "building.maintenance.shed",
+        x: 4,
+        y: 0,
+        z: 7,
+        rotation: 0,
+      } as any, false);
+
+      expect(mockEntityInspectorPanel.showAsset).toHaveBeenCalledWith(
+        expect.objectContaining({ assetId: "building.maintenance.shed" }),
+        false,
+        expect.objectContaining({
+          category: "utility",
+          sectionTitle: "Ops Support",
+          metrics: expect.arrayContaining([
+            expect.objectContaining({ label: "Crew Size", value: "2" }),
+            expect.objectContaining({ label: "Assigned Crew", value: "1" }),
+            expect.objectContaining({ label: "Working Robots", value: "1" }),
+            expect.objectContaining({ label: "Service Hubs", value: expect.any(String) }),
+          ]),
+        }),
+        null
+      );
     });
   });
 
@@ -549,7 +773,7 @@ describe("UIPanelCoordinator", () => {
         expect(syncWorkersWithRoster).toHaveBeenCalled();
         expect(acceptApplication).toHaveBeenCalledWith(expect.anything(), "e1");
         expect(systems.uiManager.showNotification).toHaveBeenCalledWith("Hired John as groundskeeper");
-        expect(mockEmployeePanel.update).toHaveBeenCalledWith(newRoster);
+        expect(mockEmployeePanel.update).toHaveBeenCalledWith(newRoster, state.employeeWorkState, state.autonomousState);
         expect(mockEmployeePanel.updateApplications).toHaveBeenCalled();
       });
 

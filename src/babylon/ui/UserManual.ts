@@ -212,7 +212,7 @@ export class UserManual {
 
   public navigateToSection(sectionId: string): void {
     if (!this.sectionContainers.has(sectionId)) {
-      console.warn(`Unknown section: ${sectionId}`);
+
       return;
     }
 

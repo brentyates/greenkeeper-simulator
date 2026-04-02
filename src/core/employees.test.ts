@@ -12,6 +12,7 @@ import {
   SKILL_LEVELS_ORDER,
   DEFAULT_MAX_EMPLOYEES,
   PAYROLL_INTERVAL_MINUTES,
+  PAYROLL_SHIFT_HOURS,
 
   // Factory functions
   createInitialRoster,
@@ -49,6 +50,8 @@ import {
   endEmployeeBreak,
   tickEmployees,
   processPayroll,
+  markEmployeesUnpaid,
+  resumeEmployeesAfterPayroll,
   promoteEmployee,
   adjustHappiness,
   giveRaise,
@@ -1001,7 +1004,7 @@ describe("Employee System", () => {
       });
       const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
 
-      expect(result.totalPaid).toBe(15); // 1 hour at $15/hr
+      expect(result.totalPaid).toBe(1.88);
     });
 
     it("pays partial wages for non-working employees", () => {
@@ -1012,7 +1015,7 @@ describe("Employee System", () => {
       });
       const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
 
-      expect(result.totalPaid).toBe(10); // 50% rate for idle
+      expect(result.totalPaid).toBe(1.25);
     });
 
     it("updates last payroll time", () => {
@@ -1032,7 +1035,7 @@ describe("Employee System", () => {
       });
       const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
 
-      expect(result.roster.totalWagesPaid).toBe(115);
+      expect(result.roster.totalWagesPaid).toBe(101.88);
     });
 
     it("provides breakdown by employee", () => {
@@ -1045,8 +1048,50 @@ describe("Employee System", () => {
       const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
 
       expect(result.breakdown.length).toBe(2);
-      expect(result.breakdown.find(b => b.employeeId === "emp_1")?.amount).toBe(15);
-      expect(result.breakdown.find(b => b.employeeId === "emp_2")?.amount).toBe(20);
+      expect(result.breakdown.find(b => b.employeeId === "emp_1")?.amount).toBe(1.88);
+      expect(result.breakdown.find(b => b.employeeId === "emp_2")?.amount).toBe(2.5);
+    });
+
+    it("does not pay employees withholding work", () => {
+      const emp = makeEmployee({ id: "emp_1", hourlyWage: 20, status: "withholding_work" as const });
+      const roster = makeRoster({
+        employees: [emp],
+        lastPayrollTime: 0
+      });
+      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES);
+
+      expect(result.totalPaid).toBe(0);
+    });
+
+    it("scales payroll against a work shift instead of literal game hours", () => {
+      const emp = makeEmployee({ id: "emp_1", hourlyWage: 16, status: "working" });
+      const roster = makeRoster({
+        employees: [emp],
+        lastPayrollTime: 0
+      });
+      const result = processPayroll(roster, PAYROLL_INTERVAL_MINUTES * PAYROLL_SHIFT_HOURS);
+
+      expect(result.totalPaid).toBe(16);
+    });
+  });
+
+  describe("payroll consequences", () => {
+    it("marks crew as withholding work when payroll is missed", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "working", happiness: 80 });
+      const roster = makeRoster({ employees: [emp] });
+      const result = markEmployeesUnpaid(roster);
+
+      expect(result.employees[0].status).toBe("withholding_work");
+      expect(result.employees[0].happiness).toBe(65);
+    });
+
+    it("returns withholding crew to work after payroll clears", () => {
+      const emp = makeEmployee({ id: "emp_1", status: "withholding_work" as const, happiness: 40 });
+      const roster = makeRoster({ employees: [emp] });
+      const result = resumeEmployeesAfterPayroll(roster);
+
+      expect(result.employees[0].status).toBe("working");
+      expect(result.employees[0].happiness).toBe(45);
     });
   });
 

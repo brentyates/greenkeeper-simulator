@@ -19,6 +19,12 @@ export type EmployeeRole =
   | "mechanic";
 
 export type SkillLevel = "novice" | "trained" | "experienced" | "expert";
+export type EmployeeFocusPreference =
+  | "balanced"
+  | "mowing"
+  | "watering"
+  | "fertilizing"
+  | "bunkers";
 
 export interface EmployeeRoleInfo {
   readonly id: EmployeeRole;
@@ -67,7 +73,7 @@ export const EMPLOYEE_ROLE_INFO: Record<EmployeeRole, EmployeeRoleInfo> = {
   }
 };
 
-export type EmployeeStatus = "working" | "idle" | "on_break" | "training";
+export type EmployeeStatus = "working" | "idle" | "on_break" | "training" | "withholding_work";
 
 export interface EmployeeSkills {
   readonly efficiency: number;     // 0.5 - 2.0, work speed multiplier
@@ -89,6 +95,7 @@ export interface Employee {
   readonly fatigue: number;        // 0-100, needs break when high
   readonly status: EmployeeStatus;
   readonly assignedArea: string | null;  // Zone/area assignment
+  readonly assignedFocus?: EmployeeFocusPreference;
 }
 
 export interface EmployeeConfig {
@@ -185,6 +192,7 @@ export const SKILL_LEVELS_ORDER: readonly SkillLevel[] = [
 
 export const DEFAULT_MAX_EMPLOYEES = 20;
 export const PAYROLL_INTERVAL_MINUTES = 60; // Pay every game hour
+export const PAYROLL_SHIFT_HOURS = 8; // Scale hourly wages to a playable in-game shift
 export const HIRING_POOL_SIZE = 5;
 export const HIRING_POOL_REFRESH_INTERVAL = 480; // 8 game hours
 
@@ -319,6 +327,7 @@ export function createEmployee(
     fatigue: 0,
     status: "idle",
     assignedArea: null,
+    assignedFocus: "balanced",
   };
 }
 
@@ -540,6 +549,14 @@ export function assignEmployeeToArea(
   return updateEmployee(roster, employeeId, { assignedArea: area });
 }
 
+export function assignEmployeeFocus(
+  roster: EmployeeRoster,
+  employeeId: string,
+  focus: EmployeeFocusPreference
+): EmployeeRoster | null {
+  return updateEmployee(roster, employeeId, { assignedFocus: focus });
+}
+
 export function startEmployeeBreak(
   roster: EmployeeRoster,
   employeeId: string
@@ -651,16 +668,21 @@ export function processPayroll(
     };
   }
 
-  // Calculate hours worked (game hours)
+  // Calculate hours worked (game hours), then scale to an in-game work shift.
   const hoursWorked = minutesSinceLastPayroll / 60;
+  const payrollHours = hoursWorked / PAYROLL_SHIFT_HOURS;
 
   const breakdown: { employeeId: string; amount: number }[] = [];
   let totalPaid = 0;
 
   for (const employee of roster.employees) {
-    // Only pay for time worked (not on break/idle)
-    const workModifier = employee.status === "working" ? 1.0 : 0.5;
-    const amount = Math.round(employee.hourlyWage * hoursWorked * workModifier * 100) / 100;
+    const workModifier =
+      employee.status === "working"
+        ? 1.0
+        : employee.status === "withholding_work"
+        ? 0
+        : 0.5;
+    const amount = Math.round(employee.hourlyWage * payrollHours * workModifier * 100) / 100;
     breakdown.push({ employeeId: employee.id, amount });
     totalPaid += amount;
   }
@@ -673,6 +695,41 @@ export function processPayroll(
     },
     totalPaid,
     breakdown
+  };
+}
+
+export function markEmployeesUnpaid(
+  roster: EmployeeRoster
+): EmployeeRoster {
+  return {
+    ...roster,
+    employees: roster.employees.map((employee) => {
+      if (employee.status === "training" || employee.status === "withholding_work") {
+        return employee;
+      }
+      return {
+        ...employee,
+        status: "withholding_work" as EmployeeStatus,
+        happiness: Math.max(0, employee.happiness - 15),
+      };
+    }),
+  };
+}
+
+export function resumeEmployeesAfterPayroll(
+  roster: EmployeeRoster
+): EmployeeRoster {
+  return {
+    ...roster,
+    employees: roster.employees.map((employee) =>
+      employee.status === "withholding_work"
+        ? {
+            ...employee,
+            status: "working" as EmployeeStatus,
+            happiness: Math.min(100, employee.happiness + 5),
+          }
+        : employee
+    ),
   };
 }
 

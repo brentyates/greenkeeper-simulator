@@ -8,6 +8,7 @@ import { addDialogSectionLabel, DialogLabelConfig } from './DialogBlueprint';
 import { addUniformButtons, addVerticalSpacer, createHorizontalRow } from './LayoutUtils';
 import { createDirectPopup, createDockedPanel, createOverlayPopup, createPopupHeader, PopupColors } from './PopupUtils';
 import { UI_THEME } from './UITheme';
+import { Button } from '@babylonjs/gui/2D/controls/button';
 
 export type DialogShellType = 'overlay' | 'direct' | 'docked';
 
@@ -95,7 +96,61 @@ export interface DialogSchema {
   titleColor?: string;
   headerWidth: number;
   onClose: () => void;
+  onCloseButtonCreated?: (button: Button) => void;
   nodes: DialogNode[];
+}
+
+const DIALOG_VIEWPORT_MARGIN = 24;
+const MIN_DIALOG_WIDTH = 220;
+const MIN_DIALOG_HEIGHT = 160;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function fitSchemaToViewport(
+  texture: AdvancedDynamicTexture,
+  schema: DialogSchema
+): DialogSchema {
+  const viewport = texture.getSize();
+  const maxWidth = Math.max(MIN_DIALOG_WIDTH, viewport.width - DIALOG_VIEWPORT_MARGIN * 2);
+  const maxHeight = Math.max(MIN_DIALOG_HEIGHT, viewport.height - DIALOG_VIEWPORT_MARGIN * 2);
+  const width = clamp(schema.width, MIN_DIALOG_WIDTH, maxWidth);
+  const height = clamp(schema.height, MIN_DIALOG_HEIGHT, maxHeight);
+  const headerWidth = Math.min(schema.headerWidth, Math.max(120, width - schema.padding * 2));
+
+  if (schema.shell !== 'docked' || !schema.dock) {
+    return {
+      ...schema,
+      width,
+      height,
+      headerWidth,
+    };
+  }
+
+  const dock = { ...schema.dock };
+  if (dock.left !== undefined) {
+    dock.left = clamp(
+      dock.left,
+      -Math.max(0, viewport.width - width - DIALOG_VIEWPORT_MARGIN),
+      Math.max(0, viewport.width - width - DIALOG_VIEWPORT_MARGIN),
+    );
+  }
+  if (dock.top !== undefined) {
+    dock.top = clamp(
+      dock.top,
+      -Math.max(0, viewport.height - height - DIALOG_VIEWPORT_MARGIN),
+      Math.max(0, viewport.height - height - DIALOG_VIEWPORT_MARGIN),
+    );
+  }
+
+  return {
+    ...schema,
+    width,
+    height,
+    headerWidth,
+    dock,
+  };
 }
 
 export interface DialogRenderControls {
@@ -115,6 +170,7 @@ export function renderDialog(
   texture: AdvancedDynamicTexture,
   schema: DialogSchema
 ): DialogRenderResult {
+  const fittedSchema = fitSchemaToViewport(texture, schema);
   const controls: DialogRenderControls = {
     texts: new Map(),
     inputs: new Map(),
@@ -123,13 +179,14 @@ export function renderDialog(
 
   const renderNodes = (stack: StackPanel): void => {
     createPopupHeader(stack, {
-      title: schema.title,
-      titleColor: schema.titleColor,
-      width: schema.headerWidth,
-      onClose: schema.onClose,
+      title: fittedSchema.title,
+      titleColor: fittedSchema.titleColor,
+      width: fittedSchema.headerWidth,
+      onClose: fittedSchema.onClose,
+      onCloseButtonCreated: fittedSchema.onCloseButtonCreated,
     });
 
-    for (const node of schema.nodes) {
+    for (const node of fittedSchema.nodes) {
       if (node.type === 'label') {
         addDialogSectionLabel(stack, node.config);
         continue;
@@ -191,40 +248,40 @@ export function renderDialog(
     }
   };
 
-  if (schema.shell === 'overlay') {
+  if (fittedSchema.shell === 'overlay') {
     const popup = createOverlayPopup(texture, {
-      name: schema.name,
-      width: schema.width,
-      height: schema.height,
-      colors: schema.colors,
-      padding: schema.padding,
+      name: fittedSchema.name,
+      width: fittedSchema.width,
+      height: fittedSchema.height,
+      colors: fittedSchema.colors,
+      padding: fittedSchema.padding,
     });
     renderNodes(popup.stack);
     return { panel: popup.panel, stack: popup.stack, overlay: popup.overlay, controls };
   }
 
-  if (schema.shell === 'docked') {
+  if (fittedSchema.shell === 'docked') {
     const popup = createDockedPanel(texture, {
-      name: schema.name,
-      width: schema.width,
-      height: schema.height,
-      colors: schema.colors,
-      horizontalAlignment: schema.dock?.horizontalAlignment ?? Control.HORIZONTAL_ALIGNMENT_LEFT,
-      verticalAlignment: schema.dock?.verticalAlignment ?? Control.VERTICAL_ALIGNMENT_TOP,
-      left: schema.dock?.left ?? 0,
-      top: schema.dock?.top ?? 0,
-      padding: schema.padding,
+      name: fittedSchema.name,
+      width: fittedSchema.width,
+      height: fittedSchema.height,
+      colors: fittedSchema.colors,
+      horizontalAlignment: fittedSchema.dock?.horizontalAlignment ?? Control.HORIZONTAL_ALIGNMENT_LEFT,
+      verticalAlignment: fittedSchema.dock?.verticalAlignment ?? Control.VERTICAL_ALIGNMENT_TOP,
+      left: fittedSchema.dock?.left ?? 0,
+      top: fittedSchema.dock?.top ?? 0,
+      padding: fittedSchema.padding,
     });
     renderNodes(popup.stack);
     return { panel: popup.panel, stack: popup.stack, controls };
   }
 
   const popup = createDirectPopup(texture, {
-    name: schema.name,
-    width: schema.width,
-    height: schema.height,
-    colors: schema.colors,
-    padding: schema.padding,
+    name: fittedSchema.name,
+    width: fittedSchema.width,
+    height: fittedSchema.height,
+    colors: fittedSchema.colors,
+    padding: fittedSchema.padding,
   });
   renderNodes(popup.stack);
   return { panel: popup.panel, stack: popup.stack, controls };

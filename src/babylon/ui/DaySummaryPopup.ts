@@ -6,6 +6,7 @@ import { Control } from '@babylonjs/gui/2D/controls/control';
 import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { createActionButton, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 import { UI_THEME } from './UITheme';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
 
 export interface DaySummaryData {
   day: number;
@@ -79,8 +80,9 @@ export class DaySummaryPopup {
   private profitText: TextBlock | null = null;
   private finGrid: Grid | null = null;
   private statsGrid: Grid | null = null;
-  private finContainer: StackPanel | null = null;
-  private statsContainer: StackPanel | null = null;
+  private finContainer: Rectangle | null = null;
+  private statsContainer: Rectangle | null = null;
+  private continueBtn: Control | null = null;
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: DaySummaryPopupCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -252,6 +254,19 @@ export class DaySummaryPopup {
     });
     btn.paddingTop = '10px';
     parent.addControl(btn);
+    this.continueBtn = btn;
+
+    uiAutomationBridge.register({
+      id: 'day_summary.continue',
+      label: 'Continue to Next Day',
+      role: 'button',
+      getControl: () => this.continueBtn,
+      isVisible: () => this.overlay?.isVisible ?? false,
+      onActivate: () => {
+        this.hide();
+        this.callbacks.onContinue();
+      },
+    });
   }
 
   public show(data: DaySummaryData): void {

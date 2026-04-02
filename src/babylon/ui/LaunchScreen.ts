@@ -17,6 +17,7 @@ import { FocusManager } from './FocusManager';
 import { AccessibleButton, createAccessibleButton } from './AccessibleButton';
 import { configureDialogScrollViewer } from './LayoutUtils';
 import { UI_THEME } from './UITheme';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
 
 export interface LaunchScreenCallbacks {
   onStartScenario: (scenario: ScenarioDefinition) => void;
@@ -409,6 +410,16 @@ export class LaunchScreen {
     }
 
     if (!isLocked) {
+      uiAutomationBridge.register({
+        id: `menu.scenario.${scenario.id}`,
+        label: scenario.name,
+        role: 'option',
+        getControl: () => card,
+        isVisible: () => this.isVisible() && card.isVisible,
+        isEnabled: () => !isLocked,
+        onActivate: () => this.selectScenario(scenario),
+      });
+
       card.onPointerEnterObservable.add(() => {
         if (this.selectedScenario?.id !== scenario.id) {
           card.background = UI_THEME.colors.launch.cardHover;
@@ -525,6 +536,19 @@ export class LaunchScreen {
       focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.startButton.control);
+    uiAutomationBridge.register({
+      id: 'menu.new_game',
+      label: 'New Game',
+      role: 'button',
+      getControl: () => this.startButton?.control ?? null,
+      isVisible: () => this.isVisible() && (this.startButton?.control.isVisible ?? false),
+      isEnabled: () => this.selectedScenario !== null,
+      onActivate: () => {
+        if (this.selectedScenario) {
+          this.callbacks.onStartScenario(this.selectedScenario);
+        }
+      },
+    });
 
     const spacer2 = new Rectangle('spacer2');
     spacer2.width = '20px';
@@ -557,6 +581,27 @@ export class LaunchScreen {
       focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.quickPlayButton.control);
+    uiAutomationBridge.register({
+      id: 'menu.quick_play',
+      label: 'Quick Play',
+      role: 'button',
+      getControl: () => this.quickPlayButton?.control ?? null,
+      isVisible: () => this.isVisible() && (this.quickPlayButton?.control.isVisible ?? false),
+      onActivate: () => {
+        const unlocked = this.progressManager.getUnlockedScenarios();
+        const lastPlayed = this.progressManager.getLastPlayedScenario();
+        let scenario = unlocked.find(s => s.id === lastPlayed);
+        if (!scenario) {
+          scenario = unlocked.find(s => !this.progressManager.isScenarioCompleted(s.id));
+        }
+        if (!scenario && unlocked.length > 0) {
+          scenario = unlocked[0];
+        }
+        if (scenario) {
+          this.callbacks.onStartScenario(scenario);
+        }
+      },
+    });
 
     const spacer3 = new Rectangle('spacer3');
     spacer3.width = '20px';
@@ -577,6 +622,14 @@ export class LaunchScreen {
       focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(this.guideButton.control);
+    uiAutomationBridge.register({
+      id: 'menu.guide',
+      label: 'Guide',
+      role: 'button',
+      getControl: () => this.guideButton?.control ?? null,
+      isVisible: () => this.isVisible() && (this.guideButton?.control.isVisible ?? false),
+      onActivate: () => this.callbacks.onOpenManual?.(),
+    });
 
     const spacer4 = new Rectangle('spacer4');
     spacer4.width = '20px';
@@ -597,6 +650,14 @@ export class LaunchScreen {
       focusGroup: 'launch-shell'
     }, this.focusManager);
     buttonRow.addControl(designerButton.control);
+    uiAutomationBridge.register({
+      id: 'menu.designer',
+      label: 'Designer',
+      role: 'button',
+      getControl: () => designerButton.control,
+      isVisible: () => this.isVisible() && designerButton.control.isVisible,
+      onActivate: () => this.callbacks.onOpenDesigner?.(),
+    });
   }
 
 
@@ -849,6 +910,7 @@ export class LaunchScreen {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('menu.');
     this.focusManager.dispose();
     this.container.dispose();
     if (this.ownsTexture) {

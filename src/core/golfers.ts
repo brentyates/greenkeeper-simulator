@@ -8,6 +8,8 @@
  * - Different golfer types with varying preferences
  */
 
+import { generateRandomName } from "./employees";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -43,6 +45,7 @@ export interface GolferPreferences {
 
 export interface Golfer {
   readonly id: string;
+  readonly name: string;
   readonly type: GolferType;
   readonly preferences: GolferPreferences;
   readonly status: GolferStatus;
@@ -239,6 +242,7 @@ export function createGolfer(
 ): Golfer {
   return {
     id: `golfer_${++golferIdCounter}`,
+    name: generateRandomName(),
     type,
     preferences: preferences ?? generateGolferPreferences(type),
     status: "arriving",
@@ -493,6 +497,23 @@ export function calculateArrivalRate(
 
   // Rating modifier (higher rated courses attract more golfers)
   rate *= 0.5 + (state.rating.overall / 100);
+
+  // Turf condition has a direct operational impact on demand.
+  // Once the course slips into visibly weak shape, bookings should fall off hard.
+  const condition = state.rating.condition;
+  if (condition >= 80) {
+    rate *= 1.1;
+  } else if (condition >= 65) {
+    rate *= 1.0;
+  } else if (condition >= 50) {
+    rate *= 0.82;
+  } else if (condition >= 35) {
+    rate *= 0.55;
+  } else if (condition >= 20) {
+    rate *= 0.28;
+  } else {
+    rate *= 0.12;
+  }
 
   // Weather modifier
   rate *= WEATHER_SATISFACTION_MODIFIERS[weather.type];

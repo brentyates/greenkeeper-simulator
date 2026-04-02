@@ -1,4 +1,3 @@
-import type { Point2D } from './spline-math';
 import type { JobSystemState, JobTaskType } from './job';
 import { createJob, assignJob, startJob, advanceJobProgress, completeJob, cancelJob, getActivePlayerJob, getPatternForTask } from './job';
 import type { NamedRegion } from './named-region';

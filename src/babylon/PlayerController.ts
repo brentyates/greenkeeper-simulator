@@ -166,7 +166,7 @@ export class PlayerController {
   teleport(x: number, y: number): void {
     const dims = this.terrain.getWorldDimensions();
     if (x < 0 || x >= dims.width || y < 0 || y >= dims.height) {
-      console.warn(`Teleport target (${x}, ${y}) is out of bounds.`);
+
       return;
     }
 
@@ -301,27 +301,33 @@ export class PlayerController {
     const gridPos = this.screenToGridFromScreen(screenX, screenY);
     if (!gridPos) return;
 
+    this.handleWorldClickTarget(gridPos.x + 0.5, gridPos.y + 0.5);
+  }
+
+  handleWorldClickTarget(worldX: number, worldZ: number): void {
+    const gridX = Math.floor(worldX);
+    const gridY = Math.floor(worldZ);
     const dims = this.terrain.getWorldDimensions();
     if (
-      gridPos.x < 0 ||
-      gridPos.x >= dims.width ||
-      gridPos.y < 0 ||
-      gridPos.y >= dims.height
+      gridX < 0 ||
+      gridX >= dims.width ||
+      gridY < 0 ||
+      gridY >= dims.height
     ) {
       return;
     }
 
-    if (!this.canTraversePlayerPosition(gridPos.x + 0.5, gridPos.y + 0.5)) return;
+    if (!this.canTraversePlayerPosition(gridX + 0.5, gridY + 0.5)) return;
 
-    if (gridPos.x === this.player.gridX && gridPos.y === this.player.gridY) {
+    if (gridX === this.player.gridX && gridY === this.player.gridY) {
       return;
     }
 
     const path = this.findPath(
       this.player.gridX,
       this.player.gridY,
-      gridPos.x,
-      gridPos.y
+      gridX,
+      gridY
     );
     if (path.length > 0) {
       this.clickToMoveWaypoints = path.map(p => ({ x: p.x + 0.5, z: p.y + 0.5 }));

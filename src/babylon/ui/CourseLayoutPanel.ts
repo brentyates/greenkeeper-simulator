@@ -4,9 +4,12 @@ import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
 import { UI_THEME } from './UITheme';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
+import type { Button } from '@babylonjs/gui/2D/controls/button';
 
 import { createListRowCard, createOverlayPopup, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 import { addDialogScrollBlock } from './DialogBlueprint';
+import { addUniformButtons, createHorizontalRow, UI_SPACING } from './LayoutUtils';
 import {
   estimateParForHole,
   summarizeHoleGameplay,
@@ -15,6 +18,9 @@ import {
 
 export interface CourseLayoutPanelCallbacks {
   onClose: () => void;
+  onOpenHoleBuilder?: () => void;
+  onOpenTerrainShaper?: () => void;
+  onOpenAssetBuilder?: () => void;
 }
 
 export class CourseLayoutPanel {
@@ -24,6 +30,7 @@ export class CourseLayoutPanel {
   private overlay: Rectangle | null = null;
   private summaryText: TextBlock | null = null;
   private holeList: StackPanel | null = null;
+  private mainCloseButton: Button | null = null;
 
   constructor(
     advancedTexture: AdvancedDynamicTexture,
@@ -50,8 +57,13 @@ export class CourseLayoutPanel {
       titleColor: UI_THEME.colors.text.info,
       width: 590,
       onClose: () => this.callbacks.onClose(),
+      onCloseButtonCreated: (button) => {
+        this.mainCloseButton = button;
+        this.syncAutomationControls();
+      },
     });
     this.createSummarySection(stack);
+    this.createActionRow(stack);
     this.createHoleList(stack);
     this.createFooter(stack);
   }
@@ -96,9 +108,28 @@ export class CourseLayoutPanel {
     this.holeList = content;
   }
 
+  private createActionRow(parent: StackPanel): void {
+    const row = createHorizontalRow(parent, {
+      name: 'courseLayoutActions',
+      widthPx: 590,
+      heightPx: 34,
+    });
+    row.paddingTop = '4px';
+    addUniformButtons(row, {
+      rowWidthPx: 590,
+      rowHeightPx: 30,
+      gapPx: UI_SPACING.sm,
+      specs: [
+        { id: 'courseLayoutTerrain', label: 'Open Terrain Shaper', onClick: () => this.callbacks.onOpenTerrainShaper?.() },
+        { id: 'courseLayoutHoles', label: 'Open Hole Designer', onClick: () => this.callbacks.onOpenHoleBuilder?.() },
+        { id: 'courseLayoutAssets', label: 'Open Asset Builder', onClick: () => this.callbacks.onOpenAssetBuilder?.() },
+      ],
+    });
+  }
+
   private createFooter(parent: StackPanel): void {
     const footer = new TextBlock('courseLayoutFooter');
-    footer.text = 'Use Course Designer to place tee boxes and pins for each hole.';
+    footer.text = 'Use Terrain Shaper for land forms, Hole Designer for tees and pins, and Asset Builder for props, furniture, and course dressing.';
     footer.color = UI_THEME.colors.text.secondary;
     footer.fontSize = UI_THEME.typography.scale.s11;
     footer.height = '30px';
@@ -203,12 +234,14 @@ export class CourseLayoutPanel {
     if (this.overlay) {
       this.overlay.isVisible = true;
     }
+    this.syncAutomationControls();
   }
 
   public hide(): void {
     if (this.overlay) {
       this.overlay.isVisible = false;
     }
+    this.syncAutomationControls();
   }
 
   public isVisible(): boolean {
@@ -216,9 +249,23 @@ export class CourseLayoutPanel {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('panel.layout.');
     if (this.overlay) {
       this.advancedTexture.removeControl(this.overlay);
       this.overlay.dispose();
     }
+  }
+
+  private syncAutomationControls(): void {
+    uiAutomationBridge.unregisterPrefix('panel.layout.');
+    uiAutomationBridge.register({
+      id: 'panel.layout.close',
+      label: 'Close Course Layout Panel',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.overlay?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
   }
 }

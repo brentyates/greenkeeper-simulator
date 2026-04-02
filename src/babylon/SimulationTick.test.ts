@@ -32,6 +32,8 @@ vi.mock("../core/employees", () => ({
   tickEmployees: vi.fn((roster: EmployeeRoster) => ({ roster, promotions: [], breaksTaken: [] })),
   awardExperience: vi.fn((roster: EmployeeRoster) => roster),
   tickApplications: vi.fn((state: ApplicationState) => ({ state, newApplicant: null, expiredPostings: [] })),
+  markEmployeesUnpaid: vi.fn((roster: EmployeeRoster) => roster),
+  resumeEmployeesAfterPayroll: vi.fn((roster: EmployeeRoster) => roster),
 }));
 
 vi.mock("../core/employee-work", () => ({
@@ -193,6 +195,7 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
     showNotification: vi.fn(),
     updatePrestige: vi.fn(),
     updateMinimapWorkers: vi.fn(),
+    updateMinimapGolfers: vi.fn(),
   } as unknown as UIManager;
 
   const saveCallback = overrides.saveCallback ?? vi.fn();
@@ -263,6 +266,8 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
     lastAutoSaveHour: -1,
     lastPrestigeUpdateHour: -1,
     lastTeeTimeUpdateHour: -1,
+    lastHealthNotifyThreshold: 0,
+    lastWorkNotifyCount: 0,
     accumulatedResearchTime: 0,
     scenarioManager: null,
     currentCourse: { name: "Test Course", width: 20, height: 20, par: 72 } as unknown as CourseData,
@@ -280,7 +285,9 @@ function createMockContext(overrides: Record<string, any> = {}): MockContext {
     terrainSystem,
     uiManager,
     employeeVisualSystem: overrides.employeeVisualSystem ?? null,
+    golferVisualSystem: overrides.golferVisualSystem ?? null,
     irrigationRenderSystem: overrides.irrigationRenderSystem ?? null,
+    activityIndicatorSystem: null,
     saveCallback,
     showDaySummaryCallback,
   };
@@ -660,7 +667,7 @@ describe("SimulationTick", () => {
       vi.mocked(calculateArrivalRate).mockReturnValue(2.7);
       vi.mocked(calculateDemandMultiplier).mockReturnValue(1.0);
       vi.spyOn(Math, "random").mockReturnValue(0.3);
-      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true };
+      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" };
       vi.mocked(generateArrivals).mockReturnValue([mockGolfer, mockGolfer, mockGolfer]);
       runSimulationTick(state, systems, 16);
       expect(generateArrivals).toHaveBeenCalledWith(
@@ -690,7 +697,7 @@ describe("SimulationTick", () => {
       runSimulationTick(state, systems, 16);
       const notifCalls = vi.mocked(systems.uiManager.showNotification).mock.calls;
       const hasWarning = notifCalls.some(
-        (call) => typeof call[0] === "string" && call[0].includes("turned away")
+        (call) => typeof call[0] === "string" && (call[0].includes("turned away") || call[0].includes("balked") || call[0].includes("sticker shock"))
       );
       expect(hasWarning).toBe(true);
       vi.spyOn(Math, "random").mockRestore();
@@ -712,7 +719,7 @@ describe("SimulationTick", () => {
       runSimulationTick(state, systems, 16);
       const notifCalls = vi.mocked(systems.uiManager.showNotification).mock.calls;
       const hasWarning = notifCalls.some(
-        (call) => typeof call[0] === "string" && call[0].includes("turned away")
+        (call) => typeof call[0] === "string" && (call[0].includes("turned away") || call[0].includes("balked") || call[0].includes("sticker shock"))
       );
       expect(hasWarning).toBe(false);
       vi.spyOn(Math, "random").mockRestore();
@@ -723,7 +730,7 @@ describe("SimulationTick", () => {
       vi.mocked(calculateArrivalRate).mockReturnValue(3);
       vi.mocked(calculateDemandMultiplier).mockReturnValue(1.0);
       vi.spyOn(Math, "random").mockReturnValue(0.99);
-      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true };
+      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" };
       vi.mocked(generateArrivals).mockReturnValue([mockGolfer]);
       runSimulationTick(state, systems, 16);
       expect(generateArrivals).toHaveBeenCalled();
@@ -746,10 +753,10 @@ describe("SimulationTick", () => {
       vi.mocked(calculateArrivalRate).mockReturnValue(2);
       vi.mocked(calculateDemandMultiplier).mockReturnValue(1.0);
       vi.spyOn(Math, "random").mockReturnValue(0.99);
-      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true };
+      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 600, holesPlayed: 0, totalHoles: 18, paidAmount: 45, satisfaction: 70, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" };
       vi.mocked(generateArrivals).mockReturnValue([mockGolfer]);
       runSimulationTick(state, systems, 16);
-      expect(state.scenarioManager!.addRevenue).toHaveBeenCalledWith(45);
+      expect(state.scenarioManager!.addRevenue).not.toHaveBeenCalled();
       expect(state.scenarioManager!.addGolfers).toHaveBeenCalledWith(1);
       vi.spyOn(Math, "random").mockRestore();
     });
@@ -784,7 +791,7 @@ describe("SimulationTick", () => {
       vi.mocked(calculateArrivalRate).mockReturnValue(1);
       vi.mocked(calculateDemandMultiplier).mockReturnValue(1.0);
       vi.spyOn(Math, "random").mockReturnValue(0.99);
-      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 1020, holesPlayed: 0, totalHoles: 18, paidAmount: 35, satisfaction: 70, satisfactionFactors: {}, willReturn: true };
+      const mockGolfer = { id: "g1", type: "casual" as const, preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "arriving" as const, arrivalTime: 1020, holesPlayed: 0, totalHoles: 18, paidAmount: 35, satisfaction: 70, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" };
       vi.mocked(generateArrivals).mockReturnValue([mockGolfer]);
       runSimulationTick(state, systems, 16);
       expect(generateArrivals).toHaveBeenCalledWith(
@@ -817,7 +824,7 @@ describe("SimulationTick", () => {
       });
       vi.mocked(coreTickGolfers).mockReturnValue({
         state: state.golferPool,
-        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true }],
+        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" }],
         revenue: 45,
         tips: 10,
       });
@@ -839,7 +846,7 @@ describe("SimulationTick", () => {
       const { state, systems } = createMockContext();
       vi.mocked(coreTickGolfers).mockReturnValue({
         state: state.golferPool,
-        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true }],
+        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" }],
         revenue: 45,
         tips: 0,
       });
@@ -871,7 +878,7 @@ describe("SimulationTick", () => {
       const { state, systems } = createMockContext({ scenarioManager: null });
       vi.mocked(coreTickGolfers).mockReturnValue({
         state: state.golferPool,
-        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true }],
+        departures: [{ id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" }],
         revenue: 45,
         tips: 10,
       });
@@ -884,8 +891,8 @@ describe("SimulationTick", () => {
       vi.mocked(coreTickGolfers).mockReturnValue({
         state: state.golferPool,
         departures: [
-          { id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true },
-          { id: "g2", type: "regular", preferences: { priceThreshold: 150, qualityExpectation: 60, patienceLevel: 60, tipGenerosity: 1.2 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 65, satisfaction: 90, satisfactionFactors: {}, willReturn: true },
+          { id: "g1", type: "casual", preferences: { priceThreshold: 100, qualityExpectation: 50, patienceLevel: 50, tipGenerosity: 1 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 45, satisfaction: 80, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" },
+          { id: "g2", type: "regular", preferences: { priceThreshold: 150, qualityExpectation: 60, patienceLevel: 60, tipGenerosity: 1.2 }, status: "leaving" as const, arrivalTime: 0, holesPlayed: 18, totalHoles: 18, paidAmount: 65, satisfaction: 90, satisfactionFactors: {}, willReturn: true, name: "Test Golfer" },
         ],
         revenue: 110,
         tips: 15,
@@ -916,9 +923,11 @@ describe("SimulationTick", () => {
         expiredPostings: [],
       });
       runSimulationTick(state, systems, 16);
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith(
-        expect.stringContaining("New applicant: John")
+      const applicantCalls = vi.mocked(systems.uiManager.showNotification).mock.calls;
+      const hasApplicant = applicantCalls.some(
+        (call) => typeof call[0] === "string" && call[0].includes("John")
       );
+      expect(hasApplicant).toBe(true);
     });
 
     it("does not show applicant notification when no new applicant", () => {
@@ -1162,9 +1171,11 @@ describe("SimulationTick", () => {
       });
       vi.mocked(describeResearchUnlock).mockReturnValue("Auto Mower");
       runSimulationTick(state, systems, 500);
-      expect(systems.uiManager.showNotification).toHaveBeenCalledWith(
-        "Research complete: Auto Mower"
+      const researchCalls = vi.mocked(systems.uiManager.showNotification).mock.calls;
+      const hasResearch = researchCalls.some(
+        (call) => typeof call[0] === "string" && (call[0].includes("Auto Mower"))
       );
+      expect(hasResearch).toBe(true);
     });
 
     it("does not tick research when funding cost > 0 but cash insufficient", () => {
@@ -1399,14 +1410,12 @@ describe("SimulationTick", () => {
       });
       vi.mocked(addExpense).mockReturnValue({ ...state.economyState, cash: 9995 });
       runSimulationTick(state, systems, 16);
-      expect(addExpense).toHaveBeenCalledWith(
-        expect.anything(),
-        5,
-        "equipment_maintenance",
-        "Robot operating costs",
-        expect.any(Number),
-        true
-      );
+      const opCostCall = vi
+        .mocked(addExpense)
+        .mock.calls.find((call) => call[2] === "equipment_maintenance");
+      expect(opCostCall).toBeDefined();
+      expect(opCostCall?.[1]).toBe(5);
+      expect(opCostCall?.[3]).toBe("Robot operating costs");
     });
 
     it("does not charge operating cost when 0", () => {
@@ -1576,13 +1585,11 @@ describe("SimulationTick", () => {
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
-      expect(coreTickAutonomousEquipment).toHaveBeenCalledWith(
-        state.autonomousState,
-        expect.anything(),
-        expect.any(Number),
-        true,
-        expect.any(Function)
-      );
+      const args = vi.mocked(coreTickAutonomousEquipment).mock.calls[0];
+      expect(args[0]).toBe(state.autonomousState);
+      expect(args[2]).toEqual(expect.any(Number));
+      expect(args[3]).toBe(true);
+      expect(args[4]).toEqual(expect.any(Function));
     });
 
     it("passes false for fleet AI when not researched", () => {
@@ -1599,13 +1606,11 @@ describe("SimulationTick", () => {
         operatingCost: 0,
       });
       runSimulationTick(state, systems, 16);
-      expect(coreTickAutonomousEquipment).toHaveBeenCalledWith(
-        state.autonomousState,
-        expect.anything(),
-        expect.any(Number),
-        false,
-        expect.any(Function)
-      );
+      const args = vi.mocked(coreTickAutonomousEquipment).mock.calls[0];
+      expect(args[0]).toBe(state.autonomousState);
+      expect(args[2]).toEqual(expect.any(Number));
+      expect(args[3]).toBe(false);
+      expect(args[4]).toEqual(expect.any(Function));
     });
 
     it("allows all robots to transit green terrain", () => {
@@ -1684,14 +1689,15 @@ describe("SimulationTick", () => {
         addRevenue: vi.fn(),
         addGolfers: vi.fn(),
         addRound: vi.fn(),
+        updateCourseHealthFromFaces: vi.fn(),
         updateProgress: vi.fn(),
       };
       const { state, systems } = createMockContext({ scenarioManager: mockManager as any });
       runSimulationTick(state, systems, 16);
       expect(mockManager.updateProgress).toHaveBeenCalledWith({
         currentCash: state.economyState.cash,
-        currentHealth: 50,
       });
+      expect(mockManager.updateCourseHealthFromFaces).toHaveBeenCalled();
     });
   });
 

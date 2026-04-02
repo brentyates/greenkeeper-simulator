@@ -16,6 +16,7 @@ import {
 import { addDialogActionBar, addDialogScrollBlock, addDialogSectionLabel } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
 import { renderDialog } from './DialogRenderer';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
 
 import {
   Employee,
@@ -24,13 +25,19 @@ import {
   ApplicationState,
   SkillLevel,
   PrestigeTier,
+  EmployeeFocusPreference,
   PRESTIGE_HIRING_CONFIG,
   EMPLOYEE_ROLE_INFO,
 } from '../../core/employees';
+import { EmployeeWorkSystemState } from '../../core/employee-work';
+import { type EmployeeTask } from '../../core/movable-entity';
+import { AutonomousEquipmentState } from '../../core/autonomous-equipment';
 
 export interface EmployeePanelCallbacks {
   onHire: (employee: Employee) => void;
   onFire: (employeeId: string) => void;
+  onAssignArea: (employeeId: string, areaId: string | null) => void;
+  onAssignFocus: (employeeId: string, focus: EmployeeFocusPreference) => void;
   onClose: () => void;
   onPostJobOpening: (role: EmployeeRole) => void;
 }
@@ -42,10 +49,38 @@ const SKILL_COLORS: Record<SkillLevel, string> = {
   expert: '#ffaa00',
 };
 
-const EMPLOYEE_DIALOG_WIDTH = 408;
-const EMPLOYEE_DIALOG_HEIGHT = 492;
-const EMPLOYEE_CONTENT_WIDTH = 384;
-const EMPLOYEE_SCROLL_WIDTH = 368;
+const EMPLOYEE_DIALOG_WIDTH = 448;
+const EMPLOYEE_DIALOG_HEIGHT = 608;
+const EMPLOYEE_CONTENT_WIDTH = 420;
+const EMPLOYEE_SCROLL_WIDTH = 398;
+
+const EMPLOYEE_FOCUS_LABELS: Record<EmployeeFocusPreference, string> = {
+  balanced: 'Balanced',
+  mowing: 'Mow',
+  watering: 'Water',
+  fertilizing: 'Feed',
+  bunkers: 'Bunkers',
+};
+
+function getWorkerTaskLabel(task: EmployeeTask, moving: boolean): string {
+  if (moving && task === 'patrol') return 'En route';
+  switch (task) {
+    case 'mow_grass':
+      return 'Mowing';
+    case 'water_area':
+      return 'Watering';
+    case 'fertilize_area':
+      return 'Feeding Turf';
+    case 'rake_bunker':
+      return 'Raking Bunker';
+    case 'patrol':
+      return 'Scanning Grounds';
+    case 'return_to_base':
+      return 'Returning';
+    default:
+      return 'Standing By';
+  }
+}
 
 export class EmployeePanel {
   private advancedTexture: AdvancedDynamicTexture;
@@ -57,17 +92,33 @@ export class EmployeePanel {
   private applicationsContainer: StackPanel | null = null;
   private payrollText: TextBlock | null = null;
   private employeeCountText: TextBlock | null = null;
+  private coverageText: TextBlock | null = null;
   private nextApplicationText: TextBlock | null = null;
   private postingCountText: TextBlock | null = null;
   private postJobButton: Button | null = null;
   private fireButton: Button | null = null;
   private mainActionHintText: TextBlock | null = null;
+  private assignmentSummaryText: TextBlock | null = null;
+  private assignmentDutyText: TextBlock | null = null;
+  private assignmentButtonGrid: Grid | null = null;
+  private focusButtonGrid: Grid | null = null;
+  private zoneStatusText: TextBlock | null = null;
   private hasActivePosting: boolean = false;
+  private currentRoster: EmployeeRoster | null = null;
+  private currentWorkState: EmployeeWorkSystemState | null = null;
+  private currentAutonomousState: AutonomousEquipmentState | null = null;
 
   private selectedEmployeeId: string | null = null;
   private selectedEmployeeName: string | null = null;
   private selectedPostingRole: EmployeeRole = 'groundskeeper';
   private roleButtons: Map<EmployeeRole, Button> = new Map();
+  private areaButtons: Map<string, Button> = new Map();
+  private focusButtons: Map<EmployeeFocusPreference, Button> = new Map();
+  private employeeRowControls: Map<string, Rectangle> = new Map();
+  private candidateHireButtons: Map<string, Button> = new Map();
+  private applicationsButton: Button | null = null;
+  private mainCloseButton: Button | null = null;
+  private applicationsCloseButton: Button | null = null;
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: EmployeePanelCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -83,12 +134,16 @@ export class EmployeePanel {
       height: EMPLOYEE_DIALOG_HEIGHT,
       padding: 12,
       colors: POPUP_COLORS.green,
-      title: '👥 EMPLOYEE MANAGEMENT',
+      title: '👥 COURSE OPERATIONS',
       headerWidth: EMPLOYEE_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
+      onCloseButtonCreated: (button) => {
+        this.mainCloseButton = button;
+      },
       nodes: [
         { type: 'custom', id: 'summary', render: (parent) => this.createSummaryRow(parent) },
         { type: 'custom', id: 'employeeList', render: (parent) => this.createEmployeeList(parent) },
+        { type: 'custom', id: 'assignment', render: (parent) => this.createAssignmentSection(parent) },
         { type: 'custom', id: 'mainActions', render: (parent) => this.createActionButtons(parent) },
       ],
     });
@@ -100,14 +155,15 @@ export class EmployeePanel {
     const summaryContainer = createPanelSection(parent, {
       name: 'summaryContainer',
       width: EMPLOYEE_CONTENT_WIDTH,
-      height: 56,
+      height: 64,
       theme: 'green',
       paddingTop: 8,
     });
 
     const grid = new Grid('summaryGrid');
-    grid.addColumnDefinition(0.5);
-    grid.addColumnDefinition(0.5);
+    grid.addColumnDefinition(0.34);
+    grid.addColumnDefinition(0.33);
+    grid.addColumnDefinition(0.33);
     summaryContainer.addControl(grid);
 
     const countStack = new StackPanel('countStack');
@@ -148,19 +204,120 @@ export class EmployeePanel {
     this.payrollText.height = '24px';
     this.payrollText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     payrollStack.addControl(this.payrollText);
+
+    const coverageStack = new StackPanel('coverageStack');
+    grid.addControl(coverageStack, 0, 2);
+
+    addDialogSectionLabel(coverageStack, {
+      id: 'coverageLabel',
+      text: 'Ops Coverage',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
+
+    this.coverageText = new TextBlock('coverageText');
+    this.coverageText.text = 'No zones set';
+    this.coverageText.color = UI_THEME.colors.text.info;
+    this.coverageText.fontSize = UI_THEME.typography.scale.s16;
+    this.coverageText.height = '24px';
+    this.coverageText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    coverageStack.addControl(this.coverageText);
+  }
+
+  private createAssignmentSection(parent: StackPanel): void {
+    const container = createPanelSection(parent, {
+      name: 'assignmentContainer',
+      width: EMPLOYEE_CONTENT_WIDTH,
+      height: 186,
+      theme: 'blue',
+      paddingTop: 8,
+    });
+
+    const stack = new StackPanel('assignmentStack');
+    stack.paddingLeft = '12px';
+    stack.paddingRight = '12px';
+    container.addControl(stack);
+
+    addDialogSectionLabel(stack, {
+      id: 'assignmentLabel',
+      text: 'Crew Assignment',
+      tone: 'muted',
+      fontSize: 10,
+      height: 14,
+    });
+
+    this.assignmentSummaryText = new TextBlock('assignmentSummary');
+    this.assignmentSummaryText.text = 'Select a crew member from the roster to adjust coverage.';
+    this.assignmentSummaryText.color = UI_THEME.colors.legacy.c_ffffff;
+    this.assignmentSummaryText.fontSize = UI_THEME.typography.scale.s13;
+    this.assignmentSummaryText.height = '18px';
+    this.assignmentSummaryText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.assignmentSummaryText);
+
+    this.assignmentDutyText = new TextBlock('assignmentDuty');
+    this.assignmentDutyText.text = 'Crew owns recurring upkeep. Pick a zone and focus after you choose someone below.';
+    this.assignmentDutyText.color = UI_THEME.colors.text.secondary;
+    this.assignmentDutyText.fontSize = UI_THEME.typography.scale.s10;
+    this.assignmentDutyText.height = '28px';
+    this.assignmentDutyText.textWrapping = true;
+    this.assignmentDutyText.lineSpacing = '2px';
+    this.assignmentDutyText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.assignmentDutyText);
+
+    this.assignmentButtonGrid = new Grid('assignmentButtonGrid');
+    this.assignmentButtonGrid.width = `${EMPLOYEE_SCROLL_WIDTH}px`;
+    this.assignmentButtonGrid.height = '52px';
+    this.assignmentButtonGrid.paddingTop = '6px';
+    this.assignmentButtonGrid.addColumnDefinition(0.5);
+    this.assignmentButtonGrid.addColumnDefinition(0.5);
+    this.assignmentButtonGrid.addRowDefinition(0.5);
+    this.assignmentButtonGrid.addRowDefinition(0.5);
+    stack.addControl(this.assignmentButtonGrid);
+
+    const focusLabel = new TextBlock('focusLabel');
+    focusLabel.text = 'Work Focus';
+    focusLabel.color = UI_THEME.colors.text.secondary;
+    focusLabel.fontSize = UI_THEME.typography.scale.s10;
+    focusLabel.height = '14px';
+    focusLabel.paddingTop = '6px';
+    focusLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(focusLabel);
+
+    this.focusButtonGrid = new Grid('focusButtonGrid');
+    this.focusButtonGrid.width = `${EMPLOYEE_SCROLL_WIDTH}px`;
+    this.focusButtonGrid.height = '38px';
+    this.focusButtonGrid.addColumnDefinition(0.2);
+    this.focusButtonGrid.addColumnDefinition(0.2);
+    this.focusButtonGrid.addColumnDefinition(0.2);
+    this.focusButtonGrid.addColumnDefinition(0.2);
+    this.focusButtonGrid.addColumnDefinition(0.2);
+    this.focusButtonGrid.addRowDefinition(1);
+    stack.addControl(this.focusButtonGrid);
+
+    this.zoneStatusText = new TextBlock('zoneStatusText');
+    this.zoneStatusText.text = 'Zones: no recurring coverage set.';
+    this.zoneStatusText.color = UI_THEME.colors.text.muted;
+    this.zoneStatusText.fontSize = UI_THEME.typography.scale.s10;
+    this.zoneStatusText.height = '38px';
+    this.zoneStatusText.textWrapping = true;
+    this.zoneStatusText.lineSpacing = '2px';
+    this.zoneStatusText.paddingTop = '6px';
+    this.zoneStatusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.zoneStatusText);
   }
 
   private createEmployeeList(parent: StackPanel): void {
     const { content } = addDialogScrollBlock(parent, {
       id: 'listContainer',
       width: EMPLOYEE_CONTENT_WIDTH,
-      height: 304,
+      height: 244,
       theme: 'green',
       paddingTop: 8,
       scroll: {
         name: 'employeeScroll',
         width: EMPLOYEE_SCROLL_WIDTH,
-        height: 290,
+        height: 230,
         contentName: 'employeeListStack',
         contentWidth: '100%',
         options: {
@@ -175,21 +332,29 @@ export class EmployeePanel {
 
   private createEmployeeRow(employee: Employee): Rectangle {
     const isSelected = this.selectedEmployeeId === employee.id;
+    const worker = this.currentWorkState?.workers.find((candidate) => candidate.employeeId === employee.id) ?? null;
+    const areaName = this.getAreaName(employee.assignedArea);
+    const taskLabel = worker ? getWorkerTaskLabel(worker.currentTask, worker.path.length > 0) : 'Standing By';
+    const focusLabel = EMPLOYEE_FOCUS_LABELS[employee.assignedFocus ?? 'balanced'];
 
     const row = createListRowCard({
       name: `emp_${employee.id}`,
-      width: 348,
-      height: 62,
+      width: 378,
+      height: 82,
       background: isSelected ? 'rgba(74, 126, 96, 0.9)' : UI_THEME.colors.surfaces.sectionAlt,
       borderColor: isSelected ? UI_THEME.colors.launch.selectedBorder : UI_THEME.colors.editor.buttonBorder,
       thickness: isSelected ? 2 : 1,
     });
+    this.employeeRowControls.set(employee.id, row);
 
     row.onPointerClickObservable.add(() => {
       this.selectedEmployeeId = employee.id;
       this.selectedEmployeeName = employee.name;
-      this.refreshEmployeeList();
-      this.updateMainActionState();
+      if (this.currentRoster && this.currentWorkState) {
+        this.update(this.currentRoster, this.currentWorkState, this.currentAutonomousState);
+      } else {
+        this.updateMainActionState();
+      }
     });
     row.onPointerEnterObservable.add(() => {
       if (!isSelected) row.background = UI_THEME.colors.surfaces.section;
@@ -200,9 +365,9 @@ export class EmployeePanel {
 
     const grid = new Grid('empRowGrid');
     grid.addColumnDefinition(35, true);
-    grid.addColumnDefinition(166, true);
-    grid.addColumnDefinition(84, true);
-    grid.addColumnDefinition(63, true);
+    grid.addColumnDefinition(172, true);
+    grid.addColumnDefinition(98, true);
+    grid.addColumnDefinition(73, true);
     row.addControl(grid);
 
     const icon = new TextBlock('empIcon');
@@ -231,29 +396,38 @@ export class EmployeePanel {
     infoStack.addControl(roleText);
 
     const statusText = new TextBlock('empStatus');
-    statusText.text = employee.status.replace('_', ' ');
-    statusText.color = employee.status === 'working' ? '#44aa44' :
+    statusText.text = `${taskLabel} • ${employee.status.replace('_', ' ')}`;
+    statusText.color = employee.status === 'working' ? '#7ed88b' :
                        employee.status === 'on_break' ? '#ffaa44' : '#888888';
     statusText.fontSize = UI_THEME.typography.scale.s9;
-    statusText.height = '12px';
+    statusText.height = '14px';
     statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
     infoStack.addControl(statusText);
 
-    const skillStack = new StackPanel('skillStack');
-    grid.addControl(skillStack, 0, 2);
+    const coverageStack = new StackPanel('coverageStack');
+    grid.addControl(coverageStack, 0, 2);
+
+    const areaText = new TextBlock('empArea');
+    areaText.text = areaName;
+    areaText.color = UI_THEME.colors.text.info;
+    areaText.fontSize = UI_THEME.typography.scale.s10;
+    areaText.height = '16px';
+    areaText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    coverageStack.addControl(areaText);
 
     const skillText = new TextBlock('empSkill');
-    skillText.text = employee.skillLevel;
+    skillText.text = `${focusLabel} • ${employee.skillLevel}`;
     skillText.color = SKILL_COLORS[employee.skillLevel];
     skillText.fontSize = UI_THEME.typography.scale.s11;
-    skillText.height = '16px';
+    skillText.height = '14px';
     skillText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    skillStack.addControl(skillText);
+    coverageStack.addControl(skillText);
 
     const wageText = new TextBlock('empWage');
     wageText.text = `$${employee.hourlyWage}/hr`;
     wageText.color = UI_THEME.colors.text.warning;
     wageText.fontSize = UI_THEME.typography.scale.s12;
+    wageText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     grid.addControl(wageText, 0, 3);
 
     return row;
@@ -287,6 +461,7 @@ export class EmployeePanel {
         },
       ],
     });
+    this.applicationsButton = buttons[0] ?? null;
     this.fireButton = buttons[1] ?? null;
 
     this.mainActionHintText = new TextBlock('mainActionHint');
@@ -313,8 +488,9 @@ export class EmployeePanel {
     if (this.mainActionHintText) {
       this.mainActionHintText.text = hasSelection
         ? `Selected: ${this.selectedEmployeeName ?? 'Employee'}`
-        : 'Tip: click an employee row to enable firing.';
+        : 'Roster first: pick a crew member, then assign a zone and focus.';
     }
+    this.refreshAssignmentSection();
   }
 
   private createApplicationsView(): void {
@@ -328,6 +504,9 @@ export class EmployeePanel {
       title: '📋 JOB APPLICATIONS',
       headerWidth: EMPLOYEE_CONTENT_WIDTH,
       onClose: () => this.hideApplicationsView(),
+      onCloseButtonCreated: (button) => {
+        this.applicationsCloseButton = button;
+      },
       nodes: [
         { type: 'custom', id: 'applicationsContent', render: (stack) => this.renderApplicationsContent(stack) },
       ],
@@ -427,7 +606,7 @@ export class EmployeePanel {
     const container = createPanelSection(parent, {
       name: 'roleSelectionContainer',
       width: EMPLOYEE_CONTENT_WIDTH,
-      height: 65,
+      height: 78,
       theme: 'blue',
       paddingTop: 8,
     });
@@ -448,17 +627,17 @@ export class EmployeePanel {
     const roles = Object.keys(EMPLOYEE_ROLE_INFO) as EmployeeRole[];
 
     const buttonRow = new Grid('roleButtonRow');
-    buttonRow.height = '40px';
+    buttonRow.height = '48px';
     buttonRow.width = `${EMPLOYEE_SCROLL_WIDTH}px`;
     roles.forEach(() => buttonRow.addColumnDefinition(1 / roles.length));
     innerStack.addControl(buttonRow);
     roles.forEach((role, index) => {
       const btn = createSelectableButton({
         id: `role_${role}`,
-        label: EMPLOYEE_ROLE_INFO[role].icon,
-        width: 45,
-        height: 32,
-        fontSize: 16,
+        label: `${EMPLOYEE_ROLE_INFO[role].icon} ${EMPLOYEE_ROLE_INFO[role].name}`,
+        width: 188,
+        height: 36,
+        fontSize: 11,
         style: {
           selectedBackground: '#4a8a9a',
           selectedColor: '#ffffff',
@@ -485,6 +664,7 @@ export class EmployeePanel {
       this.updateRoleButtonStyle(btn, r === role);
     });
     this.updatePostJobButtonText();
+    this.syncAutomationControls();
   }
 
   private updatePostJobButtonText(): void {
@@ -497,7 +677,7 @@ export class EmployeePanel {
     const row = createListRowCard({
       name: `cand_${candidate.id}`,
       width: 348,
-      height: 65,
+      height: 72,
       background: UI_THEME.colors.surfaces.sectionAlt,
       borderColor: UI_THEME.colors.editor.buttonBorder,
     });
@@ -511,9 +691,9 @@ export class EmployeePanel {
 
     const grid = new Grid('candRowGrid');
     grid.addColumnDefinition(35, true);
-    grid.addColumnDefinition(178, true);
-    grid.addColumnDefinition(72, true);
-    grid.addColumnDefinition(63, true);
+    grid.addColumnDefinition(166, true);
+    grid.addColumnDefinition(82, true);
+    grid.addColumnDefinition(65, true);
     row.addControl(grid);
 
     const icon = new TextBlock('candIcon');
@@ -534,7 +714,7 @@ export class EmployeePanel {
     infoStack.addControl(nameText);
 
     const roleText = new TextBlock('candRole');
-    roleText.text = EMPLOYEE_ROLE_INFO[candidate.role].name;
+    roleText.text = `${EMPLOYEE_ROLE_INFO[candidate.role].name} • ${candidate.skillLevel}`;
     roleText.color = UI_THEME.colors.text.secondary;
     roleText.fontSize = UI_THEME.typography.scale.s10;
     roleText.height = '14px';
@@ -542,7 +722,7 @@ export class EmployeePanel {
     infoStack.addControl(roleText);
 
     const skillText = new TextBlock('candSkill');
-    skillText.text = candidate.skillLevel;
+    skillText.text = `Happiness ${Math.round(candidate.happiness)} • fatigue ${Math.round(candidate.fatigue)}`;
     skillText.color = SKILL_COLORS[candidate.skillLevel];
     skillText.fontSize = UI_THEME.typography.scale.s10;
     skillText.height = '14px';
@@ -568,6 +748,7 @@ export class EmployeePanel {
       },
     });
     grid.addControl(hireBtn, 0, 3);
+    this.candidateHireButtons.set(candidate.id, hireBtn);
 
     return row;
   }
@@ -575,29 +756,145 @@ export class EmployeePanel {
   private showApplicationsView(): void {
     if (this.panel) this.panel.isVisible = false;
     if (this.applicationsPanel) this.applicationsPanel.isVisible = true;
+    this.syncAutomationControls();
   }
 
   private hideApplicationsView(): void {
     if (this.panel) this.panel.isVisible = true;
     if (this.applicationsPanel) this.applicationsPanel.isVisible = false;
+    this.syncAutomationControls();
   }
 
-  private refreshEmployeeList(): void {
-    if (!this.employeeListContainer) return;
+  private refreshAssignmentSection(): void {
+    if (!this.assignmentSummaryText || !this.assignmentDutyText || !this.assignmentButtonGrid || !this.focusButtonGrid || !this.zoneStatusText) return;
+
+    const roster = this.currentRoster;
+    const workState = this.currentWorkState;
+    const selectedEmployee = roster?.employees.find((employee) => employee.id === this.selectedEmployeeId) ?? null;
+
+    const buttonChildren = [...this.assignmentButtonGrid.children];
+    for (const child of buttonChildren) {
+      this.assignmentButtonGrid.removeControl(child);
+    }
+    this.areaButtons.clear();
+    const focusChildren = [...this.focusButtonGrid.children];
+    for (const child of focusChildren) {
+      this.focusButtonGrid.removeControl(child);
+    }
+    this.focusButtons.clear();
+    if (!selectedEmployee || !workState) {
+      this.assignmentSummaryText.text = 'Choose a crew member from the roster first.';
+      this.assignmentDutyText.text = 'After selection, set a zone and work focus so this person keeps part of the course running without more clicks.';
+      this.zoneStatusText.text = this.buildZoneStatusText();
+      this.syncAutomationControls();
+      return;
+    }
+
+    const worker = workState.workers.find((candidate) => candidate.employeeId === selectedEmployee.id) ?? null;
+    const areaName = this.getAreaName(selectedEmployee.assignedArea);
+    const currentTask = worker ? getWorkerTaskLabel(worker.currentTask, worker.path.length > 0) : 'Standing By';
+
+    const focusName = EMPLOYEE_FOCUS_LABELS[selectedEmployee.assignedFocus ?? 'balanced'];
+    this.assignmentSummaryText.text = `${selectedEmployee.name} • ${EMPLOYEE_ROLE_INFO[selectedEmployee.role].name} • ${focusName}`;
+    this.assignmentDutyText.text = `Coverage: ${areaName}. Current task: ${currentTask}. Use zone + focus to decide what this worker should keep on top of every day.`;
+
+    const areaOptions: Array<{ id: string | null; label: string }> = [
+      { id: null, label: 'Anywhere' },
+      ...workState.areas
+        .filter((area) => area.id !== 'all_course')
+        .map((area) => ({ id: area.id, label: area.name })),
+    ];
+
+    areaOptions.forEach((option, index) => {
+      const button = createSelectableButton({
+        id: `assignArea_${option.id ?? 'any'}`,
+        label: option.label,
+        width: 182,
+        height: 18,
+        fontSize: 10,
+        style: {
+          selectedBackground: '#4a8a9a',
+          selectedColor: '#ffffff',
+          unselectedBackground: '#203948',
+          unselectedColor: '#9ec6d8',
+          hoverBackground: '#376173',
+        },
+        selected: selectedEmployee.assignedArea === option.id,
+        onClick: () => this.callbacks.onAssignArea(selectedEmployee.id, option.id),
+    });
+      const row = Math.floor(index / 2);
+      const column = index % 2;
+      this.assignmentButtonGrid!.addControl(button, row, column);
+      this.areaButtons.set(option.id ?? 'anywhere', button);
+    });
+
+    const focusOptions: EmployeeFocusPreference[] = ['balanced', 'mowing', 'watering', 'fertilizing', 'bunkers'];
+    focusOptions.forEach((focus, index) => {
+      const button = createSelectableButton({
+        id: `focus_${focus}`,
+        label: EMPLOYEE_FOCUS_LABELS[focus],
+        width: 72,
+        height: 24,
+        fontSize: 9,
+        style: {
+          selectedBackground: '#5a8f62',
+          selectedColor: '#ffffff',
+          unselectedBackground: '#233a28',
+          unselectedColor: '#abd4b0',
+          hoverBackground: '#33543b',
+        },
+        selected: (selectedEmployee.assignedFocus ?? 'balanced') === focus,
+        onClick: () => this.callbacks.onAssignFocus(selectedEmployee.id, focus),
+      });
+      this.focusButtonGrid!.addControl(button, 0, index);
+      this.focusButtons.set(focus, button);
+    });
+
+    this.zoneStatusText.text = this.buildZoneStatusText();
+    this.syncAutomationControls();
+  }
+
+  private getAreaName(areaId: string | null): string {
+    if (!areaId || areaId === 'all_course') return 'Anywhere';
+    return this.currentWorkState?.areas.find((area) => area.id === areaId)?.name ?? 'Assigned Area';
+  }
+
+  private buildZoneStatusText(): string {
+    if (!this.currentWorkState) return 'Zones: no recurring coverage set.';
+
+    const areas = this.currentWorkState.areas.filter((area) => area.id !== 'all_course');
+    if (areas.length === 0) return 'Zones: no recurring coverage set.';
+
+    const lines = areas.map((area) => {
+      const crew = this.currentRoster?.employees.filter((employee) => employee.assignedArea === area.id) ?? [];
+      const robots = this.currentAutonomousState?.robots.filter((robot) => robot.assignedAreaId === area.id) ?? [];
+      const crewLabel =
+        crew.length > 0
+          ? crew.map((employee) => `${employee.name.split(' ')[0]}:${EMPLOYEE_FOCUS_LABELS[employee.assignedFocus ?? 'balanced']}`).join(', ')
+          : 'no crew';
+      const robotLabel = robots.length > 0 ? `${robots.length} robot${robots.length !== 1 ? 's' : ''}` : 'no robots';
+      return `${area.name}: ${crewLabel} • ${robotLabel}`;
+    });
+
+    return lines.join('\n');
+  }
+
+  public update(
+    roster: EmployeeRoster,
+    workState: EmployeeWorkSystemState,
+    autonomousState: AutonomousEquipmentState | null = null
+  ): void {
+    this.currentRoster = roster;
+    this.currentWorkState = workState;
+    this.currentAutonomousState = autonomousState;
+
+    if (!this.employeeListContainer || !this.employeeCountText || !this.payrollText || !this.coverageText) return;
 
     const children = [...this.employeeListContainer.children];
     for (const child of children) {
       this.employeeListContainer.removeControl(child);
     }
-  }
-
-  public update(roster: EmployeeRoster): void {
-    if (!this.employeeListContainer || !this.employeeCountText || !this.payrollText) return;
-
-    const children = [...this.employeeListContainer.children];
-    for (const child of children) {
-      this.employeeListContainer.removeControl(child);
-    }
+    this.employeeRowControls.clear();
 
     if (this.selectedEmployeeId) {
       const selected = roster.employees.find((employee) => employee.id === this.selectedEmployeeId);
@@ -607,6 +904,11 @@ export class EmployeePanel {
       } else {
         this.selectedEmployeeName = selected.name;
       }
+    }
+
+    if (!this.selectedEmployeeId && roster.employees.length > 0) {
+      this.selectedEmployeeId = roster.employees[0].id;
+      this.selectedEmployeeName = roster.employees[0].name;
     }
 
     for (const employee of roster.employees) {
@@ -629,7 +931,18 @@ export class EmployeePanel {
 
     const hourlyPayroll = roster.employees.reduce((sum, e) => sum + e.hourlyWage, 0);
     this.payrollText.text = `$${hourlyPayroll}/hr`;
+    const staffedZones = new Set(
+      roster.employees
+        .map((employee) => employee.assignedArea)
+        .filter((areaId): areaId is string => areaId !== null && areaId !== 'all_course')
+    ).size;
+    const zonedRobots = autonomousState?.robots.filter((robot) => robot.assignedAreaId && robot.assignedAreaId !== 'all_course').length ?? 0;
+    this.coverageText.text =
+      staffedZones > 0 || zonedRobots > 0
+        ? `${staffedZones} crew • ${zonedRobots} bot${zonedRobots !== 1 ? 's' : ''}`
+        : 'Course-wide';
     this.updateMainActionState();
+    this.syncAutomationControls();
   }
 
   public updateApplications(state: ApplicationState, prestigeTier: PrestigeTier, currentGameTime: number): void {
@@ -680,6 +993,7 @@ export class EmployeePanel {
     for (const child of children) {
       this.applicationsContainer.removeControl(child);
     }
+    this.candidateHireButtons.clear();
 
     for (const application of state.applications) {
       const row = this.createCandidateRow(application);
@@ -689,14 +1003,15 @@ export class EmployeePanel {
     if (state.applications.length === 0) {
       const emptyText = new TextBlock('emptyApplicationsText');
       const tierName = prestigeTier.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      emptyText.text = `No applications yet.\n\n${tierName} courses receive applications every ${config.applicationRate} hours.\n\nPost a job opening to speed up the process!`;
+      emptyText.text = `No applicants are waiting.\n\n${tierName} courses usually get fresh interest every ${config.applicationRate} hours.\n\nPost a role when you need coverage sooner or when you want to steer who applies next.`;
       emptyText.color = UI_THEME.colors.text.secondary;
       emptyText.fontSize = UI_THEME.typography.scale.s11;
-      emptyText.height = '100px';
+      emptyText.height = '118px';
       emptyText.textWrapping = true;
       emptyText.lineSpacing = '3px';
       this.applicationsContainer.addControl(emptyText);
     }
+    this.syncAutomationControls();
   }
 
   public show(): void {
@@ -704,6 +1019,7 @@ export class EmployeePanel {
       this.panel.isVisible = true;
       if (this.applicationsPanel) this.applicationsPanel.isVisible = false;
       this.updateMainActionState();
+      this.syncAutomationControls();
     }
   }
 
@@ -714,6 +1030,7 @@ export class EmployeePanel {
     if (this.applicationsPanel) {
       this.applicationsPanel.isVisible = false;
     }
+    this.syncAutomationControls();
   }
 
   public isVisible(): boolean {
@@ -729,11 +1046,141 @@ export class EmployeePanel {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('panel.employee.');
     if (this.panel) {
       this.advancedTexture.removeControl(this.panel);
     }
     if (this.applicationsPanel) {
       this.advancedTexture.removeControl(this.applicationsPanel);
+    }
+  }
+
+  private syncAutomationControls(): void {
+    uiAutomationBridge.unregisterPrefix('panel.employee.');
+
+    uiAutomationBridge.register({
+      id: 'panel.employee.close',
+      label: 'Close Course Operations',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
+    uiAutomationBridge.register({
+      id: 'panel.employee.open_applications',
+      label: 'Open Applications',
+      role: 'button',
+      getControl: () => this.applicationsButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.applicationsButton?.isEnabled ?? false,
+      onActivate: () => this.showApplicationsView(),
+    });
+    uiAutomationBridge.register({
+      id: 'panel.employee.fire_selected',
+      label: 'Fire Selected Employee',
+      role: 'button',
+      getControl: () => this.fireButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.fireButton?.isEnabled ?? false,
+      onActivate: () => this.fireButton?.onPointerClickObservable.notifyObservers(null as never),
+    });
+
+    for (const [employeeId, control] of this.employeeRowControls) {
+      const employee = this.currentRoster?.employees.find((candidate) => candidate.id === employeeId);
+      uiAutomationBridge.register({
+        id: `panel.employee.select.${employeeId}`,
+        label: employee ? `Select ${employee.name}` : `Select Employee ${employeeId}`,
+        role: 'button',
+        getControl: () => control,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => true,
+        onActivate: () => {
+          this.selectedEmployeeId = employeeId;
+          this.selectedEmployeeName = employee?.name ?? null;
+          if (this.currentRoster && this.currentWorkState) {
+            this.update(this.currentRoster, this.currentWorkState, this.currentAutonomousState);
+          } else {
+            this.updateMainActionState();
+          }
+        },
+      });
+    }
+
+    for (const [areaId, button] of this.areaButtons) {
+      uiAutomationBridge.register({
+        id: `panel.employee.assign_area.${areaId}`,
+        label: `Assign Area ${areaId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
+    }
+
+    for (const [focus, button] of this.focusButtons) {
+      uiAutomationBridge.register({
+        id: `panel.employee.assign_focus.${focus}`,
+        label: `Set Focus ${focus}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
+    }
+
+    uiAutomationBridge.register({
+      id: 'panel.employee.applications.close',
+      label: 'Close Applications',
+      role: 'button',
+      getControl: () => this.applicationsCloseButton,
+      isVisible: () => this.applicationsPanel?.isVisible ?? false,
+      isEnabled: () => this.applicationsCloseButton?.isEnabled ?? false,
+      onActivate: () => this.hideApplicationsView(),
+    });
+    uiAutomationBridge.register({
+      id: 'panel.employee.applications.close_all',
+      label: 'Close Applications And Crew Panel',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.applicationsPanel?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
+    uiAutomationBridge.register({
+      id: 'panel.employee.applications.post_job',
+      label: 'Post Job Opening',
+      role: 'button',
+      getControl: () => this.postJobButton,
+      isVisible: () => this.applicationsPanel?.isVisible ?? false,
+      isEnabled: () => this.postJobButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onPostJobOpening(this.selectedPostingRole),
+    });
+
+    for (const [role, button] of this.roleButtons) {
+      uiAutomationBridge.register({
+        id: `panel.employee.applications.role.${role}`,
+        label: `Select Posting Role ${role}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.applicationsPanel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => this.selectPostingRole(role),
+      });
+    }
+
+    for (const [candidateId, button] of this.candidateHireButtons) {
+      uiAutomationBridge.register({
+        id: `panel.employee.applications.hire.${candidateId}`,
+        label: `Hire Candidate ${candidateId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.applicationsPanel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
     }
   }
 }

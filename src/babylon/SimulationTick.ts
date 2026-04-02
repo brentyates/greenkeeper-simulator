@@ -1,6 +1,8 @@
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
+import { GolferVisualSystem } from "./systems/GolferVisualSystem";
 import { IrrigationRenderSystem } from "./systems/IrrigationRenderSystem";
+import { ActivityIndicatorSystem, WorkEffectType } from "./systems/ActivityIndicatorSystem";
 import { UIManager } from "./ui/UIManager";
 import { GameState } from "./GameState";
 import { resolveServiceHubAnchorFromState } from "./GameState";
@@ -25,6 +27,8 @@ import {
   tickEmployees as coreTickEmployees,
   awardExperience,
   tickApplications,
+  markEmployeesUnpaid,
+  resumeEmployeesAfterPayroll,
 } from "../core/employees";
 import {
   tickEmployeeWork,
@@ -75,11 +79,17 @@ import {
   getWeatherImpactDescription,
 } from "../core/weather";
 
+function pick<T>(variants: T[]): T {
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
 export interface SimulationSystems {
   terrainSystem: TerrainSystem;
   uiManager: UIManager;
   employeeVisualSystem: EmployeeVisualSystem | null;
+  golferVisualSystem: GolferVisualSystem | null;
   irrigationRenderSystem: IrrigationRenderSystem | null;
+  activityIndicatorSystem: ActivityIndicatorSystem | null;
   saveCallback: () => void;
   showDaySummaryCallback: () => void;
 }
@@ -109,27 +119,50 @@ function tickWeather(state: GameState, systems: SimulationSystems): void {
   }
 }
 
-function tickPayroll(state: GameState, hours: number, timestamp: number): void {
+function tickPayroll(state: GameState, systems: SimulationSystems, hours: number, timestamp: number): void {
   if (
     hours !== state.lastPayrollHour &&
     state.employeeRoster.employees.length > 0
   ) {
     state.lastPayrollHour = hours;
     const payrollResult = processPayroll(state.employeeRoster, timestamp);
-    state.employeeRoster = payrollResult.roster;
     if (payrollResult.totalPaid > 0) {
       const expenseResult = addExpense(
         state.economyState,
         payrollResult.totalPaid,
         "employee_wages",
         "Hourly wages",
-        timestamp,
-        true
+        timestamp
       );
       if (expenseResult) {
+        const hadWithholdingCrew = state.employeeRoster.employees.some(
+          (employee) => employee.status === "withholding_work"
+        );
+        state.employeeRoster = resumeEmployeesAfterPayroll(payrollResult.roster);
         state.economyState = expenseResult;
         state.dailyStats.expenses.wages += payrollResult.totalPaid;
+        state.scenarioManager?.addExpense?.(payrollResult.totalPaid);
+        if (hadWithholdingCrew) {
+          systems.uiManager.showNotification("Payroll cleared: crew back to work");
+        }
+      } else {
+        const alreadyWithholding = state.employeeRoster.employees.some(
+          (employee) => employee.status === "withholding_work"
+        );
+        state.employeeRoster = markEmployeesUnpaid({
+          ...state.employeeRoster,
+          lastPayrollTime: timestamp,
+        });
+        if (!alreadyWithholding) {
+          systems.uiManager.showNotification(
+            "Payroll missed: crew stopped work",
+            "#ff6666",
+            4000
+          );
+        }
       }
+    } else {
+      state.employeeRoster = resumeEmployeesAfterPayroll(payrollResult.roster);
     }
   }
 }
@@ -149,6 +182,38 @@ function tickPrestige(state: GameState, systems: SimulationSystems, hours: numbe
       state.prestigeState,
       conditionsScore
     );
+
+    const health = conditionsScore.averageHealth ?? conditionsScore.composite ?? 0;
+    const prevThreshold = state.lastHealthNotifyThreshold;
+    const risingThresholds = [60, 70, 80];
+    const fallingThresholds = [50, 40];
+
+    for (const t of risingThresholds) {
+      if (health >= t && prevThreshold < t) {
+        state.lastHealthNotifyThreshold = t;
+        const msg = t >= 80
+          ? pick(["Course looking pristine!", "Greens are immaculate!", "Course in top shape!"])
+          : t >= 70
+          ? pick(["Course health improving!", "Things are shaping up nicely", "The course is coming along!"])
+          : pick(["Course conditions stabilizing", "Health recovering slowly", "Grounds crew making progress"]);
+        systems.uiManager.showNotification(msg, "#88cc88");
+        break;
+      }
+    }
+    for (const t of fallingThresholds) {
+      if (health < t && prevThreshold >= t) {
+        state.lastHealthNotifyThreshold = Math.max(health, t === 50 ? 40 : 0);
+        const msg = t <= 40
+          ? pick(["Course health critical!", "Conditions deteriorating fast", "Urgent: course needs attention!"])
+          : pick(["Course health declining...", "Conditions slipping", "The course needs some TLC"]);
+        systems.uiManager.showNotification(msg, "#ff6666");
+        break;
+      }
+    }
+    if (state.lastHealthNotifyThreshold === 0 && health > 0) {
+      state.lastHealthNotifyThreshold = health < 40 ? 0 : health < 50 ? 40 : health < 60 ? 50 : health < 70 ? 60 : health < 80 ? 70 : 80;
+    }
+
     const demandMult = calculateDemandMultiplier(
       state.greenFees.weekday18Holes,
       state.prestigeState.tolerance
@@ -213,12 +278,12 @@ function processEndOfDay(state: GameState, systems: SimulationSystems, timestamp
     dailyUtilitiesCost,
     "utilities",
     "Daily utilities",
-    timestamp,
-    true
+    timestamp
   );
   if (utilitiesResult) {
     state.economyState = utilitiesResult;
     state.dailyStats.expenses.utilities += dailyUtilitiesCost;
+    state.scenarioManager?.addExpense?.(dailyUtilitiesCost);
   }
 
   const dailySnapshot = takeDailySnapshot(
@@ -290,7 +355,11 @@ function tickGolferArrivals(
         rejectedCount >= 2
       ) {
         systems.uiManager.showNotification(
-          `⚠️ ${rejectedCount} golfers turned away! (Prices too high)`,
+          pick([
+            `${rejectedCount} golfers turned away! Prices too high`,
+            `${rejectedCount} golfers balked at the green fees`,
+            `Lost ${rejectedCount} golfers to sticker shock`,
+          ]),
           "#ffaa44"
         );
       }
@@ -318,15 +387,27 @@ function tickGolferArrivals(
         );
         state.dailyStats.revenue.greenFees += golfer.paidAmount;
         if (state.scenarioManager) {
-          state.scenarioManager.addRevenue(golfer.paidAmount);
           state.scenarioManager.addGolfers(1);
         }
       }
-      systems.uiManager.showNotification(
-        `${arrivalCount} golfer${
-          arrivalCount > 1 ? "s" : ""
-        } arrived (+$${totalFees.toFixed(0)})`
-      );
+      const fee = `+$${totalFees.toFixed(0)}`;
+      if (arrivalCount === 1) {
+        systems.uiManager.showNotification(
+          pick([
+            `Golfer arrived! (${fee} green fee)`,
+            `A golfer tees off (${fee})`,
+            `New player on the course (${fee})`,
+          ])
+        );
+      } else {
+        systems.uiManager.showNotification(
+          pick([
+            `${arrivalCount} golfers arrived! (${fee})`,
+            `Group of ${arrivalCount} heading out (${fee})`,
+            `${arrivalCount} players on the first tee (${fee})`,
+          ])
+        );
+      }
     }
   }
 }
@@ -361,10 +442,13 @@ function tickGolferSimulation(
       if (state.scenarioManager) {
         state.scenarioManager.addRevenue(tickResult.tips);
       }
+      const tipStr = `+$${tickResult.tips.toFixed(0)} tips`;
       systems.uiManager.showNotification(
-        `${departureCount} golfer${
-          departureCount > 1 ? "s" : ""
-        } finished (+$${tickResult.tips.toFixed(0)} tips)`
+        pick([
+          `${departureCount} golfer${departureCount > 1 ? "s" : ""} finished (${tipStr})`,
+          `Round complete! ${departureCount} headed to the clubhouse (${tipStr})`,
+          `${departureCount} happy golfer${departureCount > 1 ? "s" : ""} leaving (${tipStr})`,
+        ])
       );
     }
     state.dailyStats.revenue.tips += tickResult.tips;
@@ -372,6 +456,7 @@ function tickGolferSimulation(
       state.dailyStats.golfersServed++;
       state.dailyStats.totalSatisfaction += departure.satisfaction;
       if (state.scenarioManager) {
+        state.scenarioManager.addRevenue(departure.paidAmount);
         state.scenarioManager.addRound();
       }
     }
@@ -402,12 +487,16 @@ function tickEmployees(
 
   if (appResult.newApplicant) {
     systems.uiManager.showNotification(
-      `📋 New applicant: ${appResult.newApplicant.name} (${appResult.newApplicant.role})`
+      pick([
+        `New applicant: ${appResult.newApplicant.name} (${appResult.newApplicant.role})`,
+        `${appResult.newApplicant.name} applied for ${appResult.newApplicant.role}`,
+        `Resume received: ${appResult.newApplicant.name}`,
+      ])
     );
   }
   for (const posting of appResult.expiredPostings) {
     systems.uiManager.showNotification(
-      `⏰ Job posting expired: ${posting.role}`,
+      `Job posting expired: ${posting.role}`,
       "#ffaa44"
     );
   }
@@ -426,13 +515,16 @@ function tickEmployees(
   if (state.jobSystemState) {
     const workerPositions = new Map<string, { x: number; z: number }>();
     for (const w of state.employeeWorkState.workers) {
-      workerPositions.set(w.employeeId, { x: w.worldX, z: w.worldZ ?? w.worldY });
+      workerPositions.set(w.employeeId, { x: w.worldX, z: w.worldZ });
     }
     const jobExecResult = tickJobExecution(state.jobSystemState, workerPositions, gameMinutes, absoluteGameTime);
     for (const effect of jobExecResult.effects) {
       const affected = systems.terrainSystem.applyWorkEffect(
         effect.worldX, effect.worldZ, effect.radius, effect.type, effect.efficiency, absoluteGameTime
       );
+      if (affected.length > 0) {
+        systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, effect.type as WorkEffectType);
+      }
       for (const job of state.jobSystemState.jobs) {
         if (job.status === 'in_progress') {
           advanceJobProgress(state.jobSystemState, job.id, affected);
@@ -460,6 +552,9 @@ function tickEmployees(
       effect.efficiency,
       absoluteGameTime
     );
+    if (affected.length > 0) {
+      systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, effect.type as WorkEffectType);
+    }
     if (effect.type === "mow") {
       state.dailyStats.maintenance.tilesMowed += affected.length;
     } else if (effect.type === "water") {
@@ -479,6 +574,23 @@ function tickEmployees(
       );
     }
     state.dailyStats.maintenance.tasksCompleted++;
+    state.lastWorkNotifyCount++;
+    if (state.lastWorkNotifyCount >= 5) {
+      state.lastWorkNotifyCount = 0;
+      const taskLabel = completion.task === "mow_grass" ? "mowing"
+        : completion.task === "water_area" ? "watering"
+        : completion.task === "fertilize_area" ? "fertilizing"
+        : completion.task === "rake_bunker" ? "bunker raking"
+        : "maintenance";
+      systems.uiManager.showNotification(
+        pick([
+          `Crew finished ${taskLabel} section`,
+          `${taskLabel.charAt(0).toUpperCase() + taskLabel.slice(1)} work complete`,
+          `Another section done (${taskLabel})`,
+        ]),
+        "#88cc88"
+      );
+    }
 
     const supplyCost = TASK_SUPPLY_COSTS[completion.task];
     if (supplyCost > 0) {
@@ -488,12 +600,12 @@ function tickEmployees(
         supplyCost,
         "supplies",
         `Maintenance: ${completion.task}`,
-        ts,
-        true
+        ts
       );
       if (expenseResult) {
         state.economyState = expenseResult;
         state.dailyStats.expenses.supplies += supplyCost;
+        state.scenarioManager?.addExpense?.(supplyCost);
       }
     }
   }
@@ -524,11 +636,11 @@ function tickResearch(state: GameState, systems: SimulationSystems, gameMinutes:
           fundingCost,
           "research",
           "Research funding",
-          timestamp,
-          true
+          timestamp
         );
         if (expenseResult) {
           state.economyState = expenseResult;
+          state.scenarioManager?.addExpense?.(fundingCost);
         }
         const researchResult = coreTickResearch(
           state.researchState,
@@ -538,7 +650,14 @@ function tickResearch(state: GameState, systems: SimulationSystems, gameMinutes:
         state.researchState = researchResult.state;
         if (researchResult.completed) {
           const unlockDesc = describeResearchUnlock(researchResult.completed);
-          systems.uiManager.showNotification(`Research complete: ${unlockDesc}`);
+          systems.uiManager.showNotification(
+            pick([
+              `Research complete: ${unlockDesc}`,
+              `Breakthrough! ${unlockDesc} unlocked`,
+              `New tech: ${unlockDesc}`,
+            ]),
+            "#66ccff"
+          );
         }
       }
     }
@@ -606,7 +725,8 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
       candidates,
       gameMinutes,
       fleetAIActive,
-      canRobotTraverse
+      canRobotTraverse,
+      state.employeeWorkState.areas
     );
     state.autonomousState = robotResult.state;
 
@@ -616,11 +736,11 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
         robotResult.operatingCost,
         "equipment_maintenance",
         "Robot operating costs",
-        timestamp,
-        true
+        timestamp
       );
       if (expenseResult) {
         state.economyState = expenseResult;
+        state.scenarioManager?.addExpense?.(robotResult.operatingCost);
       }
     }
 
@@ -639,6 +759,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
           timestamp,
           allowedTerrainCodes ?? undefined
         );
+        systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, "mow");
       } else if (effect.type === "raker") {
         const allowedTerrainCodes = getAllowedTerrainCodesForRobotEquipment(
           effect.equipmentId,
@@ -653,6 +774,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
           timestamp,
           allowedTerrainCodes ?? undefined
         );
+        systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, "rake");
       } else if (effect.type === "sprayer") {
         systems.terrainSystem.waterArea(
           effect.worldX,
@@ -660,6 +782,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
           2,
           10 * effect.efficiency
         );
+        systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, "water");
       } else if (effect.type === "spreader") {
         const effectiveness = getBestFertilizerEffectiveness(
           state.researchState
@@ -671,6 +794,7 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
           10 * effect.efficiency,
           effectiveness
         );
+        systems.activityIndicatorSystem?.showWorkEffect(effect.worldX, effect.worldZ, "fertilize");
       }
     }
   }
@@ -678,10 +802,11 @@ function tickAutonomousEquipment(state: GameState, systems: SimulationSystems, g
 
 function tickScenario(state: GameState, systems: SimulationSystems): void {
   if (state.scenarioManager) {
-    const courseStats = systems.terrainSystem.getCourseStats();
+    state.scenarioManager.updateCourseHealthFromFaces?.(
+      systems.terrainSystem.getAllFaceStates()
+    );
     state.scenarioManager.updateProgress({
       currentCash: state.economyState.cash,
-      currentHealth: courseStats.health,
     });
   }
 }
@@ -773,12 +898,12 @@ function tickIrrigation(state: GameState, systems: SimulationSystems, gameMinute
         waterCost,
         "utilities",
         "Irrigation water",
-        timestamp,
-        true
+        timestamp
       );
       if (expenseResult) {
         state.economyState = expenseResult;
         state.dailyStats.expenses.utilities += waterCost;
+        state.scenarioManager?.addExpense?.(waterCost);
       }
     }
   }
@@ -821,12 +946,15 @@ export function runSimulationTick(state: GameState, systems: SimulationSystems, 
   const timestamp = state.gameDay * 24 * 60 + state.gameTime;
 
   tickWeather(state, systems);
-  tickPayroll(state, hours, timestamp);
+  tickPayroll(state, systems, hours, timestamp);
   tickAutoSave(state, systems, hours);
   tickPrestige(state, systems, hours);
   tickTeeTimes(state, systems, hours, timestamp);
   tickGolferArrivals(state, systems, hours, isWeekendDay, isTwilight, timestamp);
   tickGolferSimulation(state, systems, gameMinutes, timestamp);
+  if (systems.golferVisualSystem) {
+    systems.golferVisualSystem.update(state.golferPool, deltaMs);
+  }
   tickStandingOrders(state, systems, timestamp);
   tickEmployees(state, systems, gameMinutes, deltaMs);
   tickResearch(state, systems, gameMinutes, timestamp);

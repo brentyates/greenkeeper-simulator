@@ -30,6 +30,7 @@ import {
 import {
   EmployeeWorkSystemState,
   createInitialWorkSystemState,
+  createDefaultCourseAreas,
   syncWorkersWithRoster,
 } from "../core/employee-work";
 import {
@@ -241,6 +242,7 @@ export class GameState {
 
   currentCourse!: CourseData;
   holeBuilderAssets: PlacedAsset[] = [];
+  scenarioPlacedAssets: PlacedAsset[] = [];
   gameOptions!: GameOptions;
 
   lastPayrollHour: number = -1;
@@ -248,6 +250,8 @@ export class GameState {
   lastAutoSaveHour: number = -1;
   lastPrestigeUpdateHour: number = -1;
   lastTeeTimeUpdateHour: number = -1;
+  lastHealthNotifyThreshold: number = 0;
+  lastWorkNotifyCount: number = 0;
 
   useWasmPathfinding: boolean = false;
 
@@ -280,6 +284,10 @@ export class GameState {
       maintenanceShedX,
       maintenanceShedY
     );
+    state.employeeWorkState = {
+      ...state.employeeWorkState,
+      areas: [...createDefaultCourseAreas(course.width, course.height)],
+    };
 
     const starterEmployee: Employee = {
       id: 'starter_gk',
@@ -293,7 +301,8 @@ export class GameState {
       happiness: 80,
       fatigue: 0,
       status: 'working',
-      assignedArea: null,
+      assignedArea: 'clubhouse_side',
+      assignedFocus: 'balanced',
     };
     const rosterWithStarter = hireEmployee(state.employeeRoster, starterEmployee);
     if (rosterWithStarter) {

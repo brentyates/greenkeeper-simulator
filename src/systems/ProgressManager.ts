@@ -32,7 +32,7 @@ export class ProgressManager {
         };
       }
     } catch (e) {
-      console.warn('Failed to load progress from localStorage:', e);
+      
     }
     return { ...DEFAULT_PROGRESS };
   }
@@ -41,7 +41,7 @@ export class ProgressManager {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.progress));
     } catch (e) {
-      console.warn('Failed to save progress to localStorage:', e);
+      
     }
   }
 

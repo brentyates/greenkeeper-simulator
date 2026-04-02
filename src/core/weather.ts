@@ -22,10 +22,10 @@ export interface SeasonalModifier {
 }
 
 const SEASONAL_MODIFIERS: Record<string, SeasonalModifier> = {
-  spring: { season: 'spring', baseTemperature: 65, temperatureVariance: 15, rainChance: 0.3, stormChance: 0.1 },
-  summer: { season: 'summer', baseTemperature: 82, temperatureVariance: 12, rainChance: 0.15, stormChance: 0.08 },
-  fall: { season: 'fall', baseTemperature: 60, temperatureVariance: 18, rainChance: 0.25, stormChance: 0.05 },
-  winter: { season: 'winter', baseTemperature: 45, temperatureVariance: 20, rainChance: 0.2, stormChance: 0.02 },
+  spring: { season: 'spring', baseTemperature: 65, temperatureVariance: 15, rainChance: 0.15, stormChance: 0.05 },
+  summer: { season: 'summer', baseTemperature: 82, temperatureVariance: 12, rainChance: 0.08, stormChance: 0.03 },
+  fall: { season: 'fall', baseTemperature: 60, temperatureVariance: 18, rainChance: 0.12, stormChance: 0.03 },
+  winter: { season: 'winter', baseTemperature: 45, temperatureVariance: 20, rainChance: 0.10, stormChance: 0.01 },
 };
 
 export function getSeasonFromDay(gameDay: number): SeasonalModifier {

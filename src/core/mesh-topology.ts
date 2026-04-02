@@ -1147,12 +1147,10 @@ export function flipEdge(
 ): boolean {
   const edge = topology.edges.get(edgeId);
   if (!edge) {
-      console.warn(`FlipEdge: Edge ${edgeId} not found`);
       return false;
   }
 
   if (edge.triangles.length !== 2) {
-      console.warn(`FlipEdge: Edge ${edgeId} is not an interior edge (triangles: ${edge.triangles.length})`, {triIds: edge.triangles});
       return false;
   }
 
@@ -1161,7 +1159,6 @@ export function flipEdge(
   const t1 = topology.triangles.get(t1Id);
   const t2 = topology.triangles.get(t2Id);
   if (!t1 || !t2) {
-      console.warn(`FlipEdge: Triangle(s) not found`, {t1Id, t2Id});
       return false;
   }
 
@@ -1173,13 +1170,11 @@ export function flipEdge(
   const o2 = t2.vertices.find(v => v !== v1 && v !== v2);
 
   if (o1 === undefined || o2 === undefined) {
-      console.warn(`FlipEdge: Could not find opposite vertices`, {v1, v2, t1Verts: t1.vertices, t2Verts: t2.vertices});
       return false;
   }
 
   const existingEdgeId = findEdge(topology, o1, o2);
   if (existingEdgeId !== undefined) {
-      console.warn(`FlipEdge: Opposite vertices ${o1} and ${o2} are already connected by edge ${existingEdgeId}`);
       return false;
   }
 
@@ -1190,7 +1185,6 @@ export function flipEdge(
   const vertO2 = topology.vertices.get(o2);
 
   if (!vert1 || !vert2 || !vertO1 || !vertO2) {
-      console.warn(`FlipEdge: Vertex objects not found`);
       return false;
   }
 
@@ -1201,7 +1195,6 @@ export function flipEdge(
       vertO1.position.x, vertO1.position.z,
       vertO2.position.x, vertO2.position.z
   )) {
-      console.warn(`FlipEdge: Quadrilateral is not convex (diagonals do not intersect)`);
       return false;
   }
 
@@ -1221,7 +1214,6 @@ export function flipEdge(
   const e_o2_v2_id = findBoundary(t2, o2, v2);
 
   if (e_v2_o1_id === undefined || e_o1_v1_id === undefined || e_v1_o2_id === undefined || e_o2_v2_id === undefined) {
-      console.warn("FlipEdge: Could not find all boundary edges", {e_v2_o1_id, e_o1_v1_id, e_v1_o2_id, e_o2_v2_id});
       return false;
   }
 

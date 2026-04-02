@@ -9,6 +9,8 @@ import { PlacedAsset } from '../../data/customCourseData';
 import {
   createHoleFeatureAssignment,
   getMaxAssignedHoleNumber,
+  getMinAssignedHoleNumber,
+  type HoleFeatureAssignment,
 } from '../../core/hole-construction';
 
 interface PlacedAssetEntry {
@@ -18,7 +20,7 @@ interface PlacedAssetEntry {
 
 export interface AssetPlacementCallbacks {
   onSelect?: (asset: PlacedAsset | null) => void;
-  onPlace?: (asset: PlacedAsset) => void;
+  onPlace?: (asset: PlacedAsset, details?: { replacedCount: number }) => void;
   onHoleNumberChange?: (holeNumber: number) => void;
   getTerrainElevation?: (worldX: number, worldZ: number) => number;
 }
@@ -82,12 +84,12 @@ export class AssetPlacementSystem {
 
   public handleMouseMove(worldX: number, worldZ: number): void {
     if (!this.placeMode || !this.ghostMesh) return;
-    const y = this.getElevation(worldX, worldZ);
+    const y = this.getPlacementY(worldX, worldZ, 0);
     this.ghostMesh.position.set(worldX, y, worldZ);
   }
 
   public async placeAsset(worldX: number, worldZ: number): Promise<void> {
-    const y = this.getElevation(worldX, worldZ);
+    const y = this.getPlacementY(worldX, worldZ, 0);
     const holeFeature = createHoleFeatureAssignment(
       this.placeAssetId,
       this.activeHoleNumber
@@ -101,10 +103,14 @@ export class AssetPlacementSystem {
       gameplay: holeFeature ? { holeFeature } : undefined,
     };
 
+    const replacedCount = holeFeature
+      ? this.removeConflictingHoleFeatures(holeFeature)
+      : 0;
     const instance = await this.loadAndPlace(asset);
     if (instance) {
       this.placed.push({ data: asset, instance });
-      this.callbacks.onPlace?.(asset);
+      this.setSelected(this.placed.length - 1);
+      this.callbacks.onPlace?.(asset, { replacedCount });
     }
   }
 
@@ -130,7 +136,7 @@ export class AssetPlacementSystem {
   public moveSelected(worldX: number, worldZ: number): void {
     if (this.selectedIndex < 0) return;
     const entry = this.placed[this.selectedIndex];
-    const y = this.getElevation(worldX, worldZ);
+    const y = this.getPlacementY(worldX, worldZ, entry.data.y);
     entry.data.x = worldX;
     entry.data.y = y;
     entry.data.z = worldZ;
@@ -168,6 +174,21 @@ export class AssetPlacementSystem {
     return this.placed.map((e) => this.cloneAsset(e.data));
   }
 
+  public getAssignedHoleNumbers(): number[] {
+    const numbers = new Set<number>();
+    for (const entry of this.placed) {
+      const holeNumber = entry.data.gameplay?.holeFeature?.holeNumber;
+      if (typeof holeNumber === 'number' && Number.isFinite(holeNumber) && holeNumber >= 1) {
+        numbers.add(Math.floor(holeNumber));
+      }
+    }
+    return Array.from(numbers).sort((a, b) => a - b);
+  }
+
+  public getMaxAssignedHoleNumber(): number {
+    return getMaxAssignedHoleNumber(this.placed.map((entry) => entry.data));
+  }
+
   public async loadPlacedAssets(assets: PlacedAsset[]): Promise<void> {
     for (const entry of this.placed) {
       disposeInstance(entry.instance);
@@ -176,16 +197,20 @@ export class AssetPlacementSystem {
     this.selectedIndex = -1;
 
     for (const asset of assets) {
-      const instance = await this.loadAndPlace(asset);
+      const normalizedAsset = {
+        ...this.cloneAsset(asset),
+        y: this.getPlacementY(asset.x, asset.z, asset.y),
+      };
+      const instance = await this.loadAndPlace(normalizedAsset);
       if (instance) {
-        this.placed.push({ data: this.cloneAsset(asset), instance });
+        this.placed.push({ data: normalizedAsset, instance });
       }
     }
 
-    const maxAssignedHole = getMaxAssignedHoleNumber(
+    const firstAssignedHole = getMinAssignedHoleNumber(
       this.placed.map((entry) => entry.data)
     );
-    this.setActiveHoleNumber(maxAssignedHole + 1);
+    this.setActiveHoleNumber(firstAssignedHole);
   }
 
   public dispose(): void {
@@ -258,6 +283,13 @@ export class AssetPlacementSystem {
     return 0;
   }
 
+  private getPlacementY(worldX: number, worldZ: number, fallbackY: number): number {
+    if (this.callbacks.getTerrainElevation) {
+      return this.getElevation(worldX, worldZ);
+    }
+    return fallbackY;
+  }
+
   private cloneAsset(asset: PlacedAsset): PlacedAsset {
     return {
       ...asset,
@@ -268,5 +300,49 @@ export class AssetPlacementSystem {
           : undefined,
       } : undefined,
     };
+  }
+
+  private removeConflictingHoleFeatures(feature: HoleFeatureAssignment): number {
+    let removedCount = 0;
+
+    for (let i = this.placed.length - 1; i >= 0; i--) {
+      const existingFeature = this.placed[i].data.gameplay?.holeFeature;
+      if (!existingFeature) continue;
+      if (!this.holeFeaturesConflict(existingFeature, feature)) continue;
+      this.removePlacedAtIndex(i);
+      removedCount += 1;
+    }
+
+    return removedCount;
+  }
+
+  private holeFeaturesConflict(
+    existing: HoleFeatureAssignment,
+    incoming: HoleFeatureAssignment
+  ): boolean {
+    if (existing.holeNumber !== incoming.holeNumber) return false;
+    if (existing.kind !== incoming.kind) return false;
+
+    if (incoming.kind === 'pin_position') {
+      return true;
+    }
+
+    return (existing.teeSet ?? 'custom') === (incoming.teeSet ?? 'custom');
+  }
+
+  private removePlacedAtIndex(index: number): void {
+    const entry = this.placed[index];
+    disposeInstance(entry.instance);
+    this.placed.splice(index, 1);
+
+    if (this.selectedIndex === index) {
+      this.selectedIndex = -1;
+      this.callbacks.onSelect?.(null);
+      return;
+    }
+
+    if (this.selectedIndex > index) {
+      this.selectedIndex -= 1;
+    }
   }
 }

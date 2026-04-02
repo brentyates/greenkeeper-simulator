@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createInitialWorkSystemState,
+  createDefaultCourseAreas,
   addWorker,
   removeWorker,
   assignWorkerToArea,
@@ -130,6 +131,18 @@ describe('employee-work', () => {
       const state = createInitialWorkSystemState();
       expect(state.maintenanceShedX).toBe(0);
       expect(state.maintenanceShedY).toBe(0);
+    });
+
+    it('creates default course areas for management assignments', () => {
+      const areas = createDefaultCourseAreas(100, 80);
+
+      expect(areas.map((area) => area.id)).toEqual([
+        'all_course',
+        'clubhouse_side',
+        'middle_grounds',
+        'far_side',
+      ]);
+      expect(areas[0]).toMatchObject({ minX: 0, maxX: 99, minY: 0, maxY: 79 });
     });
   });
 
@@ -276,6 +289,48 @@ describe('employee-work', () => {
 
       const worker = result.state.workers[0];
       expect(worker.currentTask).not.toBe('idle');
+    });
+
+    it('keeps unassigned workers near the maintenance shed support zone', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0, 'Test Worker');
+      const workingEmployee = { ...employee, status: 'working' as const };
+      state = addWorker(state, workingEmployee);
+
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('30,30', createSampleWithWork('mow'));
+
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+      const result = tickEmployeeWork(state, [workingEmployee], terrain, 1);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).toBe('idle');
+      expect(worker.targetX).toBeNull();
+      expect(worker.targetZ).toBeNull();
+    });
+
+    it('lets assigned workers service distant course areas', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0, 'Test Worker');
+      const workingEmployee = {
+        ...employee,
+        status: 'working' as const,
+        assignedArea: 'all_course',
+      };
+      state = addWorker(state, workingEmployee);
+      state = addArea(state, { id: 'all_course', name: 'All Course', minX: 0, maxX: 50, minY: 0, maxY: 50 });
+      state = assignWorkerToArea(state, workingEmployee.id, 'all_course');
+
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('30,30', createSampleWithWork('mow'));
+
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+      const result = tickEmployeeWork(state, [workingEmployee], terrain, 1);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).not.toBe('idle');
+      expect(worker.targetX).not.toBeNull();
+      expect(worker.targetZ).not.toBeNull();
     });
 
     it('completes work and generates effect', () => {
@@ -657,6 +712,18 @@ describe('employee-work', () => {
   });
 
   describe('getActiveWorkerCount', () => {
+    it('mirrors employee area assignments into worker state during sync', () => {
+      const state = createInitialWorkSystemState();
+      const employee = {
+        ...createEmployee('groundskeeper', 'novice', 0),
+        assignedArea: 'clubhouse_side' as const,
+      };
+
+      const synced = syncWorkersWithRoster(state, [employee]);
+
+      expect(synced.workers[0].assignedAreaId).toBe('clubhouse_side');
+    });
+
     it('counts workers not idle', () => {
       let state = createInitialWorkSystemState();
       const emp1 = createEmployee('groundskeeper', 'novice', 0);
@@ -779,6 +846,52 @@ describe('employee-work', () => {
       expect(worker.currentTask).toBe('fertilize_area');
     });
 
+    it('prefers watering to recover weak turf before standard mowing', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0);
+      const workingEmployee = { ...employee, status: 'working' as const };
+      state = addWorker(state, workingEmployee);
+
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('0,0', {
+        avgMoisture: 44,
+        avgNutrients: 48,
+        avgGrassHeight: 66,
+        avgHealth: 42,
+        dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+        faceCount: 4,
+      });
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+
+      const result = tickEmployeeWork(state, [workingEmployee], terrain, 0.1);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).toBe('water_area');
+    });
+
+    it('uses fertilizing as recovery work for nutrient-starved weak turf', () => {
+      let state = createInitialWorkSystemState(0, 0);
+      const employee = createEmployee('groundskeeper', 'novice', 0);
+      const workingEmployee = { ...employee, status: 'working' as const };
+      state = addWorker(state, workingEmployee);
+
+      const sampleMap = new Map<string, FaceStateSample>();
+      sampleMap.set('0,0', {
+        avgMoisture: 70,
+        avgNutrients: 42,
+        avgGrassHeight: 52,
+        avgHealth: 40,
+        dominantTerrainCode: TERRAIN_CODES.FAIRWAY,
+        faceCount: 4,
+      });
+      const terrain = createMockTerrainSystem({ sampleAt: sampleMap });
+
+      const result = tickEmployeeWork(state, [workingEmployee], terrain, 0.1);
+
+      const worker = result.state.workers[0];
+      expect(worker.currentTask).toBe('fertilize_area');
+    });
+
     it('finds rake task for bunker needing attention', () => {
       let state = createInitialWorkSystemState(0, 0);
       const employee = createEmployee('groundskeeper', 'novice', 0);
@@ -833,6 +946,7 @@ describe('employee-work', () => {
         10,
         10,
         'groundskeeper',
+        'balanced',
         null,
         new Set<string>(),
         0,
@@ -870,6 +984,7 @@ describe('employee-work', () => {
         10,
         10,
         'groundskeeper',
+        'balanced',
         null,
         new Set<string>(),
         0,

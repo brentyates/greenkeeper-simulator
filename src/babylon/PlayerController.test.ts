@@ -1139,6 +1139,21 @@ describe("PlayerController", () => {
     });
   });
 
+  describe("handleWorldClickTarget", () => {
+    it("returns early when target is out of bounds", () => {
+      controller.createPlayer();
+      controller.handleWorldClickTarget(-1, 5);
+      expect(controller.getClickToMoveWaypoints()).toEqual([]);
+    });
+
+    it("generates waypoints for a valid world target", () => {
+      controller.createPlayer();
+      controller.handleWorldClickTarget(7.2, 5.7);
+      expect(controller.getClickToMoveWaypoints().length).toBeGreaterThan(0);
+      expect(controller.getPlayer().pendingDirection).toBeNull();
+    });
+  });
+
   describe("screenToGridFromScreen", () => {
     it("returns null when no canvas", () => {
       const result = controller.screenToGridFromScreen(100, 100);

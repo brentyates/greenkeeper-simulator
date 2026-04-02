@@ -69,6 +69,9 @@ uniform float enableStripes;
 uniform float enableNoise;
 uniform float enableWaterAnim;
 
+// Prestige visual modifier (-1 = low prestige, 0 = neutral, +1 = high prestige)
+uniform float prestigeModifier;
+
 // Image overlay
 uniform sampler2D overlayImage;
 uniform float overlayOpacity;
@@ -255,6 +258,17 @@ void main() {
   float lighting = ambient + diffuse * 0.5;
 
   color *= lighting;
+
+  float grassMask = max(max(fairwayMask, greenMask), max(roughMask, teeMask));
+  if (abs(prestigeModifier) > 0.001 && grassMask > 0.5) {
+    float sat = 1.0 + prestigeModifier * 0.25;
+    float lum = dot(color, vec3(0.299, 0.587, 0.114));
+    color = mix(vec3(lum), color, sat);
+    color += vec3(0.0, prestigeModifier * 0.03, 0.0);
+    float brownShift = max(-prestigeModifier, 0.0) * 0.06;
+    color += vec3(brownShift * 0.5, -brownShift * 0.3, -brownShift * 0.4);
+    color += vec3(prestigeModifier * 0.02);
+  }
 
   // Image overlay
   if (overlayOpacity > 0.001) {

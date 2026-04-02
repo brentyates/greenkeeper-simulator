@@ -23,13 +23,14 @@ export const SCENARIOS: ScenarioDefinition[] = [
     courseId: '3_hole',
     objective: {
       type: 'economic',
-      targetProfit: 2000,
+      targetProfit: 850,
     },
     conditions: {
       startingCash: 5000,
-      startingHealth: 60,
+      startingHealth: 80,
       timeLimitDays: 30,
-      grassGrowthRate: 0.8, // Slower growth for tutorial
+      minimumHealth: 30,
+      minimumHealthGraceDays: 5,
     },
     difficulty: 'beginner',
   },
@@ -42,7 +43,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
     courseId: '9_hole',
     objective: {
       type: 'restoration',
-      targetHealth: 75,
+      targetHealth: 60,
       targetCondition: 'Good',
     },
     conditions: {

@@ -172,6 +172,7 @@ export interface HeaderConfig {
   width: number;
   onClose: () => void;
   closeLabel?: string;
+  onCloseButtonCreated?: (button: Button) => void;
 }
 
 export interface ActionButtonConfig {
@@ -364,6 +365,7 @@ export function createPopupHeader(parent: StackPanel, config: HeaderConfig): Rec
     closeBtn.background = colors.normal;
   });
   container.addControl(closeBtn);
+  config.onCloseButtonCreated?.(closeBtn);
 
   return container;
 }

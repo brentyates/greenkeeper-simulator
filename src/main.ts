@@ -14,6 +14,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { uiAutomationBridge } from './automation/UIAutomationBridge';
 
 declare global {
   interface Window {
@@ -78,6 +79,9 @@ class GameApp {
     if (!this.canvas) {
       throw new Error(`Canvas element '${canvasId}' not found`);
     }
+
+    this.canvas.tabIndex = 0;
+    this.canvas.style.outline = 'none';
   }
 
   public async start(): Promise<void> {
@@ -126,9 +130,16 @@ class GameApp {
       }
     }, this.menuTexture);
 
+    this.launchScreen.show();
+    this.userManual.hide();
+
     // Start render loop for menu
     this.engine.runRenderLoop(() => {
       this.menuScene?.render();
+    });
+
+    window.requestAnimationFrame(() => {
+      this.canvas.focus();
     });
 
     // Handle resize
@@ -151,6 +162,9 @@ class GameApp {
       onScenarioComplete: (score: number) => this.handleScenarioComplete(scenario.id, score)
     });
     window.game = this.game.createAPI();
+    window.requestAnimationFrame(() => {
+      this.canvas.focus();
+    });
   }
 
   public startScenarioById(id: string, loadFromSave: boolean = false): boolean {
@@ -159,7 +173,6 @@ class GameApp {
       this.startGame(scenario, loadFromSave);
       return true;
     }
-    console.warn(`Unknown scenario: ${id}. Available: ${SCENARIOS.map(s => s.id).join(', ')}`);
     return false;
   }
 
@@ -280,7 +293,6 @@ class GameApp {
 
   private handleScenarioComplete(scenarioId: string, score: number): void {
     this.progressManager.completeScenario(scenarioId, score);
-    console.log(`Scenario ${scenarioId} completed with score ${score}`);
   }
 
   public getGame(): BabylonMain | null {
@@ -344,12 +356,22 @@ class GameApp {
     }
     return null;
   }
+
+  public getAutomationState(): Record<string, unknown> {
+    return {
+      menuState: this.getMenuState(),
+      guideVisible: this.userManual?.isVisible() ?? false,
+      launchVisible: this.launchScreen?.isVisible() ?? false,
+      game: this.game?.getAutomationState() ?? null,
+    };
+  }
 }
 
 // Create and start the app
 const app = new GameApp('renderCanvas');
 window.app = app;
 window.game = null;
+uiAutomationBridge.setContextProvider(() => window.app.getAutomationState());
 window.designer = null;
 app.start();
 
@@ -371,9 +393,7 @@ window.captureScreenshot = async (): Promise<string> => {
   });
 };
 
-window.exportGameState = () => {
-  console.log('Game state export not yet implemented for Babylon.js version');
-};
+window.exportGameState = () => {};
 
 window.listScenarios = () => SCENARIOS.map(s => s.id);
 

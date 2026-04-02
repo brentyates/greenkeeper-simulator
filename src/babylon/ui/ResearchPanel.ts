@@ -17,6 +17,7 @@ import {
 } from './PopupUtils';
 import { addDialogScrollBlock, addDialogSectionLabel } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
 
 import {
   ResearchState,
@@ -38,6 +39,27 @@ export interface ResearchPanelCallbacks {
   onCancelResearch: () => void;
   onSetFunding: (level: FundingLevel) => void;
   onClose: () => void;
+}
+
+function getResearchRecommendation(state: ResearchState): string {
+  if (state.currentResearch) {
+    const item = RESEARCH_ITEMS.find((entry) => entry.id === state.currentResearch?.itemId);
+    return item
+      ? `Recommendation: keep ${item.name} funded until it lands unless cash becomes the bigger problem.`
+      : 'Recommendation: keep active research funded unless cash pressure forces a pause.';
+  }
+
+  const completed = new Set(state.completedResearch);
+  if (!completed.has('basic_sprinkler')) {
+    return 'Recommendation: irrigation research is the best early unlock when turf quality is fragile.';
+  }
+  if (!completed.has('employee_training_1')) {
+    return 'Recommendation: training improves recurring upkeep and is a strong next management unlock.';
+  }
+  if (!completed.has('riding_mower_basic')) {
+    return 'Recommendation: mower upgrades help when coverage is stretched and labor starts to bottleneck.';
+  }
+  return 'Recommendation: pick the next unlock that removes your current bottleneck: quality, staff efficiency, or automation.';
 }
 
 const CATEGORY_ICONS: Record<ResearchCategory, string> = {
@@ -82,10 +104,13 @@ export class ResearchPanel {
   private progressBar: Rectangle | null = null;
   private progressFill: Rectangle | null = null;
   private progressText: TextBlock | null = null;
+  private recommendationText: TextBlock | null = null;
   private fundingText: TextBlock | null = null;
   private costText: TextBlock | null = null;
   private fundingButtons: Map<FundingLevel, Button> = new Map();
   private categoryButtons: Map<ResearchCategory, Button> = new Map();
+  private mainCloseButton: Button | null = null;
+  private researchActionButtons: Map<string, Button> = new Map();
 
   private selectedCategory: ResearchCategory | null = null;
 
@@ -110,6 +135,9 @@ export class ResearchPanel {
       title: '🔬 RESEARCH LAB',
       width: RESEARCH_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
+      onCloseButtonCreated: (button) => {
+        this.mainCloseButton = button;
+      },
     });
     this.createCurrentResearchSection(stack);
     this.createFundingControls(stack);
@@ -121,7 +149,7 @@ export class ResearchPanel {
     const container = createPanelSection(parent, {
       name: 'currentResearchContainer',
       width: RESEARCH_CONTENT_WIDTH,
-      height: 76,
+      height: 102,
       theme: 'green',
       paddingTop: 8,
     });
@@ -175,6 +203,16 @@ export class ResearchPanel {
     this.progressText.color = UI_THEME.colors.text.primary;
     this.progressText.fontSize = UI_THEME.typography.scale.s10;
     this.progressBar.addControl(this.progressText);
+
+    this.recommendationText = new TextBlock('researchRecommendation');
+    this.recommendationText.text = 'Recommendation: open with irrigation or training so early course quality is easier to protect.';
+    this.recommendationText.color = UI_THEME.colors.text.info;
+    this.recommendationText.fontSize = UI_THEME.typography.scale.s10;
+    this.recommendationText.height = '24px';
+    this.recommendationText.paddingTop = '6px';
+    this.recommendationText.textWrapping = true;
+    this.recommendationText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(this.recommendationText);
   }
 
   private createFundingControls(parent: StackPanel): void {
@@ -285,9 +323,9 @@ export class ResearchPanel {
       const btn = createSelectableButton({
         id: `cat_${cat}`,
         label: `${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]}`,
-        width: 102,
+        width: 96,
         height: 28,
-        fontSize: 10,
+        fontSize: 9,
         style: {
           selectedBackground: UI_THEME.colors.action.primary.normal,
           selectedColor: UI_THEME.colors.text.primary,
@@ -317,13 +355,13 @@ export class ResearchPanel {
     const { content } = addDialogScrollBlock(parent, {
       id: 'listContainer',
       width: RESEARCH_CONTENT_WIDTH,
-      height: 314,
+      height: 288,
       theme: 'green',
       paddingTop: 6,
       scroll: {
         name: 'researchScroll',
         width: RESEARCH_SCROLL_WIDTH,
-        height: 302,
+        height: 276,
         contentName: 'researchListStack',
         contentWidth: '100%',
         options: {
@@ -430,6 +468,7 @@ export class ResearchPanel {
         onClick: () => this.callbacks.onStartResearch(item.id),
       });
       grid.addControl(startBtn, 0, 3);
+      this.researchActionButtons.set(`start.${item.id}`, startBtn);
     } else if (isResearching) {
       const cancelBtn = createActionButton({
         id: `cancel_${item.id}`,
@@ -441,18 +480,20 @@ export class ResearchPanel {
         onClick: () => this.callbacks.onCancelResearch(),
       });
       grid.addControl(cancelBtn, 0, 3);
+      this.researchActionButtons.set(`cancel.${item.id}`, cancelBtn);
     }
 
     return row;
   }
 
   public update(state: ResearchState): void {
-    if (!this.researchListContainer || !this.currentResearchText || !this.progressFill || !this.progressText || !this.fundingText || !this.costText) return;
+    if (!this.researchListContainer || !this.currentResearchText || !this.progressFill || !this.progressText || !this.fundingText || !this.costText || !this.recommendationText) return;
 
     const children = [...this.researchListContainer.children];
     for (const child of children) {
       this.researchListContainer.removeControl(child);
     }
+    this.researchActionButtons.clear();
 
     if (state.currentResearch) {
       const item = RESEARCH_ITEMS.find(i => i.id === state.currentResearch!.itemId);
@@ -470,6 +511,7 @@ export class ResearchPanel {
     const cost = FUNDING_COST_PER_MINUTE[state.fundingLevel];
     const points = FUNDING_POINTS_PER_MINUTE[state.fundingLevel];
     this.costText.text = cost > 0 ? `($${cost}/min, +${points}pts)` : '(free)';
+    this.recommendationText.text = getResearchRecommendation(state);
 
     this.fundingButtons.forEach((btn, level) => {
       setSelectableButtonState(btn, level === state.fundingLevel);
@@ -493,11 +535,13 @@ export class ResearchPanel {
       const row = this.createResearchRow(item, status, progress);
       this.researchListContainer.addControl(row);
     }
+    this.syncAutomationControls();
   }
 
   public show(): void {
     if (this.panel) {
       this.panel.isVisible = true;
+      this.syncAutomationControls();
     }
   }
 
@@ -505,6 +549,7 @@ export class ResearchPanel {
     if (this.panel) {
       this.panel.isVisible = false;
     }
+    this.syncAutomationControls();
   }
 
   public isVisible(): boolean {
@@ -520,8 +565,63 @@ export class ResearchPanel {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('panel.research.');
     if (this.panel) {
       this.advancedTexture.removeControl(this.panel);
+    }
+  }
+
+  private syncAutomationControls(): void {
+    uiAutomationBridge.unregisterPrefix('panel.research.');
+
+    uiAutomationBridge.register({
+      id: 'panel.research.close',
+      label: 'Close Research Panel',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
+
+    for (const [level, button] of this.fundingButtons) {
+      uiAutomationBridge.register({
+        id: `panel.research.funding.${level}`,
+        label: `Set Research Funding ${level}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => this.callbacks.onSetFunding(level),
+      });
+    }
+
+    for (const [category, button] of this.categoryButtons) {
+      uiAutomationBridge.register({
+        id: `panel.research.category.${category}`,
+        label: `Toggle Research Category ${category}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => {
+          this.selectedCategory = this.selectedCategory === category ? null : category;
+          this.refreshCategoryButtons();
+          this.syncAutomationControls();
+        },
+      });
+    }
+
+    for (const [actionId, button] of this.researchActionButtons) {
+      uiAutomationBridge.register({
+        id: `panel.research.${actionId}`,
+        label: `Research Action ${actionId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
     }
   }
 }

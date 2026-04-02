@@ -1,0 +1,42 @@
+import bpy
+import sys
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+GENERATORS_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+if GENERATORS_DIR not in sys.path:
+    sys.path.insert(0, GENERATORS_DIR)
+
+from _common.context import setup_asset_context, export_asset
+from _common.nature import create_shrub
+from _common.geometry import set_origin_to_base, join_objects
+from _common.materials import create_solid_material
+
+ASSET_ID = "shrub.flowering.azalea"
+
+ctx = setup_asset_context(ASSET_ID)
+
+bush = create_shrub(
+    height=0.8,
+    width=0.9,
+    material_color=(0.2, 0.4, 0.15),
+    seed=300
+)
+
+bpy.ops.mesh.primitive_ico_sphere_add(
+    radius=0.48,
+    subdivisions=1,
+    location=(0, 0, 0.45)
+)
+flowers = bpy.context.active_object
+flowers.name = "Flowers"
+flowers.scale = (1.0, 1.0, 0.6)
+bpy.context.view_layer.objects.active = flowers
+bpy.ops.object.transform_apply(scale=True)
+flower_mat = create_solid_material("FlowerMat", (0.85, 0.3, 0.55))
+flowers.data.materials.append(flower_mat)
+
+result = join_objects([bush, flowers], "Azalea")
+set_origin_to_base(result)
+
+export_asset(ctx, force=True)

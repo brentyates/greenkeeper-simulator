@@ -22,6 +22,8 @@ export interface TerrainEditorUICallbacks {
   onToolSelect: (tool: EditorTool) => void;
   onModeChange: (mode: EditorMode) => void;
   onClose: () => void;
+  onOpenHoleBuilder?: () => void;
+  onOpenAssetBuilder?: () => void;
   onBrushSizeChange: (size: number) => void;
   onBrushStrengthChange?: (strength: number) => void;
   onSelectAll?: () => void;
@@ -88,7 +90,7 @@ export class TerrainEditorUI {
   private createPanel(): void {
     const { panel, stack } = createDockedPanel(this.parent, {
       name: 'terrainEditor',
-      width: 360,
+      width: 404,
       height: 1,
       colors: POPUP_COLORS.green,
       horizontalAlignment: Control.HORIZONTAL_ALIGNMENT_LEFT,
@@ -99,10 +101,12 @@ export class TerrainEditorUI {
     });
     panel.adaptHeightToChildren = true;
     panel.height = '1px';
-    stack.width = '316px';
+    stack.width = '360px';
     this.panel = panel;
 
     this.createHeader(stack);
+    this.createIntroBlock(stack);
+    this.createBuildSwitchRow(stack);
     this.createModeToggle(stack);
     this.createInteractionModeToggle(stack);
     this.createSculptTools(stack);
@@ -121,23 +125,72 @@ export class TerrainEditorUI {
 
   private createHeader(parent: StackPanel): void {
     createPopupHeader(parent, {
-      title: 'TERRAIN EDITOR',
+      title: 'COURSE SHAPER',
       titleColor: UI_THEME.colors.editor.buttonTextActive,
-      width: 316,
+      width: 360,
       onClose: () => this.callbacks.onClose(),
     });
   }
 
-  private createModeToggle(parent: StackPanel): void {
-    const modeRow = createHorizontalRow(parent, { name: 'modeRow', widthPx: 316, heightPx: 32 });
-    modeRow.paddingTop = '8px';
-    const [sculptBtn, paintBtn, stampBtn] = addUniformButtons(modeRow, {
-      rowWidthPx: 316,
-      rowHeightPx: 32,
+  private createIntroBlock(parent: StackPanel): void {
+    const intro = new Rectangle('terrainEditorIntro');
+    intro.width = '360px';
+    intro.height = '56px';
+    intro.cornerRadius = UI_THEME.radii.section;
+    intro.thickness = 1;
+    intro.color = UI_THEME.colors.border.info;
+    intro.background = UI_THEME.colors.surfaces.panelInset;
+    intro.paddingTop = '6px';
+    intro.paddingBottom = '4px';
+    parent.addControl(intro);
+
+    const stack = new StackPanel('terrainEditorIntroStack');
+    stack.width = '332px';
+    intro.addControl(stack);
+
+    const title = new TextBlock('terrainEditorIntroTitle');
+    title.text = 'Shape land first, then refine the topology';
+    title.color = UI_THEME.colors.text.info;
+    title.fontSize = UI_THEME.typography.scale.s12;
+    title.fontWeight = 'bold';
+    title.height = '20px';
+    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(title);
+
+    const body = new TextBlock('terrainEditorIntroBody');
+    body.text = 'Use Shape mode for broad forms, Paint mode for course surfaces, and Selection when you need precise cleanup.';
+    body.color = UI_THEME.colors.text.secondary;
+    body.fontSize = UI_THEME.typography.scale.s10;
+    body.height = '28px';
+    body.textWrapping = true;
+    body.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    stack.addControl(body);
+  }
+
+  private createBuildSwitchRow(parent: StackPanel): void {
+    const row = createHorizontalRow(parent, { name: 'terrainBuildSwitchRow', widthPx: 360, heightPx: 32 });
+    row.paddingTop = '6px';
+    addUniformButtons(row, {
+      rowWidthPx: 360,
+      rowHeightPx: 28,
       gapPx: UI_SPACING.xs,
       specs: [
-        { id: 'sculptBtn', label: 'SCULPT', onClick: () => { this.setMode('sculpt'); this.callbacks.onModeChange('sculpt'); } },
-        { id: 'paintBtn', label: 'PAINT', onClick: () => { this.setMode('paint'); this.callbacks.onModeChange('paint'); } },
+        { id: 'terrainSwitchHoles', label: 'Open Holes (J)', onClick: () => this.callbacks.onOpenHoleBuilder?.() },
+        { id: 'terrainSwitchAssets', label: 'Open Assets (K)', onClick: () => this.callbacks.onOpenAssetBuilder?.() },
+      ],
+    });
+  }
+
+  private createModeToggle(parent: StackPanel): void {
+    const modeRow = createHorizontalRow(parent, { name: 'modeRow', widthPx: 360, heightPx: 34 });
+    modeRow.paddingTop = '8px';
+    const [sculptBtn, paintBtn, stampBtn] = addUniformButtons(modeRow, {
+      rowWidthPx: 360,
+      rowHeightPx: 34,
+      gapPx: UI_SPACING.xs,
+      specs: [
+        { id: 'sculptBtn', label: 'SHAPE', onClick: () => { this.setMode('sculpt'); this.callbacks.onModeChange('sculpt'); } },
+        { id: 'paintBtn', label: 'SURFACES', onClick: () => { this.setMode('paint'); this.callbacks.onModeChange('paint'); } },
         { id: 'stampBtn', label: 'STAMP', onClick: () => { this.setMode('stamp'); this.callbacks.onModeChange('stamp'); } },
       ],
     });
@@ -150,19 +203,19 @@ export class TerrainEditorUI {
 
   private createInteractionModeToggle(parent: StackPanel): void {
     this.interactionToggleContainer = new StackPanel('interactionToggleContainer');
-    this.interactionToggleContainer.width = '316px';
+    this.interactionToggleContainer.width = '360px';
     parent.addControl(this.interactionToggleContainer);
 
-    const interactionRow = createHorizontalRow(this.interactionToggleContainer, { name: 'interactionRow', widthPx: 316, heightPx: 28 });
+    const interactionRow = createHorizontalRow(this.interactionToggleContainer, { name: 'interactionRow', widthPx: 360, heightPx: 32 });
     interactionRow.paddingTop = '4px';
 
     const [brushBtn, selectBtn] = addUniformButtons(interactionRow, {
-      rowWidthPx: 316,
-      rowHeightPx: 28,
+      rowWidthPx: 360,
+      rowHeightPx: 30,
       gapPx: UI_SPACING.xs,
       specs: [
-        { id: 'brushBtn', label: 'BRUSH (B)', onClick: () => { this.setInteractionMode('brush'); this.callbacks.onInteractionModeChange?.('brush'); } },
-        { id: 'selectBtn', label: 'SELECT (S)', onClick: () => { this.setInteractionMode('select'); this.callbacks.onInteractionModeChange?.('select'); } },
+        { id: 'brushBtn', label: 'BRUSH CURSOR (B)', onClick: () => { this.setInteractionMode('brush'); this.callbacks.onInteractionModeChange?.('brush'); } },
+        { id: 'selectBtn', label: 'PRECISION SELECT (S)', onClick: () => { this.setInteractionMode('select'); this.callbacks.onInteractionModeChange?.('select'); } },
       ],
     });
     if (brushBtn) this.interactionButtons.set('brush', brushBtn);
@@ -205,16 +258,16 @@ export class TerrainEditorUI {
 
   private createSculptTools(parent: StackPanel): void {
     this.sculptToolsPanel = new StackPanel('sculptToolsPanel');
-    this.sculptToolsPanel.width = '316px';
+    this.sculptToolsPanel.width = '360px';
     parent.addControl(this.sculptToolsPanel);
 
-    addDialogSectionLabel(this.sculptToolsPanel, { id: 'sculptLabel', text: 'SCULPT TOOLS', tone: 'info', fontSize: 10, fontWeight: 'bold' });
+    addDialogSectionLabel(this.sculptToolsPanel, { id: 'sculptLabel', text: 'LAND FORM TOOLS', tone: 'info', fontSize: 10, fontWeight: 'bold' });
 
-    const sculptRow = createHorizontalRow(this.sculptToolsPanel, { name: 'sculptRow', widthPx: 316, heightPx: 36 });
+    const sculptRow = createHorizontalRow(this.sculptToolsPanel, { name: 'sculptRow', widthPx: 360, heightPx: 36 });
     sculptRow.paddingTop = '4px';
 
     const btns = addUniformButtons(sculptRow, {
-      rowWidthPx: 316,
+      rowWidthPx: 360,
       rowHeightPx: 36,
       gapPx: UI_SPACING.xs,
       specs: [
@@ -233,21 +286,21 @@ export class TerrainEditorUI {
 
   private createTerrainBrushes(parent: StackPanel): void {
     this.paintToolsPanel = new StackPanel('paintToolsPanel');
-    this.paintToolsPanel.width = '316px';
+    this.paintToolsPanel.width = '360px';
     parent.addControl(this.paintToolsPanel);
 
-    addDialogSectionLabel(this.paintToolsPanel, { id: 'terrainLabel', text: 'TERRAIN TYPE', tone: 'info', fontSize: 10, fontWeight: 'bold' });
+    addDialogSectionLabel(this.paintToolsPanel, { id: 'terrainLabel', text: 'COURSE SURFACES', tone: 'info', fontSize: 10, fontWeight: 'bold' });
     
-    const row1 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow1', widthPx: 316, heightPx: 36 });
+    const row1 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow1', widthPx: 360, heightPx: 36 });
     row1.paddingBottom = '4px';
-    const row2 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow2', widthPx: 316, heightPx: 36 });
+    const row2 = createHorizontalRow(this.paintToolsPanel, { name: 'paintRow2', widthPx: 360, heightPx: 36 });
 
-    const btns1 = addUniformButtons(row1, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+    const btns1 = addUniformButtons(row1, { rowWidthPx: 360, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
       { id: 'fairwayBtn', label: 'Fairway (Q)', onClick: () => this.callbacks.onToolSelect('terrain_fairway') },
       { id: 'roughBtn', label: 'Rough (W)', onClick: () => this.callbacks.onToolSelect('terrain_rough') },
       { id: 'greenBtn', label: 'Green (E)', onClick: () => this.callbacks.onToolSelect('terrain_green') }
     ]});
-    const btns2 = addUniformButtons(row2, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+    const btns2 = addUniformButtons(row2, { rowWidthPx: 360, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
       { id: 'bunkerBtn', label: 'Bunker (R)', onClick: () => this.callbacks.onToolSelect('terrain_bunker') },
       { id: 'waterBtn', label: 'Water (F)', onClick: () => this.callbacks.onToolSelect('terrain_water') },
       { id: 'teeBtn', label: 'Tee (T)', onClick: () => this.callbacks.onToolSelect('terrain_tee') }
@@ -265,12 +318,12 @@ export class TerrainEditorUI {
 
   private createBrushSizeControl(parent: StackPanel): void {
     this.brushSizeContainer = new StackPanel('brushSizeContainer');
-    this.brushSizeContainer.width = '316px';
+    this.brushSizeContainer.width = '360px';
     parent.addControl(this.brushSizeContainer);
 
     const header = new Grid();
     header.height = '24px';
-    header.width = '316px';
+    header.width = '360px';
     header.addColumnDefinition(0.5);
     header.addColumnDefinition(0.5);
     this.brushSizeContainer.addControl(header);
@@ -297,7 +350,7 @@ export class TerrainEditorUI {
     slider.value = 1;
     slider.isThumbClamped = true;
     slider.height = '20px';
-    slider.width = '310px';
+    slider.width = '354px';
     slider.thumbWidth = 20;
     slider.color = UI_THEME.colors.legacy.c_3a6a4a;
     slider.background = UI_THEME.colors.editor.buttonBase;
@@ -317,12 +370,12 @@ export class TerrainEditorUI {
 
   private createBrushStrengthControl(parent: StackPanel): void {
     this.brushStrengthContainer = new StackPanel('brushStrengthContainer');
-    this.brushStrengthContainer.width = '316px';
+    this.brushStrengthContainer.width = '360px';
     parent.addControl(this.brushStrengthContainer);
 
     const header = new Grid();
     header.height = '24px';
-    header.width = '316px';
+    header.width = '360px';
     header.addColumnDefinition(0.5);
     header.addColumnDefinition(0.5);
     this.brushStrengthContainer.addControl(header);
@@ -349,7 +402,7 @@ export class TerrainEditorUI {
     slider.value = 1.0;
     slider.isThumbClamped = true;
     slider.height = '20px';
-    slider.width = '310px';
+    slider.width = '354px';
     slider.thumbWidth = 20;
     slider.color = UI_THEME.colors.legacy.c_3a6a4a;
     slider.background = UI_THEME.colors.editor.buttonBase;
@@ -364,15 +417,15 @@ export class TerrainEditorUI {
 
   private createTopologyModeToggle(parent: StackPanel): void {
     this.topologyToggleContainer = new StackPanel('topologyToggleContainer');
-    this.topologyToggleContainer.width = '316px';
+    this.topologyToggleContainer.width = '360px';
     parent.addControl(this.topologyToggleContainer);
 
-    addDialogSectionLabel(this.topologyToggleContainer, { id: 'topologyLabel', text: 'TOPOLOGY MODE', tone: 'info', fontSize: 10, fontWeight: 'bold' });
+    addDialogSectionLabel(this.topologyToggleContainer, { id: 'topologyLabel', text: 'PRECISION TARGET', tone: 'info', fontSize: 10, fontWeight: 'bold' });
     
-    const row = createHorizontalRow(this.topologyToggleContainer, { name: 'topologyRow', widthPx: 316, heightPx: 32 });
+    const row = createHorizontalRow(this.topologyToggleContainer, { name: 'topologyRow', widthPx: 360, heightPx: 32 });
     row.paddingTop = '4px';
 
-    const btns = addUniformButtons(row, { rowWidthPx: 316, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
+    const btns = addUniformButtons(row, { rowWidthPx: 360, rowHeightPx: 32, gapPx: UI_SPACING.xs, specs: [
       { id: 'vertexBtn', label: 'Vertex (V)', onClick: () => this.callbacks.onTopologyModeChange?.('vertex') },
       { id: 'edgeBtn', label: 'Edge (E)', onClick: () => this.callbacks.onTopologyModeChange?.('edge') },
       { id: 'faceBtn', label: 'Face', onClick: () => this.callbacks.onTopologyModeChange?.('face') }
@@ -389,7 +442,7 @@ export class TerrainEditorUI {
 
   private createEdgeActionsSection(parent: StackPanel): void {
     this.edgeActionsContainer = new StackPanel('edgeActionsContainer');
-    this.edgeActionsContainer.width = '316px';
+    this.edgeActionsContainer.width = '360px';
     parent.addControl(this.edgeActionsContainer);
 
     const sectionLabel = new TextBlock('edgeActionsLabel');
@@ -403,7 +456,7 @@ export class TerrainEditorUI {
 
     const grid = new Grid('edgeActionsGrid');
     grid.height = '32px';
-    grid.width = '316px';
+    grid.width = '360px';
     grid.addColumnDefinition(0.5);
     grid.addColumnDefinition(0.5);
     this.edgeActionsContainer.addControl(grid);
@@ -446,12 +499,12 @@ export class TerrainEditorUI {
 
   private createSelectionSection(parent: StackPanel): void {
     this.selectionContainer = new StackPanel('selectionContainer');
-    this.selectionContainer.width = '316px';
+    this.selectionContainer.width = '360px';
     parent.addControl(this.selectionContainer);
 
     const grid = new Grid('selectionGrid');
     grid.height = '32px';
-    grid.width = '316px';
+    grid.width = '360px';
     grid.paddingTop = '4px';
     grid.addColumnDefinition(0.7);
     grid.addColumnDefinition(0.3);
@@ -488,11 +541,11 @@ export class TerrainEditorUI {
   }
   private createTransformSection(parent: StackPanel): void {
     this.transformContainer = new StackPanel('transformContainer');
-    this.transformContainer.width = '316px';
+    this.transformContainer.width = '360px';
     parent.addControl(this.transformContainer);
 
     const sectionLabel = new TextBlock('constraintLabel');
-    sectionLabel.text = 'MOVE AXIS';
+    sectionLabel.text = 'MOVE GIZMO';
     sectionLabel.color = UI_THEME.colors.legacy.c_8aba9a;
     sectionLabel.fontSize = UI_THEME.typography.scale.s11;
     sectionLabel.height = '24px';
@@ -503,7 +556,7 @@ export class TerrainEditorUI {
     // Visual Axis Gizmo Container
     const gizmoHost = new Rectangle('gizmoHost');
     gizmoHost.height = '140px';
-    gizmoHost.width = '316px';
+    gizmoHost.width = '360px';
     gizmoHost.thickness = 0;
     gizmoHost.background = 'transparent';
     this.transformContainer.addControl(gizmoHost);

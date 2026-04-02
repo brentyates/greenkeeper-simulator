@@ -3,6 +3,7 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock';
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle';
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel';
 import { Control } from '@babylonjs/gui/2D/controls/control';
+import { Grid } from '@babylonjs/gui/2D/controls/grid';
 import { createActionButton, createDirectPopup, createListRowCard, createPanelSection, createPopupHeader, POPUP_COLORS } from './PopupUtils';
 import { addDialogScrollBlock } from './DialogBlueprint';
 import { UI_THEME } from './UITheme';
@@ -19,10 +20,14 @@ import {
   countBrokenRobots,
   countWorkingRobots,
 } from '../../core/autonomous-equipment';
+import type { CourseArea } from '../../core/employee-work';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
+import type { Button } from '@babylonjs/gui/2D/controls/button';
 
 export interface EquipmentStorePanelCallbacks {
   onPurchaseRobot: (equipmentId: string, stats: EquipmentStats) => boolean;
   onSellRobot: (robotId: string) => boolean;
+  onAssignRobotArea: (robotId: string, areaId: string | null) => void;
   onClose: () => void;
 }
 
@@ -53,6 +58,11 @@ function getRobotIcon(equipmentId: string): string {
   return '🤖';
 }
 
+function getAreaLabel(areaId: string | null, areas: readonly CourseArea[]): string {
+  if (!areaId || areaId === 'all_course') return 'Anywhere';
+  return areas.find((area) => area.id === areaId)?.name ?? 'Assigned Area';
+}
+
 export class EquipmentStorePanel {
   private advancedTexture: AdvancedDynamicTexture;
   private callbacks: EquipmentStorePanelCallbacks;
@@ -62,6 +72,19 @@ export class EquipmentStorePanel {
   private ownedListContainer: StackPanel | null = null;
   private statsText: TextBlock | null = null;
   private cashText: TextBlock | null = null;
+  private selectedRobotId: string | null = null;
+  private selectedRobotSummary: TextBlock | null = null;
+  private selectedRobotDuty: TextBlock | null = null;
+  private selectedRobotAreaGrid: Grid | null = null;
+  private currentResearchState: ResearchState | null = null;
+  private currentAutonomousState: AutonomousEquipmentState | null = null;
+  private currentCash: number = 0;
+  private currentAreas: readonly CourseArea[] = [];
+  private mainCloseButton: Button | null = null;
+  private availableBuyButtons = new Map<string, Button>();
+  private ownedSelectControls = new Map<string, Rectangle>();
+  private ownedSellButtons = new Map<string, Button>();
+  private selectedRobotAreaButtons = new Map<string, Button>();
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: EquipmentStorePanelCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -82,16 +105,21 @@ export class EquipmentStorePanel {
 
     this.createHeader(stack);
     this.createFleetStats(stack);
+    this.createRobotPolicySection(stack);
     this.createAvailableSection(stack);
     this.createOwnedSection(stack);
   }
 
   private createHeader(parent: StackPanel): void {
     const headerContainer = createPopupHeader(parent, {
-      title: '🤖 EQUIPMENT STORE',
+      title: '🤖 FLEET OPS',
       titleColor: UI_THEME.colors.text.info,
       width: EQUIPMENT_CONTENT_WIDTH,
       onClose: () => this.callbacks.onClose(),
+      onCloseButtonCreated: (button) => {
+        this.mainCloseButton = button;
+        this.syncAutomationControls();
+      },
     });
 
     this.cashText = new TextBlock('cashText');
@@ -120,6 +148,50 @@ export class EquipmentStorePanel {
     this.statsText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     this.statsText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
     container.addControl(this.statsText);
+  }
+
+  private createRobotPolicySection(parent: StackPanel): void {
+    const container = createPanelSection(parent, {
+      name: 'robotPolicyContainer',
+      width: EQUIPMENT_CONTENT_WIDTH,
+      height: 112,
+      theme: 'blue',
+      paddingTop: 6,
+    });
+
+    this.selectedRobotSummary = new TextBlock('selectedRobotSummary');
+    this.selectedRobotSummary.text = 'Select a robot to set its patrol zone.';
+    this.selectedRobotSummary.color = UI_THEME.colors.legacy.c_ffffff;
+    this.selectedRobotSummary.fontSize = UI_THEME.typography.scale.s12;
+    this.selectedRobotSummary.height = '20px';
+    this.selectedRobotSummary.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.selectedRobotSummary.paddingLeft = '12px';
+    this.selectedRobotSummary.paddingTop = '6px';
+    container.addControl(this.selectedRobotSummary);
+
+    this.selectedRobotDuty = new TextBlock('selectedRobotDuty');
+    this.selectedRobotDuty.text = 'Each robot keeps working on its own. Set where it should spend its time.';
+    this.selectedRobotDuty.color = UI_THEME.colors.text.secondary;
+    this.selectedRobotDuty.fontSize = UI_THEME.typography.scale.s10;
+    this.selectedRobotDuty.height = '28px';
+    this.selectedRobotDuty.textWrapping = true;
+    this.selectedRobotDuty.lineSpacing = '2px';
+    this.selectedRobotDuty.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this.selectedRobotDuty.paddingLeft = '12px';
+    this.selectedRobotDuty.paddingRight = '12px';
+    this.selectedRobotDuty.top = '18px';
+    container.addControl(this.selectedRobotDuty);
+
+    this.selectedRobotAreaGrid = new Grid('selectedRobotAreaGrid');
+    this.selectedRobotAreaGrid.width = `${EQUIPMENT_CONTENT_WIDTH - 18}px`;
+    this.selectedRobotAreaGrid.height = '44px';
+    this.selectedRobotAreaGrid.top = '38px';
+    this.selectedRobotAreaGrid.addColumnDefinition(0.25);
+    this.selectedRobotAreaGrid.addColumnDefinition(0.25);
+    this.selectedRobotAreaGrid.addColumnDefinition(0.25);
+    this.selectedRobotAreaGrid.addColumnDefinition(0.25);
+    this.selectedRobotAreaGrid.addRowDefinition(1);
+    container.addControl(this.selectedRobotAreaGrid);
   }
 
   private createAvailableSection(parent: StackPanel): void {
@@ -243,20 +315,33 @@ export class EquipmentStorePanel {
     buyBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     buyBtn.left = '-8px';
     row.addControl(buyBtn);
+    this.availableBuyButtons.set(robot.equipmentId, buyBtn);
 
     return row;
   }
 
   private createOwnedItem(robot: RobotUnit): Rectangle {
+    const isSelected = this.selectedRobotId === robot.id;
     const row = createListRowCard({
       name: `owned_${robot.id}`,
       width: EQUIPMENT_ROW_WIDTH,
       height: 55,
-      background: robot.state === 'broken'
+      background: isSelected
+        ? 'rgba(70, 110, 145, 0.92)'
+        : robot.state === 'broken'
         ? 'rgba(100, 50, 50, 0.8)'
         : 'rgba(40, 60, 80, 0.8)',
-      borderColor: robot.state === 'broken' ? '#aa5555' : '#4a6a8a',
+      borderColor: isSelected ? '#8ec6ff' : robot.state === 'broken' ? '#aa5555' : '#4a6a8a',
+      thickness: isSelected ? 2 : 1,
     });
+
+    row.onPointerClickObservable.add(() => {
+      this.selectedRobotId = robot.id;
+      if (this.currentResearchState && this.currentAutonomousState) {
+        this.update(this.currentResearchState, this.currentAutonomousState, this.currentCash, this.currentAreas);
+      }
+    });
+    this.ownedSelectControls.set(robot.id, row);
 
     const icon = new TextBlock('icon');
     icon.text = getRobotIcon(robot.equipmentId);
@@ -286,7 +371,7 @@ export class EquipmentStorePanel {
       : 100;
 
     const statusText = new TextBlock('status');
-    statusText.text = `State: ${robot.state} | Fuel: ${fuelPercent}%`;
+    statusText.text = `State: ${robot.state} | Fuel: ${fuelPercent}% | Zone: ${getAreaLabel(robot.assignedAreaId ?? null, this.currentAreas)}`;
     statusText.color = robot.state === 'broken' ? '#ff8888' : '#88bbdd';
     statusText.fontSize = UI_THEME.typography.scale.s11;
     statusText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
@@ -310,6 +395,7 @@ export class EquipmentStorePanel {
     sellBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     sellBtn.left = '-8px';
     row.addControl(sellBtn);
+    this.ownedSellButtons.set(robot.id, sellBtn);
 
     return row;
   }
@@ -317,12 +403,21 @@ export class EquipmentStorePanel {
   public update(
     researchState: ResearchState,
     autonomousState: AutonomousEquipmentState,
-    currentCash: number
+    currentCash: number,
+    areas: readonly CourseArea[]
   ): void {
+    this.currentResearchState = researchState;
+    this.currentAutonomousState = autonomousState;
+    this.currentCash = currentCash;
+    this.currentAreas = areas;
     if (!this.availableListContainer || !this.ownedListContainer) return;
 
     this.availableListContainer.clearControls();
     this.ownedListContainer.clearControls();
+    this.availableBuyButtons.clear();
+    this.ownedSelectControls.clear();
+    this.ownedSellButtons.clear();
+    this.selectedRobotAreaButtons.clear();
 
     if (this.cashText) {
       this.cashText.text = `Cash: $${currentCash.toLocaleString()}`;
@@ -333,6 +428,10 @@ export class EquipmentStorePanel {
       const working = countWorkingRobots(autonomousState);
       const broken = countBrokenRobots(autonomousState);
       this.statsText.text = `Fleet: ${total} robot${total !== 1 ? 's' : ''} | Working: ${working} | Broken: ${broken}`;
+    }
+
+    if (this.selectedRobotId && !autonomousState.robots.find((robot) => robot.id === this.selectedRobotId)) {
+      this.selectedRobotId = null;
     }
 
     const unlockedRobots = getUnlockedAutonomousEquipment(researchState);
@@ -384,14 +483,54 @@ export class EquipmentStorePanel {
         this.ownedListContainer.addControl(this.createOwnedItem(robot));
       }
     }
+
+    if (this.selectedRobotSummary && this.selectedRobotAreaGrid && this.selectedRobotDuty) {
+      const robot = autonomousState.robots.find((candidate) => candidate.id === this.selectedRobotId) ?? null;
+      const children = [...this.selectedRobotAreaGrid.children];
+      for (const child of children) {
+        this.selectedRobotAreaGrid.removeControl(child);
+      }
+
+      if (!robot) {
+        this.selectedRobotSummary.text = 'Select a robot to set its patrol zone.';
+        this.selectedRobotDuty.text = 'Each robot keeps working on its own. Set where it should spend its time.';
+      } else {
+        const areaName = getAreaLabel(robot.assignedAreaId ?? null, areas);
+        this.selectedRobotSummary.text = `${robot.id} • ${robot.type} • ${areaName}`;
+        this.selectedRobotDuty.text = `${robot.type === 'mower' ? 'Mowing' : robot.type === 'sprayer' ? 'Watering' : robot.type === 'spreader' ? 'Fertilizing' : 'Bunker care'} automation runs inside this zone. Move it when one side of the course needs more machine attention.`;
+        const areaOptions: Array<{ id: string | null; label: string }> = [
+          { id: null, label: 'Anywhere' },
+          ...areas.filter((area) => area.id !== 'all_course').slice(0, 3).map((area) => ({
+            id: area.id,
+            label: area.name,
+          })),
+        ];
+        areaOptions.forEach((option, index) => {
+          const button = createActionButton({
+            id: `robotArea_${robot.id}_${option.id ?? 'any'}`,
+            label: option.label,
+            tone: robot.assignedAreaId === option.id ? 'primary' : 'neutral',
+            width: 118,
+            height: 24,
+            fontSize: 10,
+            onClick: () => this.callbacks.onAssignRobotArea(robot.id, option.id),
+          });
+          this.selectedRobotAreaButtons.set(option.id ?? 'anywhere', button);
+          this.selectedRobotAreaGrid!.addControl(button, 0, index);
+        });
+      }
+    }
+    this.syncAutomationControls();
   }
 
   public show(): void {
     if (this.panel) this.panel.isVisible = true;
+    this.syncAutomationControls();
   }
 
   public hide(): void {
     if (this.panel) this.panel.isVisible = false;
+    this.syncAutomationControls();
   }
 
   public isVisible(): boolean {
@@ -407,9 +546,72 @@ export class EquipmentStorePanel {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('panel.fleet.');
     if (this.panel) {
       this.panel.dispose();
       this.panel = null;
+    }
+  }
+
+  private syncAutomationControls(): void {
+    uiAutomationBridge.unregisterPrefix('panel.fleet.');
+
+    uiAutomationBridge.register({
+      id: 'panel.fleet.close',
+      label: 'Close Fleet Operations',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
+
+    for (const [equipmentId, button] of this.availableBuyButtons) {
+      uiAutomationBridge.register({
+        id: `panel.fleet.buy.${equipmentId}`,
+        label: `Buy Robot ${equipmentId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
+    }
+
+    for (const [robotId, control] of this.ownedSelectControls) {
+      uiAutomationBridge.register({
+        id: `panel.fleet.select.${robotId}`,
+        label: `Select Robot ${robotId}`,
+        role: 'button',
+        getControl: () => control,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => true,
+        onActivate: () => control.onPointerClickObservable.notifyObservers(null as never),
+      });
+    }
+
+    for (const [robotId, button] of this.ownedSellButtons) {
+      uiAutomationBridge.register({
+        id: `panel.fleet.sell.${robotId}`,
+        label: `Sell Robot ${robotId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
+    }
+
+    for (const [areaId, button] of this.selectedRobotAreaButtons) {
+      uiAutomationBridge.register({
+        id: `panel.fleet.assign_area.${areaId}`,
+        label: `Assign Robot Area ${areaId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
     }
   }
 }

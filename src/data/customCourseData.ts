@@ -171,7 +171,7 @@ export function createSandboxScenario(course: CustomCourseData): ScenarioDefinit
     id: course.id,
     name: course.name,
     description: `Custom sandbox course: ${course.name}`,
-    courseId: course.id as any,
+    courseId: course.id,
     objective: {
       type: 'economic',
       targetProfit: 999999,

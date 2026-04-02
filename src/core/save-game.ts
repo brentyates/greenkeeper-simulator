@@ -39,6 +39,7 @@ export interface SaveGameState {
   weatherState: WeatherState;
   irrigationSystem?: IrrigationSystem;
   holeBuilderAssets?: PlacedAsset[];
+  scenarioPlacedAssets?: PlacedAsset[];
 
   faceStates: FaceState[];
 }
@@ -68,6 +69,7 @@ export function createSaveState(
   faceStates: Map<number, FaceState>,
   irrigationSystem?: IrrigationSystem,
   holeBuilderAssets?: PlacedAsset[],
+  scenarioPlacedAssets?: PlacedAsset[],
 ): SaveGameState {
   return {
     version: SAVE_VERSION,
@@ -92,6 +94,7 @@ export function createSaveState(
     weatherState,
     irrigationSystem,
     holeBuilderAssets,
+    scenarioPlacedAssets,
     faceStates: Array.from(faceStates.values()),
   };
 }
@@ -111,7 +114,7 @@ export function saveGame(state: SaveGameState): boolean {
     localStorage.setItem(key, serialized);
     return true;
   } catch (error) {
-    console.error('Failed to save game:', error);
+
     return false;
   }
 }
@@ -132,7 +135,7 @@ export function loadGame(scenarioId: string): SaveGameState | null {
 
     return state;
   } catch (error) {
-    console.error('Failed to load game:', error);
+
     return null;
   }
 }
@@ -143,7 +146,7 @@ export function deleteSave(scenarioId: string): boolean {
     localStorage.removeItem(key);
     return true;
   } catch (error) {
-    console.error('Failed to delete save:', error);
+
     return false;
   }
 }

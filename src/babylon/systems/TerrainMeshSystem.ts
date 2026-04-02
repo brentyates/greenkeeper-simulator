@@ -119,7 +119,7 @@ export class TerrainMeshSystem {
 
   private static readonly COLORS = {
     EDGE: { NORMAL: new Color4(0.5,0.75,0.5,0.8), HOVER: new Color4(0,1,1,1), BRUSH: new Color4(0.4,0.9,0.9,0.9), SEL: new Color4(1,0.5,0,1) },
-    FACE: { HOVER: new Color4(1,1,0,0.4), BRUSH: new Color4(0.8,0.9,0.3,0.3), SEL: new Color4(0,1,1,0.5) },
+    FACE: { HOVER: new Color4(1,1,0.6,0.15), BRUSH: new Color4(0.8,0.9,0.3,0.3), SEL: new Color4(0,1,1,0.5) },
     WIRE: { VERT: new Color4(0.8,0.8,0.2,0.7), FACE: new Color4(0.4,0.7,0.4,0.5) }
   };
 
@@ -132,6 +132,7 @@ export class TerrainMeshSystem {
   private hoveredFaceId: number | null = null;
   private selectedFaceIds: Set<number> = new Set();
   private brushHoveredFaceIds: Set<number> = new Set();
+  private externalHoveredFaceIds: Set<number> = new Set();
   private faceHighlightMesh: Mesh | null = null;
   private faceSpatialIndex: Array<Set<number>> = [];
   private auxMeshes: Map<string, Mesh> = new Map();
@@ -577,6 +578,11 @@ export class TerrainMeshSystem {
     this.rebuildFaceHighlightMesh();
   }
 
+  public setExternalHoveredFaces(faceIds: number[]): void {
+    this.externalHoveredFaceIds = new Set(faceIds);
+    this.rebuildFaceHighlightMesh();
+  }
+
   public selectFace(faceId: number, additive: boolean = false): void {
     if (!additive) {
       this.selectedFaceIds.clear();
@@ -713,7 +719,9 @@ export class TerrainMeshSystem {
   private rebuildFaceHighlightMesh(): void {
     this.clearFaceHighlight();
 
-    if (!this.topology || this.activeTopologyMode !== 'face') return;
+    if (!this.topology) return;
+    const hasExternalHover = this.externalHoveredFaceIds.size > 0;
+    if (this.activeTopologyMode !== 'face' && !hasExternalHover) return;
 
     const positions: number[] = [];
     const indices: number[] = [];
@@ -723,12 +731,16 @@ export class TerrainMeshSystem {
     const hoveredColor = TerrainMeshSystem.COLORS.FACE.HOVER;
     const brushHoveredColor = TerrainMeshSystem.COLORS.FACE.BRUSH;
     const selectedColor = TerrainMeshSystem.COLORS.FACE.SEL;
+    const externalHoveredColor = new Color4(1.0, 0.95, 0.5, 0.1);
 
     const facesToRender = new Set<number>(this.selectedFaceIds);
     if (this.hoveredFaceId !== null && !this.selectedFaceIds.has(this.hoveredFaceId)) {
       facesToRender.add(this.hoveredFaceId);
     }
     for (const faceId of this.brushHoveredFaceIds) {
+      facesToRender.add(faceId);
+    }
+    for (const faceId of this.externalHoveredFaceIds) {
       facesToRender.add(faceId);
     }
 
@@ -748,6 +760,8 @@ export class TerrainMeshSystem {
         color = selectedColor;
       } else if (faceId === this.hoveredFaceId) {
         color = hoveredColor;
+      } else if (this.externalHoveredFaceIds.has(faceId)) {
+        color = externalHoveredColor;
       }
 
       positions.push(v0.position.x, v0.position.y * HEIGHT_UNIT + lineOffset, v0.position.z);
@@ -1152,6 +1166,7 @@ export class TerrainMeshSystem {
           "overlayFlipX",
           "overlayFlipY",
           "overlayRotation",
+          "prestigeModifier",
         ],
         samplers: ["faceData", "overlayImage"],
       }
@@ -1190,6 +1205,7 @@ export class TerrainMeshSystem {
     this.shaderMaterial.setFloat("overlayFlipX", 0);
     this.shaderMaterial.setFloat("overlayFlipY", 0);
     this.shaderMaterial.setFloat("overlayRotation", 0);
+    this.shaderMaterial.setFloat("prestigeModifier", 0);
 
     this.shaderMaterial.backFaceCulling = false;
   }
@@ -1573,7 +1589,7 @@ export class TerrainMeshSystem {
     for (const fid of fids) {
         const s = this.faceStates.get(fid);
         if (s && fn(s)) { 
-            if (field) (s[field] as any) = this.gameTime;
+            if (field) (s[field] as number) = this.gameTime;
             count++;
         }
     }
@@ -1629,6 +1645,7 @@ export class TerrainMeshSystem {
   };
   public setImageOverlayFlip = (fx: boolean, fy: boolean) => { this.shaderMaterial?.setFloat("overlayFlipX", fx?1:0); this.shaderMaterial?.setFloat("overlayFlipY", fy?1:0); };
   public setImageOverlayRotation = (s: number) => this.shaderMaterial?.setFloat("overlayRotation", s % 4);
+  public setPrestigeModifier = (v: number) => this.shaderMaterial?.setFloat("prestigeModifier", Math.max(-1, Math.min(1, v)));
   public clearImageOverlay = () => { if (this.overlayTexture) { this.overlayTexture.dispose(); this.overlayTexture = null; } if (this.defaultOverlayTexture) this.shaderMaterial?.setTexture("overlayImage", this.defaultOverlayTexture); this.shaderMaterial?.setFloat("overlayOpacity", 0); };
   public getWorldWidth = () => this.worldWidth;
   public getWorldHeight = () => this.worldHeight;

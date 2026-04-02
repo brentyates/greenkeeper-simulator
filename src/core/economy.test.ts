@@ -144,8 +144,8 @@ describe("Economy System", () => {
       expect(MAX_LOANS).toBe(3);
     });
 
-    it("allows small overdraft", () => {
-      expect(MIN_CASH_FOR_OPERATIONS).toBe(-10000);
+    it("does not allow operating overdraft", () => {
+      expect(MIN_CASH_FOR_OPERATIONS).toBe(0);
     });
   });
 
@@ -334,19 +334,19 @@ describe("Economy System", () => {
       expect(canAfford(state, 5000)).toBe(true);
     });
 
-    it("returns true when cash equals amount (with overdraft buffer)", () => {
+    it("returns true when cash equals amount", () => {
       const state = makeEconomyState({ cash: 10000 });
       expect(canAfford(state, 10000)).toBe(true);
     });
 
-    it("returns true for small overdraft", () => {
+    it("returns false when expense would overdraw cash", () => {
       const state = makeEconomyState({ cash: 5000 });
-      expect(canAfford(state, 10000)).toBe(true); // Would leave -5000
+      expect(canAfford(state, 10000)).toBe(false);
     });
 
-    it("returns false when would exceed max overdraft", () => {
+    it("returns false when cash is insufficient", () => {
       const state = makeEconomyState({ cash: 0 });
-      expect(canAfford(state, 15000)).toBe(false); // Would leave -15000
+      expect(canAfford(state, 15000)).toBe(false);
     });
 
     it("returns true for zero amount", () => {

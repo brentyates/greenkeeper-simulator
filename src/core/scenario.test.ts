@@ -125,6 +125,47 @@ describe('ScenarioManager', () => {
       expect(result.message).toBeUndefined();
     });
 
+    it('fails economic objective when course health drops below minimum', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetProfit: 1000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 5000,
+        startingHealth: 60,
+        minimumHealth: 35,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentHealth: 20 });
+
+      const result = manager.checkObjective();
+      expect(result.failed).toBe(true);
+      expect(result.completed).toBe(false);
+      expect(result.message).toBe('Out of money, time, or course condition!');
+    });
+
+    it('honors minimum health grace days before failing', () => {
+      const objective: ScenarioObjective = {
+        type: 'economic',
+        targetProfit: 1000,
+      };
+      const conditions: ScenarioConditions = {
+        startingCash: 5000,
+        startingHealth: 60,
+        minimumHealth: 45,
+        minimumHealthGraceDays: 1,
+      };
+
+      const manager = new ScenarioManager(objective, conditions);
+      manager.updateProgress({ currentHealth: 40 });
+
+      expect(manager.checkObjective().failed).toBe(false);
+
+      manager.incrementDay();
+      expect(manager.checkObjective().failed).toBe(true);
+    });
+
     it('checkObjective handles economic objective with no specific target', () => {
       const objective: ScenarioObjective = {
         type: 'economic',

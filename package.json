@@ -13,6 +13,9 @@
     "test:e2e": "playwright test",
     "test:e2e:coverage": "COVERAGE=1 playwright test",
     "lint:e2e": "eslint tests/**/*.spec.ts",
+    "playtest:player": "node tools/playtests/player-playability.mjs",
+    "playtest:player:matrix": "node tools/playtests/player-soak-matrix.mjs",
+    "selfheal:player": "node tools/harness/player-self-heal.mjs",
     "assets:manifest": "tsx tools/scripts/generate-asset-manifest.ts",
     "wasm:build": "cd crates/pathfinding && wasm-pack build --target web --out-dir ../../src/wasm/pathfinding",
     "wasm:dev": "npm run wasm:build -- --dev"

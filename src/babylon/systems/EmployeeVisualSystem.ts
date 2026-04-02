@@ -7,6 +7,10 @@
 
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { EmployeeTask } from "../../core/employee-work";
 import { gridTo3D } from "../engine/BabylonEngine";
 import {
@@ -37,6 +41,8 @@ export type { ElevationProvider } from "./EntityVisualSystem";
 interface WorkerMeshGroup extends EntityVisualState {
   equipmentInstance: AssetInstance | null;
   currentTask: EmployeeTask;
+  markerMesh: Mesh;
+  markerMaterial: StandardMaterial;
 }
 
 const TASK_EQUIPMENT_ASSETS: Record<EmployeeTask, AssetId | null> = {
@@ -135,17 +141,74 @@ export class EmployeeVisualSystem {
       this.elevationProvider
     );
 
+    const markerMaterial = this.createTaskMarkerMaterial(employeeId);
+    const markerMesh = this.createTaskMarker(baseState.container, employeeId);
+    markerMesh.material = markerMaterial;
+    const idleColor = this.getTaskMarkerColor("idle");
+    markerMaterial.diffuseColor = idleColor;
+    markerMaterial.emissiveColor = idleColor.scale(0.45);
+
     return {
       ...baseState,
       equipmentInstance: null,
       currentTask: "idle",
+      markerMesh,
+      markerMaterial,
     };
+  }
+
+  private createTaskMarkerMaterial(employeeId: string): StandardMaterial {
+    const material = new StandardMaterial(`employeeMarkerMat_${employeeId}`, this.scene);
+    material.diffuseColor = new Color3(0.42, 0.78, 1.0);
+    material.emissiveColor = new Color3(0.18, 0.34, 0.55);
+    material.specularColor = new Color3(0, 0, 0);
+    material.alpha = 0.9;
+    material.disableLighting = true;
+    return material;
+  }
+
+  private createTaskMarker(parent: Mesh, employeeId: string): Mesh {
+    const marker = MeshBuilder.CreateDisc(`employeeMarker_${employeeId}`, {
+      radius: 0.48,
+      tessellation: 24,
+    }, this.scene);
+    marker.rotation.x = Math.PI / 2;
+    marker.position.y = 0.05;
+    marker.parent = parent;
+    marker.isPickable = false;
+    return marker;
+  }
+
+  private getTaskMarkerColor(task: EmployeeTask): Color3 {
+    switch (task) {
+      case "mow_grass":
+        return new Color3(0.36, 0.82, 0.43);
+      case "water_area":
+        return new Color3(0.33, 0.67, 1.0);
+      case "fertilize_area":
+        return new Color3(0.9, 0.78, 0.25);
+      case "rake_bunker":
+        return new Color3(0.95, 0.63, 0.34);
+      case "return_to_base":
+        return new Color3(0.78, 0.78, 0.86);
+      case "patrol":
+        return new Color3(0.76, 0.52, 0.98);
+      case "idle":
+      default:
+        return new Color3(0.85, 0.85, 0.88);
+    }
   }
 
   private updateWorkerTask(group: WorkerMeshGroup, task: EmployeeTask): void {
     if (group.currentTask === task) return;
 
     group.currentTask = task;
+    const markerColor = this.getTaskMarkerColor(task);
+    group.markerMaterial.diffuseColor = markerColor;
+    group.markerMaterial.emissiveColor = markerColor.scale(0.45);
+    group.markerMesh.scaling.setAll(task === "idle" ? 0.78 : 1.0);
+    group.markerMesh.isVisible = true;
+    group.markerMesh.material = group.markerMaterial;
 
     if (group.equipmentInstance) {
       disposeInstance(group.equipmentInstance);
@@ -166,8 +229,8 @@ export class EmployeeVisualSystem {
           instance.root.scaling.setAll(0.5);
           group.equipmentInstance = instance;
         })
-        .catch((error) => {
-          console.error(`[EmployeeVisualSystem] Failed to load equipment ${assetId}:`, error);
+        .catch(() => {
+
         });
     }
   }
@@ -176,6 +239,8 @@ export class EmployeeVisualSystem {
     if (group.equipmentInstance) {
       disposeInstance(group.equipmentInstance);
     }
+    group.markerMaterial.dispose();
+    group.markerMesh.dispose();
     disposeEntityMesh(group);
   }
 
@@ -186,6 +251,7 @@ export class EmployeeVisualSystem {
   public setVisible(visible: boolean): void {
     for (const group of this.workerMeshes.values()) {
       group.container.setEnabled(visible);
+      group.markerMesh.isVisible = visible;
     }
   }
 

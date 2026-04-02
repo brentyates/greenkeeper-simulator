@@ -38,6 +38,8 @@ export interface ScenarioConditions {
   startingCash: number;
   startingHealth?: number;
   timeLimitDays?: number;
+  minimumHealth?: number;
+  minimumHealthGraceDays?: number;
   grassGrowthRate?: number;
   costMultiplier?: number;
   revenueMultiplier?: number;
@@ -180,13 +182,13 @@ export class ScenarioManager {
       completed = this.progress.currentCash >= obj.targetCash;
     }
 
-    const failed = this.checkTimeLimitFailed() || (this.progress.currentCash < -1000);
+    const failed = this.checkFailureState();
 
     return {
       completed,
       failed,
       progress,
-      message: completed ? 'Economic objective achieved!' : failed ? 'Out of money or time!' : undefined,
+      message: completed ? 'Economic objective achieved!' : failed ? 'Out of money, time, or course condition!' : undefined,
     };
   }
 
@@ -203,7 +205,7 @@ export class ScenarioManager {
       completed = this.progress.totalGolfers >= obj.targetGolfers;
     }
 
-    const failed = this.checkTimeLimitFailed();
+    const failed = this.checkFailureState();
 
     return {
       completed,
@@ -219,7 +221,7 @@ export class ScenarioManager {
 
     const progress = Math.min(100, (this.progress.daysAtTargetRating / daysRequired) * 100);
     const completed = this.progress.daysAtTargetRating >= daysRequired;
-    const failed = this.checkTimeLimitFailed();
+    const failed = this.checkFailureState();
 
     return {
       completed,
@@ -234,7 +236,7 @@ export class ScenarioManager {
 
     const progress = Math.min(100, (this.progress.currentHealth / obj.targetHealth) * 100);
     const completed = this.progress.currentHealth >= obj.targetHealth;
-    const failed = this.checkTimeLimitFailed();
+    const failed = this.checkFailureState();
 
     return {
       completed,
@@ -249,6 +251,23 @@ export class ScenarioManager {
       return this.progress.daysElapsed >= this.conditions.timeLimitDays;
     }
     return false;
+  }
+
+  private checkMinimumHealthFailed(): boolean {
+    if (this.conditions.minimumHealth !== undefined) {
+      const graceDays = this.conditions.minimumHealthGraceDays ?? 0;
+      if (this.progress.daysElapsed < graceDays) {
+        return false;
+      }
+      return this.progress.currentHealth < this.conditions.minimumHealth;
+    }
+    return false;
+  }
+
+  private checkFailureState(): boolean {
+    return this.checkTimeLimitFailed()
+      || this.progress.currentCash < -1000
+      || this.checkMinimumHealthFailed();
   }
 
   public getObjectiveDescription(): string {

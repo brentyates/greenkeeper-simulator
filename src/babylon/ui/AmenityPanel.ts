@@ -16,6 +16,8 @@ import {
   calculateAmenityScore,
 } from '../../core/amenities';
 import { PrestigeState } from '../../core/prestige';
+import { uiAutomationBridge } from '../../automation/UIAutomationBridge';
+import type { Button } from '@babylonjs/gui/2D/controls/button';
 
 export interface AmenityPanelCallbacks {
   onPurchaseUpgrade: (upgrade: AmenityUpgrade) => boolean;
@@ -41,6 +43,8 @@ export class AmenityPanel {
   private upgradeListContainer: StackPanel | null = null;
   private scoreText: TextBlock | null = null;
   private cashText: TextBlock | null = null;
+  private mainCloseButton: Button | null = null;
+  private upgradeButtons = new Map<string, Button>();
 
   constructor(advancedTexture: AdvancedDynamicTexture, callbacks: AmenityPanelCallbacks) {
     this.advancedTexture = advancedTexture;
@@ -70,6 +74,10 @@ export class AmenityPanel {
       titleColor: UI_THEME.colors.text.accent,
       width: 496,
       onClose: () => this.callbacks.onClose(),
+      onCloseButtonCreated: (button) => {
+        this.mainCloseButton = button;
+        this.syncAutomationControls();
+      },
     });
 
     this.cashText = new TextBlock('cashText');
@@ -202,6 +210,7 @@ export class AmenityPanel {
     buyBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
     buyBtn.left = '-8px';
     row.addControl(buyBtn);
+    this.upgradeButtons.set(`${upgrade.type}:${name}`, buyBtn);
 
     return row;
   }
@@ -210,6 +219,7 @@ export class AmenityPanel {
     if (!this.upgradeListContainer) return;
 
     this.upgradeListContainer.clearControls();
+    this.upgradeButtons.clear();
 
     if (this.cashText) {
       this.cashText.text = `Cash: $${currentCash.toLocaleString()}`;
@@ -244,14 +254,17 @@ export class AmenityPanel {
         this.upgradeListContainer.addControl(this.createUpgradeItem(upgrade, prestigeState, canAfford));
       }
     }
+    this.syncAutomationControls();
   }
 
   public show(): void {
     if (this.panel) this.panel.isVisible = true;
+    this.syncAutomationControls();
   }
 
   public hide(): void {
     if (this.panel) this.panel.isVisible = false;
+    this.syncAutomationControls();
   }
 
   public isVisible(): boolean {
@@ -267,9 +280,36 @@ export class AmenityPanel {
   }
 
   public dispose(): void {
+    uiAutomationBridge.unregisterPrefix('panel.amenity.');
     if (this.panel) {
       this.panel.dispose();
       this.panel = null;
+    }
+  }
+
+  private syncAutomationControls(): void {
+    uiAutomationBridge.unregisterPrefix('panel.amenity.');
+
+    uiAutomationBridge.register({
+      id: 'panel.amenity.close',
+      label: 'Close Amenities Panel',
+      role: 'button',
+      getControl: () => this.mainCloseButton,
+      isVisible: () => this.panel?.isVisible ?? false,
+      isEnabled: () => this.mainCloseButton?.isEnabled ?? false,
+      onActivate: () => this.callbacks.onClose(),
+    });
+
+    for (const [upgradeId, button] of this.upgradeButtons) {
+      uiAutomationBridge.register({
+        id: `panel.amenity.buy.${upgradeId}`,
+        label: `Buy Amenity Upgrade ${upgradeId}`,
+        role: 'button',
+        getControl: () => button,
+        isVisible: () => this.panel?.isVisible ?? false,
+        isEnabled: () => button.isEnabled,
+        onActivate: () => button.onPointerClickObservable.notifyObservers(null as never),
+      });
     }
   }
 }

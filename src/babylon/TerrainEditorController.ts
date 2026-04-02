@@ -28,6 +28,8 @@ export interface TerrainEditorContext {
   snapEmployeesToTerrain(): void;
   snapEntityToTerrain(visual: EntityVisualState, worldX: number, worldZ: number): void;
   snapAssetsToTerrain(): void;
+  openHoleBuilder?(): void;
+  openAssetBuilder?(): void;
 }
 
 export class TerrainEditorController {
@@ -73,6 +75,14 @@ export class TerrainEditorController {
       onToolSelect: (tool: EditorTool) => this.handleEditorToolSelect(tool),
       onModeChange: (mode) => this.terrainEditorSystem?.setMode(mode),
       onClose: () => this.handleEditorToggle(),
+      onOpenHoleBuilder: () => {
+        this.terrainEditorSystem?.disable();
+        this.ctx.openHoleBuilder?.();
+      },
+      onOpenAssetBuilder: () => {
+        this.terrainEditorSystem?.disable();
+        this.ctx.openAssetBuilder?.();
+      },
       onBrushSizeChange: (size: number) => this.handleEditorBrushSize(size),
       onBrushStrengthChange: (strength: number) => this.handleEditorBrushStrength(strength),
       onSelectAll: () => this.terrainEditorSystem?.selectAllVertices(),

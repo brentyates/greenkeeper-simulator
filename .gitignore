@@ -11,6 +11,7 @@ playwright-report/
 test-results/
 coverage/
 coverage-e2e/
+.agent-harness/
 
 # Python
 __pycache__/

@@ -19,6 +19,9 @@ export interface InputCallbacks {
   onMute?: () => void;
   onTimeSpeedUp?: () => void;
   onTimeSlowDown?: () => void;
+  onCameraRotate?: (delta: number) => void;
+  onCameraTilt?: (delta: number) => void;
+  onCameraReset?: () => void;
   onZoom?: (delta: number) => void;
   onDebugReload?: () => void;
   onDebugExport?: () => void;
@@ -34,6 +37,7 @@ export interface InputCallbacks {
   onTeeSheetPanel?: () => void;
   onIrrigationPanel?: () => void;
   onHoleBuilderPanel?: () => void;
+  onAssetBuilderPanel?: () => void;
   onEquipmentStore?: () => void;
   onAmenityPanel?: () => void;
   onCourseLayoutPanel?: () => void;
@@ -64,7 +68,11 @@ export class InputManager {
   private keysDown: Set<string> = new Set();
   private enabled: boolean = true;
   private isDragging: boolean = false;
+  private dragStartPos: { x: number; y: number } | null = null;
+  private dragMoved: boolean = false;
+  private dragShiftKey: boolean = false;
   private wheelHandler: ((event: WheelEvent) => void) | null = null;
+  private readonly DRAG_THRESHOLD = 6;
 
   // Touch input support
   private touchStartPos: { x: number; y: number } | null = null;
@@ -175,10 +183,29 @@ export class InputManager {
       } else {
         this.callbacks.onZoom?.(-50);
       }
+    } else if (key === "pageup") {
+      this.callbacks.onZoom?.(80);
+    } else if (key === "pagedown") {
+      this.callbacks.onZoom?.(-80);
+    } else if (key === "home") {
+      event.preventDefault?.();
+      this.callbacks.onCameraRotate?.(-Math.PI / 4);
+    } else if (key === "end") {
+      event.preventDefault?.();
+      this.callbacks.onCameraRotate?.(Math.PI / 4);
+    } else if (key === "insert") {
+      event.preventDefault?.();
+      this.callbacks.onCameraTilt?.(-Math.PI / 18);
     } else if (key === "{") {
       if (this.callbacks.isEditorActive?.()) {
         this.callbacks.onEditorBrushStrengthChange?.(-0.1);
       }
+    } else if (key === "delete" && !this.callbacks.isEditorActive?.()) {
+      event.preventDefault?.();
+      this.callbacks.onCameraTilt?.(Math.PI / 18);
+    } else if (key === "\\") {
+      event.preventDefault?.();
+      this.callbacks.onCameraReset?.();
     } else if (key === "}") {
       if (this.callbacks.isEditorActive?.()) {
         this.callbacks.onEditorBrushStrengthChange?.(0.1);
@@ -226,6 +253,10 @@ export class InputManager {
       if (!this.callbacks.isEditorActive?.()) {
         this.callbacks.onHoleBuilderPanel?.();
       }
+    } else if (key === "k") {
+      if (!this.callbacks.isEditorActive?.()) {
+        this.callbacks.onAssetBuilderPanel?.();
+      }
     } else if (key === "b") {
       if (this.callbacks.isEditorActive?.()) {
         this.callbacks.onBrushModeToggle?.();
@@ -258,19 +289,34 @@ export class InputManager {
       if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         if (inputBlocked) return;
         this.isDragging = true;
-        const shiftKey = (pointerInfo.event as PointerEvent).shiftKey;
-        this.callbacks.onClick?.(x, y, shiftKey);
-        this.callbacks.onDragStart?.(x, y, shiftKey);
+        this.dragStartPos = { x, y };
+        this.dragMoved = false;
+        this.dragShiftKey = (pointerInfo.event as PointerEvent).shiftKey;
+        this.callbacks.onDragStart?.(x, y, this.dragShiftKey);
       } else if (pointerInfo.type === PointerEventTypes.POINTERUP) {
         if (this.isDragging) {
+          if (!inputBlocked && !this.dragMoved) {
+            this.callbacks.onClick?.(x, y, this.dragShiftKey);
+          }
           this.isDragging = false;
+          this.dragStartPos = null;
+          this.dragMoved = false;
           this.callbacks.onDragEnd?.();
         }
       } else if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
         if (inputBlocked) return;
         this.callbacks.onMouseMove?.(x, y);
         if (this.isDragging) {
-          this.callbacks.onDrag?.(x, y);
+          if (this.dragStartPos && !this.dragMoved) {
+            const dx = x - this.dragStartPos.x;
+            const dy = y - this.dragStartPos.y;
+            if (this.getDistance(dx, dy) >= this.DRAG_THRESHOLD) {
+              this.dragMoved = true;
+            }
+          }
+          if (this.dragMoved) {
+            this.callbacks.onDrag?.(x, y);
+          }
         }
       }
     });

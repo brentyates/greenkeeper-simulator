@@ -174,6 +174,17 @@ export function getMaxAssignedHoleNumber(assets: PlaceableHoleAsset[]): number {
   return maxHole;
 }
 
+export function getMinAssignedHoleNumber(assets: PlaceableHoleAsset[]): number {
+  let minHole = Number.POSITIVE_INFINITY;
+  for (const asset of assets) {
+    const holeNumber = asset.gameplay?.holeFeature?.holeNumber;
+    if (holeNumber) {
+      minHole = Math.min(minHole, toValidHoleNumber(holeNumber));
+    }
+  }
+  return Number.isFinite(minHole) ? minHole : 1;
+}
+
 export function buildHoleDefinitionsFromAssets(
   assets: PlaceableHoleAsset[]
 ): CourseHoleDefinition[] {

@@ -1,4 +1,4 @@
-import { Employee, EmployeeRole, calculateEffectiveEfficiency } from './employees';
+import { Employee, EmployeeRole, EmployeeFocusPreference, calculateEffectiveEfficiency } from './employees';
 import {
   EmployeeEntity,
   EmployeeTask,
@@ -69,6 +69,18 @@ export interface EmployeeWorkTickResult {
   readonly completions: readonly TaskCompletion[];
 }
 
+export interface CourseAreaCondition {
+  readonly areaId: string;
+  readonly areaName: string;
+  readonly avgHealth: number;
+  readonly avgMoisture: number;
+  readonly avgNutrients: number;
+  readonly avgGrassHeight: number;
+  readonly issue: 'stable' | 'dry' | 'hungry' | 'overgrown' | 'weak';
+  readonly issueLabel: string;
+  readonly severity: number;
+}
+
 export const TASK_DURATIONS: Record<EmployeeTask, number> = {
   mow_grass: 0.5,
   water_area: 0.25,
@@ -111,6 +123,9 @@ export const WORK_THRESHOLDS = {
 };
 
 const TASK_ORDER_BONUS_STEP = 6;
+const UNASSIGNED_SUPPORT_RADIUS = 12;
+const ASSIGNED_CREW_EFFICIENCY_BONUS = 1.25;
+const UNASSIGNED_CREW_EFFICIENCY_PENALTY = 0.75;
 
 export function createInitialWorkSystemState(
   maintenanceShedX: number = 0,
@@ -122,6 +137,117 @@ export function createInitialWorkSystemState(
     maintenanceShedX,
     maintenanceShedY,
   };
+}
+
+export function createDefaultCourseAreas(
+  courseWidth: number,
+  courseHeight: number
+): readonly CourseArea[] {
+  const maxX = Math.max(0, courseWidth - 1);
+  const maxY = Math.max(0, courseHeight - 1);
+  const lowerBandStart = Math.floor(courseHeight * 0.58);
+  const middleBandStart = Math.floor(courseHeight * 0.28);
+  const middleBandEnd = Math.floor(courseHeight * 0.72);
+  const upperBandEnd = Math.floor(courseHeight * 0.42);
+
+  return [
+    {
+      id: 'all_course',
+      name: 'All Course',
+      minX: 0,
+      maxX,
+      minY: 0,
+      maxY,
+    },
+    {
+      id: 'clubhouse_side',
+      name: 'Clubhouse Side',
+      minX: 0,
+      maxX,
+      minY: Math.min(maxY, lowerBandStart),
+      maxY,
+    },
+    {
+      id: 'middle_grounds',
+      name: 'Middle Grounds',
+      minX: 0,
+      maxX,
+      minY: Math.min(maxY, middleBandStart),
+      maxY: Math.min(maxY, Math.max(middleBandStart, middleBandEnd)),
+    },
+    {
+      id: 'far_side',
+      name: 'Far Side',
+      minX: 0,
+      maxX,
+      minY: 0,
+      maxY: Math.min(maxY, Math.max(0, upperBandEnd)),
+    },
+  ];
+}
+
+function getAreaSampleRadius(area: CourseArea): number {
+  const width = Math.max(1, area.maxX - area.minX);
+  const height = Math.max(1, area.maxY - area.minY);
+  return Math.max(4, Math.min(14, Math.min(width, height) * 0.35));
+}
+
+export function sampleCourseAreaCondition(
+  area: CourseArea,
+  terrainSystem: TerrainSystem
+): CourseAreaCondition {
+  const centerX = (area.minX + area.maxX) / 2;
+  const centerZ = (area.minY + area.maxY) / 2;
+  const sample = terrainSystem.sampleFaceStatesInRadius(centerX, centerZ, getAreaSampleRadius(area));
+
+  let issue: CourseAreaCondition['issue'] = 'stable';
+  let issueLabel = 'stable';
+  let severity = 0;
+
+  if (sample.faceCount > 0) {
+    if (sample.avgHealth < 55) {
+      issue = 'weak';
+      issueLabel = 'weak turf';
+      severity = Math.max(severity, 55 - sample.avgHealth);
+    }
+    if (sample.avgMoisture < 45 && 45 - sample.avgMoisture > severity) {
+      issue = 'dry';
+      issueLabel = 'dry';
+      severity = 45 - sample.avgMoisture;
+    }
+    if (sample.avgNutrients < 40 && 40 - sample.avgNutrients > severity) {
+      issue = 'hungry';
+      issueLabel = 'needs feed';
+      severity = 40 - sample.avgNutrients;
+    }
+    if (sample.avgGrassHeight > 55 && sample.avgGrassHeight - 55 > severity) {
+      issue = 'overgrown';
+      issueLabel = 'overgrown';
+      severity = sample.avgGrassHeight - 55;
+    }
+  }
+
+  return {
+    areaId: area.id,
+    areaName: area.name,
+    avgHealth: sample.avgHealth,
+    avgMoisture: sample.avgMoisture,
+    avgNutrients: sample.avgNutrients,
+    avgGrassHeight: sample.avgGrassHeight,
+    issue,
+    issueLabel,
+    severity,
+  };
+}
+
+export function sampleCourseAreaConditions(
+  areas: readonly CourseArea[],
+  terrainSystem: TerrainSystem
+): readonly CourseAreaCondition[] {
+  return areas
+    .filter((area) => area.id !== 'all_course')
+    .map((area) => sampleCourseAreaCondition(area, terrainSystem))
+    .sort((left, right) => right.severity - left.severity);
 }
 
 export function addWorker(
@@ -196,14 +322,46 @@ function isInArea(x: number, y: number, area: CourseArea | null): boolean {
   return x >= area.minX && x <= area.maxX && y >= area.minY && y <= area.maxY;
 }
 
-function getTaskPriorityForRole(role: EmployeeRole): EmployeeTask[] {
+function createSupportAreaAroundShed(
+  shedX: number,
+  shedY: number,
+  radius: number = UNASSIGNED_SUPPORT_RADIUS
+): CourseArea {
+  return {
+    id: 'shed_support',
+    name: 'Maintenance Shed',
+    minX: shedX - radius,
+    maxX: shedX + radius,
+    minY: shedY - radius,
+    maxY: shedY + radius,
+  };
+}
+
+function getTaskPriorityForRole(
+  role: EmployeeRole,
+  focus: EmployeeFocusPreference = 'balanced'
+): EmployeeTask[] {
   switch (role) {
     case 'mechanic':
-      // Mechanics prioritize bunker raking (equipment-adjacent) and patrol
-      return ['rake_bunker', 'patrol'];
+      if (focus === 'bunkers') {
+        return ['rake_bunker', 'patrol'];
+      }
+      return ['patrol', 'rake_bunker'];
     case 'groundskeeper':
     default:
-      return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
+      switch (focus) {
+        case 'mowing':
+          return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
+        case 'watering':
+          return ['water_area', 'mow_grass', 'fertilize_area', 'rake_bunker', 'patrol'];
+        case 'fertilizing':
+          return ['fertilize_area', 'water_area', 'mow_grass', 'rake_bunker', 'patrol'];
+        case 'bunkers':
+          return ['rake_bunker', 'mow_grass', 'water_area', 'fertilize_area', 'patrol'];
+        case 'balanced':
+        default:
+          return ['mow_grass', 'water_area', 'fertilize_area', 'rake_bunker', 'patrol'];
+      }
   }
 }
 
@@ -213,12 +371,26 @@ function getTaskNeedFromSample(
   _gameTime: number
 ): number {
   const terrainType = getTerrainType(sample.dominantTerrainCode);
+  const healthStress = Math.max(0, 55 - sample.avgHealth);
+  const moistureRecoveryGap = Math.max(0, 55 - sample.avgMoisture);
+  const nutrientRecoveryGap = Math.max(0, 50 - sample.avgNutrients);
+  const recoveryWaterBonus =
+    sample.avgHealth < 55 && moistureRecoveryGap > 0
+      ? moistureRecoveryGap * 0.9 + healthStress * 1.25
+      : 0;
+  const recoveryFertilizeBonus =
+    sample.avgHealth < 52 && nutrientRecoveryGap > 0
+      ? nutrientRecoveryGap * 0.75 + healthStress
+      : 0;
 
   switch (task) {
     case 'mow_grass':
       if (!isGrassTerrain(terrainType)) return 0;
       if (sample.avgGrassHeight > WORK_THRESHOLDS.heightCritical) {
         return sample.avgGrassHeight - WORK_THRESHOLDS.heightCritical + 50;
+      }
+      if (sample.avgHealth < 50) {
+        return 0;
       }
       if (sample.avgGrassHeight > WORK_THRESHOLDS.heightStandard) {
         return sample.avgGrassHeight - WORK_THRESHOLDS.heightStandard;
@@ -228,22 +400,22 @@ function getTaskNeedFromSample(
     case 'water_area':
       if (!isGrassTerrain(terrainType)) return 0;
       if (sample.avgMoisture < WORK_THRESHOLDS.waterCritical) {
-        return WORK_THRESHOLDS.waterCritical - sample.avgMoisture + 50;
+        return WORK_THRESHOLDS.waterCritical - sample.avgMoisture + 50 + recoveryWaterBonus;
       }
       if (sample.avgMoisture < WORK_THRESHOLDS.waterStandard) {
-        return WORK_THRESHOLDS.waterStandard - sample.avgMoisture;
+        return WORK_THRESHOLDS.waterStandard - sample.avgMoisture + recoveryWaterBonus;
       }
-      return 0;
+      return recoveryWaterBonus;
 
     case 'fertilize_area':
       if (!isGrassTerrain(terrainType)) return 0;
       if (sample.avgNutrients < WORK_THRESHOLDS.fertilizeCritical) {
-        return WORK_THRESHOLDS.fertilizeCritical - sample.avgNutrients + 50;
+        return WORK_THRESHOLDS.fertilizeCritical - sample.avgNutrients + 50 + recoveryFertilizeBonus;
       }
       if (sample.avgNutrients < WORK_THRESHOLDS.fertilizeStandard) {
-        return WORK_THRESHOLDS.fertilizeStandard - sample.avgNutrients;
+        return WORK_THRESHOLDS.fertilizeStandard - sample.avgNutrients + recoveryFertilizeBonus;
       }
-      return 0;
+      return recoveryFertilizeBonus;
 
     case 'rake_bunker':
       if (terrainType !== 'bunker') return 0;
@@ -259,12 +431,13 @@ export function findBestWorkTarget(
   currentWorldX: number,
   currentWorldZ: number,
   role: EmployeeRole,
+  focus: EmployeeFocusPreference,
   assignedArea: CourseArea | null,
   claimedTargets: ReadonlySet<string>,
   gameTime: number = 0,
   maxDistance: number = 100
 ): WorkTarget | null {
-  const priorities = getTaskPriorityForRole(role);
+  const priorities = getTaskPriorityForRole(role, focus);
   const candidates = terrainSystem.findWorkCandidates(currentWorldX, currentWorldZ, maxDistance);
 
   let bestTarget: WorkTarget | null = null;
@@ -273,6 +446,7 @@ export function findBestWorkTarget(
   let bestDistance = Number.POSITIVE_INFINITY;
 
   let bestExtremeTarget: WorkTarget | null = null;
+  let bestExtremeScore = Number.NEGATIVE_INFINITY;
   let bestExtremeNeed = 0;
   let bestExtremeDistance = Number.POSITIVE_INFINITY;
 
@@ -291,13 +465,17 @@ export function findBestWorkTarget(
         const dx = candidate.worldX - currentWorldX;
         const dz = candidate.worldZ - currentWorldZ;
         const distance = Math.abs(dx) + Math.abs(dz);
+        const taskOrderBonus = (priorities.length - priorityIndex) * TASK_ORDER_BONUS_STEP;
 
         if (isExtremeNeed(need)) {
+          const extremeScore = scoreNeedWithDistance(need, distance, taskOrderBonus + 24);
           if (
             !bestExtremeTarget ||
-            need > bestExtremeNeed ||
-            (need === bestExtremeNeed && distance < bestExtremeDistance)
+            extremeScore > bestExtremeScore ||
+            (extremeScore === bestExtremeScore && need > bestExtremeNeed) ||
+            (extremeScore === bestExtremeScore && need === bestExtremeNeed && distance < bestExtremeDistance)
           ) {
+            bestExtremeScore = extremeScore;
             bestExtremeNeed = need;
             bestExtremeDistance = distance;
             bestExtremeTarget = {
@@ -310,7 +488,6 @@ export function findBestWorkTarget(
           continue;
         }
 
-        const taskOrderBonus = (priorities.length - priorityIndex) * TASK_ORDER_BONUS_STEP;
         const score = scoreNeedWithDistance(need, distance, taskOrderBonus);
 
         if (
@@ -336,6 +513,42 @@ export function findBestWorkTarget(
     return bestExtremeTarget;
   }
   return bestTarget;
+}
+
+function findBestWorkTargetWithExpansion(
+  terrainSystem: TerrainSystem,
+  currentWorldX: number,
+  currentWorldZ: number,
+  role: EmployeeRole,
+  focus: EmployeeFocusPreference,
+  assignedArea: CourseArea | null,
+  claimedTargets: ReadonlySet<string>,
+  gameTime: number
+): WorkTarget | null {
+  const searchRadii = assignedArea
+    ? assignedArea.id === 'all_course'
+      ? [12, 20, 32, 48]
+      : [18, 32, 56, 96]
+    : [12, 24, 40];
+
+  for (const radius of searchRadii) {
+    const target = findBestWorkTarget(
+      terrainSystem,
+      currentWorldX,
+      currentWorldZ,
+      role,
+      focus,
+      assignedArea,
+      claimedTargets,
+      gameTime,
+      radius
+    );
+    if (target) {
+      return target;
+    }
+  }
+
+  return null;
 }
 
 export function generateWaypointsToTarget(
@@ -431,8 +644,13 @@ export function tickEmployeeWork(
     const assignedArea = worker.assignedAreaId
       ? state.areas.find(a => a.id === worker.assignedAreaId) ?? null
       : null;
+    const operationalArea = assignedArea ?? createSupportAreaAroundShed(
+      state.maintenanceShedX,
+      state.maintenanceShedY
+    );
 
-    const efficiency = calculateEffectiveEfficiency(employee);
+    const efficiency = calculateEffectiveEfficiency(employee)
+      * (assignedArea ? ASSIGNED_CREW_EFFICIENCY_BONUS : UNASSIGNED_CREW_EFFICIENCY_PENALTY);
 
     // Continue work in progress
     if (worker.workProgress > 0 && worker.workProgress < 100) {
@@ -516,8 +734,8 @@ export function tickEmployeeWork(
         if (atFinalTarget) {
           // Arrived at work target, check for work at this location
           const sample = terrainSystem.sampleFaceStatesInRadius(moved.worldX, moved.worldZ, 2.0);
-          if (sample.faceCount > 0) {
-            const priorities = getTaskPriorityForRole(employee.role);
+          if (sample.faceCount > 0 && isInArea(moved.worldX, moved.worldZ, operationalArea)) {
+            const priorities = getTaskPriorityForRole(employee.role, employee.assignedFocus ?? 'balanced');
             for (const task of priorities) {
               const need = getTaskNeedFromSample(task, sample, gameTime);
               if (need > 0) {
@@ -560,8 +778,12 @@ export function tickEmployeeWork(
       isAtTarget(worker, worker.targetX, worker.targetZ);
     const currentKey = `${Math.floor(worker.worldX)},${Math.floor(worker.worldZ)}`;
 
-    if (currentSample.faceCount > 0 && (workerOwnsClaim || !claimedTargets.has(currentKey))) {
-      const priorities = getTaskPriorityForRole(employee.role);
+    if (
+      currentSample.faceCount > 0 &&
+      isInArea(worker.worldX, worker.worldZ, operationalArea) &&
+      (workerOwnsClaim || !claimedTargets.has(currentKey))
+    ) {
+      const priorities = getTaskPriorityForRole(employee.role, employee.assignedFocus ?? 'balanced');
       for (const task of priorities) {
         const need = getTaskNeedFromSample(task, currentSample, gameTime);
         if (need > 0) {
@@ -607,12 +829,13 @@ export function tickEmployeeWork(
     }
 
     // Mechanics and fallback: autonomous work finding
-    const target = findBestWorkTarget(
+    const target = findBestWorkTargetWithExpansion(
       terrainSystem,
       worker.worldX,
       worker.worldZ,
       employee.role,
-      assignedArea,
+      employee.assignedFocus ?? 'balanced',
+      operationalArea,
       claimedTargets,
       gameTime
     );
@@ -671,7 +894,14 @@ export function syncWorkersWithRoster(
   const validIds = new Set(fieldWorkers.map(e => e.id));
   newState = {
     ...newState,
-    workers: newState.workers.filter(w => validIds.has(w.employeeId)),
+    workers: newState.workers
+      .filter(w => validIds.has(w.employeeId))
+      .map((worker) => {
+        const employee = fieldWorkers.find((candidate) => candidate.id === worker.employeeId);
+        return employee
+          ? { ...worker, assignedAreaId: employee.assignedArea }
+          : worker;
+      }),
   };
 
   return newState;
