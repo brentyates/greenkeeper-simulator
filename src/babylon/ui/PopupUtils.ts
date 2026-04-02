@@ -31,7 +31,7 @@ export const POPUP_COLORS = {
   },
 } as const;
 
-export interface PopupConfig {
+interface PopupConfig {
   name: string;
   width: number;
   height: number;
@@ -39,18 +39,18 @@ export interface PopupConfig {
   padding?: number;
 }
 
-export interface OverlayPopupResult {
+interface OverlayPopupResult {
   overlay: Rectangle;
   panel: Rectangle;
   stack: StackPanel;
 }
 
-export interface DirectPopupResult {
+interface DirectPopupResult {
   panel: Rectangle;
   stack: StackPanel;
 }
 
-export interface DockedPanelConfig {
+interface DockedPanelConfig {
   name: string;
   width: number;
   height: number;
@@ -166,7 +166,7 @@ export function createDockedPanel(
 
 const ACTION_BUTTON_COLORS = UI_THEME.colors.action;
 
-export interface HeaderConfig {
+interface HeaderConfig {
   title: string;
   titleColor?: string;
   width: number;
@@ -175,7 +175,7 @@ export interface HeaderConfig {
   onCloseButtonCreated?: (button: Button) => void;
 }
 
-export interface ActionButtonConfig {
+interface ActionButtonConfig {
   id: string;
   label: string;
   tone?: keyof typeof ACTION_BUTTON_COLORS;
@@ -188,7 +188,7 @@ export interface ActionButtonConfig {
   onClick: () => void;
 }
 
-export interface SelectableButtonStyle {
+interface SelectableButtonStyle {
   selectedBackground: string;
   selectedColor: string;
   unselectedBackground: string;
@@ -198,7 +198,7 @@ export interface SelectableButtonStyle {
   unselectedThickness?: number;
 }
 
-export interface SelectableButtonConfig {
+interface SelectableButtonConfig {
   id: string;
   label: string;
   width: number;
@@ -210,7 +210,7 @@ export interface SelectableButtonConfig {
   onClick: () => void;
 }
 
-export interface ListRowCardConfig {
+interface ListRowCardConfig {
   name: string;
   width: number;
   height: number;
@@ -397,7 +397,7 @@ const SECTION_THEMES: Record<SectionTheme, { background: string; border: string 
   neutral: { background: 'transparent', border: 'transparent' },
 };
 
-export interface PanelSectionConfig {
+interface PanelSectionConfig {
   name: string;
   width: number;
   height: number;

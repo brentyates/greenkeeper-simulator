@@ -10,9 +10,9 @@ import { createDirectPopup, createDockedPanel, createOverlayPopup, createPopupHe
 import { UI_THEME } from './UITheme';
 import { Button } from '@babylonjs/gui/2D/controls/button';
 
-export type DialogShellType = 'overlay' | 'direct' | 'docked';
+type DialogShellType = 'overlay' | 'direct' | 'docked';
 
-export interface DialogDockConfig {
+interface DialogDockConfig {
   horizontalAlignment: number;
   verticalAlignment: number;
   left?: number;
@@ -29,7 +29,7 @@ export interface DialogActionSpec {
   fontSize?: number;
 }
 
-export interface DialogRowButtonsNode {
+interface DialogRowButtonsNode {
   type: 'rowButtons';
   id: string;
   rowWidth: number;
@@ -40,7 +40,7 @@ export interface DialogRowButtonsNode {
   specs: DialogActionSpec[];
 }
 
-export interface DialogTextNode {
+interface DialogTextNode {
   type: 'text';
   id: string;
   text: string;
@@ -51,7 +51,7 @@ export interface DialogTextNode {
   paddingTop?: number;
 }
 
-export interface DialogInputNode {
+interface DialogInputNode {
   type: 'input';
   id: string;
   text: string;
@@ -59,18 +59,18 @@ export interface DialogInputNode {
   background?: string;
 }
 
-export interface DialogLabelNode {
+interface DialogLabelNode {
   type: 'label';
   config: DialogLabelConfig;
 }
 
-export interface DialogSpacerNode {
+interface DialogSpacerNode {
   type: 'spacer';
   id: string;
   size: number;
 }
 
-export interface DialogCustomNode {
+interface DialogCustomNode {
   type: 'custom';
   id: string;
   render: (parent: StackPanel, controls: DialogRenderControls) => void;
@@ -153,13 +153,13 @@ function fitSchemaToViewport(
   };
 }
 
-export interface DialogRenderControls {
+interface DialogRenderControls {
   texts: Map<string, TextBlock>;
   inputs: Map<string, InputText>;
   rows: Map<string, StackPanel>;
 }
 
-export interface DialogRenderResult {
+interface DialogRenderResult {
   panel: Rectangle;
   stack: StackPanel;
   overlay?: Rectangle;
