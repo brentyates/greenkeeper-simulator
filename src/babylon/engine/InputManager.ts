@@ -10,10 +10,6 @@ export type EquipmentSlot = 1 | 2 | 3;
 export type AxisConstraint = 'x' | 'y' | 'z' | 'xy' | 'xz' | 'yz' | 'xyz';
 
 export interface InputCallbacks {
-  onMove?: (direction: Direction) => void;
-  onEquipmentSelect?: (slot: EquipmentSlot) => void;
-  onEquipmentToggle?: () => void;
-  onRefill?: () => void;
   onOverlayCycle?: () => void;
   onPause?: () => void;
   onMute?: () => void;
@@ -41,7 +37,6 @@ export interface InputCallbacks {
   onDrag?: (screenX: number, screenY: number) => void;
   onDragEnd?: () => void;
   onPinchZoom?: (delta: number) => void;
-  onSwipe?: (direction: Direction) => void;
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
   onAxisConstraint?: (axis: AxisConstraint) => void;
@@ -115,32 +110,13 @@ export class InputManager {
   }): void {
     const key = event.key.toLowerCase();
 
-    if (key === "arrowup" || key === "w") {
-      this.callbacks.onMove?.("up");
-    } else if (key === "arrowdown" || key === "s") {
+    if (key === "arrowdown" || key === "s") {
       if (key === "s" && this.callbacks.isEditorActive?.()) {
         this.callbacks.onSelectModeToggle?.();
-      } else {
-        this.callbacks.onMove?.("down");
       }
-    } else if (key === "arrowleft" || key === "a") {
-      this.callbacks.onMove?.("left");
-    } else if (key === "arrowright" || key === "d") {
-      this.callbacks.onMove?.("right");
-    } else if (key === "1") {
-      this.callbacks.onEquipmentSelect?.(1);
-    } else if (key === "2") {
-      this.callbacks.onEquipmentSelect?.(2);
-    } else if (key === "3") {
-      this.callbacks.onEquipmentSelect?.(3);
-    } else if (key === " ") {
-      event.preventDefault?.();
-      this.callbacks.onEquipmentToggle?.();
     } else if (key === "e") {
       if (this.callbacks.isEditorActive?.()) {
         this.callbacks.onEdgeModeToggle?.();
-      } else {
-        this.callbacks.onRefill?.();
       }
     } else if (key === "delete" || key === "backspace") {
       if (this.callbacks.isEditorActive?.()) {
@@ -382,15 +358,7 @@ export class InputManager {
           if (timeDiff < this.TAP_TIME_THRESHOLD && distance < 10) {
             this.callbacks.onClick?.(endX, endY);
           }
-          // Check if it was a swipe (significant movement)
-          else if (distance > this.SWIPE_THRESHOLD) {
-            const direction = this.getSwipeDirection(dx, dy);
-            if (direction) {
-              this.callbacks.onSwipe?.(direction);
-              // Also trigger move callback for swipe-to-move
-              this.callbacks.onMove?.(direction);
-            }
-          }
+          // Swipe detection (no longer used for player movement)
         }
 
         this.callbacks.onDragEnd?.();

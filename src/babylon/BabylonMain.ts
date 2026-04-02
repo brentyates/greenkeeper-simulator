@@ -7,10 +7,10 @@ import {
   resolveServiceHubAnchorFromState,
 } from "./GameState";
 
-import { InputManager, Direction, EquipmentSlot } from "./engine/InputManager";
+import { InputManager } from "./engine/InputManager";
 import { TerrainMeshSystem } from "./systems/TerrainMeshSystem";
 import { TerrainSystem } from "./systems/TerrainSystemInterface";
-import { OverlayMode, getTerrainType, getTerrainDisplayName } from "../core/terrain";
+import { getTerrainType, getTerrainDisplayName } from "../core/terrain";
 import { EquipmentManager } from "./systems/EquipmentManager";
 import { EmployeeVisualSystem } from "./systems/EmployeeVisualSystem";
 import { RobotVisualSystem } from "./systems/RobotVisualSystem";
@@ -40,7 +40,6 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Culling/ray";
 
-import { PlayerController } from "./PlayerController";
 import { UIPanelCoordinator } from "./UIPanelCoordinator";
 import { TerrainEditorController } from "./TerrainEditorController";
 import { AssetPlacementSystem } from "./systems/AssetPlacementSystem";
@@ -53,9 +52,6 @@ import {
 import { PlacedAsset } from "../data/customCourseData";
 
 import {
-  addExpense,
-} from "../core/economy";
-import {
   createInitialApplicationState,
 } from "../core/employees";
 import {
@@ -67,7 +63,6 @@ import {
   getAverageSatisfaction,
 } from "../core/golfers";
 import {
-  getBestFertilizerEffectiveness,
   RESEARCH_ITEMS,
 } from "../core/research";
 import {
@@ -110,7 +105,6 @@ export class BabylonMain {
   private uiManager: UIManager;
   private lastTime: number = 0;
 
-  private playerController!: PlayerController;
   private uiPanelCoordinator!: UIPanelCoordinator;
   private terrainEditorController!: TerrainEditorController;
 
@@ -137,8 +131,6 @@ export class BabylonMain {
 
     const course = this.state.currentCourse;
 
-    const startX = Math.floor(course.width / 2);
-    const startY = Math.floor(course.height * 0.75);
     this.babylonEngine = new BabylonEngine(
       canvasId,
       course.width,
@@ -164,42 +156,6 @@ export class BabylonMain {
       { getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d) }
     );
 
-    this.playerController = new PlayerController(
-      this.babylonEngine.getScene(),
-      {
-        getElevationAt: (x, y, d) => this.terrainSystem.getElevationAt(x, y, d),
-        getCourseStats: () => this.terrainSystem.getCourseStats(),
-        getWorldDimensions: () => this.terrainSystem.getWorldDimensions(),
-        getTerrainTypeAt: (wx, wz) => this.terrainSystem.getTerrainTypeAt(wx, wz),
-        isPositionWalkable: (wx, wz) => this.terrainSystem.isPositionWalkable(wx, wz),
-        getTerrainSpeedAt: (wx, wz) => this.terrainSystem.getTerrainSpeedAt(wx, wz),
-        findFaceAtPosition: (wx, wz) => this.terrainSystem.findFaceAtPosition(wx, wz),
-        mowAt: (wx, wz) => this.terrainSystem.mowAt(wx, wz),
-        waterArea: (cx, cy, r, a) => this.terrainSystem.waterArea(cx, cy, r, a),
-        fertilizeArea: (cx, cy, r, a, e) => this.terrainSystem.fertilizeArea(cx, cy, r, a, e),
-      },
-      {
-        getSelected: () => this.equipmentManager.getSelected(),
-        getCurrentState: () => this.equipmentManager.getCurrentState(),
-        isActive: () => this.equipmentManager.isActive(),
-      },
-      {
-        getScene: () => this.babylonEngine.getScene(),
-        getCamera: () => this.babylonEngine.getCamera(),
-        setCameraTarget: (t) => this.babylonEngine.setCameraTarget(t),
-        updateCameraPan: (d, dirs) => this.babylonEngine.updateCameraPan(d, dirs),
-      },
-      {
-        isDirectionKeyHeld: (d) => this.inputManager.isDirectionKeyHeld(d),
-      },
-      {
-        editor: { isEnabled: () => this.terrainEditorController.isEnabled() },
-        onEquipmentEffect: (x, y) => this.applyEquipmentEffect(x, y),
-        startX,
-        startY,
-      }
-    );
-
     this.terrainEditorController = new TerrainEditorController({
       getScene: () => this.babylonEngine.getScene(),
       getCamera: () => this.babylonEngine.getCamera(),
@@ -209,9 +165,6 @@ export class BabylonMain {
       getTerrainMeshSystem: () => this.terrainMeshSystem,
       getCourseWidth: () => this.state.currentCourse.width,
       getCourseHeight: () => this.state.currentCourse.height,
-      getPlayerVisual: () => null,
-      getPlayerWorldPosition: () => ({ worldX: 0, worldZ: 0 }),
-      setPlayerVisualEnabled: () => {},
       setEmployeeVisualSystemVisible: (visible) => {
         this.employeeVisualSystem?.setVisible(visible);
         this.robotVisualSystem?.setVisible(visible);
@@ -283,7 +236,6 @@ export class BabylonMain {
 
     if (options.loadFromSave && this.loadSavedGame()) {
       this.uiManager.showNotification(`Loaded Day ${this.state.gameDay}`);
-      this.playerController.updatePlayerPosition();
     }
 
     if (this.state.currentScenario) {
@@ -752,8 +704,6 @@ export class BabylonMain {
       this.state.currentScenario.id,
       this.state.gameTime,
       this.state.gameDay,
-      this.playerController.getPlayer().gridX,
-      this.playerController.getPlayer().gridY,
       this.state.score,
       this.state.economyState,
       this.state.employeeRoster,
@@ -785,7 +735,6 @@ export class BabylonMain {
 
     this.state.gameTime = saved.gameTime;
     this.state.gameDay = saved.gameDay;
-    this.playerController.teleport(saved.playerX, saved.playerY);
     this.state.score = saved.score;
     this.state.economyState = saved.economyState;
     this.state.employeeRoster = saved.employeeRoster;
@@ -893,26 +842,6 @@ export class BabylonMain {
     const editorSystem = () => this.terrainEditorController.getSystem();
 
     this.inputManager.setCallbacks({
-      onMove: (direction: Direction) => {
-        if (this.terrainEditorController.isEnabled()) return;
-        const dirMap: Record<Direction, "up" | "down" | "left" | "right"> = {
-          up: "up",
-          down: "down",
-          left: "left",
-          right: "right",
-        };
-        this.movePlayer(dirMap[direction]);
-      },
-
-      onEquipmentSelect: (slot: EquipmentSlot) => {
-        this.selectEquipment(slot);
-      },
-
-      onEquipmentToggle: () => {
-        this.toggleEquipment();
-      },
-
-      onRefill: () => this.handleRefill(),
       onOverlayCycle: () => this.handleOverlayCycle(),
       onPause: () => this.handlePause(),
       onMute: () => this.handleMute(),
@@ -1080,10 +1009,6 @@ export class BabylonMain {
     return getRuntimeRefillStationsFromState(this.state);
   }
 
-  public teleport(x: number, y: number): void {
-    this.playerController.teleport(x, y);
-  }
-
   private snapAssetsToTerrain(): void {
     const allInstances = [...this.treeInstances, ...this.refillStationInstances];
     for (const instance of allInstances) {
@@ -1225,63 +1150,6 @@ export class BabylonMain {
     return true;
   }
 
-  private applyEquipmentEffect(x: number, y: number): void {
-    const type = this.equipmentManager.getSelected();
-    const eqState = this.equipmentManager.getCurrentState();
-    if (!type || !eqState) return;
-
-    switch (type) {
-      case "mower":
-        this.terrainSystem.mowAt(x, y);
-        break;
-      case "sprinkler":
-        this.terrainSystem.waterArea(x, y, eqState.effectRadius, 15);
-        break;
-      case "spreader":
-        this.terrainSystem.fertilizeArea(
-          x,
-          y,
-          eqState.effectRadius,
-          10,
-          getBestFertilizerEffectiveness(this.state.researchState)
-        );
-        break;
-    }
-  }
-
-  private handleRefill(): void {
-    const player = this.playerController.getPlayer();
-    const nearStation = this.getRuntimeRefillStations().some((station) => {
-      const dx = Math.abs(station.x - player.gridX);
-      const dy = Math.abs(station.y - player.gridY);
-      return dx <= 2 && dy <= 2;
-    });
-
-    if (nearStation) {
-      const cost = this.equipmentManager.refill();
-      if (cost > 0) {
-        const timestamp = this.state.gameDay * 1440 + this.state.gameTime;
-        const expenseResult = addExpense(
-          this.state.economyState,
-          cost,
-          "supplies",
-          "Equipment refill",
-          timestamp,
-          true
-        );
-        if (expenseResult) {
-          this.state.economyState = expenseResult;
-          this.state.dailyStats.expenses.supplies += cost;
-        }
-        this.uiManager.showNotification(`Refilled! Cost: $${cost.toFixed(2)}`);
-      } else {
-        this.uiManager.showNotification("Equipment already full!");
-      }
-    } else {
-      this.uiManager.showNotification("Move closer to refill station");
-    }
-  }
-
   private handleOverlayCycle(): void {
     const mode = this.terrainSystem.cycleOverlayMode();
     if (mode !== "irrigation" && this.uiPanelCoordinator.isIrrigationToolbarVisible()) {
@@ -1353,9 +1221,6 @@ export class BabylonMain {
 
   private restartGame(): void {
     const course = this.state.currentCourse;
-    const startX = Math.floor(course.width / 2);
-    const startY = Math.floor(course.height * 0.75);
-    this.playerController.teleport(startX, startY);
     this.state.gameTime = 6 * 60;
     this.state.gameDay = 1;
     this.state.score = 0;
@@ -1367,7 +1232,6 @@ export class BabylonMain {
     this.terrainMeshSystem = new TerrainMeshSystem(this.babylonEngine.getScene(), course);
     this.terrainSystem = this.terrainMeshSystem;
     this.terrainSystem.build(course);
-    this.playerController.updatePlayerPosition();
     this.resumeGame();
     this.uiManager.showNotification("Game Restarted");
   }
@@ -1406,10 +1270,7 @@ export class BabylonMain {
   }
 
   private handleDebugExport(): void {
-    const player = this.playerController.getPlayer();
     const debugState = {
-      playerX: player.gridX,
-      playerY: player.gridY,
       gameTime: this.state.gameTime,
       gameDay: this.state.gameDay,
       score: this.state.score,
@@ -1420,7 +1281,6 @@ export class BabylonMain {
 
   private setupUpdateLoop(): void {
     this.lastTime = performance.now();
-    const course = this.state.currentCourse;
 
     const stats = this.terrainSystem.getCourseStats();
     this.uiManager.updateCourseStatus(
@@ -1681,68 +1541,6 @@ export class BabylonMain {
     }
   }
 
-  private movePlayer(
-    direction: "up" | "down" | "left" | "right" | "w" | "a" | "s" | "d"
-  ): void {
-    const dirMap: Record<string, "up" | "down" | "left" | "right"> = {
-      up: "up",
-      w: "up",
-      down: "down",
-      s: "down",
-      left: "left",
-      a: "left",
-      right: "right",
-      d: "right",
-    };
-    const dir = dirMap[direction];
-    if (dir) {
-      this.playerController.handleMove(dir);
-    }
-  }
-
-  private selectEquipment(slot: 1 | 2 | 3): void {
-    const wasSelected = this.equipmentManager.getSelected();
-    this.equipmentManager.handleSlot(slot);
-    const nowSelected = this.equipmentManager.getSelected();
-
-    if (nowSelected !== null && nowSelected !== wasSelected) {
-      const overlayMap: Record<EquipmentSlot, OverlayMode | null> = {
-        1: null,
-        2: "moisture",
-        3: "nutrients",
-      };
-      const targetOverlay = overlayMap[slot];
-      if (targetOverlay && this.terrainSystem.getOverlayMode() !== targetOverlay) {
-        this.terrainSystem.setOverlayMode(targetOverlay);
-        this.uiManager.updateOverlayLegend(targetOverlay);
-        this.state.overlayAutoSwitched = true;
-        this.updateIrrigationVisibility();
-      } else if (targetOverlay === null && this.state.overlayAutoSwitched) {
-        this.terrainSystem.setOverlayMode("normal");
-        this.uiManager.updateOverlayLegend("normal");
-        this.state.overlayAutoSwitched = false;
-        this.updateIrrigationVisibility();
-      }
-    } else if (nowSelected === null && this.state.overlayAutoSwitched) {
-      this.terrainSystem.setOverlayMode("normal");
-      this.uiManager.updateOverlayLegend("normal");
-      this.state.overlayAutoSwitched = false;
-      this.updateIrrigationVisibility();
-    }
-  }
-
-  private toggleEquipment(): void {
-    const selected = this.equipmentManager.getSelected();
-    if (selected === null) return;
-
-    const slotMap: Record<string, 1 | 2 | 3> = {
-      mower: 1,
-      sprinkler: 2,
-      spreader: 3,
-    };
-    this.selectEquipment(slotMap[selected]);
-  }
-
   private setTerrainEditor(enabled: boolean): void {
     const system = this.terrainEditorController.getSystem();
     if (!system) return;
@@ -1759,17 +1557,6 @@ export class BabylonMain {
 
   public createAPI(): GameAPI {
     const gameSystems: GameSystems = {
-      player: this.playerController.getPlayer(),
-      playerVisual: this.playerController.getPlayerVisual(),
-      clickToMoveWaypoints: this.playerController.getClickToMoveWaypoints(),
-      lastEquipmentFaceId: this.playerController.getLastEquipmentFaceId(),
-      getPlayer: () => this.playerController.getPlayer(),
-      setPlayer: (player) => this.playerController.setPlayer(player),
-      getPlayerVisual: () => this.playerController.getPlayerVisual(),
-      getClickToMoveWaypoints: () => this.playerController.getClickToMoveWaypoints(),
-      setClickToMoveWaypoints: (waypoints) => this.playerController.setClickToMoveWaypoints(waypoints),
-      getLastEquipmentFaceId: () => this.playerController.getLastEquipmentFaceId(),
-      setLastEquipmentFaceId: (faceId) => this.playerController.setLastEquipmentFaceId(faceId),
       equipmentManager: this.equipmentManager,
       terrainSystem: this.terrainSystem,
       terrainEditorSystem: this.terrainEditorController.getSystem(),
@@ -1777,19 +1564,15 @@ export class BabylonMain {
       uiManager: this.uiManager,
       babylonEngine: this.babylonEngine,
       teeSheetViewDay: this.uiPanelCoordinator.getTeeSheetViewDay(),
-      handleMove: (d) => this.movePlayer(d),
       handleEmployeePanel: () => this.uiPanelCoordinator.handleEmployeePanel(),
       handleResearchPanel: () => this.uiPanelCoordinator.handleResearchPanel(),
       handleTeeSheetPanel: () => this.uiPanelCoordinator.handleTeeSheetPanel(),
       handleOverlayCycle: () => this.handleOverlayCycle(),
-      handleRefill: () => this.handleRefill(),
       handleMute: () => this.handleMute(),
-      isPlayerMoving: () => this.playerController.isMoving(),
       pauseGame: () => this.pauseGame(),
       resumeGame: () => this.resumeGame(),
       updateEconomySystems: (ms) => this.updateEconomySystems(ms),
       updateIrrigationVisibility: () => this.updateIrrigationVisibility(),
-      updatePlayerPosition: () => this.playerController.updatePlayerPosition(),
       saveCurrentGame: () => this.saveCurrentGame(),
       hasSavedGame: () => this.hasSavedGame(),
       showRobotInspector: (robot) => this.uiPanelCoordinator.showRobotInspector(robot),
@@ -1803,7 +1586,6 @@ export class BabylonMain {
     this.equipmentManager.dispose();
     this.uiManager.dispose();
     this.terrainEditorController.dispose();
-    this.playerController.dispose();
     this.uiPanelCoordinator.dispose();
     this.clearHoleDistanceIndicators();
     this.holeBuilderToolbar?.dispose();

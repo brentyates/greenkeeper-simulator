@@ -107,7 +107,6 @@ test.describe('Game Control Integration', () => {
     test('getFullGameState returns complete state', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getFullGameState());
 
-      expect(state.player).toBeDefined();
       expect(state.equipment).toBeDefined();
       expect(state.terrain).toBeDefined();
       expect(state.economy).toBeDefined();

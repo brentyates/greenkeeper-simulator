@@ -21,9 +21,6 @@ export interface TerrainEditorContext {
   getTerrainMeshSystem(): TerrainMeshSystem | null;
   getCourseWidth(): number;
   getCourseHeight(): number;
-  getPlayerVisual(): EntityVisualState | null;
-  getPlayerWorldPosition(): { worldX: number; worldZ: number };
-  setPlayerVisualEnabled(enabled: boolean): void;
   setEmployeeVisualSystemVisible(visible: boolean): void;
   snapEmployeesToTerrain(): void;
   snapEntityToTerrain(visual: EntityVisualState, worldX: number, worldZ: number): void;
@@ -139,7 +136,6 @@ export class TerrainEditorController {
           vts.setAxisIndicatorEnabled(true);
         }
 
-        this.ctx.setPlayerVisualEnabled(false);
         this.ctx.setEmployeeVisualSystemVisible(false);
       },
       onDisable: () => {
@@ -150,13 +146,6 @@ export class TerrainEditorController {
           vts.setAxisIndicatorEnabled(false);
         }
 
-        const playerVisual = this.ctx.getPlayerVisual();
-        if (playerVisual) {
-          this.ctx.setPlayerVisualEnabled(true);
-          const pos = this.ctx.getPlayerWorldPosition();
-          this.ctx.snapEntityToTerrain(playerVisual, pos.worldX, pos.worldZ);
-          this.ctx.setCameraTarget(playerVisual.container.position);
-        }
         this.ctx.setEmployeeVisualSystemVisible(true);
         this.ctx.snapEmployeesToTerrain();
         this.ctx.snapAssetsToTerrain();

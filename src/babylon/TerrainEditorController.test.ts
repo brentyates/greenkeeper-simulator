@@ -144,15 +144,11 @@ function createMockContext(overrides?: {
   scene?: ReturnType<typeof createMockScene>;
   canvas?: ReturnType<typeof createMockCanvas>;
   terrainSystem?: ReturnType<typeof createMockTerrainSystem>;
-  playerVisual?: any;
 }) {
   const canvas = overrides?.canvas ?? createMockCanvas();
   const scene = overrides?.scene ?? createMockScene(canvas);
   const vts = overrides?.vts !== undefined ? overrides.vts : createMockVts();
   const terrainSystem = overrides?.terrainSystem ?? createMockTerrainSystem();
-  const playerVisual = overrides?.playerVisual !== undefined
-    ? overrides.playerVisual
-    : { container: { position: { x: 0, y: 0, z: 0 } } };
 
   const ctx: TerrainEditorContext = {
     getScene: vi.fn(() => scene) as any,
@@ -163,9 +159,6 @@ function createMockContext(overrides?: {
     getTerrainMeshSystem: vi.fn(() => vts) as any,
     getCourseWidth: vi.fn(() => 20),
     getCourseHeight: vi.fn(() => 20),
-    getPlayerVisual: vi.fn(() => playerVisual) as any,
-    getPlayerWorldPosition: vi.fn(() => ({ worldX: 5, worldZ: 5 })),
-    setPlayerVisualEnabled: vi.fn(),
     setEmployeeVisualSystemVisible: vi.fn(),
     snapEmployeesToTerrain: vi.fn(),
     snapEntityToTerrain: vi.fn(),
@@ -386,7 +379,6 @@ describe("TerrainEditorController", () => {
       expect(mockUI.setActiveMode).toHaveBeenCalledWith("sculpt");
       expect(mockUI.setActiveAxis).toHaveBeenCalledWith("xz");
       expect(mockUI.setStampSize).toHaveBeenCalled();
-      expect(mocks.ctx.setPlayerVisualEnabled).toHaveBeenCalledWith(false);
       expect(mocks.ctx.setEmployeeVisualSystemVisible).toHaveBeenCalledWith(false);
     });
 
@@ -412,7 +404,6 @@ describe("TerrainEditorController", () => {
       const cbs = getSystemCallbacks();
       cbs.onEnable();
       expect(mockUI.show).toHaveBeenCalled();
-      expect(mocks.ctx.setPlayerVisualEnabled).toHaveBeenCalledWith(false);
     });
 
     it("onDisable hides UI, disables wireframe, resumes game, snaps entities", () => {
@@ -423,22 +414,9 @@ describe("TerrainEditorController", () => {
       expect(mockUI.hide).toHaveBeenCalled();
       expect(mocks.vts!.setWireframeEnabled).toHaveBeenCalledWith(false);
       expect(mocks.vts!.setAxisIndicatorEnabled).toHaveBeenCalledWith(false);
-      expect(mocks.ctx.setPlayerVisualEnabled).toHaveBeenCalledWith(true);
       expect(mocks.ctx.setEmployeeVisualSystemVisible).toHaveBeenCalledWith(true);
       expect(mocks.ctx.snapEmployeesToTerrain).toHaveBeenCalled();
       expect(mocks.ctx.snapAssetsToTerrain).toHaveBeenCalled();
-      expect(mocks.ctx.snapEntityToTerrain).toHaveBeenCalled();
-      expect(mocks.ctx.setCameraTarget).toHaveBeenCalled();
-    });
-
-    it("onDisable with null player visual skips player re-enable", () => {
-      vi.clearAllMocks();
-      setupController({ playerVisual: null });
-      const cbs = getSystemCallbacks();
-      cbs.onDisable();
-      expect(mocks.ctx.setPlayerVisualEnabled).not.toHaveBeenCalled();
-      expect(mocks.ctx.setEmployeeVisualSystemVisible).toHaveBeenCalledWith(true);
-      expect(mocks.ctx.snapEmployeesToTerrain).toHaveBeenCalled();
     });
 
     it("onDisable with no VTS skips wireframe calls", () => {

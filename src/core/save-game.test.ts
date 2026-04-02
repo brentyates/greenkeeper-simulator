@@ -55,8 +55,6 @@ function createMockSaveState(scenarioId = 'test_scenario'): SaveGameState {
     scenarioId,
     420,
     5,
-    25,
-    19,
     1500,
     createInitialEconomyState(10000),
     createInitialRoster(),
@@ -89,8 +87,6 @@ describe('save-game', () => {
       expect(state.scenarioId).toBe('test_scenario');
       expect(state.gameTime).toBe(420);
       expect(state.gameDay).toBe(5);
-      expect(state.playerX).toBe(25);
-      expect(state.playerY).toBe(19);
       expect(state.score).toBe(1500);
       expect(state.economyState).toBeDefined();
       expect(state.employeeRoster).toBeDefined();
@@ -111,8 +107,6 @@ describe('save-game', () => {
         'irrigation_test',
         420,
         5,
-        25,
-        19,
         1500,
         createInitialEconomyState(10000),
         createInitialRoster(),

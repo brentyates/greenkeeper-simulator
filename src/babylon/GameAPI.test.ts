@@ -181,18 +181,13 @@ vi.mock("../core/reputation", () => ({
 
 vi.mock("../core/movable-entity", () => ({
   teleportEntity: vi.fn((_entity, x, y) => ({
-    id: "player",
+    id: "emp1",
     gridX: x,
     gridY: y,
     path: [],
     moveProgress: 0,
-    entityType: "player",
+    entityType: "employee",
     efficiency: 1,
-    pendingDirection: null,
-    equipmentSlot: 0,
-    equipmentActive: false,
-    worldX: x + 0.5,
-    worldZ: y + 0.5,
   })),
 }));
 
@@ -352,35 +347,6 @@ function createMockState(): GameState {
 
 function createMockSystems(): GameSystems {
   return {
-    player: {
-      id: "player", gridX: 5, gridY: 5, path: [], moveProgress: 0,
-      entityType: "player" as const, efficiency: 1, pendingDirection: null,
-      equipmentSlot: 0, equipmentActive: false, worldX: 5.5, worldZ: 5.5,
-    },
-    playerVisual: null,
-    clickToMoveWaypoints: [],
-    lastEquipmentFaceId: null,
-    getPlayer() {
-      return this.player;
-    },
-    setPlayer(player: any) {
-      this.player = player;
-    },
-    getPlayerVisual() {
-      return this.playerVisual;
-    },
-    getClickToMoveWaypoints() {
-      return this.clickToMoveWaypoints;
-    },
-    setClickToMoveWaypoints(waypoints: any[]) {
-      this.clickToMoveWaypoints = waypoints;
-    },
-    getLastEquipmentFaceId() {
-      return this.lastEquipmentFaceId;
-    },
-    setLastEquipmentFaceId(faceId: number | null) {
-      this.lastEquipmentFaceId = faceId;
-    },
     equipmentManager: {
       handleSlot: vi.fn(),
       getSelected: vi.fn(() => null),
@@ -419,19 +385,15 @@ function createMockSystems(): GameSystems {
       getScene: vi.fn(() => ({ clearColor: null })),
     } as any,
     teeSheetViewDay: 3,
-    handleMove: vi.fn(),
     handleEmployeePanel: vi.fn(),
     handleResearchPanel: vi.fn(),
     handleTeeSheetPanel: vi.fn(),
     handleOverlayCycle: vi.fn(),
-    handleRefill: vi.fn(),
     handleMute: vi.fn(),
-    isPlayerMoving: vi.fn(() => false),
     pauseGame: vi.fn(),
     resumeGame: vi.fn(),
     updateEconomySystems: vi.fn(),
     updateIrrigationVisibility: vi.fn(),
-    updatePlayerPosition: vi.fn(),
     saveCurrentGame: vi.fn(),
     hasSavedGame: vi.fn(() => true),
   } as any;
@@ -447,59 +409,6 @@ describe("GameAPI", () => {
     state = createMockState();
     sys = createMockSystems();
     api = new GameAPI(state, sys);
-  });
-
-  describe("teleport", () => {
-    it("teleports within bounds", () => {
-      api.teleport(10, 10);
-      expect(sys.clickToMoveWaypoints).toEqual([]);
-      expect(sys.lastEquipmentFaceId).toBeNull();
-      expect(sys.updatePlayerPosition).toHaveBeenCalled();
-    });
-
-    it("rejects x < 0", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      api.teleport(-1, 5);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
-    });
-
-    it("rejects x >= width", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      api.teleport(20, 5);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
-    });
-
-    it("rejects y < 0", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      api.teleport(5, -1);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
-    });
-
-    it("rejects y >= height", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      api.teleport(5, 20);
-      expect(spy).toHaveBeenCalled();
-      spy.mockRestore();
-    });
-
-    it("updates playerVisual when present", () => {
-      sys.playerVisual = { lastGridX: 0, lastGridY: 0, targetGridX: 0, targetGridY: 0, visualProgress: 0 } as any;
-      api.teleport(3, 4);
-      expect(sys.playerVisual!.lastGridX).toBe(3);
-      expect(sys.playerVisual!.lastGridY).toBe(4);
-      expect(sys.playerVisual!.targetGridX).toBe(3);
-      expect(sys.playerVisual!.targetGridY).toBe(4);
-      expect(sys.playerVisual!.visualProgress).toBe(1);
-    });
-
-    it("skips playerVisual update when null", () => {
-      sys.playerVisual = null;
-      api.teleport(3, 4);
-      expect(sys.updatePlayerPosition).toHaveBeenCalled();
-    });
   });
 
   describe("setRunning", () => {
@@ -633,22 +542,6 @@ describe("GameAPI", () => {
       mockAddExpense.mockReturnValueOnce(null);
       expect(api.purchaseAmenity("clubhouse_1")).toBe(true);
     });
-  });
-
-  describe("movePlayer", () => {
-    it("maps up", () => { api.movePlayer("up"); expect(sys.handleMove).toHaveBeenCalledWith("up"); });
-    it("maps w", () => { api.movePlayer("w"); expect(sys.handleMove).toHaveBeenCalledWith("up"); });
-    it("maps down", () => { api.movePlayer("down"); expect(sys.handleMove).toHaveBeenCalledWith("down"); });
-    it("maps s", () => { api.movePlayer("s"); expect(sys.handleMove).toHaveBeenCalledWith("down"); });
-    it("maps left", () => { api.movePlayer("left"); expect(sys.handleMove).toHaveBeenCalledWith("left"); });
-    it("maps a", () => { api.movePlayer("a"); expect(sys.handleMove).toHaveBeenCalledWith("left"); });
-    it("maps right", () => { api.movePlayer("right"); expect(sys.handleMove).toHaveBeenCalledWith("right"); });
-    it("maps d", () => { api.movePlayer("d"); expect(sys.handleMove).toHaveBeenCalledWith("right"); });
-    it("ignores invalid direction", () => { api.movePlayer("x" as any); expect(sys.handleMove).not.toHaveBeenCalled(); });
-  });
-
-  describe("getPlayerPosition", () => {
-    it("returns grid position", () => { expect(api.getPlayerPosition()).toEqual({ x: 5, y: 5 }); });
   });
 
   describe("selectEquipment", () => {
@@ -933,26 +826,11 @@ describe("GameAPI", () => {
     });
   });
 
-  describe("waitForPlayerIdle", () => {
-    it("resolves immediately when not moving", async () => {
-      (sys.isPlayerMoving as Mock).mockReturnValue(false);
-      await api.waitForPlayerIdle();
-    });
-
-    it("waits and resolves when player stops", async () => {
-      let callCount = 0;
-      (sys.isPlayerMoving as Mock).mockImplementation(() => { callCount++; return callCount < 3; });
-      await api.waitForPlayerIdle();
-      expect(callCount).toBeGreaterThanOrEqual(3);
-    });
-  });
-
   describe("panel toggles and simple delegations", () => {
     it("toggleEmployeePanel", () => { api.toggleEmployeePanel(); expect(sys.handleEmployeePanel).toHaveBeenCalled(); });
     it("toggleResearchPanel", () => { api.toggleResearchPanel(); expect(sys.handleResearchPanel).toHaveBeenCalled(); });
     it("toggleTeeSheetPanel", () => { api.toggleTeeSheetPanel(); expect(sys.handleTeeSheetPanel).toHaveBeenCalled(); });
     it("cycleOverlay", () => { api.cycleOverlay(); expect(sys.handleOverlayCycle).toHaveBeenCalled(); });
-    it("refillEquipment", () => { api.refillEquipment(); expect(sys.handleRefill).toHaveBeenCalled(); });
     it("toggleMute", () => { api.toggleMute(); expect(sys.handleMute).toHaveBeenCalled(); });
     it("hasActiveParticles", () => { expect(api.hasActiveParticles()).toBe(false); });
     it("setEquipmentResource", () => { api.setEquipmentResource("mower", 50); expect(sys.equipmentManager.setResource).toHaveBeenCalledWith("mower", 50); });
@@ -986,7 +864,6 @@ describe("GameAPI", () => {
       (sys.equipmentManager.getState as Mock).mockReturnValue(undefined);
       (sys.equipmentManager.getSelected as Mock).mockReturnValue(null);
       const result = api.getFullGameState();
-      expect(result.player).toEqual({ x: 5.5, y: 5.5, isMoving: false });
       expect(result.terrain).toEqual({ width: 10, height: 10 });
       expect(result.editorEnabled).toBe(false);
     });
@@ -1281,34 +1158,6 @@ describe("GameAPI", () => {
   describe("setPaused", () => {
     it("pauses when true", () => { api.setPaused(true); expect(sys.pauseGame).toHaveBeenCalled(); });
     it("resumes when false", () => { api.setPaused(false); expect(sys.resumeGame).toHaveBeenCalled(); });
-  });
-
-  describe("refillAtCurrentPosition", () => {
-    it("returns failure when not at station", () => { expect(api.refillAtCurrentPosition()).toEqual({ success: false, cost: 0 }); });
-
-    it("returns success at station", () => {
-      const station = api.getRefillStations()[0];
-      sys.player = { ...sys.player, gridX: station.x, gridY: station.y } as any;
-      const result = api.refillAtCurrentPosition();
-      expect(result.success).toBe(true);
-      expect(result.cost).toBe(25);
-    });
-
-    it("handles addExpense null at station", () => {
-      mockAddExpense.mockReturnValueOnce(null);
-      const station = api.getRefillStations()[0];
-      sys.player = { ...sys.player, gridX: station.x, gridY: station.y } as any;
-      expect(api.refillAtCurrentPosition().success).toBe(true);
-    });
-  });
-
-  describe("isAtRefillStation", () => {
-    it("returns false when not at station", () => { expect(api.isAtRefillStation()).toBe(false); });
-    it("returns true at station", () => {
-      const station = api.getRefillStations()[0];
-      sys.player = { ...sys.player, gridX: station.x, gridY: station.y } as any;
-      expect(api.isAtRefillStation()).toBe(true);
-    });
   });
 
   describe("getRefillStations", () => {
