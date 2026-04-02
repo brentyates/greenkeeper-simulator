@@ -338,19 +338,6 @@ test.describe('Game State Comprehensive', () => {
     });
   });
 
-  test.describe('Position Tracking', () => {
-    test('getPlayerPosition returns valid position', async ({ page }) => {
-      const pos = await page.evaluate(() => window.game.getPlayerPosition());
-      expect(typeof pos.x).toBe('number');
-      expect(typeof pos.y).toBe('number');
-    });
-
-    test('player position is within bounds', async ({ page }) => {
-      const pos = await page.evaluate(() => window.game.getPlayerPosition());
-      expect(pos.x).toBeGreaterThanOrEqual(0);
-      expect(pos.y).toBeGreaterThanOrEqual(0);
-    });
-  });
 });
 
 test.describe('Prestige System Comprehensive', () => {

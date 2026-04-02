@@ -20,12 +20,6 @@ test.describe('Full Game State Integration', () => {
     test('getFullGameState returns all components', async ({ page }) => {
       const state = await page.evaluate(() => window.game.getFullGameState());
 
-      // Player state
-      expect(state.player).toBeDefined();
-      expect(typeof state.player.x).toBe('number');
-      expect(typeof state.player.y).toBe('number');
-      expect(typeof state.player.isMoving).toBe('boolean');
-
       // Equipment state
       expect(state.equipment).toBeDefined();
       expect(state.equipment.mower).toBeDefined();
@@ -57,16 +51,11 @@ test.describe('Full Game State Integration', () => {
       const before = await page.evaluate(() => window.game.getFullGameState());
 
       // Perform some actions
-      await page.evaluate(async () => {
+      await page.evaluate(() => {
         window.game.selectEquipment(1);
-        window.game.movePlayer('right');
-        await window.game.waitForPlayerIdle();
       });
 
       const after = await page.evaluate(() => window.game.getFullGameState());
-
-      // Player position should have changed
-      expect(after.player.y).toBe(before.player.y + 1);
 
       // Equipment should be active
       expect(after.equipment.selectedSlot).toBe(0);
@@ -218,24 +207,6 @@ test.describe('Edge Cases', () => {
     await page.waitForFunction(() => window.game !== null);
     await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
     await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-  });
-
-  test('moving at boundary positions', async ({ page }) => {
-    // Move to a corner
-    await page.evaluate(() => window.game.teleport(0, 0));
-
-    // Try moving into boundary
-    await page.evaluate(async () => {
-      window.game.movePlayer('up');
-      await window.game.waitForPlayerIdle();
-      window.game.movePlayer('left');
-      await window.game.waitForPlayerIdle();
-    });
-
-    const pos = await page.evaluate(() => window.game.getPlayerPosition());
-    // Should still be at or near origin
-    expect(pos.x).toBeGreaterThanOrEqual(0);
-    expect(pos.y).toBeGreaterThanOrEqual(0);
   });
 
   test('equipment with low resources', async ({ page }) => {

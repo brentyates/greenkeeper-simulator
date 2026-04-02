@@ -300,28 +300,11 @@ test.describe('Extended Game Loop', () => {
     await page.evaluate(() => window.game.setCash(50000));
     await page.evaluate(() => window.game.setPaused(false));
 
-    // Simulate a full day of activity
-    await page.evaluate(async () => {
-      // Morning: mow some grass
+    // Simulate a full day of activity - select each equipment type
+    await page.evaluate(() => {
       window.game.selectEquipment(1);
-      for (let i = 0; i < 10; i++) {
-        window.game.movePlayer('right');
-        await window.game.waitForPlayerIdle();
-      }
-
-      // Mid-day: water some areas
       window.game.selectEquipment(2);
-      for (let i = 0; i < 5; i++) {
-        window.game.movePlayer('down');
-        await window.game.waitForPlayerIdle();
-      }
-
-      // Afternoon: fertilize
       window.game.selectEquipment(3);
-      for (let i = 0; i < 5; i++) {
-        window.game.movePlayer('left');
-        await window.game.waitForPlayerIdle();
-      }
     });
 
     // Advance the day

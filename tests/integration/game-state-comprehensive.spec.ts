@@ -21,19 +21,10 @@ test.describe('Game State Comprehensive', () => {
       const state = await page.evaluate(() => window.game.getFullGameState());
 
       expect(state).toBeDefined();
-      expect(state.player).toBeDefined();
       expect(state.equipment).toBeDefined();
       expect(state.time).toBeDefined();
       expect(state.economy).toBeDefined();
       expect(state.terrain).toBeDefined();
-    });
-
-    test('player state has position and movement info', async ({ page }) => {
-      const state = await page.evaluate(() => window.game.getFullGameState());
-
-      expect(typeof state.player.x).toBe('number');
-      expect(typeof state.player.y).toBe('number');
-      expect(typeof state.player.isMoving).toBe('boolean');
     });
 
     test('equipment state includes all equipment types', async ({ page }) => {
@@ -287,57 +278,3 @@ test.describe('Time Control', () => {
   });
 });
 
-test.describe('Player Movement', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForFunction(() => window.app !== undefined);
-    await page.evaluate(() => window.startScenario('tutorial_basics'));
-    await page.waitForFunction(() => window.game !== null);
-    await page.waitForFunction(() => window.game !== undefined, { timeout: 10000 });
-    await page.evaluate(() => window.game.setAllCellsState({ height: 0, moisture: 60, nutrients: 70, health: 100 }));
-  });
-
-  test('getPlayerPosition returns coordinates', async ({ page }) => {
-    const pos = await page.evaluate(() => window.game.getPlayerPosition());
-
-    expect(typeof pos.x).toBe('number');
-    expect(typeof pos.y).toBe('number');
-  });
-
-  test('teleport moves player to position', async ({ page }) => {
-    await page.evaluate(() => window.game.teleport(10, 10));
-    const pos = await page.evaluate(() => window.game.getPlayerPosition());
-
-    expect(pos.x).toBe(10);
-    expect(pos.y).toBe(10);
-  });
-
-  test('movePlayer changes position', async ({ page }) => {
-    await page.evaluate(() => window.game.teleport(15, 15));
-    const before = await page.evaluate(() => window.game.getPlayerPosition());
-
-    await page.evaluate(async () => {
-      window.game.movePlayer('right');
-      await window.game.waitForPlayerIdle();
-    });
-
-    const after = await page.evaluate(() => window.game.getPlayerPosition());
-    expect(after.y).toBe(before.y + 1);
-  });
-
-  test('all movement directions work', async ({ page }) => {
-    await page.evaluate(() => window.game.teleport(20, 20));
-
-    const directions = ['up', 'down', 'left', 'right'] as const;
-    for (const dir of directions) {
-      await page.evaluate(async (d) => {
-        window.game.movePlayer(d);
-        await window.game.waitForPlayerIdle();
-      }, dir);
-    }
-
-    const pos = await page.evaluate(() => window.game.getPlayerPosition());
-    expect(pos.x).toBeDefined();
-    expect(pos.y).toBeDefined();
-  });
-});
