@@ -12,6 +12,7 @@ test-results/
 coverage/
 coverage-e2e/
 .agent-harness/
+.ast-requirements/
 
 # Python
 __pycache__/
