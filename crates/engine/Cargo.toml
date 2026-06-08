@@ -1,0 +1,8 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2021"
+
+# The pure simulation library: state, systems, rules. No I/O, no globals, no
+# clock. Deterministic given a seed. Intentionally dependency-free for now.
+[dependencies]

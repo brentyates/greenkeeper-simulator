@@ -1,0 +1,46 @@
+//! Greenkeeper simulation engine.
+//!
+//! A deterministic, library-first core: explicit `World` state advanced by pure
+//! `systems` one turn at a time, producing a structured `Trace`. No I/O.
+
+pub mod decision;
+pub mod event;
+pub mod model;
+pub mod rng;
+pub mod systems;
+
+pub use decision::{Decisions, GreedyPricing, Strategy, SweetSpotPricing};
+pub use event::{Event, Trace};
+pub use model::{Region, RegionKind, World};
+pub use rng::Rng;
+
+/// Advance the world by one turn, running every system in fixed order and
+/// appending the resulting events to `trace`.
+pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
+    if world.bankrupt {
+        return;
+    }
+    world.turn += 1;
+    trace.push(Event::TurnStarted { turn: world.turn });
+
+    let dryness = systems::weather(world, trace);
+    systems::agronomy(world, dryness);
+    systems::maintenance(world, trace);
+    systems::conditions_and_prestige(world, trace);
+    let revenue = systems::demand_and_revenue(world, decisions.price, trace);
+    systems::economy(world, revenue, trace);
+}
+
+/// Run `turns` turns, letting `strategy` choose decisions each turn. Stops early
+/// on bankruptcy. Returns the full trace.
+pub fn run(world: &mut World, strategy: &mut dyn Strategy, turns: u32) -> Trace {
+    let mut trace = Trace::new();
+    for _ in 0..turns {
+        if world.bankrupt {
+            break;
+        }
+        let decisions = strategy.decide(world);
+        step(world, &decisions, &mut trace);
+    }
+    trace
+}
