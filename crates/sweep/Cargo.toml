@@ -7,3 +7,4 @@ edition = "2021"
 # aggregates outcomes, so balance is measurable. All I/O lives here.
 [dependencies]
 engine = { path = "../engine" }
+toml = "0.8"

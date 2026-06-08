@@ -172,6 +172,15 @@ fn premium_pricing_builds_exclusivity() {
 }
 
 #[test]
+fn balance_toml_round_trips() {
+    // The tuning serializes to TOML and back losslessly — the editable config path.
+    let b = Balance::default();
+    let text = toml::to_string(&b).unwrap();
+    let back: Balance = toml::from_str(&text).unwrap();
+    assert_eq!(b, back);
+}
+
+#[test]
 fn balance_is_data_driven() {
     // Same seed and strategy; only a balance parameter differs → the outcome
     // differs. This is the property an automated/ML tuner relies on: vary the

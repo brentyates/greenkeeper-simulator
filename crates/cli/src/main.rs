@@ -1,16 +1,27 @@
 //! Run the demo scenario and print its trace.
-//! Usage: `cli [price] [capacity] [seed] [turns]`.
+//! Usage:
+//!   cli [price] [capacity] [seed] [turns]   run the demo
+//!   cli dump-config                         print the default balance as TOML
+//!
+//! Balance is loaded from the TOML file at `$GK_BALANCE` (default
+//! `config/balance.toml`); if absent, the built-in defaults are used.
 
-use engine::{run, DiseasePolicy, Event, PlanStrategy, World};
+use engine::{run, Balance, DiseasePolicy, Event, PlanStrategy, World};
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    let price: f64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(45.0);
-    let capacity: f64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(40.0);
-    let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(1);
-    let turns: u32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let mut world = World::demo(seed);
+    if args.first().map(String::as_str) == Some("dump-config") {
+        print!("{}", toml::to_string_pretty(&Balance::default()).unwrap());
+        return;
+    }
+
+    let price: f64 = args.first().and_then(|s| s.parse().ok()).unwrap_or(45.0);
+    let capacity: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(40.0);
+    let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let turns: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(30);
+
+    let mut world = World::demo(seed).with_balance(load_balance());
     let mut strategy = PlanStrategy {
         price,
         capacity,
@@ -37,6 +48,19 @@ fn main() {
             ""
         },
     );
+}
+
+/// Load tuning from TOML (`$GK_BALANCE`, default `config/balance.toml`). Falls
+/// back to built-in defaults if the file is missing or unparseable.
+fn load_balance() -> Balance {
+    let path = std::env::var("GK_BALANCE").unwrap_or_else(|_| "config/balance.toml".to_string());
+    match std::fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text).unwrap_or_else(|e| {
+            eprintln!("warning: could not parse {path}: {e}; using defaults");
+            Balance::default()
+        }),
+        Err(_) => Balance::default(),
+    }
 }
 
 fn render(event: &Event) -> String {

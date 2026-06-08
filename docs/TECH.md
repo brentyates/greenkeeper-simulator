@@ -144,25 +144,27 @@ agents probing for dominant strategies. The architecture is built so that is a
   curve (DESIGN §7): *many paths survive, heaps only via the hard path.* A tuner
   scores a `Balance` by how well a panel of strategies × seeds reproduces that
   shape (viable mid paths, fatal extremes, premium-only riches).
-- **When pursued, add (not before):** `serde` on `Balance` (persist/share
-  candidates), a shared `evaluate(balance, strategies, seeds) -> Metrics` seam
-  factored out of the sweep, and optionally `Balance ↔ Vec<f64>` for vectorized
-  optimizers. Until then, YAGNI.
+- **Balance is editable as TOML** (done): `Balance` derives serde; the shell
+  loads `config/balance.toml` (override via `$GK_BALANCE`) and injects it; an
+  optimizer can persist/share candidates as TOML or build them in memory.
+- **When pursued, add (not before):** a shared `evaluate(balance, strategies,
+  seeds) -> Metrics` seam factored out of the sweep, and optionally
+  `Balance ↔ Vec<f64>` for vectorized optimizers. Until then, YAGNI.
 
 ---
 
 ## 9. Dependencies (keep lean)
 
-Currently **zero runtime dependencies** (hand-rolled RNG; tests use std asserts).
-When scenario loading lands, add `serde` + a format crate (`ron`/`toml`).
-Consider dev-only `insta`/`proptest` later. Resist adding more without a reason.
+- **Engine:** `serde` (derive only) for tuning data; otherwise dependency-free
+  (hand-rolled RNG). Pure — no file I/O.
+- **Shell (`cli`/`sweep`):** `toml` for reading `config/balance.toml`.
+- **Dev:** `toml` for the round-trip test. Consider `insta`/`proptest` later.
+- Resist adding more without a reason.
 
 ---
 
 ## 10. Open
 
-- **Wire TOML loading:** add `serde` derives on `Balance` (+ a `toml` read in the
-  shell) and a `balance.toml` so tuning is editable without a recompile. (§6)
 - **Strategies as code vs data:** start as code; revisit. (§6)
 
 ---

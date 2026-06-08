@@ -122,7 +122,7 @@ pub fn default_segments() -> Vec<Segment> {
 // it without recompiling. `Default` is the current baseline.
 // ===========================================================================
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EconomyBalance {
     pub service_cost: f64,             // capacity to fully service one region
     pub nutrient_decay: f64,           // per turn
@@ -147,7 +147,7 @@ impl Default for EconomyBalance {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrestigeBalance {
     pub max_up: f64,   // years to build...
     pub max_down: f64, // ...moments to destroy
@@ -174,7 +174,7 @@ impl Default for PrestigeBalance {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DiseaseBalance {
     pub outbreak_rate: f64, // scales susceptibility into a per-turn outbreak chance
     pub outbreak_severity: f64,
@@ -207,7 +207,7 @@ impl Default for DiseaseBalance {
 
 /// One tier of tournament. Bigger tiers gate behind prestige (hard) and pay far
 /// more — the staircase to "heaps". Tuning, so it lives in `Balance`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TournamentTier {
     pub name: String,
     pub prestige_required: f64, // hard eligibility gate
@@ -222,7 +222,7 @@ pub struct TournamentTier {
     pub target: f64,         // avg event condition at/above which grade = 1
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TournamentBalance {
     pub tiers: Vec<TournamentTier>,
 }
@@ -275,7 +275,7 @@ impl Default for TournamentBalance {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Balance {
     pub economy: EconomyBalance,
     pub prestige: PrestigeBalance,

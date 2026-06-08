@@ -6,3 +6,4 @@ edition = "2021"
 # Drives the engine and renders a run's trace for humans. All I/O lives here.
 [dependencies]
 engine = { path = "../engine" }
+toml = "0.8"

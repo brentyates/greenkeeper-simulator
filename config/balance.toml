@@ -1,0 +1,95 @@
+[economy]
+service_cost = 10.0
+nutrient_decay = 2.0
+wear_per_golfer = 2.5
+wage_per_capacity = 6.0
+fixed_overhead = 400.0
+variable_cost_per_golfer = 15.0
+bankruptcy_floor = -1000.0
+
+[prestige]
+max_up = 5.0
+max_down = 15.0
+w_conditions = 0.25
+w_historical = 0.25
+w_amenities = 0.2
+w_reputation = 0.2
+w_exclusivity = 0.1
+comfortable_golfers = 30.0
+
+[disease]
+outbreak_rate = 0.18
+outbreak_severity = 30.0
+infection_growth = 14.0
+spread_chance = 0.22
+spread_severity = 20.0
+treat_power = 45.0
+treat_cost = 140.0
+resist_gain = 0.06
+resist_decay = 0.02
+resist_max = 0.85
+
+[[tournament.tiers]]
+name = "Local"
+prestige_required = 0.0
+prep_turns = 3
+duration = 2
+entry_cost = 200.0
+payout = 2000.0
+attention = 1.3
+prestige_swing = 30.0
+residual = 0.1
+fail_floor = 50.0
+target = 80.0
+
+[[tournament.tiers]]
+name = "Regional"
+prestige_required = 400.0
+prep_turns = 4
+duration = 3
+entry_cost = 1000.0
+payout = 12000.0
+attention = 1.6
+prestige_swing = 50.0
+residual = 0.15
+fail_floor = 60.0
+target = 85.0
+
+[[tournament.tiers]]
+name = "State"
+prestige_required = 600.0
+prep_turns = 5
+duration = 3
+entry_cost = 4000.0
+payout = 50000.0
+attention = 2.0
+prestige_swing = 80.0
+residual = 0.2
+fail_floor = 65.0
+target = 88.0
+
+[[tournament.tiers]]
+name = "National"
+prestige_required = 800.0
+prep_turns = 6
+duration = 4
+entry_cost = 15000.0
+payout = 200000.0
+attention = 2.5
+prestige_swing = 120.0
+residual = 0.25
+fail_floor = 70.0
+target = 90.0
+
+[[tournament.tiers]]
+name = "Major"
+prestige_required = 900.0
+prep_turns = 8
+duration = 4
+entry_cost = 50000.0
+payout = 800000.0
+attention = 3.0
+prestige_swing = 200.0
+residual = 0.3
+fail_floor = 75.0
+target = 92.0

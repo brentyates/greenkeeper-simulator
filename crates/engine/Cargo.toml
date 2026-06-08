@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 # The pure simulation library: state, systems, rules. No I/O, no globals, no
-# clock. Deterministic given a seed. Intentionally dependency-free for now.
+# clock. Deterministic given a seed. `serde` (derive only) lets tuning be
+# data — the file I/O itself stays in the shell crates.
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+toml = "0.8"

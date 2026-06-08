@@ -7,8 +7,22 @@
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
 use engine::{
-    run, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy, World,
+    run, Balance, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy,
+    World,
 };
+
+/// Load tuning from TOML (`$GK_BALANCE`, default `config/balance.toml`); fall back
+/// to defaults if absent or unparseable.
+fn load_balance() -> Balance {
+    let path = std::env::var("GK_BALANCE").unwrap_or_else(|_| "config/balance.toml".to_string());
+    match std::fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text).unwrap_or_else(|e| {
+            eprintln!("warning: could not parse {path}: {e}; using defaults");
+            Balance::default()
+        }),
+        Err(_) => Balance::default(),
+    }
+}
 
 type Factory = Box<dyn Fn() -> Box<dyn Strategy>>;
 
@@ -45,8 +59,8 @@ struct RunResult {
     total_treatment: f64,
 }
 
-fn run_one(path: &Path, seed: u64, turns: u32) -> RunResult {
-    let mut world = World::demo(seed);
+fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
+    let mut world = World::demo(seed).with_balance(balance.clone());
     let mut strategy = (path.make)();
     let trace = run(&mut world, strategy.as_mut(), turns);
 
@@ -89,6 +103,7 @@ fn main() {
         .collect();
     let seeds = nums.first().copied().unwrap_or(150).max(1);
     let turns = nums.get(1).copied().unwrap_or(150) as u32;
+    let balance = load_balance();
 
     use DiseasePolicy::{Ignore, Treat};
     let paths = [
@@ -136,7 +151,9 @@ fn main() {
     println!("{}", "-".repeat(80));
 
     for path in &paths {
-        let results: Vec<RunResult> = (1..=seeds).map(|s| run_one(path, s, turns)).collect();
+        let results: Vec<RunResult> = (1..=seeds)
+            .map(|s| run_one(path, &balance, s, turns))
+            .collect();
         let n = results.len() as f64;
         let bust = results.iter().filter(|r| r.bankrupt).count() as f64 / n * 100.0;
         let mean_cash = mean(results.iter().map(|r| r.final_cash));
