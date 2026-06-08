@@ -1,6 +1,6 @@
 use engine::{
-    run, Balance, DiseasePolicy, Event, FixedPricing, PlanStrategy, RampStrategy,
-    TournamentStrategy, Trace, World,
+    run, Balance, CourseSpec, CourseType, DiseasePolicy, Event, FixedPricing, LossReason,
+    Objective, Outcome, PlanStrategy, RampStrategy, Scenario, TournamentStrategy, Trace, World,
 };
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
@@ -257,6 +257,55 @@ fn tournament_eligibility_is_gated() {
         !booked_major,
         "should not be able to book Major at low prestige"
     );
+}
+
+fn scenario(holes: u32, par3: bool, objective: Objective, neglect: f64) -> Scenario {
+    Scenario {
+        name: "Test".to_string(),
+        course: CourseSpec {
+            holes,
+            par3,
+            course_type: CourseType::Heathland,
+        },
+        objective,
+        start_neglect: neglect,
+    }
+}
+
+#[test]
+fn scenario_can_be_won() {
+    let sc = scenario(9, true, Objective::Survive { turns: 30 }, 0.0);
+    let mut world = World::demo(1).with_scenario(sc);
+    let cap = world.course.regions.len() as f64 * 4.5;
+    run(&mut world, &mut RampStrategy { capacity: cap }, 400);
+    assert_eq!(world.outcome, Outcome::Won);
+}
+
+#[test]
+fn scenario_can_be_lost_on_deadline() {
+    let sc = scenario(
+        9,
+        true,
+        Objective::CashBy {
+            amount: 10_000_000.0,
+            by_turn: 20,
+        },
+        0.0,
+    );
+    let mut world = World::demo(1).with_scenario(sc);
+    let cap = world.course.regions.len() as f64 * 4.5;
+    run(&mut world, &mut RampStrategy { capacity: cap }, 400);
+    assert_eq!(world.outcome, Outcome::Lost(LossReason::Deadline));
+}
+
+#[test]
+fn course_size_scales_regions_and_demand() {
+    let small =
+        World::demo(1).with_scenario(scenario(9, true, Objective::Survive { turns: 10 }, 0.0));
+    let big =
+        World::demo(1).with_scenario(scenario(27, false, Objective::Survive { turns: 10 }, 0.0));
+    assert!(big.course.regions.len() > small.course.regions.len());
+    assert!(big.demand_scale > small.demand_scale);
 }
 
 #[test]

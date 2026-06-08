@@ -15,16 +15,17 @@ pub use decision::{
 };
 pub use event::{Event, Trace};
 pub use model::{
-    default_segments, Balance, Course, DiseaseBalance, DiseasePolicy, EconomyBalance, Finances,
-    Operations, PrepTask, PrestigeBalance, Region, RegionKind, Segment, Standing,
-    TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
+    campaign, default_segments, Balance, Course, CourseSpec, CourseType, DiseaseBalance,
+    DiseasePolicy, EconomyBalance, Finances, LossReason, Objective, Operations, Outcome, PrepTask,
+    PrestigeBalance, Region, RegionKind, Scenario, Segment, Standing, TournamentBalance,
+    TournamentPhase, TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 
 /// Advance the world by one turn, running every system in fixed order and
 /// appending the resulting events to `trace`.
 pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
-    if world.finances.bankrupt {
+    if !world.outcome.is_running() {
         return;
     }
     world.turn += 1;
@@ -51,6 +52,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     systems::wear_from_traffic(world, outcome.golfers);
     systems::standing_update(world, &outcome);
     systems::economy(world, outcome.revenue, outcome.golfers, trace);
+    systems::objective_check(world, trace);
 }
 
 /// Run `turns` turns, letting `strategy` choose decisions each turn. Stops early
@@ -58,7 +60,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
 pub fn run(world: &mut World, strategy: &mut dyn Strategy, turns: u32) -> Trace {
     let mut trace = Trace::new();
     for _ in 0..turns {
-        if world.finances.bankrupt {
+        if !world.outcome.is_running() {
             break;
         }
         let decisions = strategy.decide(world);

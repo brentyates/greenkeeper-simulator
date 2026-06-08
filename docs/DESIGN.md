@@ -297,7 +297,10 @@ No meshes, tiles, or coordinates beyond what gameplay needs.
 - **Player role:** hands-on, evolving into layered delegation. [§1, §6]
 - **Time:** turn/period-based; fixed cadence, interruptible; zooms days→weeks→
   seasons as you delegate. [§5]
-- **Goal:** scenario campaign of discrete, self-contained, *losable* levels. [§6]
+- **Goal:** scenario campaign of discrete, self-contained, *losable* levels
+  (objective + deadline + a course of a given size/style). Course **size** scales
+  play *and* upkeep; **style** (desert/heathland/parkland) scales upkeep without
+  scaling play. [§6]
 - **Failure:** hard game-over per scenario (bankruptcy or blown objective). [§5]
 - **Staff:** individuals with progression — the substrate of delegation. [§6]
 - **Risk:** intrinsic-first; calculated, hidden but learnable; named risk layers

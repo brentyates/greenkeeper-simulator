@@ -73,6 +73,13 @@ pub enum Event {
     Bankrupt {
         turn: u32,
     },
+    ScenarioWon {
+        scenario: String,
+    },
+    ScenarioLost {
+        scenario: String,
+        reason: String,
+    },
 }
 
 pub type Trace = Vec<Event>;

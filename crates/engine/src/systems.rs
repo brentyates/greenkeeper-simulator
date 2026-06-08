@@ -4,7 +4,8 @@
 
 use crate::event::{Event, Trace};
 use crate::model::{
-    DiseasePolicy, PrepTask, TournamentPhase, TournamentState, TournamentTier, World,
+    DiseasePolicy, LossReason, Objective, Outcome, PrepTask, TournamentPhase, TournamentState,
+    TournamentTier, World,
 };
 
 /// Outcome of the demand system for one turn.
@@ -200,8 +201,8 @@ pub(crate) fn demand_and_revenue(
         .clamp(0.0, 1.0);
     let amenity = world.ops.amenity_level;
     let weather_spend = 1.0 + dryness * 0.1;
-    // Tournament spotlight (attention) plus any lasting residual draw.
-    let demand_mult = (attention * (1.0 + world.demand_modifier)).max(0.0);
+    // Course size (throughput), tournament spotlight (attention), and residual draw.
+    let demand_mult = (attention * (1.0 + world.demand_modifier)).max(0.0) * world.demand_scale;
 
     let mut interested_total = 0.0;
     let mut golfers_total = 0.0;
@@ -378,6 +379,7 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
         return 1.0;
     };
     let tier = world.balance.tournament.tiers[state.tier].clone();
+    let tier_idx = state.tier;
     let mut attention = 1.0;
 
     match &mut state.phase {
@@ -406,7 +408,15 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
                 });
                 attention = tier.attention;
                 if tier.duration <= 1 {
-                    resolve_tournament(world, &tier, conditions, readiness, optional_done, trace);
+                    resolve_tournament(
+                        world,
+                        tier_idx,
+                        &tier,
+                        conditions,
+                        readiness,
+                        optional_done,
+                        trace,
+                    );
                 } else {
                     state.phase = TournamentPhase::Running {
                         day: 1,
@@ -430,7 +440,7 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
             if *day >= tier.duration {
                 let avg = *condition_sum / *day as f64;
                 let (r, od) = (*readiness, *optional_done);
-                resolve_tournament(world, &tier, avg, r, od, trace);
+                resolve_tournament(world, tier_idx, &tier, avg, r, od, trace);
             } else {
                 world.tournament = Some(state);
             }
@@ -444,6 +454,7 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
 /// payout bonus. Then pay out, swing prestige (amplified), and set a residual.
 fn resolve_tournament(
     world: &mut World,
+    tier_idx: usize,
     tier: &TournamentTier,
     avg_condition: f64,
     readiness: f64,
@@ -453,6 +464,9 @@ fn resolve_tournament(
     let condition_grade =
         ((avg_condition - tier.fail_floor) / (tier.target - tier.fail_floor)).clamp(0.0, 1.0);
     let grade = condition_grade * readiness;
+    if grade >= 0.5 {
+        world.best_hosted_tier = Some(world.best_hosted_tier.map_or(tier_idx, |b| b.max(tier_idx)));
+    }
     let bonus = if optional_done {
         1.0 + tier.optional_bonus
     } else {
@@ -508,6 +522,45 @@ pub(crate) fn economy(world: &mut World, revenue: f64, golfers: f64, trace: &mut
     });
     if world.finances.cash < floor {
         world.finances.bankrupt = true;
+        world.outcome = Outcome::Lost(LossReason::Bankruptcy);
         trace.push(Event::Bankrupt { turn: world.turn });
+    }
+}
+
+/// Evaluate the scenario objective (if any): win when met, lose when the deadline
+/// passes unmet. Bankruptcy is handled in `economy`; `Survive` only loses that way.
+pub(crate) fn objective_check(world: &mut World, trace: &mut Trace) {
+    if !world.outcome.is_running() {
+        return;
+    }
+    let Some(scenario) = world.scenario.clone() else {
+        return;
+    };
+    let (met, deadline) = match scenario.objective {
+        Objective::CashBy { amount, by_turn } => (world.finances.cash >= amount, Some(by_turn)),
+        Objective::PrestigeBy { prestige, by_turn } => {
+            (world.standing.prestige >= prestige, Some(by_turn))
+        }
+        Objective::RestoreBy { health, by_turn } => {
+            (world.course.avg_health() >= health, Some(by_turn))
+        }
+        Objective::HostBy { min_tier, by_turn } => (
+            world.best_hosted_tier.is_some_and(|t| t >= min_tier),
+            Some(by_turn),
+        ),
+        Objective::Survive { turns } => (world.turn >= turns, None),
+    };
+
+    if met {
+        world.outcome = Outcome::Won;
+        trace.push(Event::ScenarioWon {
+            scenario: scenario.name.clone(),
+        });
+    } else if deadline.is_some_and(|d| world.turn >= d) {
+        world.outcome = Outcome::Lost(LossReason::Deadline);
+        trace.push(Event::ScenarioLost {
+            scenario: scenario.name.clone(),
+            reason: "deadline".to_string(),
+        });
     }
 }

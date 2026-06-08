@@ -351,6 +351,178 @@ pub struct TournamentState {
 }
 
 // ===========================================================================
+// Scenarios — a run's objective and how it can be won or lost.
+// ===========================================================================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LossReason {
+    Bankruptcy,
+    Deadline,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Outcome {
+    #[default]
+    Running,
+    Won,
+    Lost(LossReason),
+}
+
+impl Outcome {
+    pub fn is_running(self) -> bool {
+        matches!(self, Outcome::Running)
+    }
+}
+
+/// The style of a course, which sets how much *maintained* land sits beyond the
+/// playing corridors — a big driver of upkeep for the same amount of play.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CourseType {
+    Desert,    // natural waste beyond the holes — least to maintain
+    Heathland, // a standard amount of rough
+    Parkland,  // acres of manicured rough — most to maintain
+}
+
+/// The shape of a course: hole count, par-3 vs full, and style. More holes scale
+/// *play* (golfer throughput); fuller holes and parkland style scale *upkeep*.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CourseSpec {
+    pub holes: u32,
+    pub par3: bool,
+    pub course_type: CourseType,
+}
+
+impl CourseSpec {
+    /// Build this course's regions. Par-3 holes are green + tee; full holes add a
+    /// fairway plus rough that varies by style (desert none, heathland one,
+    /// parkland two) — so style changes upkeep without changing play.
+    pub fn build_regions(&self) -> Vec<Region> {
+        use RegionKind::*;
+        let mut per_hole: Vec<RegionKind> = if self.par3 {
+            vec![Green, Tee]
+        } else {
+            vec![Green, Tee, Fairway]
+        };
+        if !self.par3 {
+            match self.course_type {
+                CourseType::Desert => {}
+                CourseType::Heathland => per_hole.push(Rough),
+                CourseType::Parkland => {
+                    per_hole.push(Rough);
+                    per_hole.push(Rough);
+                }
+            }
+        }
+        let mut regions = Vec::new();
+        let mut id = 0u32;
+        for _ in 0..self.holes {
+            for &kind in &per_hole {
+                regions.push(Region {
+                    id,
+                    kind,
+                    moisture: 65.0,
+                    nutrients: 75.0,
+                    growth: 10.0,
+                    wear: 0.0,
+                    infection: 0.0,
+                });
+                id += 1;
+            }
+        }
+        regions
+    }
+}
+
+/// What a scenario asks of you. Each carries its own deadline (except `Survive`,
+/// which is won by reaching the turn alive).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Objective {
+    CashBy { amount: f64, by_turn: u32 },
+    PrestigeBy { prestige: f64, by_turn: u32 },
+    RestoreBy { health: f64, by_turn: u32 },
+    HostBy { min_tier: usize, by_turn: u32 },
+    Survive { turns: u32 },
+}
+
+/// A self-contained challenge: a course, an objective, and how run-down it starts.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Scenario {
+    pub name: String,
+    pub course: CourseSpec,
+    pub objective: Objective,
+    pub start_neglect: f64, // 0..1, how run-down the course begins (for restorations)
+}
+
+/// The starter campaign — varied sizes/styles, one scenario per objective type.
+pub fn campaign() -> Vec<Scenario> {
+    let s = |name: &str, holes, par3, course_type, objective, start_neglect| Scenario {
+        name: name.to_string(),
+        course: CourseSpec {
+            holes,
+            par3,
+            course_type,
+        },
+        objective,
+        start_neglect,
+    };
+    use CourseType::{Desert, Heathland, Parkland};
+    vec![
+        s(
+            "Par-3 Starter",
+            9,
+            true,
+            Desert,
+            Objective::CashBy {
+                amount: 12_000.0,
+                by_turn: 60,
+            },
+            0.0,
+        ),
+        s(
+            "Build a Reputation",
+            9,
+            false,
+            Heathland,
+            Objective::PrestigeBy {
+                prestige: 700.0,
+                by_turn: 90,
+            },
+            0.0,
+        ),
+        s(
+            "Restore the Parkland",
+            9,
+            false,
+            Parkland,
+            Objective::RestoreBy {
+                health: 85.0,
+                by_turn: 60,
+            },
+            0.8,
+        ),
+        s(
+            "Host a Championship",
+            18,
+            false,
+            Heathland,
+            Objective::HostBy {
+                min_tier: 2,
+                by_turn: 200,
+            },
+            0.0,
+        ),
+        s(
+            "Grand Resort Survival",
+            27,
+            false,
+            Heathland,
+            Objective::Survive { turns: 80 },
+            0.3,
+        ),
+    ]
+}
+
+// ===========================================================================
 // World state, grouped by concern.
 // ===========================================================================
 
@@ -421,6 +593,10 @@ pub struct World {
     pub treatment_resistance: f64, // 0..resist_max, builds with treatment overuse
     pub tournament: Option<TournamentState>,
     pub demand_modifier: f64, // residual demand swing from tournaments; decays to 0
+    pub demand_scale: f64,    // golfer throughput vs the 9-region baseline (course size)
+    pub best_hosted_tier: Option<usize>, // highest tier successfully hosted (grade ≥ 0.5)
+    pub scenario: Option<Scenario>,
+    pub outcome: Outcome,
     pub rng: Rng,
     pub balance: Balance,
 }
@@ -431,6 +607,29 @@ impl World {
     /// loop — only possible because tuning is data, not compiled-in constants.
     pub fn with_balance(mut self, balance: Balance) -> Self {
         self.balance = balance;
+        self
+    }
+
+    /// Set up a scenario run: build its course (replacing the sandbox course),
+    /// degrade it by `start_neglect`, and attach the objective to win or lose.
+    pub fn with_scenario(mut self, scenario: Scenario) -> Self {
+        let mut regions = scenario.course.build_regions();
+        let n = scenario.start_neglect.clamp(0.0, 1.0);
+        if n > 0.0 {
+            for r in regions.iter_mut() {
+                r.wear = (r.wear + n * 60.0).clamp(0.0, 100.0);
+                r.growth = (r.growth + n * 50.0).clamp(0.0, 100.0);
+                r.moisture = (r.moisture - n * 40.0).clamp(0.0, 100.0);
+                r.nutrients = (r.nutrients - n * 40.0).clamp(0.0, 100.0);
+            }
+        }
+        // Demand scales with *play* (holes), not upkeep — so a parkland course is
+        // more crew for the same golfers as a desert one of equal hole count. The
+        // ×4/9 baseline keeps a standard ~4-region/hole course balanced like the
+        // 9-region sandbox.
+        self.demand_scale = (scenario.course.holes as f64 * 4.0 / 9.0).max(0.1);
+        self.course.regions = regions;
+        self.scenario = Some(scenario);
         self
     }
 
@@ -477,6 +676,10 @@ impl World {
             treatment_resistance: 0.0,
             tournament: None,
             demand_modifier: 0.0,
+            demand_scale: 1.0,
+            best_hosted_tier: None,
+            scenario: None,
+            outcome: Outcome::Running,
             rng: Rng::new(seed),
             balance: Balance::default(),
         }

@@ -7,7 +7,8 @@
 //! `config/balance.toml`); if absent, the built-in defaults are used.
 
 use engine::{
-    run, Balance, DiseasePolicy, Event, PlanStrategy, Strategy, TournamentStrategy, World,
+    campaign, run, Balance, DiseasePolicy, Event, LossReason, Objective, Outcome, PlanStrategy,
+    RampStrategy, Strategy, TournamentStrategy, World,
 };
 
 fn main() {
@@ -15,6 +16,11 @@ fn main() {
 
     if args.first().map(String::as_str) == Some("dump-config") {
         print!("{}", toml::to_string_pretty(&Balance::default()).unwrap());
+        return;
+    }
+
+    if args.first().map(String::as_str) == Some("scenario") {
+        run_scenario(&args);
         return;
     }
 
@@ -76,6 +82,62 @@ fn load_balance() -> Balance {
     }
 }
 
+/// `cli scenario [index] [seed]` — play a campaign scenario to its outcome,
+/// staffing to the course size, and report WON/LOST.
+fn run_scenario(args: &[String]) {
+    let idx: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let scenarios = campaign();
+    let scenario = scenarios[idx.min(scenarios.len() - 1)].clone();
+    let name = scenario.name.clone();
+
+    // Only chase tournaments when the objective demands it; otherwise just run a
+    // tidy ramp. (A real player picks their own plan.)
+    let needs_tournaments = matches!(scenario.objective, Objective::HostBy { .. });
+
+    let mut world = World::demo(seed)
+        .with_balance(load_balance())
+        .with_scenario(scenario);
+    // Staff to the course size (the "upgrade staff as you grow" lever).
+    let capacity = world.course.regions.len() as f64 * 4.5;
+    let mut strategy: Box<dyn Strategy> = if needs_tournaments {
+        Box::new(TournamentStrategy { capacity })
+    } else {
+        Box::new(RampStrategy { capacity })
+    };
+    let trace = run(&mut world, strategy.as_mut(), 400);
+
+    for event in &trace {
+        if matches!(
+            event,
+            Event::TournamentScheduled { .. }
+                | Event::TournamentResult { .. }
+                | Event::ScenarioWon { .. }
+                | Event::ScenarioLost { .. }
+                | Event::Bankrupt { .. }
+        ) {
+            println!("{}", render(event));
+        }
+    }
+
+    let result = match world.outcome {
+        Outcome::Won => "WON",
+        Outcome::Lost(LossReason::Bankruptcy) => "LOST (bankrupt)",
+        Outcome::Lost(LossReason::Deadline) => "LOST (deadline)",
+        Outcome::Running => "unresolved",
+    };
+    println!("{}", "-".repeat(60));
+    println!(
+        "{name} [{} regions]: {result} — turn {}, cash ${:.0}, prestige {:.0} (★{}), health {:.1}",
+        world.course.regions.len(),
+        world.turn,
+        world.finances.cash,
+        world.standing.prestige,
+        world.standing.tier() + 1,
+        world.course.avg_health(),
+    );
+}
+
 fn render(event: &Event) -> String {
     match event {
         Event::TurnStarted { turn } => format!("\n── turn {turn} ──"),
@@ -135,5 +197,7 @@ fn render(event: &Event) -> String {
         ),
         Event::Cash { value, delta } => format!("  cash       ${value:.0} ({delta:+.0})"),
         Event::Bankrupt { turn } => format!("  ** BANKRUPT on turn {turn} **"),
+        Event::ScenarioWon { scenario } => format!("  ✓ WON: {scenario}"),
+        Event::ScenarioLost { scenario, reason } => format!("  ✗ LOST: {scenario} ({reason})"),
     }
 }
