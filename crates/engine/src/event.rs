@@ -46,6 +46,9 @@ pub enum Event {
         regions: u32,
         cost: f64,
     },
+    TechUnlocked {
+        name: String,
+    },
     TournamentScheduled {
         tier: String,
         starts_in: u32,

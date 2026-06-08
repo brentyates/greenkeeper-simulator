@@ -16,6 +16,43 @@ pub(crate) struct DemandOutcome {
     pub premium_share: f64, // 0..1, feeds exclusivity
 }
 
+/// Cumulative passive bonuses from unlocked tech: (mower_efficiency, irrigation,
+/// disease_resistance), each a 0..0.85 fraction. These are how research lets a
+/// player cope with scaling up to bigger courses.
+pub(crate) fn tech_bonuses(world: &World) -> (f64, f64, f64) {
+    let n = world.research.unlocked as usize;
+    let mut mow = 0.0;
+    let mut irr = 0.0;
+    let mut dis = 0.0;
+    for tech in world.balance.research.techs.iter().take(n) {
+        mow += tech.mower_efficiency;
+        irr += tech.irrigation;
+        dis += tech.disease_resistance;
+    }
+    (mow.min(0.85), irr.min(0.85), dis.min(0.85))
+}
+
+/// Fund research: spend cash, accrue points, unlock the next tech(s) in order.
+pub(crate) fn research_tick(world: &mut World, funding: f64, trace: &mut Trace) {
+    let spend = funding.max(0.0).min(world.finances.cash.max(0.0));
+    if spend <= 0.0 {
+        return;
+    }
+    world.finances.cash -= spend;
+    world.research.points += spend * world.balance.research.funding_to_points;
+    while (world.research.unlocked as usize) < world.balance.research.techs.len() {
+        let idx = world.research.unlocked as usize;
+        let next = world.balance.research.techs[idx].clone();
+        if world.research.points >= next.cost {
+            world.research.points -= next.cost;
+            world.research.unlocked += 1;
+            trace.push(Event::TechUnlocked { name: next.name });
+        } else {
+            break;
+        }
+    }
+}
+
 /// Weather for the turn: returns extra moisture loss (rng-driven, so seeded).
 pub(crate) fn weather(world: &mut World, trace: &mut Trace) -> f64 {
     let dryness = world.rng.range(0.0, 6.0);
@@ -26,8 +63,10 @@ pub(crate) fn weather(world: &mut World, trace: &mut Trace) -> f64 {
 /// Turf decays and grows. Lush turf grows faster — the decay treadmill.
 pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
     let nutrient_decay = world.balance.economy.nutrient_decay;
+    let irrigation = tech_bonuses(world).1; // research cuts moisture loss
     for r in world.course.regions.iter_mut() {
-        r.moisture = (r.moisture - r.kind.moisture_decay() - extra_dryness).clamp(0.0, 100.0);
+        let moisture_loss = r.kind.moisture_decay() * (1.0 - irrigation) + extra_dryness;
+        r.moisture = (r.moisture - moisture_loss).clamp(0.0, 100.0);
         r.nutrients = (r.nutrients - nutrient_decay).clamp(0.0, 100.0);
         let mut growth = r.kind.growth_rate();
         if r.moisture > 50.0 && r.nutrients > 50.0 {
@@ -41,7 +80,8 @@ pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
 /// moisture, mowing, fertilizing, repairing wear). When needy regions outnumber
 /// capacity, conditions slip — the core allocation tension.
 pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
-    let service_cost = world.balance.economy.service_cost;
+    // Better mowers/equipment make each region cheaper to service.
+    let service_cost = world.balance.economy.service_cost * (1.0 - tech_bonuses(world).0);
 
     let mut order: Vec<usize> = (0..world.course.regions.len()).collect();
     order.sort_by(|&a, &b| {
@@ -108,6 +148,7 @@ pub(crate) fn treatment(world: &mut World, policy: DiseasePolicy, trace: &mut Tr
 /// regions — the calculated-risk layer that makes a worn course dangerous.
 pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
     let d = world.balance.disease.clone();
+    let outbreak_rate = d.outbreak_rate * (1.0 - tech_bonuses(world).2); // fungicide research
     let n = world.course.regions.len();
 
     for i in 0..n {
@@ -116,7 +157,7 @@ pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
             world.course.regions[i].infection = (infection + d.infection_growth).min(100.0);
         } else {
             let susc = susceptibility(&world.course.regions[i], dryness);
-            if world.rng.next_f64() < susc * d.outbreak_rate {
+            if world.rng.next_f64() < susc * outbreak_rate {
                 world.course.regions[i].infection = d.outbreak_severity;
                 trace.push(Event::Outbreak {
                     region: world.course.regions[i].id,

@@ -16,6 +16,22 @@ pub struct Decisions {
     /// Capacity to divert to tournament prep this turn — stolen from maintenance
     /// unless you've staffed up for it.
     pub prep_effort: f64,
+    /// Cash to spend on research this turn (accrues points toward the next tech).
+    pub research_funding: f64,
+}
+
+impl Decisions {
+    /// A do-nothing-but-price baseline, for strategies that only set a few levers.
+    fn priced(price: f64, target_capacity: f64, disease: DiseasePolicy) -> Self {
+        Decisions {
+            price,
+            target_capacity,
+            disease,
+            accept_tournament: None,
+            prep_effort: 0.0,
+            research_funding: 0.0,
+        }
+    }
 }
 
 /// Green-fee sweet spot by prestige tier (0-based): the price tier-relative
@@ -38,7 +54,7 @@ pub trait Strategy {
 
 /// A full operating plan: a price point, a staffing level, and a disease policy.
 /// Expresses a *path* (budget / value / premium, well- or ill-run). Hosts no
-/// tournaments.
+/// tournaments, funds no research.
 pub struct PlanStrategy {
     pub price: f64,
     pub capacity: f64,
@@ -47,86 +63,89 @@ pub struct PlanStrategy {
 
 impl Strategy for PlanStrategy {
     fn decide(&mut self, _world: &World) -> Decisions {
-        Decisions {
-            price: self.price,
-            target_capacity: self.capacity,
-            disease: self.disease,
-            accept_tournament: None,
-            prep_effort: 0.0,
-        }
+        Decisions::priced(self.price, self.capacity, self.disease)
     }
 }
 
-/// Earns its way up: prices at the sweet spot for the *current* prestige tier, so
-/// the fee rises as the course's reputation grows. Staffs to the chosen level.
+/// Earns its way up: prices at the sweet spot for the *current* prestige tier.
 pub struct RampStrategy {
     pub capacity: f64,
 }
 
 impl Strategy for RampStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions {
-            price: sweet_spot(world.standing.tier()),
-            target_capacity: self.capacity,
-            disease: DiseasePolicy::Treat,
-            accept_tournament: None,
-            prep_effort: 0.0,
-        }
+        Decisions::priced(
+            sweet_spot(world.standing.tier()),
+            self.capacity,
+            DiseasePolicy::Treat,
+        )
     }
 }
 
-/// Chases tournaments: books the biggest tier it's eligible for and can afford,
-/// then during prep it paces the whole checklist (mandatory + optional) and
-/// **staffs up to cover it**, so conditions don't slip. The path to heaps.
+/// Chases tournaments: books the biggest eligible tier, then paces the prep
+/// checklist while staffing up to cover it. The path to heaps.
 pub struct TournamentStrategy {
     pub capacity: f64,
 }
 
 impl Strategy for TournamentStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
+        ScenarioStrategy {
+            capacity: self.capacity,
+            research_funding: 0.0,
+            host: true,
+        }
+        .decide(world)
+    }
+}
+
+/// The do-it-all policy for scenario play: ramp pricing, staff to size, treat
+/// disease, fund research, and (optionally) chase tournaments with paced prep.
+pub struct ScenarioStrategy {
+    pub capacity: f64,
+    pub research_funding: f64,
+    pub host: bool,
+}
+
+impl Strategy for ScenarioStrategy {
+    fn decide(&mut self, world: &World) -> Decisions {
         let price = sweet_spot(world.standing.tier());
-        match &world.tournament {
-            // Prep window: pace remaining effort and staff up to cover it.
-            Some(ts) => {
-                let prep_effort = match &ts.phase {
-                    TournamentPhase::Scheduled {
-                        turns_until, tasks, ..
-                    } => {
-                        let remaining: f64 = tasks.iter().map(|t| t.effort).sum();
-                        remaining / (*turns_until).max(1) as f64
-                    }
-                    TournamentPhase::Running { .. } => 0.0,
-                };
-                Decisions {
-                    price,
-                    target_capacity: self.capacity + prep_effort,
-                    disease: DiseasePolicy::Treat,
-                    accept_tournament: None,
-                    prep_effort,
+        let (target_capacity, prep_effort, accept) = if self.host {
+            match world.tournament.as_ref().map(|t| &t.phase) {
+                Some(TournamentPhase::Scheduled {
+                    turns_until, tasks, ..
+                }) => {
+                    let remaining: f64 = tasks.iter().map(|t| t.effort).sum();
+                    let pace = remaining / (*turns_until).max(1) as f64;
+                    (self.capacity + pace, pace, None)
+                }
+                Some(TournamentPhase::Running { .. }) => (self.capacity, 0.0, None),
+                None => {
+                    let accept = world
+                        .balance
+                        .tournament
+                        .tiers
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, t)| {
+                            world.standing.prestige >= t.prestige_required
+                                && world.finances.cash >= t.entry_cost
+                        })
+                        .map(|(i, _)| i)
+                        .next_back();
+                    (self.capacity, 0.0, accept)
                 }
             }
-            // Idle: book the biggest eligible, affordable tier (tiers ascending).
-            None => {
-                let accept = world
-                    .balance
-                    .tournament
-                    .tiers
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, t)| {
-                        world.standing.prestige >= t.prestige_required
-                            && world.finances.cash >= t.entry_cost
-                    })
-                    .map(|(i, _)| i)
-                    .next_back();
-                Decisions {
-                    price,
-                    target_capacity: self.capacity,
-                    disease: DiseasePolicy::Treat,
-                    accept_tournament: accept,
-                    prep_effort: 0.0,
-                }
-            }
+        } else {
+            (self.capacity, 0.0, None)
+        };
+        Decisions {
+            price,
+            target_capacity,
+            disease: DiseasePolicy::Treat,
+            accept_tournament: accept,
+            prep_effort,
+            research_funding: self.research_funding,
         }
     }
 }
@@ -138,13 +157,7 @@ pub struct FixedPricing {
 
 impl Strategy for FixedPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions {
-            price: self.price,
-            target_capacity: world.ops.staff_capacity,
-            disease: DiseasePolicy::Treat,
-            accept_tournament: None,
-            prep_effort: 0.0,
-        }
+        Decisions::priced(self.price, world.ops.staff_capacity, DiseasePolicy::Treat)
     }
 }
 
@@ -155,12 +168,6 @@ pub struct NeglectfulPricing {
 
 impl Strategy for NeglectfulPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions {
-            price: self.price,
-            target_capacity: world.ops.staff_capacity,
-            disease: DiseasePolicy::Ignore,
-            accept_tournament: None,
-            prep_effort: 0.0,
-        }
+        Decisions::priced(self.price, world.ops.staff_capacity, DiseasePolicy::Ignore)
     }
 }

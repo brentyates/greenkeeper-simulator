@@ -308,6 +308,10 @@ No meshes, tiles, or coordinates beyond what gameplay needs.
 - **Entertainment:** narrative only — segmented golfers + named vignettes in the
   trace. Holes are maintenance regions *for now* (per-hole character revisitable;
   see §12). [§6, §9]
+- **Research:** RCT-style funded tech tree — set a budget, accrue points, unlock
+  in order. Passive techs cut maintenance cost, water, and disease; robot mowers
+  (capital + mechanics + breakdowns) and whole-course turf science build on it.
+  These advanced inputs are the intended answer to course scaling. [§6]
 - **Course model:** features/regions with aggregate agronomic state. [§10]
 
 ---

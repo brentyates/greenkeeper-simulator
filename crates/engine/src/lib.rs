@@ -10,15 +10,15 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    sweet_spot, Decisions, FixedPricing, NeglectfulPricing, PlanStrategy, RampStrategy, Strategy,
-    TournamentStrategy,
+    sweet_spot, Decisions, FixedPricing, NeglectfulPricing, PlanStrategy, RampStrategy,
+    ScenarioStrategy, Strategy, TournamentStrategy,
 };
 pub use event::{Event, Trace};
 pub use model::{
     campaign, default_segments, Balance, Course, CourseSpec, CourseType, DiseaseBalance,
     DiseasePolicy, EconomyBalance, Finances, LossReason, Objective, Operations, Outcome, PrepTask,
-    PrestigeBalance, Region, RegionKind, Scenario, Segment, Standing, TournamentBalance,
-    TournamentPhase, TournamentState, TournamentTier, World,
+    PrestigeBalance, Region, RegionKind, Research, ResearchBalance, Scenario, Segment, Standing,
+    Tech, TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 
@@ -32,6 +32,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     trace.push(Event::TurnStarted { turn: world.turn });
 
     world.ops.staff_capacity = decisions.target_capacity.max(0.0);
+    systems::research_tick(world, decisions.research_funding, trace);
 
     let dryness = systems::weather(world, trace);
     systems::agronomy(world, dryness);

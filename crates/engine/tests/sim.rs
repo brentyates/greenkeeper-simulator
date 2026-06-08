@@ -1,6 +1,7 @@
 use engine::{
     run, Balance, CourseSpec, CourseType, DiseasePolicy, Event, FixedPricing, LossReason,
-    Objective, Outcome, PlanStrategy, RampStrategy, Scenario, TournamentStrategy, Trace, World,
+    Objective, Outcome, PlanStrategy, RampStrategy, Scenario, ScenarioStrategy, TournamentStrategy,
+    Trace, World,
 };
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
@@ -244,6 +245,7 @@ fn tournament_eligibility_is_gated() {
                 disease: DiseasePolicy::Treat,
                 accept_tournament: Some(4),
                 prep_effort: 0.0,
+                research_funding: 0.0,
             }
         }
     }
@@ -306,6 +308,46 @@ fn course_size_scales_regions_and_demand() {
         World::demo(1).with_scenario(scenario(27, false, Objective::Survive { turns: 10 }, 0.0));
     assert!(big.course.regions.len() > small.course.regions.len());
     assert!(big.demand_scale > small.demand_scale);
+}
+
+#[test]
+fn research_unlocks_techs() {
+    let mut world = World::demo(1);
+    let mut st = ScenarioStrategy {
+        capacity: 40.0,
+        research_funding: 200.0,
+        host: false,
+    };
+    run(&mut world, &mut st, 60);
+    assert!(
+        world.research.unlocked >= 1,
+        "funding research should unlock techs"
+    );
+}
+
+#[test]
+fn research_reduces_outbreaks() {
+    // Funding research (fungicide etc.) should cut outbreaks vs. none — the
+    // advanced inputs that help a course cope at scale.
+    fn total_outbreaks(funding: f64) -> u64 {
+        (1..=20)
+            .map(|s| {
+                let mut w = World::demo(s);
+                let mut st = ScenarioStrategy {
+                    capacity: 40.0,
+                    research_funding: funding,
+                    host: false,
+                };
+                sum_outbreaks(&run(&mut w, &mut st, 100))
+            })
+            .sum()
+    }
+    let researched = total_outbreaks(80.0);
+    let none = total_outbreaks(0.0);
+    assert!(
+        researched < none,
+        "research should cut outbreaks (researched={researched}, none={none})"
+    );
 }
 
 #[test]

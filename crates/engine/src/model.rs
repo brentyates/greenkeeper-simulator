@@ -315,12 +315,52 @@ impl Default for TournamentBalance {
     }
 }
 
+/// One researchable tech. Unlocking it applies its passive efficiency gains
+/// (each a 0..1 fraction). Ordered into a linear tree by research cost.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Tech {
+    pub name: String,
+    pub cost: f64,               // research points to unlock
+    pub mower_efficiency: f64,   // reduces effective maintenance cost per region
+    pub irrigation: f64,         // reduces moisture decay
+    pub disease_resistance: f64, // reduces outbreak chance
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchBalance {
+    pub funding_to_points: f64, // research points gained per $ funded
+    pub techs: Vec<Tech>,       // unlocked in order
+}
+
+impl Default for ResearchBalance {
+    fn default() -> Self {
+        let t = |name: &str, cost, mower_efficiency, irrigation, disease_resistance| Tech {
+            name: name.to_string(),
+            cost,
+            mower_efficiency,
+            irrigation,
+            disease_resistance,
+        };
+        ResearchBalance {
+            funding_to_points: 1.0,
+            techs: vec![
+                t("Sharper Blades", 600.0, 0.15, 0.0, 0.0),
+                t("Drip Irrigation", 900.0, 0.0, 0.30, 0.0),
+                t("Fungicide Program", 1200.0, 0.0, 0.0, 0.35),
+                t("Fleet Mowers", 1800.0, 0.20, 0.0, 0.0),
+                t("Soil Science", 2400.0, 0.0, 0.15, 0.25),
+            ],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Balance {
     pub economy: EconomyBalance,
     pub prestige: PrestigeBalance,
     pub disease: DiseaseBalance,
     pub tournament: TournamentBalance,
+    pub research: ResearchBalance,
 }
 
 /// A committed tournament's lifecycle: a prep window working a checklist, then the
@@ -583,6 +623,13 @@ impl Standing {
     }
 }
 
+/// Research progress: accumulated points and how many techs are unlocked (in order).
+#[derive(Clone, Debug, Default)]
+pub struct Research {
+    pub points: f64,
+    pub unlocked: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct World {
     pub turn: u32,
@@ -595,6 +642,7 @@ pub struct World {
     pub demand_modifier: f64, // residual demand swing from tournaments; decays to 0
     pub demand_scale: f64,    // golfer throughput vs the 9-region baseline (course size)
     pub best_hosted_tier: Option<usize>, // highest tier successfully hosted (grade ≥ 0.5)
+    pub research: Research,
     pub scenario: Option<Scenario>,
     pub outcome: Outcome,
     pub rng: Rng,
@@ -678,6 +726,7 @@ impl World {
             demand_modifier: 0.0,
             demand_scale: 1.0,
             best_hosted_tier: None,
+            research: Research::default(),
             scenario: None,
             outcome: Outcome::Running,
             rng: Rng::new(seed),

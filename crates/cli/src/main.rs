@@ -8,7 +8,7 @@
 
 use engine::{
     campaign, run, Balance, DiseasePolicy, Event, LossReason, Objective, Outcome, PlanStrategy,
-    RampStrategy, Strategy, TournamentStrategy, World,
+    ScenarioStrategy, Strategy, TournamentStrategy, World,
 };
 
 fn main() {
@@ -91,21 +91,22 @@ fn run_scenario(args: &[String]) {
     let scenario = scenarios[idx.min(scenarios.len() - 1)].clone();
     let name = scenario.name.clone();
 
-    // Only chase tournaments when the objective demands it; otherwise just run a
-    // tidy ramp. (A real player picks their own plan.)
+    // Only chase tournaments when the objective demands it. (A real player picks
+    // their own plan.)
     let needs_tournaments = matches!(scenario.objective, Objective::HostBy { .. });
 
     let mut world = World::demo(seed)
         .with_balance(load_balance())
         .with_scenario(scenario);
-    // Staff to the course size (the "upgrade staff as you grow" lever).
-    let capacity = world.course.regions.len() as f64 * 4.5;
-    let mut strategy: Box<dyn Strategy> = if needs_tournaments {
-        Box::new(TournamentStrategy { capacity })
-    } else {
-        Box::new(RampStrategy { capacity })
+    // Staff and fund research in proportion to the course size — the "upgrade as
+    // you grow" levers that let a big course be held.
+    let regions = world.course.regions.len() as f64;
+    let mut strategy = ScenarioStrategy {
+        capacity: regions * 4.5,
+        research_funding: regions * 1.5,
+        host: needs_tournaments,
     };
-    let trace = run(&mut world, strategy.as_mut(), 400);
+    let trace = run(&mut world, &mut strategy, 400);
 
     for event in &trace {
         if matches!(
@@ -170,6 +171,7 @@ fn render(event: &Event) -> String {
         Event::Treated { regions, cost } => {
             format!("  treatment  {regions} regions (-${cost:.0})")
         }
+        Event::TechUnlocked { name } => format!("  ++ researched: {name}"),
         Event::TournamentScheduled { tier, starts_in } => {
             format!("  >> {tier} tournament booked (starts in {starts_in})")
         }

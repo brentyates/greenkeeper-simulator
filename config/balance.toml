@@ -158,3 +158,41 @@ optional = true
 name = "host a pro-am charity day"
 effort = 16.0
 optional = true
+
+[research]
+funding_to_points = 1.0
+
+[[research.techs]]
+name = "Sharper Blades"
+cost = 600.0
+mower_efficiency = 0.15
+irrigation = 0.0
+disease_resistance = 0.0
+
+[[research.techs]]
+name = "Drip Irrigation"
+cost = 900.0
+mower_efficiency = 0.0
+irrigation = 0.3
+disease_resistance = 0.0
+
+[[research.techs]]
+name = "Fungicide Program"
+cost = 1200.0
+mower_efficiency = 0.0
+irrigation = 0.0
+disease_resistance = 0.35
+
+[[research.techs]]
+name = "Fleet Mowers"
+cost = 1800.0
+mower_efficiency = 0.2
+irrigation = 0.0
+disease_resistance = 0.0
+
+[[research.techs]]
+name = "Soil Science"
+cost = 2400.0
+mower_efficiency = 0.0
+irrigation = 0.15
+disease_resistance = 0.25
