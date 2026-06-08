@@ -36,16 +36,6 @@ pub enum Event {
     Secondary {
         amount: f64,
     },
-    Outbreak {
-        region: u32,
-    },
-    Spread {
-        region: u32,
-    },
-    Treated {
-        regions: u32,
-        cost: f64,
-    },
     TechUnlocked {
         name: String,
     },

@@ -1,15 +1,14 @@
 //! Decisions are what the player (or an automated strategy) commits each turn:
 //! the levers that let you commit to and execute a strategy (a "path").
 
-use crate::model::{DiseasePolicy, TournamentPhase, World};
+use crate::model::{TournamentPhase, World};
 
 #[derive(Clone, Debug)]
 pub struct Decisions {
     pub price: f64,
-    /// Crew capacity to run this turn — more staff maintains more ground and
-    /// fights disease, but costs wages.
+    /// Crew capacity to run this turn — more staff maintains more ground (mowing,
+    /// watering, feeding), but costs wages.
     pub target_capacity: f64,
-    pub disease: DiseasePolicy,
     /// Commit to hosting a tournament of this tier index, if eligible and none is
     /// already booked. `None` means don't commit this turn.
     pub accept_tournament: Option<usize>,
@@ -22,11 +21,10 @@ pub struct Decisions {
 
 impl Decisions {
     /// A do-nothing-but-price baseline, for strategies that only set a few levers.
-    fn priced(price: f64, target_capacity: f64, disease: DiseasePolicy) -> Self {
+    fn priced(price: f64, target_capacity: f64) -> Self {
         Decisions {
             price,
             target_capacity,
-            disease,
             accept_tournament: None,
             prep_effort: 0.0,
             research_funding: 0.0,
@@ -52,18 +50,17 @@ pub trait Strategy {
     fn decide(&mut self, world: &World) -> Decisions;
 }
 
-/// A full operating plan: a price point, a staffing level, and a disease policy.
-/// Expresses a *path* (budget / value / premium, well- or ill-run). Hosts no
-/// tournaments, funds no research.
+/// A full operating plan: a price point and a staffing level. Expresses a *path*
+/// (budget / value / premium, well- or ill-staffed). Hosts no tournaments, funds
+/// no research.
 pub struct PlanStrategy {
     pub price: f64,
     pub capacity: f64,
-    pub disease: DiseasePolicy,
 }
 
 impl Strategy for PlanStrategy {
     fn decide(&mut self, _world: &World) -> Decisions {
-        Decisions::priced(self.price, self.capacity, self.disease)
+        Decisions::priced(self.price, self.capacity)
     }
 }
 
@@ -74,11 +71,7 @@ pub struct RampStrategy {
 
 impl Strategy for RampStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions::priced(
-            sweet_spot(world.standing.tier()),
-            self.capacity,
-            DiseasePolicy::Treat,
-        )
+        Decisions::priced(sweet_spot(world.standing.tier()), self.capacity)
     }
 }
 
@@ -99,8 +92,8 @@ impl Strategy for TournamentStrategy {
     }
 }
 
-/// The do-it-all policy for scenario play: ramp pricing, staff to size, treat
-/// disease, fund research, and (optionally) chase tournaments with paced prep.
+/// The do-it-all policy for scenario play: ramp pricing, staff to size, fund
+/// research, and (optionally) chase tournaments with paced prep.
 pub struct ScenarioStrategy {
     pub capacity: f64,
     pub research_funding: f64,
@@ -142,7 +135,6 @@ impl Strategy for ScenarioStrategy {
         Decisions {
             price,
             target_capacity,
-            disease: DiseasePolicy::Treat,
             accept_tournament: accept,
             prep_effort,
             research_funding: self.research_funding,
@@ -150,24 +142,13 @@ impl Strategy for ScenarioStrategy {
     }
 }
 
-/// Holds a flat green fee, keeps staffing unchanged, and treats outbreaks.
+/// Holds a flat green fee and keeps staffing unchanged.
 pub struct FixedPricing {
     pub price: f64,
 }
 
 impl Strategy for FixedPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions::priced(self.price, world.ops.staff_capacity, DiseasePolicy::Treat)
-    }
-}
-
-/// Like `FixedPricing` but never treats disease — to measure the cost of neglect.
-pub struct NeglectfulPricing {
-    pub price: f64,
-}
-
-impl Strategy for NeglectfulPricing {
-    fn decide(&mut self, world: &World) -> Decisions {
-        Decisions::priced(self.price, world.ops.staff_capacity, DiseasePolicy::Ignore)
+        Decisions::priced(self.price, world.ops.staff_capacity)
     }
 }

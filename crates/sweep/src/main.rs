@@ -1,14 +1,13 @@
 //! Balance-sweep harness.
 //!
-//! Runs a set of operating *paths* (price + staffing + disease policy) across many
-//! seeds and aggregates the outcomes — so we can see whether multiple distinct
-//! paths are viable, and which mistakes sink them.
+//! Runs a set of operating *paths* (price + staffing) across many seeds and
+//! aggregates the outcomes — so we can see whether multiple distinct paths are
+//! viable, and which mistakes sink them.
 //!
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
 use engine::{
-    run, Balance, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy,
-    World,
+    run, Balance, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy, World,
 };
 
 /// Load tuning from TOML (`$GK_BALANCE`, default `config/balance.toml`); fall back
@@ -31,14 +30,8 @@ struct Path {
     make: Factory,
 }
 
-fn plan(price: f64, capacity: f64, disease: DiseasePolicy) -> Factory {
-    Box::new(move || {
-        Box::new(PlanStrategy {
-            price,
-            capacity,
-            disease,
-        }) as Box<dyn Strategy>
-    })
+fn plan(price: f64, capacity: f64) -> Factory {
+    Box::new(move || Box::new(PlanStrategy { price, capacity }) as Box<dyn Strategy>)
 }
 
 fn ramp(capacity: f64) -> Factory {
@@ -55,8 +48,6 @@ struct RunResult {
     final_health: f64,
     bankrupt: bool,
     total_golfers: u64,
-    total_outbreaks: u64,
-    total_treatment: f64,
 }
 
 fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
@@ -65,14 +56,9 @@ fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
     let trace = run(&mut world, strategy.as_mut(), turns);
 
     let mut total_golfers = 0u64;
-    let mut total_outbreaks = 0u64;
-    let mut total_treatment = 0.0;
     for event in &trace {
-        match event {
-            Event::Demand { golfers, .. } => total_golfers += *golfers as u64,
-            Event::Outbreak { .. } => total_outbreaks += 1,
-            Event::Treated { cost, .. } => total_treatment += cost,
-            _ => {}
+        if let Event::Demand { golfers, .. } = event {
+            total_golfers += *golfers as u64;
         }
     }
 
@@ -82,8 +68,6 @@ fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
         final_health: world.course.avg_health(&world.balance.conditions),
         bankrupt: world.finances.bankrupt,
         total_golfers,
-        total_outbreaks,
-        total_treatment,
     }
 }
 
@@ -105,20 +89,19 @@ fn main() {
     let turns = nums.get(1).copied().unwrap_or(150) as u32;
     let balance = load_balance();
 
-    use DiseasePolicy::{Ignore, Treat};
     let paths = [
         // Distinct, well-run paths — all should be viable.
         Path {
             name: "budget",
-            make: plan(25.0, 55.0, Treat),
+            make: plan(25.0, 55.0),
         },
         Path {
             name: "value",
-            make: plan(45.0, 40.0, Treat),
+            make: plan(45.0, 40.0),
         },
         Path {
             name: "premium",
-            make: plan(90.0, 28.0, Treat),
+            make: plan(90.0, 28.0),
         },
         Path {
             name: "ramp (earn up)",
@@ -131,24 +114,20 @@ fn main() {
         // Run badly — these should fail.
         Path {
             name: "budget/understaffed",
-            make: plan(25.0, 20.0, Treat),
-        },
-        Path {
-            name: "premium/neglect",
-            make: plan(90.0, 28.0, Ignore),
+            make: plan(25.0, 20.0),
         },
         Path {
             name: "opened too rich",
-            make: plan(140.0, 22.0, Treat),
+            make: plan(140.0, 22.0),
         },
     ];
 
     println!("Balance sweep — {seeds} seeds x {turns} turns, demo course\n");
     println!(
-        "{:<20} {:>6} {:>10} {:>8} {:>7} {:>8} {:>6} {:>8}",
-        "path", "bust%", "mean $", "prestige", "health", "golfers", "sick", "treat $",
+        "{:<20} {:>6} {:>10} {:>8} {:>7} {:>8}",
+        "path", "bust%", "mean $", "prestige", "health", "golfers",
     );
-    println!("{}", "-".repeat(80));
+    println!("{}", "-".repeat(64));
 
     for path in &paths {
         let results: Vec<RunResult> = (1..=seeds)
@@ -160,19 +139,10 @@ fn main() {
         let mean_prestige = mean(results.iter().map(|r| r.final_prestige));
         let mean_health = mean(results.iter().map(|r| r.final_health));
         let mean_golfers = mean(results.iter().map(|r| r.total_golfers as f64));
-        let mean_outbreaks = mean(results.iter().map(|r| r.total_outbreaks as f64));
-        let mean_treatment = mean(results.iter().map(|r| r.total_treatment));
 
         println!(
-            "{:<20} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>8.0} {:>6.1} {:>8.0}",
-            path.name,
-            bust,
-            mean_cash,
-            mean_prestige,
-            mean_health,
-            mean_golfers,
-            mean_outbreaks,
-            mean_treatment,
+            "{:<20} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>8.0}",
+            path.name, bust, mean_cash, mean_prestige, mean_health, mean_golfers,
         );
     }
 }

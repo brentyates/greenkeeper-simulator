@@ -7,8 +7,8 @@
 //! `config/balance.toml`); if absent, the built-in defaults are used.
 
 use engine::{
-    campaign, run, Balance, DiseasePolicy, Event, LossReason, Objective, Outcome, PlanStrategy,
-    ScenarioStrategy, Strategy, TournamentStrategy, World,
+    campaign, run, Balance, Event, LossReason, Objective, Outcome, PlanStrategy, ScenarioStrategy,
+    Strategy, TournamentStrategy, World,
 };
 
 fn main() {
@@ -37,11 +37,7 @@ fn main() {
         let capacity: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(40.0);
         let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
         let turns: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(30);
-        let s = PlanStrategy {
-            price,
-            capacity,
-            disease: DiseasePolicy::Treat,
-        };
+        let s = PlanStrategy { price, capacity };
         (Box::new(s), seed, turns)
     };
 
@@ -166,11 +162,6 @@ fn render(event: &Event) -> String {
         ),
         Event::GreenFees { amount } => format!("  green fees +${amount:.0}"),
         Event::Secondary { amount } => format!("  secondary  +${amount:.0}"),
-        Event::Outbreak { region } => format!("  !! disease outbreak on region {region}"),
-        Event::Spread { region } => format!("  !! disease spread to region {region}"),
-        Event::Treated { regions, cost } => {
-            format!("  treatment  {regions} regions (-${cost:.0})")
-        }
         Event::TechUnlocked { name } => format!("  ++ researched: {name}"),
         Event::TournamentScheduled { tier, starts_in } => {
             format!("  >> {tier} tournament booked (starts in {starts_in})")

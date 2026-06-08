@@ -10,16 +10,15 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    sweet_spot, Decisions, FixedPricing, NeglectfulPricing, PlanStrategy, RampStrategy,
-    ScenarioStrategy, Strategy, TournamentStrategy,
+    sweet_spot, Decisions, FixedPricing, PlanStrategy, RampStrategy, ScenarioStrategy, Strategy,
+    TournamentStrategy,
 };
 pub use event::{Event, Trace};
 pub use model::{
     campaign, default_segments, AgronomyBalance, Balance, Course, CourseSpec, CourseType,
-    DiseaseBalance, DiseasePolicy, EconomyBalance, Finances, KindRates, LossReason, MarketBalance,
-    Objective, Operations, Outcome, PrepTask, PrestigeBalance, Region, RegionKind, Research,
-    ResearchBalance, Scenario, Segment, Standing, Tech, TournamentBalance, TournamentPhase,
-    TournamentState, TournamentTier, World,
+    EconomyBalance, Finances, KindRates, LossReason, MarketBalance, Objective, Operations, Outcome,
+    PrepTask, PrestigeBalance, Region, RegionKind, Research, ResearchBalance, Scenario, Segment,
+    Standing, Tech, TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 
@@ -45,8 +44,6 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
         (world.ops.staff_capacity - prep_spent).max(0.0),
         trace,
     );
-    systems::treatment(world, decisions.disease, trace);
-    systems::disease_tick(world, dryness, trace);
     systems::prestige_update(world, trace);
     let attention = systems::tournament_tick(world, trace);
     systems::tournament_accept(world, decisions.accept_tournament, trace);

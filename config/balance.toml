@@ -12,7 +12,6 @@ moisture_ideal = 60.0
 moisture_falloff = 1.4
 wear_fail_threshold = 40.0
 wear_compound = 2.0
-infection_penalty = 0.7
 w_moisture = 0.25
 w_growth = 0.2
 w_nutrients = 0.2
@@ -53,21 +52,6 @@ excl_price_weight = 0.4
 excl_price_ref = 200.0
 excl_smoothing = 0.1
 demand_modifier_decay = 0.95
-
-[disease]
-outbreak_rate = 0.18
-outbreak_severity = 30.0
-infection_growth = 14.0
-spread_chance = 0.22
-spread_severity = 20.0
-treat_power = 45.0
-treat_cost = 140.0
-resist_gain = 0.06
-resist_decay = 0.02
-resist_max = 0.85
-susc_wear = 0.75
-susc_growth = 0.15
-susc_dryness = 0.1
 
 [tournament]
 success_threshold = 0.5
@@ -210,35 +194,24 @@ name = "Sharper Blades"
 cost = 600.0
 mower_efficiency = 0.15
 irrigation = 0.0
-disease_resistance = 0.0
 
 [[research.techs]]
 name = "Drip Irrigation"
 cost = 900.0
 mower_efficiency = 0.0
 irrigation = 0.3
-disease_resistance = 0.0
-
-[[research.techs]]
-name = "Fungicide Program"
-cost = 1200.0
-mower_efficiency = 0.0
-irrigation = 0.0
-disease_resistance = 0.35
 
 [[research.techs]]
 name = "Fleet Mowers"
 cost = 1800.0
 mower_efficiency = 0.2
 irrigation = 0.0
-disease_resistance = 0.0
 
 [[research.techs]]
 name = "Soil Science"
 cost = 2400.0
 mower_efficiency = 0.0
 irrigation = 0.15
-disease_resistance = 0.25
 
 [[market.segments]]
 name = "bargain"

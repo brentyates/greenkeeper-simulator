@@ -22,13 +22,6 @@ impl RegionKind {
     }
 }
 
-/// Whether to treat active turf disease this turn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DiseasePolicy {
-    Treat,
-    Ignore,
-}
-
 /// A maintainable feature of the course. State is aggregate, not per-point.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Region {
@@ -38,7 +31,6 @@ pub struct Region {
     pub nutrients: f64, // 0..100, higher is better
     pub growth: f64,    // 0..100, lower (freshly mown) is better
     pub wear: f64,      // 0..100, foot/cart traffic damage, higher is worse
-    pub infection: f64, // 0..100, active turf disease severity (0 = healthy)
 }
 
 impl Region {
@@ -54,12 +46,11 @@ impl Region {
         let wear_penalty =
             self.wear + (self.wear - c.wear_fail_threshold).max(0.0) * c.wear_compound;
         let wear_score = (100.0 - wear_penalty).clamp(0.0, 100.0);
-        let base = c.w_moisture * moisture_score
+        (c.w_moisture * moisture_score
             + c.w_growth * growth_score
             + c.w_nutrients * nutrient_score
-            + c.w_wear * wear_score;
-        // Active disease drags condition down hard — a crisis you must respond to.
-        (base - self.infection * c.infection_penalty).clamp(0.0, 100.0)
+            + c.w_wear * wear_score)
+            .clamp(0.0, 100.0)
     }
 }
 
@@ -168,44 +159,6 @@ impl Default for PrestigeBalance {
             excl_price_ref: 200.0,
             excl_smoothing: 0.1,
             demand_modifier_decay: 0.95,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DiseaseBalance {
-    pub outbreak_rate: f64, // scales susceptibility into a per-turn outbreak chance
-    pub outbreak_severity: f64,
-    pub infection_growth: f64, // per-turn worsening of an active infection
-    pub spread_chance: f64,    // chance each infected region seeds another per turn
-    pub spread_severity: f64,
-    pub treat_power: f64,  // infection cleared per region at full effectiveness
-    pub treat_cost: f64,   // $ per region treated
-    pub resist_gain: f64,  // resistance gained per turn of treatment use (overuse cost)
-    pub resist_decay: f64, // resistance lost per idle turn
-    pub resist_max: f64,
-    // Susceptibility weights: how wear / lush growth / dry weather drive outbreaks.
-    pub susc_wear: f64,
-    pub susc_growth: f64,
-    pub susc_dryness: f64,
-}
-
-impl Default for DiseaseBalance {
-    fn default() -> Self {
-        DiseaseBalance {
-            outbreak_rate: 0.18,
-            outbreak_severity: 30.0,
-            infection_growth: 14.0,
-            spread_chance: 0.22,
-            spread_severity: 20.0,
-            treat_power: 45.0,
-            treat_cost: 140.0,
-            resist_gain: 0.06,
-            resist_decay: 0.02,
-            resist_max: 0.85,
-            susc_wear: 0.75,
-            susc_growth: 0.15,
-            susc_dryness: 0.10,
         }
     }
 }
@@ -327,10 +280,9 @@ impl Default for TournamentBalance {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tech {
     pub name: String,
-    pub cost: f64,               // research points to unlock
-    pub mower_efficiency: f64,   // reduces effective maintenance cost per region
-    pub irrigation: f64,         // reduces moisture decay
-    pub disease_resistance: f64, // reduces outbreak chance
+    pub cost: f64,             // research points to unlock
+    pub mower_efficiency: f64, // reduces effective maintenance cost per region
+    pub irrigation: f64,       // reduces moisture decay
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -341,21 +293,19 @@ pub struct ResearchBalance {
 
 impl Default for ResearchBalance {
     fn default() -> Self {
-        let t = |name: &str, cost, mower_efficiency, irrigation, disease_resistance| Tech {
+        let t = |name: &str, cost, mower_efficiency, irrigation| Tech {
             name: name.to_string(),
             cost,
             mower_efficiency,
             irrigation,
-            disease_resistance,
         };
         ResearchBalance {
             funding_to_points: 1.0,
             techs: vec![
-                t("Sharper Blades", 600.0, 0.15, 0.0, 0.0),
-                t("Drip Irrigation", 900.0, 0.0, 0.30, 0.0),
-                t("Fungicide Program", 1200.0, 0.0, 0.0, 0.35),
-                t("Fleet Mowers", 1800.0, 0.20, 0.0, 0.0),
-                t("Soil Science", 2400.0, 0.0, 0.15, 0.25),
+                t("Sharper Blades", 600.0, 0.15, 0.0),
+                t("Drip Irrigation", 900.0, 0.0, 0.30),
+                t("Fleet Mowers", 1800.0, 0.20, 0.0),
+                t("Soil Science", 2400.0, 0.0, 0.15),
             ],
         }
     }
@@ -368,7 +318,6 @@ pub struct ConditionsBalance {
     pub moisture_falloff: f64,    // condition lost per point away from ideal
     pub wear_fail_threshold: f64, // wear past which turf fails fast
     pub wear_compound: f64,       // extra penalty multiplier past the threshold
-    pub infection_penalty: f64,   // condition lost per point of infection
     pub w_moisture: f64,
     pub w_growth: f64,
     pub w_nutrients: f64,
@@ -382,7 +331,6 @@ impl Default for ConditionsBalance {
             moisture_falloff: 1.4,
             wear_fail_threshold: 40.0,
             wear_compound: 2.0,
-            infection_penalty: 0.7,
             w_moisture: 0.25,
             w_growth: 0.20,
             w_nutrients: 0.20,
@@ -442,7 +390,6 @@ pub struct Balance {
     pub weather: WeatherBalance,
     pub demand: DemandBalance,
     pub prestige: PrestigeBalance,
-    pub disease: DiseaseBalance,
     pub tournament: TournamentBalance,
     pub research: ResearchBalance,
     pub market: MarketBalance,
@@ -628,7 +575,6 @@ impl CourseSpec {
                     nutrients: 75.0,
                     growth: 10.0,
                     wear: 0.0,
-                    infection: 0.0,
                 });
                 id += 1;
             }
@@ -688,7 +634,7 @@ pub fn campaign() -> Vec<Scenario> {
             false,
             Heathland,
             Objective::PrestigeBy {
-                prestige: 700.0,
+                prestige: 600.0,
                 by_turn: 90,
             },
             0.0,
@@ -801,7 +747,6 @@ pub struct World {
     pub finances: Finances,
     pub ops: Operations,
     pub standing: Standing,
-    pub treatment_resistance: f64, // 0..resist_max, builds with treatment overuse
     pub tournament: Option<TournamentState>,
     pub demand_modifier: f64, // residual demand swing from tournaments; decays to 0
     pub demand_scale: f64,    // golfer throughput vs the 9-region baseline (course size)
@@ -862,7 +807,6 @@ impl World {
                 nutrients: 75.0,
                 growth: 10.0,
                 wear: 0.0,
-                infection: 0.0,
             })
             .collect();
         World {
@@ -883,7 +827,6 @@ impl World {
                 reputation: 55.0,
                 exclusivity: 20.0,
             },
-            treatment_resistance: 0.0,
             tournament: None,
             demand_modifier: 0.0,
             demand_scale: 1.0,

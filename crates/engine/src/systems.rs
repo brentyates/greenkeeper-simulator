@@ -4,8 +4,8 @@
 
 use crate::event::{Event, Trace};
 use crate::model::{
-    DiseaseBalance, DiseasePolicy, LossReason, Objective, Outcome, PrepTask, TournamentPhase,
-    TournamentState, TournamentTier, World,
+    LossReason, Objective, Outcome, PrepTask, TournamentPhase, TournamentState, TournamentTier,
+    World,
 };
 
 /// Outcome of the demand system for one turn.
@@ -16,20 +16,18 @@ pub(crate) struct DemandOutcome {
     pub premium_share: f64, // 0..1, feeds exclusivity
 }
 
-/// Cumulative passive bonuses from unlocked tech: (mower_efficiency, irrigation,
-/// disease_resistance), each a 0..0.85 fraction. These are how research lets a
-/// player cope with scaling up to bigger courses.
-pub(crate) fn tech_bonuses(world: &World) -> (f64, f64, f64) {
+/// Cumulative passive bonuses from unlocked tech: (mower_efficiency, irrigation),
+/// each a 0..0.85 fraction. These are how research lets a player cope with
+/// scaling up to bigger courses.
+pub(crate) fn tech_bonuses(world: &World) -> (f64, f64) {
     let n = world.research.unlocked as usize;
     let mut mow = 0.0;
     let mut irr = 0.0;
-    let mut dis = 0.0;
     for tech in world.balance.research.techs.iter().take(n) {
         mow += tech.mower_efficiency;
         irr += tech.irrigation;
-        dis += tech.disease_resistance;
     }
-    (mow.min(0.85), irr.min(0.85), dis.min(0.85))
+    (mow.min(0.85), irr.min(0.85))
 }
 
 /// Fund research: spend cash, accrue points, unlock the next tech(s) in order.
@@ -112,93 +110,6 @@ pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
         regions_serviced: serviced,
         capacity_used: capacity - budget,
     });
-}
-
-/// How prone a region is to an outbreak, 0..1 — driven mostly by wear (stressed
-/// turf), with lush growth and dry/heat stress adding to it. Never surfaced as a
-/// number; learned by playing (DESIGN §7).
-fn susceptibility(
-    r: &crate::model::Region,
-    dryness: f64,
-    d: &DiseaseBalance,
-    dryness_max: f64,
-) -> f64 {
-    (d.susc_wear * (r.wear / 100.0)
-        + d.susc_growth * (r.growth / 100.0)
-        + d.susc_dryness * (dryness / dryness_max))
-        .clamp(0.0, 1.0)
-}
-
-/// Treat active disease if chosen: clears infection, but each turn of use breeds
-/// resistance that saps effectiveness — overtreating a chronically sick course
-/// eventually stops working. Idle turns let resistance fade.
-pub(crate) fn treatment(world: &mut World, policy: DiseasePolicy, trace: &mut Trace) {
-    let d = &world.balance.disease;
-    let any_infected = world.course.regions.iter().any(|r| r.infection > 0.0);
-    if policy == DiseasePolicy::Ignore || !any_infected {
-        world.treatment_resistance = (world.treatment_resistance - d.resist_decay).max(0.0);
-        return;
-    }
-    let effectiveness = d.treat_power * (1.0 - world.treatment_resistance);
-    let mut treated = 0u32;
-    for r in world.course.regions.iter_mut() {
-        if r.infection > 0.0 {
-            r.infection = (r.infection - effectiveness).max(0.0);
-            treated += 1;
-        }
-    }
-    let cost = treated as f64 * d.treat_cost;
-    world.finances.cash -= cost;
-    world.treatment_resistance = (world.treatment_resistance + d.resist_gain).min(d.resist_max);
-    trace.push(Event::Treated {
-        regions: treated,
-        cost,
-    });
-}
-
-/// Outbreaks ignite on stressed turf, worsen if untreated, and spread to other
-/// regions — the calculated-risk layer that makes a worn course dangerous.
-pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
-    let d = world.balance.disease.clone();
-    let dryness_max = world.balance.weather.dryness_max;
-    let outbreak_rate = d.outbreak_rate * (1.0 - tech_bonuses(world).2); // fungicide research
-    let n = world.course.regions.len();
-
-    for i in 0..n {
-        let infection = world.course.regions[i].infection;
-        if infection > 0.0 {
-            world.course.regions[i].infection = (infection + d.infection_growth).min(100.0);
-        } else {
-            let susc = susceptibility(&world.course.regions[i], dryness, &d, dryness_max);
-            if world.rng.next_f64() < susc * outbreak_rate {
-                world.course.regions[i].infection = d.outbreak_severity;
-                trace.push(Event::Outbreak {
-                    region: world.course.regions[i].id,
-                });
-            }
-        }
-    }
-
-    let infected: Vec<usize> = (0..n)
-        .filter(|&i| world.course.regions[i].infection > 0.0)
-        .collect();
-    for _ in infected {
-        if world.rng.next_f64() >= d.spread_chance {
-            continue;
-        }
-        let healthy: Vec<usize> = (0..n)
-            .filter(|&i| world.course.regions[i].infection <= 0.0)
-            .collect();
-        if healthy.is_empty() {
-            break;
-        }
-        let pick = ((world.rng.next_f64() * healthy.len() as f64) as usize).min(healthy.len() - 1);
-        let idx = healthy[pick];
-        world.course.regions[idx].infection = d.spread_severity;
-        trace.push(Event::Spread {
-            region: world.course.regions[idx].id,
-        });
-    }
 }
 
 /// Amenities prestige component (0..100), derived from capex (amenity_level).

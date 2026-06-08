@@ -1,7 +1,6 @@
 use engine::{
-    run, Balance, CourseSpec, CourseType, DiseasePolicy, Event, FixedPricing, LossReason,
-    Objective, Outcome, PlanStrategy, RampStrategy, Scenario, ScenarioStrategy, TournamentStrategy,
-    Trace, World,
+    run, Balance, CourseSpec, CourseType, Event, FixedPricing, LossReason, Objective, Outcome,
+    PlanStrategy, RampStrategy, Scenario, ScenarioStrategy, TournamentStrategy, Trace, World,
 };
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
@@ -10,19 +9,9 @@ fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
     run(&mut world, &mut strat, turns)
 }
 
-fn run_plan(
-    price: f64,
-    capacity: f64,
-    disease: DiseasePolicy,
-    seed: u64,
-    turns: u32,
-) -> (World, Trace) {
+fn run_plan(price: f64, capacity: f64, seed: u64, turns: u32) -> (World, Trace) {
     let mut world = World::demo(seed);
-    let mut strat = PlanStrategy {
-        price,
-        capacity,
-        disease,
-    };
+    let mut strat = PlanStrategy { price, capacity };
     let trace = run(&mut world, &mut strat, turns);
     (world, trace)
 }
@@ -45,13 +34,6 @@ fn sum_turned_away(trace: &Trace) -> u64 {
             _ => 0,
         })
         .sum()
-}
-
-fn sum_outbreaks(trace: &Trace) -> u64 {
-    trace
-        .iter()
-        .filter(|e| matches!(e, Event::Outbreak { .. }))
-        .count() as u64
 }
 
 // --- determinism & core demand tradeoffs ---
@@ -87,12 +69,29 @@ fn pricier_turns_more_golfers_away() {
 }
 
 #[test]
-fn worn_courses_get_sicker() {
-    let cheap: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(25.0, s, 80))).sum();
-    let premium: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(120.0, s, 80))).sum();
+fn worn_courses_lose_health() {
+    // A cheap, crowded course wears harder and ends in worse condition than a
+    // premium, lightly-trafficked one — the agronomy treadmill is the core
+    // pressure now that disease is gone.
+    let cheap: f64 = (1..=40)
+        .map(|s| {
+            run_plan(25.0, 30.0, s, 80)
+                .0
+                .course
+                .avg_health(&Balance::default().conditions)
+        })
+        .sum();
+    let premium: f64 = (1..=40)
+        .map(|s| {
+            run_plan(120.0, 30.0, s, 80)
+                .0
+                .course
+                .avg_health(&Balance::default().conditions)
+        })
+        .sum();
     assert!(
-        cheap > premium,
-        "worn cheap courses should see more outbreaks (cheap={cheap}, premium={premium})"
+        cheap < premium,
+        "worn cheap courses should end less healthy (cheap={cheap:.0}, premium={premium:.0})"
     );
 }
 
@@ -102,7 +101,7 @@ fn worn_courses_get_sicker() {
 fn state_stays_finite() {
     for &price in &[20.0, 45.0, 90.0, 200.0] {
         for seed in 1..=20 {
-            let (world, trace) = run_plan(price, 40.0, DiseasePolicy::Treat, seed, 80);
+            let (world, trace) = run_plan(price, 40.0, seed, 80);
             assert!(world.finances.cash.is_finite());
             assert!(world.standing.prestige.is_finite());
             assert!(world
@@ -124,7 +123,7 @@ fn state_stays_finite() {
 #[test]
 fn prestige_stays_in_bounds() {
     for seed in 1..=20 {
-        let (_w, trace) = run_plan(35.0, 40.0, DiseasePolicy::Treat, seed, 120);
+        let (_w, trace) = run_plan(35.0, 40.0, seed, 120);
         for e in &trace {
             if let Event::Prestige { value, .. } = e {
                 assert!(
@@ -137,37 +136,14 @@ fn prestige_stays_in_bounds() {
 }
 
 #[test]
-fn treatment_resistance_stays_bounded() {
-    for seed in 1..=20 {
-        let (world, _t) = run_plan(25.0, 40.0, DiseasePolicy::Treat, seed, 120);
-        let max = world.balance.disease.resist_max;
-        assert!(
-            (0.0..=max).contains(&world.treatment_resistance),
-            "resistance out of bounds: {} (max {max})",
-            world.treatment_resistance
-        );
-    }
-}
-
-#[test]
 fn premium_pricing_builds_exclusivity() {
     // High-end pricing/clientele should accrue more exclusivity than a cheap,
     // crowded course — this also guards the typed `premium` segment flag.
     let premium: f64 = (1..=30)
-        .map(|s| {
-            run_plan(90.0, 28.0, DiseasePolicy::Treat, s, 100)
-                .0
-                .standing
-                .exclusivity
-        })
+        .map(|s| run_plan(90.0, 28.0, s, 100).0.standing.exclusivity)
         .sum();
     let budget: f64 = (1..=30)
-        .map(|s| {
-            run_plan(25.0, 55.0, DiseasePolicy::Treat, s, 100)
-                .0
-                .standing
-                .exclusivity
-        })
+        .map(|s| run_plan(25.0, 55.0, s, 100).0.standing.exclusivity)
         .sum();
     assert!(
         premium > budget,
@@ -194,7 +170,6 @@ fn balance_is_data_driven() {
         let mut strat = PlanStrategy {
             price: 45.0,
             capacity: 40.0,
-            disease: DiseasePolicy::Treat,
         };
         run(&mut world, &mut strat, 60);
         world.finances.cash
@@ -245,7 +220,6 @@ fn tournament_eligibility_is_gated() {
             engine::Decisions {
                 price: 45.0,
                 target_capacity: 40.0,
-                disease: DiseasePolicy::Treat,
                 accept_tournament: Some(4),
                 prep_effort: 0.0,
                 research_funding: 0.0,
@@ -329,34 +303,37 @@ fn research_unlocks_techs() {
 }
 
 #[test]
-fn research_reduces_outbreaks() {
-    // Funding research (fungicide etc.) should cut outbreaks vs. none — the
-    // advanced inputs that help a course cope at scale.
-    fn total_outbreaks(funding: f64) -> u64 {
-        (1..=20)
+fn research_improves_conditions() {
+    // Funding research (sharper blades, drip irrigation, etc.) lets the same crew
+    // hold the turf in better condition — the advanced inputs that help a course
+    // cope at scale.
+    fn mean_health(funding: f64) -> f64 {
+        let total: f64 = (1..=20)
             .map(|s| {
                 let mut w = World::demo(s);
                 let mut st = ScenarioStrategy {
-                    capacity: 40.0,
+                    capacity: 30.0,
                     research_funding: funding,
                     host: false,
                 };
-                sum_outbreaks(&run(&mut w, &mut st, 100))
+                run(&mut w, &mut st, 100);
+                w.course.avg_health(&w.balance.conditions)
             })
-            .sum()
+            .sum();
+        total / 20.0
     }
-    let researched = total_outbreaks(80.0);
-    let none = total_outbreaks(0.0);
+    let researched = mean_health(80.0);
+    let none = mean_health(0.0);
     assert!(
-        researched < none,
-        "research should cut outbreaks (researched={researched}, none={none})"
+        researched > none,
+        "research should improve conditions (researched={researched:.1}, none={none:.1})"
     );
 }
 
 #[test]
 fn bankruptcy_is_terminal() {
     // Pricing into an empty course bankrupts; once bankrupt, no further turns run.
-    let (world, trace) = run_plan(220.0, 22.0, DiseasePolicy::Treat, 1, 200);
+    let (world, trace) = run_plan(220.0, 22.0, 1, 200);
     assert!(world.finances.bankrupt, "expected bankruptcy");
     let bankrupt_at = trace
         .iter()

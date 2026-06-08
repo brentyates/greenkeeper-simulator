@@ -213,7 +213,7 @@ mix dominates; that's the game.
 
 **The reward curve is asymmetric by design — many paths *survive*, few get
 *rich*.** A well-run course of almost any style should reliably **stay afloat**:
-a sensible price, conditions held, staffed to match its traffic, disease managed.
+a sensible price, conditions held, staffed to match its traffic.
 That's a livable business — but it must **never make heaps**. Heaps are reserved
 for the hard path: sustained **high prestige**, **tournaments pulled off**, and
 the juggling of many staff and demanding high-end golfers. Big money is *earned
@@ -240,9 +240,10 @@ seasoned crew reads danger a novice misses. This obliges the model to be
 *consistent and discoverable*.
 
 **Optional named risk layers** can deepen specific scenarios later, on top of the
-intrinsic tension — agronomic crises (disease/pests with prevention-vs-reaction
-spread), punishing weather & seasons, or market/competition pressure. None is
-required for the first playable slice.
+intrinsic tension — punishing weather & seasons, or market/competition pressure.
+The day-to-day pressure, though, is the agronomy treadmill itself: mowing,
+watering, and feeding enough ground to keep conditions up as traffic wears it
+down. None of the extra layers is required for the first playable slice.
 
 ---
 
@@ -309,9 +310,9 @@ No meshes, tiles, or coordinates beyond what gameplay needs.
   trace. Holes are maintenance regions *for now* (per-hole character revisitable;
   see §12). [§6, §9]
 - **Research:** RCT-style funded tech tree — set a budget, accrue points, unlock
-  in order. Passive techs cut maintenance cost, water, and disease; robot mowers
-  (capital + mechanics + breakdowns) and whole-course turf science build on it.
-  These advanced inputs are the intended answer to course scaling. [§6]
+  in order. Passive techs cut maintenance cost and water; robot mowers (capital +
+  mechanics + breakdowns) and whole-course turf science build on it. These
+  advanced inputs are the intended answer to course scaling. [§6]
 - **Course model:** features/regions with aggregate agronomic state. [§10]
 
 ---

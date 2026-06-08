@@ -72,7 +72,7 @@ greenkeeper/
 - **No randomness outside the seeded RNG**, which is threaded through state.
 - **Tuning is data, not code:** all balance lives in a `Balance` struct on
   `World` (defaulted to the baseline), grouped by system (economy/prestige/
-  disease) — ready to vary per scenario and tune via the sweep without
+  conditions) — ready to vary per scenario and tune via the sweep without
   recompiling. World state is grouped into `course / finances / ops / standing`.
 
 ---
@@ -91,7 +91,7 @@ greenkeeper/
 ## 6. Scenario & balance data (input) [format decided: TOML]
 
 Tuning and scenarios are serde-deserialized data: the `Balance` struct
-(economy/prestige/disease/tournament), plus starting conditions, course
+(economy/prestige/conditions/tournament), plus starting conditions, course
 definition (regions), objective + difficulty modifiers. **Format = TOML** —
 purpose-built for config, comments, no whitespace footguns, best-maintained
 crate, and it maps cleanly onto the grouped `Balance` (`[economy]` / `[prestige]`
@@ -109,7 +109,7 @@ so we can drive runs without a human. They can move to data later if useful.
 ## 7. Trace / output [recommended]
 
 - `engine` emits a `Vec` of structured, timestamped **events** (turn started,
-  region watered, outbreak began, golfers turned away, objective met, …).
+  region watered, tournament booked, golfers turned away, objective met, …).
 - `cli` renders that stream two ways: a **human-readable timeline** for reading a
   run, and **structured export** (JSON/CSV) for aggregating across many runs.
 - The engine never prints; it only produces data.
