@@ -10,28 +10,30 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, RampStrategy,
-    Strategy, SweetSpotPricing,
+    sweet_spot, Decisions, FixedPricing, NeglectfulPricing, PlanStrategy, RampStrategy, Strategy,
 };
 pub use event::{Event, Trace};
-pub use model::{default_segments, Region, RegionKind, Segment, World};
+pub use model::{
+    default_segments, Balance, Course, DiseasePolicy, Finances, Operations, Region, RegionKind,
+    Segment, Standing, World,
+};
 pub use rng::Rng;
 
 /// Advance the world by one turn, running every system in fixed order and
 /// appending the resulting events to `trace`.
 pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
-    if world.bankrupt {
+    if world.finances.bankrupt {
         return;
     }
     world.turn += 1;
     trace.push(Event::TurnStarted { turn: world.turn });
 
-    world.staff_capacity = decisions.target_capacity.max(0.0);
+    world.ops.staff_capacity = decisions.target_capacity.max(0.0);
 
     let dryness = systems::weather(world, trace);
     systems::agronomy(world, dryness);
     systems::maintenance(world, trace);
-    systems::treatment(world, decisions.treat, trace);
+    systems::treatment(world, decisions.disease, trace);
     systems::disease_tick(world, dryness, trace);
     systems::prestige_update(world, trace);
     let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
@@ -45,7 +47,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
 pub fn run(world: &mut World, strategy: &mut dyn Strategy, turns: u32) -> Trace {
     let mut trace = Trace::new();
     for _ in 0..turns {
-        if world.bankrupt {
+        if world.finances.bankrupt {
             break;
         }
         let decisions = strategy.decide(world);

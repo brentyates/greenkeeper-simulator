@@ -6,7 +6,7 @@
 //!
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
-use engine::{run, Event, PlanStrategy, RampStrategy, Strategy, World};
+use engine::{run, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, World};
 
 type Factory = Box<dyn Fn() -> Box<dyn Strategy>>;
 
@@ -15,12 +15,12 @@ struct Path {
     make: Factory,
 }
 
-fn plan(price: f64, capacity: f64, treat: bool) -> Factory {
+fn plan(price: f64, capacity: f64, disease: DiseasePolicy) -> Factory {
     Box::new(move || {
         Box::new(PlanStrategy {
             price,
             capacity,
-            treat,
+            disease,
         }) as Box<dyn Strategy>
     })
 }
@@ -57,10 +57,10 @@ fn run_one(path: &Path, seed: u64, turns: u32) -> RunResult {
     }
 
     RunResult {
-        final_cash: world.cash,
-        final_prestige: world.prestige,
-        final_health: world.avg_health(),
-        bankrupt: world.bankrupt,
+        final_cash: world.finances.cash,
+        final_prestige: world.standing.prestige,
+        final_health: world.course.avg_health(),
+        bankrupt: world.finances.bankrupt,
         total_golfers,
         total_outbreaks,
         total_treatment,
@@ -84,19 +84,20 @@ fn main() {
     let seeds = nums.first().copied().unwrap_or(150).max(1);
     let turns = nums.get(1).copied().unwrap_or(150) as u32;
 
+    use DiseasePolicy::{Ignore, Treat};
     let paths = [
         // Distinct, well-run paths — all should be viable.
         Path {
             name: "budget",
-            make: plan(25.0, 55.0, true),
+            make: plan(25.0, 55.0, Treat),
         },
         Path {
             name: "value",
-            make: plan(45.0, 40.0, true),
+            make: plan(45.0, 40.0, Treat),
         },
         Path {
             name: "premium",
-            make: plan(90.0, 28.0, true),
+            make: plan(90.0, 28.0, Treat),
         },
         Path {
             name: "ramp (earn up)",
@@ -105,15 +106,15 @@ fn main() {
         // Run badly — these should fail.
         Path {
             name: "budget/understaffed",
-            make: plan(25.0, 20.0, true),
+            make: plan(25.0, 20.0, Treat),
         },
         Path {
             name: "premium/neglect",
-            make: plan(90.0, 28.0, false),
+            make: plan(90.0, 28.0, Ignore),
         },
         Path {
             name: "opened too rich",
-            make: plan(140.0, 22.0, true),
+            make: plan(140.0, 22.0, Treat),
         },
     ];
 

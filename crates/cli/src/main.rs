@@ -1,7 +1,7 @@
 //! Run the demo scenario and print its trace.
 //! Usage: `cli [price] [capacity] [seed] [turns]`.
 
-use engine::{run, Event, PlanStrategy, World};
+use engine::{run, DiseasePolicy, Event, PlanStrategy, World};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -14,7 +14,7 @@ fn main() {
     let mut strategy = PlanStrategy {
         price,
         capacity,
-        treat: true,
+        disease: DiseasePolicy::Treat,
     };
     let trace = run(&mut world, &mut strategy, turns);
 
@@ -26,12 +26,16 @@ fn main() {
     println!(
         "after {} turns:  cash ${:.0}   prestige {:.0} (★{})   health {:.1}   wear {:.1}{}",
         world.turn,
-        world.cash,
-        world.prestige,
-        world.tier() + 1,
-        world.avg_health(),
-        world.avg_wear(),
-        if world.bankrupt { "   [BANKRUPT]" } else { "" },
+        world.finances.cash,
+        world.standing.prestige,
+        world.standing.tier() + 1,
+        world.course.avg_health(),
+        world.course.avg_wear(),
+        if world.finances.bankrupt {
+            "   [BANKRUPT]"
+        } else {
+            ""
+        },
     );
 }
 

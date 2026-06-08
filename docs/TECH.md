@@ -70,14 +70,21 @@ greenkeeper/
   system can raise an *interrupt* (a crisis/threshold) that surfaces a required
   decision before time continues.
 - **No randomness outside the seeded RNG**, which is threaded through state.
+- **Tuning is data, not code:** all balance lives in a `Balance` struct on
+  `World` (defaulted to the baseline), grouped by system (economy/prestige/
+  disease) — ready to vary per scenario and tune via the sweep without
+  recompiling. World state is grouped into `course / finances / ops / standing`.
 
 ---
 
-## 5. Determinism & RNG [recommended]
+## 5. Determinism & RNG [decided]
 
-- `rand` + `rand_chacha::ChaCha8Rng` — a portable, reproducible PRNG (unlike
-  `StdRng`, whose algorithm may change across versions). The seed is part of the
-  run config; the RNG lives in `World` so saves/replays are exact.
+- A small hand-rolled **SplitMix64** PRNG (`engine::rng`), kept dependency-free
+  and identical on every platform. The seed lives in `World`, threaded through
+  systems, so runs and replays are exact. (Chosen over `rand`/`rand_chacha` to
+  keep the engine zero-dependency; determinism is the only contract that matters.)
+- Float ordering uses `total_cmp` (never `partial_cmp().unwrap()`) so no NaN can
+  panic the sort.
 
 ---
 
@@ -120,8 +127,9 @@ so we can drive runs without a human. They can move to data later if useful.
 
 ## 9. Dependencies (keep lean)
 
-`serde`, a format crate (`ron` or `toml`), `rand` + `rand_chacha`; dev-only:
-`insta`, `proptest`. Resist adding more without a reason.
+Currently **zero runtime dependencies** (hand-rolled RNG; tests use std asserts).
+When scenario loading lands, add `serde` + a format crate (`ron`/`toml`).
+Consider dev-only `insta`/`proptest` later. Resist adding more without a reason.
 
 ---
 
