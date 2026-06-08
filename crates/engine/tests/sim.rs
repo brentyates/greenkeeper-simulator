@@ -40,18 +40,27 @@ fn different_seed_differs() {
 fn cheaper_draws_more_golfers() {
     let cheap = sum_golfers(&run_at(30.0, 7, 40));
     let dear = sum_golfers(&run_at(120.0, 7, 40));
-    assert!(cheap > dear, "cheap should draw more golfers (cheap={cheap}, dear={dear})");
+    assert!(
+        cheap > dear,
+        "cheap should draw more golfers (cheap={cheap}, dear={dear})"
+    );
 }
 
 #[test]
 fn pricier_turns_more_golfers_away() {
     let cheap = sum_turned_away(&run_at(30.0, 7, 40));
     let dear = sum_turned_away(&run_at(120.0, 7, 40));
-    assert!(dear > cheap, "high price should turn more away (dear={dear}, cheap={cheap})");
+    assert!(
+        dear > cheap,
+        "high price should turn more away (dear={dear}, cheap={cheap})"
+    );
 }
 
 fn sum_outbreaks(trace: &engine::Trace) -> u64 {
-    trace.iter().filter(|e| matches!(e, Event::Outbreak { .. })).count() as u64
+    trace
+        .iter()
+        .filter(|e| matches!(e, Event::Outbreak { .. }))
+        .count() as u64
 }
 
 #[test]
@@ -60,5 +69,8 @@ fn worn_courses_get_sicker() {
     // a quiet premium course, summed across many seeds for stability.
     let cheap: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(25.0, s, 80))).sum();
     let premium: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(120.0, s, 80))).sum();
-    assert!(cheap > premium, "worn cheap courses should see more outbreaks (cheap={cheap}, premium={premium})");
+    assert!(
+        cheap > premium,
+        "worn cheap courses should see more outbreaks (cheap={cheap}, premium={premium})"
+    );
 }

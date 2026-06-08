@@ -39,7 +39,7 @@ const RESIST_MAX: f64 = 0.85;
 pub struct DemandOutcome {
     pub revenue: f64,
     pub golfers: f64,
-    pub satisfaction: f64,  // 0..100, feeds reputation
+    pub satisfaction: f64,   // 0..100, feeds reputation
     pub affluent_share: f64, // 0..1, feeds exclusivity
 }
 
@@ -134,7 +134,10 @@ pub fn treatment(world: &mut World, treat: bool, trace: &mut Trace) {
     let cost = treated as f64 * TREAT_COST;
     world.cash -= cost;
     world.treatment_resistance = (world.treatment_resistance + RESIST_GAIN).min(RESIST_MAX);
-    trace.push(Event::Treated { regions: treated, cost });
+    trace.push(Event::Treated {
+        regions: treated,
+        cost,
+    });
 }
 
 /// Outbreaks ignite on stressed turf, worsen if untreated, and spread to other
@@ -150,24 +153,32 @@ pub fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
             let susc = susceptibility(&world.regions[i], dryness);
             if world.rng.next_f64() < susc * OUTBREAK_RATE {
                 world.regions[i].infection = OUTBREAK_SEVERITY;
-                trace.push(Event::Outbreak { region: world.regions[i].id });
+                trace.push(Event::Outbreak {
+                    region: world.regions[i].id,
+                });
             }
         }
     }
 
-    let infected: Vec<usize> = (0..n).filter(|&i| world.regions[i].infection > 0.0).collect();
+    let infected: Vec<usize> = (0..n)
+        .filter(|&i| world.regions[i].infection > 0.0)
+        .collect();
     for _ in infected {
         if world.rng.next_f64() >= SPREAD_CHANCE {
             continue;
         }
-        let healthy: Vec<usize> = (0..n).filter(|&i| world.regions[i].infection <= 0.0).collect();
+        let healthy: Vec<usize> = (0..n)
+            .filter(|&i| world.regions[i].infection <= 0.0)
+            .collect();
         if healthy.is_empty() {
             break;
         }
         let pick = ((world.rng.next_f64() * healthy.len() as f64) as usize).min(healthy.len() - 1);
         let idx = healthy[pick];
         world.regions[idx].infection = SPREAD_SEVERITY;
-        trace.push(Event::Spread { region: world.regions[idx].id });
+        trace.push(Event::Spread {
+            region: world.regions[idx].id,
+        });
     }
 }
 
@@ -182,7 +193,10 @@ pub fn amenities_score(world: &World) -> f64 {
 /// sets pricing power in `demand_and_revenue`.
 pub fn prestige_update(world: &mut World, trace: &mut Trace) {
     let conditions = world.avg_health();
-    trace.push(Event::Conditions { avg_health: conditions, avg_wear: world.avg_wear() });
+    trace.push(Event::Conditions {
+        avg_health: conditions,
+        avg_wear: world.avg_wear(),
+    });
 
     let target_score = W_CONDITIONS * conditions
         + W_HISTORICAL * world.historical_excellence
@@ -198,16 +212,25 @@ pub fn prestige_update(world: &mut World, trace: &mut Trace) {
         diff.max(-MAX_PRESTIGE_DOWN)
     };
     world.prestige = (world.prestige + delta).clamp(0.0, 1000.0);
-    trace.push(Event::Prestige { value: world.prestige, delta });
+    trace.push(Event::Prestige {
+        value: world.prestige,
+        delta,
+    });
 }
 
 /// Segmented, value-based demand. Pricing power is the holistic prestige
 /// experience (with a little weight on today's conditions): a higher-prestige
 /// course draws more golfers and commands more before they balk. Playing golfers
 /// also generate secondary revenue and a satisfaction signal.
-pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &mut Trace) -> DemandOutcome {
+pub fn demand_and_revenue(
+    world: &mut World,
+    price: f64,
+    dryness: f64,
+    trace: &mut Trace,
+) -> DemandOutcome {
     world.price = price;
-    let experience = (0.7 * (world.prestige / 1000.0) + 0.3 * (world.avg_health() / 100.0)).clamp(0.0, 1.0);
+    let experience =
+        (0.7 * (world.prestige / 1000.0) + 0.3 * (world.avg_health() / 100.0)).clamp(0.0, 1.0);
     let amenity = world.amenity_level;
     let weather_spend = 1.0 + dryness * 0.1;
 
@@ -237,8 +260,13 @@ pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &m
 
     // Satisfaction: good conditions, uncrowded play. Feeds reputation next turn.
     let crowding_penalty = ((golfers_total - COMFORTABLE_GOLFERS).max(0.0) * 2.0).clamp(0.0, 100.0);
-    let satisfaction = (0.7 * world.avg_health() + 0.3 * (100.0 - crowding_penalty)).clamp(0.0, 100.0);
-    let affluent_share = if golfers_total > 0.0 { affluent_golfers / golfers_total } else { 0.0 };
+    let satisfaction =
+        (0.7 * world.avg_health() + 0.3 * (100.0 - crowding_penalty)).clamp(0.0, 100.0);
+    let affluent_share = if golfers_total > 0.0 {
+        affluent_golfers / golfers_total
+    } else {
+        0.0
+    };
 
     trace.push(Event::Demand {
         interested: interested as u32,
@@ -249,7 +277,12 @@ pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &m
     trace.push(Event::GreenFees { amount: green_fees });
     trace.push(Event::Secondary { amount: secondary });
 
-    DemandOutcome { revenue: green_fees + secondary, golfers, satisfaction, affluent_share }
+    DemandOutcome {
+        revenue: green_fees + secondary,
+        golfers,
+        satisfaction,
+        affluent_share,
+    }
 }
 
 /// Update prestige's slow-moving inputs from how the day actually went. Track
@@ -257,14 +290,23 @@ pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &m
 /// high-end your pricing and clientele are. These shape *next* turn's prestige.
 pub fn standing_update(world: &mut World, outcome: &DemandOutcome) {
     let conditions = world.avg_health();
-    let h_rate = if conditions >= world.historical_excellence { 0.04 } else { 0.12 };
+    let h_rate = if conditions >= world.historical_excellence {
+        0.04
+    } else {
+        0.12
+    };
     world.historical_excellence += (conditions - world.historical_excellence) * h_rate;
 
-    let r_rate = if outcome.satisfaction >= world.reputation { 0.08 } else { 0.15 };
+    let r_rate = if outcome.satisfaction >= world.reputation {
+        0.08
+    } else {
+        0.15
+    };
     world.reputation += (outcome.satisfaction - world.reputation) * r_rate;
 
     let price_factor = (world.price / 200.0).clamp(0.0, 1.0) * 100.0;
-    let target_excl = (0.6 * (outcome.affluent_share * 100.0) + 0.4 * price_factor).clamp(0.0, 100.0);
+    let target_excl =
+        (0.6 * (outcome.affluent_share * 100.0) + 0.4 * price_factor).clamp(0.0, 100.0);
     world.exclusivity += (target_excl - world.exclusivity) * 0.1;
 }
 
@@ -286,11 +328,15 @@ pub fn wear_from_traffic(world: &mut World, golfers: f64) {
 /// Revenue in; wages, fixed overhead, and per-golfer upkeep out. Bankruptcy ends
 /// the run. The per-golfer cost is what keeps high-volume play thin-margin.
 pub fn economy(world: &mut World, revenue: f64, golfers: f64, trace: &mut Trace) {
-    let expenses =
-        world.staff_capacity * WAGE_PER_CAPACITY + FIXED_OVERHEAD + golfers * VARIABLE_COST_PER_GOLFER;
+    let expenses = world.staff_capacity * WAGE_PER_CAPACITY
+        + FIXED_OVERHEAD
+        + golfers * VARIABLE_COST_PER_GOLFER;
     let delta = revenue - expenses;
     world.cash += delta;
-    trace.push(Event::Cash { value: world.cash, delta });
+    trace.push(Event::Cash {
+        value: world.cash,
+        delta,
+    });
     if world.cash < BANKRUPTCY_FLOOR {
         world.bankrupt = true;
         trace.push(Event::Bankrupt { turn: world.turn });

@@ -72,7 +72,8 @@ impl Region {
         // Turf fails fast once badly worn: wear compounds steeply past a threshold.
         let wear_penalty = self.wear + (self.wear - 40.0).max(0.0) * 2.0;
         let wear_score = (100.0 - wear_penalty).clamp(0.0, 100.0);
-        let base = 0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score;
+        let base =
+            0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score;
         // Active disease drags condition down hard — a crisis you must respond to.
         (base - self.infection * 0.7).clamp(0.0, 100.0)
     }
@@ -83,19 +84,43 @@ impl Region {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
     pub name: &'static str,
-    pub population: f64,      // potential visitors per turn at full appeal
-    pub base_wtp: f64,        // willingness to pay at neutral appeal
-    pub wtp_spread: f64,      // price range over which participation falls to zero
+    pub population: f64,       // potential visitors per turn at full appeal
+    pub base_wtp: f64,         // willingness to pay at neutral appeal
+    pub wtp_spread: f64,       // price range over which participation falls to zero
     pub spend_propensity: f64, // secondary $ per round at full amenities
 }
 
 /// The default market: bargain-hunters through affluent members.
 pub fn default_segments() -> Vec<Segment> {
     vec![
-        Segment { name: "bargain", population: 30.0, base_wtp: 25.0, wtp_spread: 15.0, spend_propensity: 4.0 },
-        Segment { name: "regular", population: 20.0, base_wtp: 45.0, wtp_spread: 20.0, spend_propensity: 8.0 },
-        Segment { name: "avid", population: 10.0, base_wtp: 80.0, wtp_spread: 30.0, spend_propensity: 14.0 },
-        Segment { name: "affluent", population: 5.0, base_wtp: 140.0, wtp_spread: 50.0, spend_propensity: 25.0 },
+        Segment {
+            name: "bargain",
+            population: 30.0,
+            base_wtp: 25.0,
+            wtp_spread: 15.0,
+            spend_propensity: 4.0,
+        },
+        Segment {
+            name: "regular",
+            population: 20.0,
+            base_wtp: 45.0,
+            wtp_spread: 20.0,
+            spend_propensity: 8.0,
+        },
+        Segment {
+            name: "avid",
+            population: 10.0,
+            base_wtp: 80.0,
+            wtp_spread: 30.0,
+            spend_propensity: 14.0,
+        },
+        Segment {
+            name: "affluent",
+            population: 5.0,
+            base_wtp: 140.0,
+            wtp_spread: 50.0,
+            spend_propensity: 25.0,
+        },
     ]
 }
 
@@ -103,8 +128,8 @@ pub fn default_segments() -> Vec<Segment> {
 pub struct World {
     pub turn: u32,
     pub cash: f64,
-    pub prestige: f64,     // 0..1000 (200 per ★)
-    pub price: f64,        // current green fee
+    pub prestige: f64, // 0..1000 (200 per ★)
+    pub price: f64,    // current green fee
     pub regions: Vec<Region>,
     pub staff_capacity: f64, // maintenance points available per turn
     pub amenity_level: f64,  // multiplier on secondary spend (capex unlocks this)
@@ -149,7 +174,9 @@ impl World {
     /// A small starter course used for the first slice and tests.
     pub fn demo(seed: u64) -> World {
         use RegionKind::*;
-        let kinds = [Green, Green, Green, Fairway, Fairway, Fairway, Tee, Rough, Rough];
+        let kinds = [
+            Green, Green, Green, Fairway, Fairway, Fairway, Tee, Rough, Rough,
+        ];
         let regions = kinds
             .iter()
             .enumerate()

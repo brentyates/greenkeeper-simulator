@@ -10,8 +10,8 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, RampStrategy, Strategy,
-    SweetSpotPricing,
+    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, RampStrategy,
+    Strategy, SweetSpotPricing,
 };
 pub use event::{Event, Trace};
 pub use model::{default_segments, Region, RegionKind, Segment, World};

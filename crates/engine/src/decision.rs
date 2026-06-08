@@ -31,7 +31,11 @@ pub struct PlanStrategy {
 
 impl Strategy for PlanStrategy {
     fn decide(&mut self, _world: &World) -> Decisions {
-        Decisions { price: self.price, target_capacity: self.capacity, treat: self.treat }
+        Decisions {
+            price: self.price,
+            target_capacity: self.capacity,
+            treat: self.treat,
+        }
     }
 }
 
@@ -43,7 +47,11 @@ pub struct RampStrategy {
 
 impl Strategy for RampStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: sweet_spot(world.tier()), target_capacity: self.capacity, treat: true }
+        Decisions {
+            price: sweet_spot(world.tier()),
+            target_capacity: self.capacity,
+            treat: true,
+        }
     }
 }
 
@@ -54,7 +62,11 @@ pub struct FixedPricing {
 
 impl Strategy for FixedPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: self.price, target_capacity: world.staff_capacity, treat: true }
+        Decisions {
+            price: self.price,
+            target_capacity: world.staff_capacity,
+            treat: true,
+        }
     }
 }
 
@@ -65,7 +77,11 @@ pub struct NeglectfulPricing {
 
 impl Strategy for NeglectfulPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: self.price, target_capacity: world.staff_capacity, treat: false }
+        Decisions {
+            price: self.price,
+            target_capacity: world.staff_capacity,
+            treat: false,
+        }
     }
 }
 
@@ -74,7 +90,11 @@ pub struct SweetSpotPricing;
 
 impl Strategy for SweetSpotPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: sweet_spot(world.tier()), target_capacity: world.staff_capacity, treat: true }
+        Decisions {
+            price: sweet_spot(world.tier()),
+            target_capacity: world.staff_capacity,
+            treat: true,
+        }
     }
 }
 

@@ -16,7 +16,13 @@ struct Path {
 }
 
 fn plan(price: f64, capacity: f64, treat: bool) -> Factory {
-    Box::new(move || Box::new(PlanStrategy { price, capacity, treat }) as Box<dyn Strategy>)
+    Box::new(move || {
+        Box::new(PlanStrategy {
+            price,
+            capacity,
+            treat,
+        }) as Box<dyn Strategy>
+    })
 }
 
 fn ramp(capacity: f64) -> Factory {
@@ -71,20 +77,44 @@ fn mean(xs: impl Iterator<Item = f64>) -> f64 {
 }
 
 fn main() {
-    let nums: Vec<u64> = std::env::args().skip(1).filter_map(|a| a.parse().ok()).collect();
+    let nums: Vec<u64> = std::env::args()
+        .skip(1)
+        .filter_map(|a| a.parse().ok())
+        .collect();
     let seeds = nums.first().copied().unwrap_or(150).max(1);
     let turns = nums.get(1).copied().unwrap_or(150) as u32;
 
     let paths = [
         // Distinct, well-run paths — all should be viable.
-        Path { name: "budget", make: plan(25.0, 55.0, true) },
-        Path { name: "value", make: plan(45.0, 40.0, true) },
-        Path { name: "premium", make: plan(90.0, 28.0, true) },
-        Path { name: "ramp (earn up)", make: ramp(35.0) },
+        Path {
+            name: "budget",
+            make: plan(25.0, 55.0, true),
+        },
+        Path {
+            name: "value",
+            make: plan(45.0, 40.0, true),
+        },
+        Path {
+            name: "premium",
+            make: plan(90.0, 28.0, true),
+        },
+        Path {
+            name: "ramp (earn up)",
+            make: ramp(35.0),
+        },
         // Run badly — these should fail.
-        Path { name: "budget/understaffed", make: plan(25.0, 20.0, true) },
-        Path { name: "premium/neglect", make: plan(90.0, 28.0, false) },
-        Path { name: "opened too rich", make: plan(140.0, 22.0, true) },
+        Path {
+            name: "budget/understaffed",
+            make: plan(25.0, 20.0, true),
+        },
+        Path {
+            name: "premium/neglect",
+            make: plan(90.0, 28.0, false),
+        },
+        Path {
+            name: "opened too rich",
+            make: plan(140.0, 22.0, true),
+        },
     ];
 
     println!("Balance sweep — {seeds} seeds x {turns} turns, demo course\n");
@@ -107,7 +137,14 @@ fn main() {
 
         println!(
             "{:<20} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>8.0} {:>6.1} {:>8.0}",
-            path.name, bust, mean_cash, mean_prestige, mean_health, mean_golfers, mean_outbreaks, mean_treatment,
+            path.name,
+            bust,
+            mean_cash,
+            mean_prestige,
+            mean_health,
+            mean_golfers,
+            mean_outbreaks,
+            mean_treatment,
         );
     }
 }

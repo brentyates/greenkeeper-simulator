@@ -4,21 +4,55 @@
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
-    TurnStarted { turn: u32 },
-    Weather { dryness: f64 },
-    Maintenance { regions_serviced: u32, capacity_used: f64 },
-    Conditions { avg_health: f64, avg_wear: f64 },
-    Prestige { value: f64, delta: f64 },
+    TurnStarted {
+        turn: u32,
+    },
+    Weather {
+        dryness: f64,
+    },
+    Maintenance {
+        regions_serviced: u32,
+        capacity_used: f64,
+    },
+    Conditions {
+        avg_health: f64,
+        avg_wear: f64,
+    },
+    Prestige {
+        value: f64,
+        delta: f64,
+    },
     /// `interested` golfers considered a round; `golfers` actually played at
     /// `price`; the rest balked (`turned_away`).
-    Demand { interested: u32, golfers: u32, turned_away: u32, price: f64 },
-    GreenFees { amount: f64 },
-    Secondary { amount: f64 },
-    Outbreak { region: u32 },
-    Spread { region: u32 },
-    Treated { regions: u32, cost: f64 },
-    Cash { value: f64, delta: f64 },
-    Bankrupt { turn: u32 },
+    Demand {
+        interested: u32,
+        golfers: u32,
+        turned_away: u32,
+        price: f64,
+    },
+    GreenFees {
+        amount: f64,
+    },
+    Secondary {
+        amount: f64,
+    },
+    Outbreak {
+        region: u32,
+    },
+    Spread {
+        region: u32,
+    },
+    Treated {
+        regions: u32,
+        cost: f64,
+    },
+    Cash {
+        value: f64,
+        delta: f64,
+    },
+    Bankrupt {
+        turn: u32,
+    },
 }
 
 pub type Trace = Vec<Event>;

@@ -11,7 +11,11 @@ fn main() {
     let turns: u32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(30);
 
     let mut world = World::demo(seed);
-    let mut strategy = PlanStrategy { price, capacity, treat: true };
+    let mut strategy = PlanStrategy {
+        price,
+        capacity,
+        treat: true,
+    };
     let trace = run(&mut world, &mut strategy, turns);
 
     for event in &trace {
@@ -35,14 +39,25 @@ fn render(event: &Event) -> String {
     match event {
         Event::TurnStarted { turn } => format!("\n── turn {turn} ──"),
         Event::Weather { dryness } => format!("  weather    dryness +{dryness:.1}"),
-        Event::Maintenance { regions_serviced, capacity_used } => {
+        Event::Maintenance {
+            regions_serviced,
+            capacity_used,
+        } => {
             format!("  crew       serviced {regions_serviced} regions (used {capacity_used:.0})")
         }
-        Event::Conditions { avg_health, avg_wear } => {
+        Event::Conditions {
+            avg_health,
+            avg_wear,
+        } => {
             format!("  conditions health {avg_health:.1}   wear {avg_wear:.1}")
         }
         Event::Prestige { value, delta } => format!("  prestige   {value:.0} ({delta:+.1})"),
-        Event::Demand { interested, golfers, turned_away, price } => format!(
+        Event::Demand {
+            interested,
+            golfers,
+            turned_away,
+            price,
+        } => format!(
             "  demand     {golfers}/{interested} played @ ${price:.0}  ({turned_away} balked)"
         ),
         Event::GreenFees { amount } => format!("  green fees +${amount:.0}"),
