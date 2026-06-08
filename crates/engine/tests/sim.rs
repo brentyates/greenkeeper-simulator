@@ -1,4 +1,4 @@
-use engine::{run, DiseasePolicy, Event, FixedPricing, PlanStrategy, Trace, World};
+use engine::{run, Balance, DiseasePolicy, Event, FixedPricing, PlanStrategy, Trace, World};
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
     let mut world = World::demo(seed);
@@ -165,6 +165,31 @@ fn premium_pricing_builds_exclusivity() {
     assert!(
         premium > budget,
         "premium should build more exclusivity (premium={premium:.0}, budget={budget:.0})"
+    );
+}
+
+#[test]
+fn balance_is_data_driven() {
+    // Same seed and strategy; only a balance parameter differs → the outcome
+    // differs. This is the property an automated/ML tuner relies on: vary the
+    // data, re-measure, optimize.
+    fn final_cash(balance: Balance) -> f64 {
+        let mut world = World::demo(5).with_balance(balance);
+        let mut strat = PlanStrategy {
+            price: 45.0,
+            capacity: 40.0,
+            disease: DiseasePolicy::Treat,
+        };
+        run(&mut world, &mut strat, 60);
+        world.finances.cash
+    }
+    let base = final_cash(Balance::default());
+    let mut dearer = Balance::default();
+    dearer.economy.fixed_overhead += 200.0;
+    let dearer_cash = final_cash(dearer);
+    assert!(
+        dearer_cash < base,
+        "higher overhead should lower cash (base={base:.0}, dearer={dearer_cash:.0})"
     );
 }
 

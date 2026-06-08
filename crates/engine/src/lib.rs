@@ -14,8 +14,8 @@ pub use decision::{
 };
 pub use event::{Event, Trace};
 pub use model::{
-    default_segments, Balance, Course, DiseasePolicy, Finances, Operations, Region, RegionKind,
-    Segment, Standing, World,
+    default_segments, Balance, Course, DiseaseBalance, DiseasePolicy, EconomyBalance, Finances,
+    Operations, PrestigeBalance, Region, RegionKind, Segment, Standing, World,
 };
 pub use rng::Rng;
 

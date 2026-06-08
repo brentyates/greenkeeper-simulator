@@ -123,6 +123,28 @@ so we can drive runs without a human. They can move to data later if useful.
 - **Balance sweeps**: run many seeds × strategies, aggregate outcomes, surface
   whether decisions actually trade off as intended.
 
+### Balance tuning & ML-readiness [decided]
+
+If hand-tuning the balance becomes intractable, tuning escalates to automated
+search — grid/evolutionary/Bayesian optimization over the parameter space, or RL
+agents probing for dominant strategies. The architecture is built so that is a
+*plug-in, not a rewrite*:
+
+- **Balance is data and injectable.** `Balance` is a plain struct of ~25 `f64`s,
+  set via `World::with_balance(..)`. An optimizer mutates it and re-measures in a
+  loop — the property `balance_is_data_driven` proves the engine reads it.
+- **Cheap, deterministic, headless evaluation.** Zero-dependency, seeded,
+  no-I/O → millions of reproducible runs are feasible; identical seed+balance →
+  identical trace, so results are comparable across the search.
+- **A clear objective to optimize toward.** The fitness is the design's reward
+  curve (DESIGN §7): *many paths survive, heaps only via the hard path.* A tuner
+  scores a `Balance` by how well a panel of strategies × seeds reproduces that
+  shape (viable mid paths, fatal extremes, premium-only riches).
+- **When pursued, add (not before):** `serde` on `Balance` (persist/share
+  candidates), a shared `evaluate(balance, strategies, seeds) -> Metrics` seam
+  factored out of the sweep, and optionally `Balance ↔ Vec<f64>` for vectorized
+  optimizers. Until then, YAGNI.
+
 ---
 
 ## 9. Dependencies (keep lean)

@@ -286,6 +286,14 @@ pub struct World {
 }
 
 impl World {
+    /// Override the tuning. This is the seam for per-scenario configs and for
+    /// automated/ML balance search, which mutates `Balance` and re-measures in a
+    /// loop — only possible because tuning is data, not compiled-in constants.
+    pub fn with_balance(mut self, balance: Balance) -> Self {
+        self.balance = balance;
+        self
+    }
+
     /// A small starter course used for the first slice and tests.
     pub fn demo(seed: u64) -> World {
         use RegionKind::*;
