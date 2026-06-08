@@ -1,0 +1,9 @@
+[package]
+name = "sweep"
+version = "0.1.0"
+edition = "2021"
+
+# Balance-sweep harness: runs many seeds x strategies over the engine and
+# aggregates outcomes, so balance is measurable. All I/O lives here.
+[dependencies]
+engine = { path = "../engine" }
