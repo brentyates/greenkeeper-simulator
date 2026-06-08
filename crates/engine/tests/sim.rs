@@ -1,7 +1,22 @@
 use engine::{
-    run, Balance, CourseSpec, CourseType, Event, FixedPricing, LossReason, Objective, Outcome,
-    PlanStrategy, RampStrategy, Scenario, ScenarioStrategy, TournamentStrategy, Trace, World,
+    run, Balance, CourseSpec, CourseType, Event, FixedPricing, InvestStrategy, LossReason,
+    Objective, Outcome, PlanStrategy, RampStrategy, Scenario, ScenarioStrategy, TournamentStrategy,
+    Trace, World,
 };
+
+fn big_course(seed: u64, holes: u32) -> World {
+    let sc = Scenario {
+        name: "Scale".to_string(),
+        course: CourseSpec {
+            holes,
+            par3: false,
+            course_type: CourseType::Parkland,
+        },
+        objective: Objective::Survive { turns: 100 },
+        start_neglect: 0.0,
+    };
+    World::demo(seed).with_scenario(sc)
+}
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
     let mut world = World::demo(seed);
@@ -111,6 +126,89 @@ fn understaffing_a_busy_course_is_a_mistake() {
     assert!(
         staffed > thin,
         "holding the greens should out-earn understaffing (staffed={staffed:.0}, thin={thin:.0})"
+    );
+}
+
+// --- automation: irrigation system + robot mowers ---
+
+#[test]
+fn irrigation_installs_and_holds_a_thin_crew() {
+    // Once the sprinkler system is in, watering comes off the crew's plate, so a
+    // lean crew still holds conditions. Guards the install + auto-watering path.
+    let mut world = big_course(1, 9);
+    let base = world.course.regions.len() as f64 * 4.0;
+    run(
+        &mut world,
+        &mut InvestStrategy {
+            base_capacity: base,
+            irrigation: true,
+            robot_target: 0,
+        },
+        250,
+    );
+    assert!(world.irrigation, "irrigation should have been installed");
+    assert!(
+        world.course.avg_health(&world.balance.conditions) > 80.0,
+        "a lean crew with irrigation should still hold conditions"
+    );
+}
+
+#[test]
+fn robots_get_bought_and_break_down() {
+    // A robot fleet is a capital bet with mechanics: units get bought, and over a
+    // long run they break down (and recover) — never silently perfect.
+    let mut world = big_course(1, 18);
+    let base = world.course.regions.len() as f64 * 4.0;
+    let trace = run(
+        &mut world,
+        &mut InvestStrategy {
+            base_capacity: base,
+            irrigation: true,
+            robot_target: 6,
+        },
+        300,
+    );
+    let bought = trace
+        .iter()
+        .filter(|e| matches!(e, Event::RobotPurchased { .. }))
+        .count();
+    let broke = trace
+        .iter()
+        .filter(|e| matches!(e, Event::RobotBrokeDown { .. }))
+        .count();
+    assert!(bought >= 1, "should have bought robots");
+    assert!(broke >= 1, "robots should break down over a long run");
+    assert!(!world.robots.is_empty(), "the fleet should still exist");
+}
+
+#[test]
+fn irrigation_pays_off_at_scale() {
+    // The flagship capital case: on a big course, installing the irrigation system
+    // and running a leaner crew out-earns the same plan staffed entirely by hand.
+    // (On a tiny course the install never pays back — automation is for scale.)
+    fn cash(seed: u64, irrigate: bool) -> f64 {
+        let mut w = big_course(seed, 27);
+        let base = w.course.regions.len() as f64 * 4.0;
+        if irrigate {
+            run(
+                &mut w,
+                &mut InvestStrategy {
+                    base_capacity: base,
+                    irrigation: true,
+                    robot_target: 0,
+                },
+                250,
+            );
+        } else {
+            run(&mut w, &mut RampStrategy { capacity: base }, 250);
+        }
+        w.finances.cash
+    }
+    let irrigated: f64 = (1..=15).map(|s| cash(s, true)).sum();
+    let hand: f64 = (1..=15).map(|s| cash(s, false)).sum();
+    assert!(
+        irrigated > hand,
+        "irrigation should pay off at scale (irrigated={irrigated:.0}, hand={hand:.0})"
     );
 }
 
@@ -242,6 +340,8 @@ fn tournament_eligibility_is_gated() {
                 accept_tournament: Some(4),
                 prep_effort: 0.0,
                 research_funding: 0.0,
+                buy_irrigation: false,
+                buy_robots: 0,
             }
         }
     }

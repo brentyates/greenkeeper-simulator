@@ -10,15 +10,16 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    sweet_spot, Decisions, FixedPricing, PlanStrategy, RampStrategy, ScenarioStrategy, Strategy,
-    TournamentStrategy,
+    sweet_spot, Decisions, FixedPricing, InvestStrategy, PlanStrategy, RampStrategy,
+    ScenarioStrategy, Strategy, TournamentStrategy,
 };
 pub use event::{Event, Trace};
 pub use model::{
-    campaign, default_segments, AgronomyBalance, Balance, Course, CourseSpec, CourseType,
-    EconomyBalance, Finances, KindRates, LossReason, MarketBalance, Objective, Operations, Outcome,
-    PrepTask, PrestigeBalance, Region, RegionKind, Research, ResearchBalance, Scenario, Segment,
-    Standing, Tech, TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
+    campaign, default_segments, AgronomyBalance, AutomationBalance, Balance, Course, CourseSpec,
+    CourseType, EconomyBalance, Finances, KindRates, LossReason, MarketBalance, Objective,
+    Operations, Outcome, PrepTask, PrestigeBalance, Region, RegionKind, Research, ResearchBalance,
+    Scenario, Segment, Standing, Tech, TournamentBalance, TournamentPhase, TournamentState,
+    TournamentTier, World,
 };
 pub use rng::Rng;
 
@@ -39,6 +40,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     // Tournament prep steals capacity from maintenance unless you've staffed up.
     let prep_request = decisions.prep_effort.clamp(0.0, world.ops.staff_capacity);
     let prep_spent = systems::tournament_prep(world, prep_request, trace);
+    systems::automation(world, decisions.buy_irrigation, decisions.buy_robots, trace);
     systems::maintenance(
         world,
         (world.ops.staff_capacity - prep_spent).max(0.0),

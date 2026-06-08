@@ -39,6 +39,16 @@ pub enum Event {
     TechUnlocked {
         name: String,
     },
+    IrrigationInstalled {
+        cost: f64,
+    },
+    RobotPurchased {
+        cost: f64,
+        owned: u32,
+    },
+    RobotBrokeDown {
+        repair_cost: f64,
+    },
     TournamentScheduled {
         tier: String,
         starts_in: u32,

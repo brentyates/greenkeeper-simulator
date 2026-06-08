@@ -17,6 +17,11 @@ pub struct Decisions {
     pub prep_effort: f64,
     /// Cash to spend on research this turn (accrues points toward the next tech).
     pub research_funding: f64,
+    /// Install the course-wide irrigation system this turn (capital). No effect if
+    /// already installed or unaffordable.
+    pub buy_irrigation: bool,
+    /// Buy this many robot units this turn (capital), affordability permitting.
+    pub buy_robots: u32,
 }
 
 impl Decisions {
@@ -28,6 +33,8 @@ impl Decisions {
             accept_tournament: None,
             prep_effort: 0.0,
             research_funding: 0.0,
+            buy_irrigation: false,
+            buy_robots: 0,
         }
     }
 }
@@ -138,6 +145,68 @@ impl Strategy for ScenarioStrategy {
             accept_tournament: accept,
             prep_effort,
             research_funding: self.research_funding,
+            buy_irrigation: false,
+            buy_robots: 0,
+        }
+    }
+}
+
+/// Trades labor for capital: ramp pricing, installing the irrigation system and
+/// buying robot units (one at a time, as cash allows) up to a target fleet. Crew
+/// size *tracks what's still done by hand* — a full crew while saving up, shedding
+/// wages as each automation comes online, staffing back up when robots are down
+/// for repair. The automation path: a capital bet that pays off by shedding labor,
+/// most at scale.
+pub struct InvestStrategy {
+    /// The hands-on crew you'd run with no automation; automation scales it down.
+    pub base_capacity: f64,
+    pub irrigation: bool,
+    pub robot_target: u32,
+}
+
+impl Strategy for InvestStrategy {
+    fn decide(&mut self, world: &World) -> Decisions {
+        let a = &world.balance.automation;
+        let agro = &world.balance.agronomy;
+        let buy_irrigation = self.irrigation && !world.irrigation;
+        // One unit at a time, keeping a cash cushion so a purchase never bankrupts,
+        // and not in the same turn we're paying for the irrigation install.
+        let want_more = (world.robots.len() as u32) < self.robot_target;
+        let buy_robots =
+            if want_more && !buy_irrigation && world.finances.cash >= a.robot_price * 2.0 {
+                1
+            } else {
+                0
+            };
+
+        // Size the crew to the maintenance still done by hand. Irrigation removes
+        // watering from every region the crew touches (a proportional saving);
+        // each operational robot offloads a fixed slab of mowing+fertilizing
+        // (its throughput), so the crew staffs back up when units are down.
+        let full = agro.mow_cost + agro.water_cost + agro.fertilize_cost;
+        let working = world.robots.iter().filter(|&&d| d == 0).count() as f64;
+        let mut target_capacity = self.base_capacity;
+        if world.irrigation {
+            target_capacity *= (full - agro.water_cost) / full;
+        }
+        target_capacity -= working * a.robot_throughput * (agro.mow_cost + agro.fertilize_cost);
+        // Keep a skeleton crew on hand to patch the ground robots can't reach and
+        // to cover breakdown slack — never fully hollow out the payroll.
+        let floor = if self.robot_target > 0 || self.irrigation {
+            self.base_capacity * 0.15
+        } else {
+            0.0
+        };
+        let target_capacity = target_capacity.max(floor);
+
+        Decisions {
+            price: sweet_spot(world.standing.tier()),
+            target_capacity,
+            accept_tournament: None,
+            prep_effort: 0.0,
+            research_funding: 0.0,
+            buy_irrigation,
+            buy_robots,
         }
     }
 }

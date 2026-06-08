@@ -7,7 +7,8 @@
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
 use engine::{
-    run, Balance, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy, World,
+    run, Balance, Event, InvestStrategy, PlanStrategy, RampStrategy, Strategy, TournamentStrategy,
+    World,
 };
 
 /// Load tuning from TOML (`$GK_BALANCE`, default `config/balance.toml`); fall back
@@ -40,6 +41,16 @@ fn ramp(capacity: f64) -> Factory {
 
 fn host(capacity: f64) -> Factory {
     Box::new(move || Box::new(TournamentStrategy { capacity }) as Box<dyn Strategy>)
+}
+
+fn invest(base_capacity: f64, irrigation: bool, robot_target: u32) -> Factory {
+    Box::new(move || {
+        Box::new(InvestStrategy {
+            base_capacity,
+            irrigation,
+            robot_target,
+        }) as Box<dyn Strategy>
+    })
 }
 
 struct RunResult {
@@ -110,6 +121,20 @@ fn main() {
         Path {
             name: "tournament host",
             make: host(35.0),
+        },
+        // Capital-for-labor: same base crew as ramp, scaled down as machines come
+        // online (so they survive while saving up the capital).
+        Path {
+            name: "auto: irrigation",
+            make: invest(35.0, true, 0),
+        },
+        Path {
+            name: "auto: robots",
+            make: invest(35.0, false, 2),
+        },
+        Path {
+            name: "auto: full",
+            make: invest(35.0, true, 2),
         },
         // Run badly — these should fail.
         Path {

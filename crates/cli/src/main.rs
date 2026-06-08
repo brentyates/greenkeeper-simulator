@@ -163,6 +163,15 @@ fn render(event: &Event) -> String {
         Event::GreenFees { amount } => format!("  green fees +${amount:.0}"),
         Event::Secondary { amount } => format!("  secondary  +${amount:.0}"),
         Event::TechUnlocked { name } => format!("  ++ researched: {name}"),
+        Event::IrrigationInstalled { cost } => {
+            format!("  ++ irrigation system installed (-${cost:.0})")
+        }
+        Event::RobotPurchased { cost, owned } => {
+            format!("  ++ robot unit bought (-${cost:.0}, fleet {owned})")
+        }
+        Event::RobotBrokeDown { repair_cost } => {
+            format!("  !! robot breakdown (-${repair_cost:.0} repair)")
+        }
         Event::TournamentScheduled { tier, starts_in } => {
             format!("  >> {tier} tournament booked (starts in {starts_in})")
         }

@@ -1,5 +1,4 @@
 [economy]
-service_cost = 10.0
 nutrient_decay = 2.0
 wear_per_golfer = 4.0
 wage_per_capacity = 6.0
@@ -252,6 +251,9 @@ lush_threshold = 50.0
 serviced_moisture = 70.0
 serviced_growth = 5.0
 serviced_nutrients = 80.0
+mow_cost = 4.0
+water_cost = 3.0
+fertilize_cost = 3.0
 
 [agronomy.green]
 growth = 8.0
@@ -272,3 +274,13 @@ wear = 1.0
 growth = 3.0
 moisture_decay = 7.0
 wear = 0.6
+
+[automation]
+irrigation_install = 8000.0
+irrigation_upkeep = 25.0
+robot_price = 6000.0
+robot_throughput = 4.0
+robot_upkeep = 18.0
+robot_breakdown = 0.035
+robot_repair_cost = 600.0
+robot_repair_turns = 3

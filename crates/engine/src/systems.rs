@@ -76,34 +76,128 @@ pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
     }
 }
 
-/// Limited crew capacity fully services the neediest regions first (restoring
-/// moisture, mowing, fertilizing, repairing wear). When needy regions outnumber
-/// capacity, conditions slip — the core allocation tension.
+/// Process automation capital: buy the irrigation system / robot units, pay
+/// running costs, and run breakdown + repair-downtime on the robot fleet. The
+/// turf work the automation does is applied in `maintenance`; this is the money
+/// and machinery bookkeeping.
+pub(crate) fn automation(
+    world: &mut World,
+    buy_irrigation: bool,
+    buy_robots: u32,
+    trace: &mut Trace,
+) {
+    let a = world.balance.automation.clone();
+    if buy_irrigation && !world.irrigation && world.finances.cash >= a.irrigation_install {
+        world.finances.cash -= a.irrigation_install;
+        world.irrigation = true;
+        trace.push(Event::IrrigationInstalled {
+            cost: a.irrigation_install,
+        });
+    }
+    for _ in 0..buy_robots {
+        if world.finances.cash < a.robot_price {
+            break;
+        }
+        world.finances.cash -= a.robot_price;
+        world.robots.push(0);
+        trace.push(Event::RobotPurchased {
+            cost: a.robot_price,
+            owned: world.robots.len() as u32,
+        });
+    }
+
+    // Running costs for installed/owned kit.
+    if world.irrigation {
+        world.finances.cash -= a.irrigation_upkeep;
+    }
+    world.finances.cash -= a.robot_upkeep * world.robots.len() as f64;
+
+    // Recover units mid-repair; roll breakdowns on the operational ones.
+    for i in 0..world.robots.len() {
+        if world.robots[i] > 0 {
+            world.robots[i] -= 1;
+        } else if world.rng.next_f64() < a.robot_breakdown {
+            world.robots[i] = a.robot_repair_turns;
+            world.finances.cash -= a.robot_repair_cost;
+            trace.push(Event::RobotBrokeDown {
+                repair_cost: a.robot_repair_cost,
+            });
+        }
+    }
+}
+
+/// Maintenance has three jobs per region — mow (resets growth, grooms wear), water
+/// (restores moisture), fertilize (restores nutrients) — each costing crew
+/// capacity. Automation takes jobs off the crew: an irrigation system waters every
+/// region automatically, and operational robots mow+fertilize the neediest regions
+/// up to their throughput. The crew then covers whatever's left, neediest-first,
+/// within `capacity`. When needs outrun what crew + machines can reach, conditions
+/// slip — the core allocation tension.
 pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
-    // Better mowers/equipment make each region cheaper to service.
-    let service_cost = world.balance.economy.service_cost * (1.0 - tech_bonuses(world).0);
     let c = world.balance.conditions.clone();
     let agro = world.balance.agronomy.clone();
+    // Better mowers/equipment make the mowing job cheaper.
+    let mow_cost = agro.mow_cost * (1.0 - tech_bonuses(world).0);
+    let n = world.course.regions.len();
 
-    let mut order: Vec<usize> = (0..world.course.regions.len()).collect();
+    // Irrigation waters the whole course automatically.
+    if world.irrigation {
+        for r in world.course.regions.iter_mut() {
+            r.moisture = agro.serviced_moisture;
+        }
+    }
+
+    // Robots mow + fertilize the neediest regions, up to fleet throughput.
+    let working = world.robots.iter().filter(|&&d| d == 0).count() as f64;
+    let robot_reach = (working * world.balance.automation.robot_throughput).floor() as usize;
+    let mut robot_done = vec![false; n];
+    if robot_reach > 0 {
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|&a, &b| {
+            world.course.regions[a]
+                .health(&c)
+                .total_cmp(&world.course.regions[b].health(&c))
+        });
+        for &i in order.iter().take(robot_reach) {
+            let r = &mut world.course.regions[i];
+            r.growth = agro.serviced_growth;
+            r.nutrients = agro.serviced_nutrients;
+            r.wear = 0.0;
+            robot_done[i] = true;
+        }
+    }
+
+    // Crew covers the remaining jobs, neediest-first, within capacity.
+    let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| {
         world.course.regions[a]
             .health(&c)
             .total_cmp(&world.course.regions[b].health(&c))
     });
-
     let mut budget = capacity;
     let mut serviced = 0u32;
     for i in order {
-        if budget < service_cost {
-            break;
+        let need_water = !world.irrigation;
+        let need_mowfert = !robot_done[i];
+        let cost = if need_water { agro.water_cost } else { 0.0 }
+            + if need_mowfert {
+                mow_cost + agro.fertilize_cost
+            } else {
+                0.0
+            };
+        if cost <= 0.0 || budget < cost {
+            continue;
         }
         let r = &mut world.course.regions[i];
-        r.moisture = agro.serviced_moisture;
-        r.growth = agro.serviced_growth;
-        r.nutrients = agro.serviced_nutrients;
-        r.wear = 0.0;
-        budget -= service_cost;
+        if need_water {
+            r.moisture = agro.serviced_moisture;
+        }
+        if need_mowfert {
+            r.growth = agro.serviced_growth;
+            r.nutrients = agro.serviced_nutrients;
+            r.wear = 0.0;
+        }
+        budget -= cost;
         serviced += 1;
     }
     trace.push(Event::Maintenance {

@@ -91,7 +91,6 @@ pub fn default_segments() -> Vec<Segment> {
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EconomyBalance {
-    pub service_cost: f64,             // capacity to fully service one region
     pub nutrient_decay: f64,           // per turn
     pub wear_per_golfer: f64,          // wear points added per golfer, spread by traffic
     pub wage_per_capacity: f64,        // wage cost per unit of staff capacity
@@ -103,7 +102,6 @@ pub struct EconomyBalance {
 impl Default for EconomyBalance {
     fn default() -> Self {
         EconomyBalance {
-            service_cost: 10.0,
             nutrient_decay: 2.0,
             wear_per_golfer: 4.0,
             wage_per_capacity: 6.0,
@@ -396,6 +394,7 @@ pub struct Balance {
     pub research: ResearchBalance,
     pub market: MarketBalance,
     pub agronomy: AgronomyBalance,
+    pub automation: AutomationBalance,
 }
 
 /// The golfer market — the segment mix demand emerges from. Tuning.
@@ -431,6 +430,12 @@ pub struct AgronomyBalance {
     pub serviced_moisture: f64, // state a fully-serviced region is restored to
     pub serviced_growth: f64,
     pub serviced_nutrients: f64,
+    // The three maintenance jobs, each costing crew capacity per region. Their sum
+    // is the cost to fully tend one region; automation removes individual jobs from
+    // the crew's plate. Mowing also grooms out traffic wear.
+    pub mow_cost: f64,       // mowing (resets growth, repairs wear)
+    pub water_cost: f64,     // watering (restores moisture) — automated by irrigation
+    pub fertilize_cost: f64, // fertilizing (restores nutrients)
 }
 
 impl Default for AgronomyBalance {
@@ -461,6 +466,40 @@ impl Default for AgronomyBalance {
             serviced_moisture: 70.0,
             serviced_growth: 5.0,
             serviced_nutrients: 80.0,
+            mow_cost: 4.0,
+            water_cost: 3.0,
+            fertilize_cost: 3.0,
+        }
+    }
+}
+
+/// Automation: capital that takes maintenance jobs off the crew. The irrigation
+/// system (pipes + sprinklers) is a one-time course-wide install that waters
+/// automatically; robot units mow and fertilize up to a throughput, with running
+/// cost and the risk of breakdowns. Tuning.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AutomationBalance {
+    pub irrigation_install: f64, // one-time capital: pipes + sprinklers, whole course
+    pub irrigation_upkeep: f64,  // per-turn running cost once installed
+    pub robot_price: f64,        // capital per robot unit
+    pub robot_throughput: f64,   // regions one unit mows+fertilizes per turn
+    pub robot_upkeep: f64,       // per-turn running cost per owned unit
+    pub robot_breakdown: f64,    // per-unit per-turn breakdown chance
+    pub robot_repair_cost: f64,  // paid when a unit breaks down
+    pub robot_repair_turns: u32, // turns a broken unit is out of service
+}
+
+impl Default for AutomationBalance {
+    fn default() -> Self {
+        AutomationBalance {
+            irrigation_install: 8000.0,
+            irrigation_upkeep: 25.0,
+            robot_price: 6000.0,
+            robot_throughput: 4.0,
+            robot_upkeep: 18.0,
+            robot_breakdown: 0.035,
+            robot_repair_cost: 600.0,
+            robot_repair_turns: 3,
         }
     }
 }
@@ -770,6 +809,8 @@ pub struct World {
     pub demand_scale: f64,    // golfer throughput vs the 9-region baseline (course size)
     pub best_hosted_tier: Option<usize>, // highest tier successfully hosted (grade ≥ 0.5)
     pub research: Research,
+    pub irrigation: bool, // course-wide sprinkler system installed (automates watering)
+    pub robots: Vec<u32>, // owned robot units; each value is downtime remaining (0 = operational)
     pub scenario: Option<Scenario>,
     pub outcome: Outcome,
     pub rng: Rng,
@@ -850,6 +891,8 @@ impl World {
             demand_scale: 1.0,
             best_hosted_tier: None,
             research: Research::default(),
+            irrigation: false,
+            robots: Vec::new(),
             scenario: None,
             outcome: Outcome::Running,
             rng: Rng::new(seed),
