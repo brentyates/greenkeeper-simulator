@@ -364,6 +364,7 @@ pub struct DemandBalance {
     pub satisfaction_conditions: f64, // weight of conditions in satisfaction (rest = uncrowded)
     pub secondary_weather_factor: f64, // secondary-spend boost per point of dryness
     pub demand_scale_per_hole: f64, // golfer throughput per hole (÷ baseline)
+    pub greens_weight: f64, // share of the perceived-conditions signal taken from the greens (vs course average)
 }
 
 impl Default for DemandBalance {
@@ -379,6 +380,7 @@ impl Default for DemandBalance {
             satisfaction_conditions: 0.7,
             secondary_weather_factor: 0.1,
             demand_scale_per_hole: 4.0 / 9.0,
+            greens_weight: 0.8,
         }
     }
 }
@@ -698,6 +700,22 @@ impl Course {
             return 0.0;
         }
         self.regions.iter().map(|r| r.wear).sum::<f64>() / self.regions.len() as f64
+    }
+
+    /// Condition of the *worst-maintained green* — the surface golfers judge a
+    /// course by. Demand keys off this so a single neglected green drives play
+    /// away no matter how cheap the round or how tidy the rest. Because the crew
+    /// services neediest-first, a course with enough capacity keeps every green
+    /// up; a thin crew always leaves one badly behind, so this separates a held
+    /// course from a neglected one far more sharply than the average. Falls back
+    /// to the overall average if a course has no greens.
+    pub fn worst_green_health(&self, c: &ConditionsBalance) -> f64 {
+        self.regions
+            .iter()
+            .filter(|r| r.kind == RegionKind::Green)
+            .map(|r| r.health(c))
+            .min_by(f64::total_cmp)
+            .unwrap_or_else(|| self.avg_health(c))
     }
 }
 

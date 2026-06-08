@@ -31,6 +31,7 @@ crowding_penalty = 2.0
 satisfaction_conditions = 0.7
 secondary_weather_factor = 0.1
 demand_scale_per_hole = 0.4444444444444444
+greens_weight = 0.8
 
 [prestige]
 max_up = 5.0

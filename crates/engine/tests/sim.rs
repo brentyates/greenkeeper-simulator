@@ -95,6 +95,25 @@ fn worn_courses_lose_health() {
     );
 }
 
+#[test]
+fn understaffing_a_busy_course_is_a_mistake() {
+    // Same bargain price and traffic; a crew big enough to hold the greens earns
+    // more than one too thin to. Demand keys off the worst-maintained green, so a
+    // skeleton crew can't monetize the wages it saves — it lets a green die and
+    // sheds the play that pays for itself. Guards the agronomy/greens coupling.
+    fn total_cash(capacity: f64) -> f64 {
+        (1..=40)
+            .map(|s| run_plan(25.0, capacity, s, 120).0.finances.cash)
+            .sum()
+    }
+    let staffed = total_cash(55.0);
+    let thin = total_cash(20.0);
+    assert!(
+        staffed > thin,
+        "holding the greens should out-earn understaffing (staffed={staffed:.0}, thin={thin:.0})"
+    );
+}
+
 // --- invariants (guard against NaN, out-of-bounds, broken couplings) ---
 
 #[test]

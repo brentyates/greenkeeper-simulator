@@ -163,8 +163,12 @@ pub(crate) fn demand_and_revenue(
     world.finances.price = price;
     let dm = world.balance.demand.clone();
     let avg_health = world.course.avg_health(&world.balance.conditions);
+    let worst_green = world.course.worst_green_health(&world.balance.conditions);
+    // Perceived conditions: the worst green drags the signal down, so neglecting
+    // the surfaces golfers judge by repels play even on an otherwise tidy course.
+    let condition_signal = (1.0 - dm.greens_weight) * avg_health + dm.greens_weight * worst_green;
     let experience = (dm.experience_prestige * (world.standing.prestige / 1000.0)
-        + dm.experience_conditions * (avg_health / 100.0))
+        + dm.experience_conditions * (condition_signal / 100.0))
         .clamp(0.0, 1.0);
     let amenity = world.ops.amenity_level;
     let weather_spend = 1.0 + dryness * dm.secondary_weather_factor;
@@ -200,7 +204,7 @@ pub(crate) fn demand_and_revenue(
     let comfortable = world.balance.prestige.comfortable_golfers;
     let crowding_penalty =
         ((golfers_total - comfortable).max(0.0) * dm.crowding_penalty).clamp(0.0, 100.0);
-    let satisfaction = (dm.satisfaction_conditions * avg_health
+    let satisfaction = (dm.satisfaction_conditions * condition_signal
         + (1.0 - dm.satisfaction_conditions) * (100.0 - crowding_penalty))
         .clamp(0.0, 100.0);
     let premium_share = if golfers_total > 0.0 {

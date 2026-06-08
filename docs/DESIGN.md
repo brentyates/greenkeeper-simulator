@@ -193,6 +193,13 @@ with and take pride in optimizing.
   conditions. Raise the fee and you shed the price-sensitive segments first; the
   demand curve **emerges from the mix**, and you can price to court or shed a
   segment deliberately.
+- **Conditions are judged by the greens.** Perceived conditions lean heavily on
+  the **worst-maintained green**, not the course average — golfers judge a course
+  by its greens, and one neglected green drives play away no matter how cheap the
+  round or how tidy the rough. Because the crew maintains neediest-first, a course
+  staffed to its size keeps every green up; a thin crew always leaves one badly
+  behind. This is what makes **understaffing a busy course a real mistake**: it
+  sheds the very play that would have paid the wages it saved.
 - **Multiple revenue streams.** Green fees are primary, but **secondary spend** —
   beverage cart / F&B, pro shop, cart rental, lessons, the range — should be able
   to *rival* fees. A round is hours long: golfers get hungry, thirsty, tired, and
