@@ -9,9 +9,9 @@ const MAX_PRESTIGE_UP: f64 = 5.0; // years to build...
 const MAX_PRESTIGE_DOWN: f64 = 15.0; // ...moments to destroy
 const SERVICE_COST: f64 = 10.0; // capacity to fully service one region
 const NUTRIENT_DECAY: f64 = 2.0;
-const WEAR_PER_GOLFER: f64 = 0.8; // wear points added per golfer, spread by traffic
-const WAGE_PER_CAPACITY: f64 = 2.0;
-const FIXED_OVERHEAD: f64 = 50.0;
+const WEAR_PER_GOLFER: f64 = 2.5; // wear points added per golfer, spread by traffic
+const WAGE_PER_CAPACITY: f64 = 6.0;
+const FIXED_OVERHEAD: f64 = 400.0;
 const BANKRUPTCY_FLOOR: f64 = -1000.0;
 
 /// Outcome of the demand system for one turn.
@@ -115,8 +115,8 @@ pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &m
     let mut secondary = 0.0;
 
     for s in &world.segments {
-        let wtp = s.base_wtp * (0.6 + 0.8 * appeal);
-        let interested = s.population * (0.3 + 0.7 * appeal);
+        let wtp = s.base_wtp * (0.5 + 0.9 * appeal);
+        let interested = s.population * (0.2 + 0.8 * appeal);
         let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
         let golfers = interested * playing_fraction;
 

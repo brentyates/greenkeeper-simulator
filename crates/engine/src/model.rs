@@ -68,8 +68,10 @@ impl Region {
         let moisture_score = (100.0 - (self.moisture - 60.0).abs() * 1.4).clamp(0.0, 100.0);
         let growth_score = (100.0 - self.growth).clamp(0.0, 100.0);
         let nutrient_score = self.nutrients.clamp(0.0, 100.0);
-        let wear_score = (100.0 - self.wear).clamp(0.0, 100.0);
-        (0.30 * moisture_score + 0.25 * growth_score + 0.20 * nutrient_score + 0.25 * wear_score)
+        // Turf fails fast once badly worn: wear compounds steeply past a threshold.
+        let wear_penalty = self.wear + (self.wear - 40.0).max(0.0) * 2.0;
+        let wear_score = (100.0 - wear_penalty).clamp(0.0, 100.0);
+        (0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score)
             .clamp(0.0, 100.0)
     }
 }
@@ -159,7 +161,7 @@ impl World {
             prestige: 200.0,
             price: 35.0,
             regions,
-            staff_capacity: 40.0,
+            staff_capacity: 20.0,
             amenity_level: 1.0,
             segments: default_segments(),
             bankrupt: false,
