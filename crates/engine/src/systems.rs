@@ -12,6 +12,7 @@ const NUTRIENT_DECAY: f64 = 2.0;
 const WEAR_PER_GOLFER: f64 = 2.5; // wear points added per golfer, spread by traffic
 const WAGE_PER_CAPACITY: f64 = 6.0;
 const FIXED_OVERHEAD: f64 = 400.0;
+const VARIABLE_COST_PER_GOLFER: f64 = 15.0; // upkeep/supplies per round — caps volume profit
 const BANKRUPTCY_FLOOR: f64 = -1000.0;
 
 // --- disease (the agronomic-crisis risk layer) ---
@@ -233,9 +234,11 @@ pub fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
     }
 }
 
-/// Revenue in, wages and overhead out. Bankruptcy ends the run.
-pub fn economy(world: &mut World, revenue: f64, trace: &mut Trace) {
-    let expenses = world.staff_capacity * WAGE_PER_CAPACITY + FIXED_OVERHEAD;
+/// Revenue in; wages, fixed overhead, and per-golfer upkeep out. Bankruptcy ends
+/// the run. The per-golfer cost is what keeps high-volume play thin-margin.
+pub fn economy(world: &mut World, revenue: f64, golfers: f64, trace: &mut Trace) {
+    let expenses =
+        world.staff_capacity * WAGE_PER_CAPACITY + FIXED_OVERHEAD + golfers * VARIABLE_COST_PER_GOLFER;
     let delta = revenue - expenses;
     world.cash += delta;
     trace.push(Event::Cash { value: world.cash, delta });

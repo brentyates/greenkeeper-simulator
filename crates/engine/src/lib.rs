@@ -10,7 +10,8 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, Strategy, SweetSpotPricing,
+    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, Strategy,
+    SweetSpotPricing,
 };
 pub use event::{Event, Trace};
 pub use model::{default_segments, Region, RegionKind, Segment, World};
@@ -25,6 +26,8 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     world.turn += 1;
     trace.push(Event::TurnStarted { turn: world.turn });
 
+    world.staff_capacity = decisions.target_capacity.max(0.0);
+
     let dryness = systems::weather(world, trace);
     systems::agronomy(world, dryness);
     systems::maintenance(world, trace);
@@ -33,7 +36,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     systems::conditions_and_prestige(world, trace);
     let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
     systems::wear_from_traffic(world, outcome.golfers);
-    systems::economy(world, outcome.revenue, trace);
+    systems::economy(world, outcome.revenue, outcome.golfers, trace);
 }
 
 /// Run `turns` turns, letting `strategy` choose decisions each turn. Stops early

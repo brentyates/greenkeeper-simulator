@@ -1,4 +1,5 @@
-//! Decisions are what the player (or an automated strategy) commits each turn.
+//! Decisions are what the player (or an automated strategy) commits each turn:
+//! the levers that let you commit to and execute a strategy (a "path").
 
 use crate::model::World;
 use crate::systems::sweet_spot;
@@ -6,8 +7,11 @@ use crate::systems::sweet_spot;
 #[derive(Clone, Debug)]
 pub struct Decisions {
     pub price: f64,
-    /// Whether to treat active turf disease this turn (costs money; overuse breeds
-    /// resistance). Letting it go lets outbreaks worsen and spread.
+    /// Crew capacity to run this turn — more staff maintains more ground and
+    /// fights disease, but costs wages. The lever that makes a busy budget course
+    /// viable, or keeps a premium course lean.
+    pub target_capacity: f64,
+    /// Whether to treat active turf disease this turn.
     pub treat: bool,
 }
 
@@ -17,14 +21,28 @@ pub trait Strategy {
     fn decide(&mut self, world: &World) -> Decisions;
 }
 
-/// Holds a flat green fee and treats outbreaks. The workhorse for sweeping price.
+/// A full operating plan: a price point, a staffing level, and a disease policy.
+/// Expresses a *path* (budget / value / premium / elite, well- or ill-run).
+pub struct PlanStrategy {
+    pub price: f64,
+    pub capacity: f64,
+    pub treat: bool,
+}
+
+impl Strategy for PlanStrategy {
+    fn decide(&mut self, _world: &World) -> Decisions {
+        Decisions { price: self.price, target_capacity: self.capacity, treat: self.treat }
+    }
+}
+
+/// Holds a flat green fee, keeps staffing unchanged, and treats outbreaks.
 pub struct FixedPricing {
     pub price: f64,
 }
 
 impl Strategy for FixedPricing {
-    fn decide(&mut self, _world: &World) -> Decisions {
-        Decisions { price: self.price, treat: true }
+    fn decide(&mut self, world: &World) -> Decisions {
+        Decisions { price: self.price, target_capacity: world.staff_capacity, treat: true }
     }
 }
 
@@ -34,8 +52,8 @@ pub struct NeglectfulPricing {
 }
 
 impl Strategy for NeglectfulPricing {
-    fn decide(&mut self, _world: &World) -> Decisions {
-        Decisions { price: self.price, treat: false }
+    fn decide(&mut self, world: &World) -> Decisions {
+        Decisions { price: self.price, target_capacity: world.staff_capacity, treat: false }
     }
 }
 
@@ -44,7 +62,7 @@ pub struct SweetSpotPricing;
 
 impl Strategy for SweetSpotPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: sweet_spot(world.tier()), treat: true }
+        Decisions { price: sweet_spot(world.tier()), target_capacity: world.staff_capacity, treat: true }
     }
 }
 
@@ -55,6 +73,10 @@ pub struct GreedyPricing {
 
 impl Strategy for GreedyPricing {
     fn decide(&mut self, world: &World) -> Decisions {
-        Decisions { price: sweet_spot(world.tier()) * self.multiplier, treat: true }
+        Decisions {
+            price: sweet_spot(world.tier()) * self.multiplier,
+            target_capacity: world.staff_capacity,
+            treat: true,
+        }
     }
 }

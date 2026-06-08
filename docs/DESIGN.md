@@ -198,6 +198,18 @@ pristine course, **or** pack the bargain crowd cheap — accepting wear, crowdin
 and pace costs — and make it back on carts and the clubhouse. No single price or
 mix dominates; that's the game.
 
+**The reward curve is asymmetric by design — many paths *survive*, few get
+*rich*.** A well-run course of almost any style should reliably **stay afloat**:
+a sensible price, conditions held, staffed to match its traffic, disease managed.
+That's a livable business — but it must **never make heaps**. Heaps are reserved
+for the hard path: sustained **high prestige**, **tournaments pulled off**, and
+the juggling of many staff and demanding high-end golfers. Big money is *earned
+through difficulty and risk*, never handed to a safe mid operation. Mechanically:
+green-fee volume is deliberately **thin-margin** (a per-round upkeep cost caps it),
+so the fortunes live at the top — premium pricing power at high prestige, and
+above all **tournament payouts**. Both honest failure and real riches are
+possible; comfortable mediocrity is the default.
+
 ---
 
 ## 8. Risk & reward
@@ -266,6 +278,9 @@ No meshes, tiles, or coordinates beyond what gameplay needs.
 - **Economy:** RCT-style — segmented golfers paying on perceived value; secondary
   revenue streams that can rival green fees; amenities as capex; novelty premium;
   loans, research dial, marketing bets. [§7]
+- **Reward curve:** many paths *survive* (livable floor), few get *rich*; heaps
+  require the hard path — high prestige, tournaments, complexity. Volume is
+  thin-margin by design. [§7]
 - **Player role:** hands-on, evolving into layered delegation. [§1, §6]
 - **Time:** turn/period-based; fixed cadence, interruptible; zooms days→weeks→
   seasons as you delegate. [§5]

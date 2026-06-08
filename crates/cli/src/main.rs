@@ -1,15 +1,17 @@
-//! Run the demo scenario and print its trace. Usage: `cli [price] [seed] [turns]`.
+//! Run the demo scenario and print its trace.
+//! Usage: `cli [price] [capacity] [seed] [turns]`.
 
-use engine::{run, Event, FixedPricing, World};
+use engine::{run, Event, PlanStrategy, World};
 
 fn main() {
     let mut args = std::env::args().skip(1);
     let price: f64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(45.0);
+    let capacity: f64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(40.0);
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(1);
     let turns: u32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(30);
 
     let mut world = World::demo(seed);
-    let mut strategy = FixedPricing { price };
+    let mut strategy = PlanStrategy { price, capacity, treat: true };
     let trace = run(&mut world, &mut strategy, turns);
 
     for event in &trace {
