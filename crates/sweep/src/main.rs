@@ -6,13 +6,21 @@
 //!
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
-use engine::{run, Event, PlanStrategy, World};
+use engine::{run, Event, PlanStrategy, RampStrategy, Strategy, World};
+
+type Factory = Box<dyn Fn() -> Box<dyn Strategy>>;
 
 struct Path {
     name: &'static str,
-    price: f64,
-    capacity: f64,
-    treat: bool,
+    make: Factory,
+}
+
+fn plan(price: f64, capacity: f64, treat: bool) -> Factory {
+    Box::new(move || Box::new(PlanStrategy { price, capacity, treat }) as Box<dyn Strategy>)
+}
+
+fn ramp(capacity: f64) -> Factory {
+    Box::new(move || Box::new(RampStrategy { capacity }) as Box<dyn Strategy>)
 }
 
 struct RunResult {
@@ -27,8 +35,8 @@ struct RunResult {
 
 fn run_one(path: &Path, seed: u64, turns: u32) -> RunResult {
     let mut world = World::demo(seed);
-    let mut strategy = PlanStrategy { price: path.price, capacity: path.capacity, treat: path.treat };
-    let trace = run(&mut world, &mut strategy, turns);
+    let mut strategy = (path.make)();
+    let trace = run(&mut world, strategy.as_mut(), turns);
 
     let mut total_golfers = 0u64;
     let mut total_outbreaks = 0u64;
@@ -69,14 +77,14 @@ fn main() {
 
     let paths = [
         // Distinct, well-run paths — all should be viable.
-        Path { name: "budget", price: 25.0, capacity: 55.0, treat: true },
-        Path { name: "value", price: 45.0, capacity: 40.0, treat: true },
-        Path { name: "premium", price: 90.0, capacity: 28.0, treat: true },
-        Path { name: "elite", price: 140.0, capacity: 22.0, treat: true },
-        // The same paths run badly — these should fail.
-        Path { name: "budget/understaffed", price: 25.0, capacity: 20.0, treat: true },
-        Path { name: "premium/neglect", price: 90.0, capacity: 28.0, treat: false },
-        Path { name: "overpriced", price: 200.0, capacity: 22.0, treat: true },
+        Path { name: "budget", make: plan(25.0, 55.0, true) },
+        Path { name: "value", make: plan(45.0, 40.0, true) },
+        Path { name: "premium", make: plan(90.0, 28.0, true) },
+        Path { name: "ramp (earn up)", make: ramp(35.0) },
+        // Run badly — these should fail.
+        Path { name: "budget/understaffed", make: plan(25.0, 20.0, true) },
+        Path { name: "premium/neglect", make: plan(90.0, 28.0, false) },
+        Path { name: "opened too rich", make: plan(140.0, 22.0, true) },
     ];
 
     println!("Balance sweep — {seeds} seeds x {turns} turns, demo course\n");

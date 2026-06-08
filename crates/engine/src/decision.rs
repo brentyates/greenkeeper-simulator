@@ -35,6 +35,18 @@ impl Strategy for PlanStrategy {
     }
 }
 
+/// Earns its way up: prices at the sweet spot for the *current* prestige tier, so
+/// the fee rises as the course's reputation grows. Staffs to the chosen level.
+pub struct RampStrategy {
+    pub capacity: f64,
+}
+
+impl Strategy for RampStrategy {
+    fn decide(&mut self, world: &World) -> Decisions {
+        Decisions { price: sweet_spot(world.tier()), target_capacity: self.capacity, treat: true }
+    }
+}
+
 /// Holds a flat green fee, keeps staffing unchanged, and treats outbreaks.
 pub struct FixedPricing {
     pub price: f64,

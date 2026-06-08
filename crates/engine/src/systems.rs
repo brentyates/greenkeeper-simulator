@@ -4,9 +4,7 @@
 use crate::event::{Event, Trace};
 use crate::model::World;
 
-// --- placeholder balance ---
-const MAX_PRESTIGE_UP: f64 = 5.0; // years to build...
-const MAX_PRESTIGE_DOWN: f64 = 15.0; // ...moments to destroy
+// --- economy ---
 const SERVICE_COST: f64 = 10.0; // capacity to fully service one region
 const NUTRIENT_DECAY: f64 = 2.0;
 const WEAR_PER_GOLFER: f64 = 2.5; // wear points added per golfer, spread by traffic
@@ -14,6 +12,16 @@ const WAGE_PER_CAPACITY: f64 = 6.0;
 const FIXED_OVERHEAD: f64 = 400.0;
 const VARIABLE_COST_PER_GOLFER: f64 = 15.0; // upkeep/supplies per round — caps volume profit
 const BANKRUPTCY_FLOOR: f64 = -1000.0;
+
+// --- prestige (holistic; drives pricing power) ---
+const MAX_PRESTIGE_UP: f64 = 5.0; // years to build...
+const MAX_PRESTIGE_DOWN: f64 = 15.0; // ...moments to destroy
+const W_CONDITIONS: f64 = 0.25;
+const W_HISTORICAL: f64 = 0.25;
+const W_AMENITIES: f64 = 0.20;
+const W_REPUTATION: f64 = 0.20;
+const W_EXCLUSIVITY: f64 = 0.10;
+const COMFORTABLE_GOLFERS: f64 = 30.0; // beyond this, crowding hurts satisfaction
 
 // --- disease (the agronomic-crisis risk layer) ---
 const OUTBREAK_RATE: f64 = 0.18; // scales susceptibility into a per-turn outbreak chance
@@ -31,10 +39,12 @@ const RESIST_MAX: f64 = 0.85;
 pub struct DemandOutcome {
     pub revenue: f64,
     pub golfers: f64,
+    pub satisfaction: f64,  // 0..100, feeds reputation
+    pub affluent_share: f64, // 0..1, feeds exclusivity
 }
 
 /// Green-fee sweet spot by prestige tier (0-based). Kept for tier-relative
-/// strategies; the segmented demand model (below) is what actually prices play.
+/// strategies; the segmented demand model is what actually prices play.
 pub fn sweet_spot(tier: u32) -> f64 {
     match tier {
         0 => 15.0,
@@ -97,82 +107,9 @@ pub fn maintenance(world: &mut World, trace: &mut Trace) {
     });
 }
 
-/// Conditions drive prestige, which moves toward its target asymmetrically.
-pub fn conditions_and_prestige(world: &mut World, trace: &mut Trace) {
-    let avg = world.avg_health();
-    trace.push(Event::Conditions { avg_health: avg, avg_wear: world.avg_wear() });
-
-    let target = avg * 10.0; // 0..100 health → 0..1000 prestige
-    let diff = target - world.prestige;
-    let delta = if diff >= 0.0 {
-        diff.min(MAX_PRESTIGE_UP)
-    } else {
-        diff.max(-MAX_PRESTIGE_DOWN)
-    };
-    world.prestige = (world.prestige + delta).clamp(0.0, 1000.0);
-    trace.push(Event::Prestige { value: world.prestige, delta });
-}
-
-/// Segmented, value-based demand. Each segment considers a round based on the
-/// course's appeal, then plays only if the price sits under what *that* segment
-/// will pay. Playing golfers also spend on secondaries (scaled by amenities and
-/// weather). The demand curve emerges from the segment mix.
-pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &mut Trace) -> DemandOutcome {
-    world.price = price;
-    let appeal = world.appeal();
-    let amenity = world.amenity_level;
-    let weather_spend = 1.0 + dryness * 0.1; // hot/dry rounds → more drinks & carts
-
-    let mut interested_total = 0.0;
-    let mut golfers_total = 0.0;
-    let mut secondary = 0.0;
-
-    for s in &world.segments {
-        let wtp = s.base_wtp * (0.5 + 0.9 * appeal);
-        let interested = s.population * (0.2 + 0.8 * appeal);
-        let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
-        let golfers = interested * playing_fraction;
-
-        interested_total += interested;
-        golfers_total += golfers;
-        secondary += golfers * s.spend_propensity * amenity * weather_spend;
-    }
-
-    let golfers = golfers_total.round();
-    let interested = interested_total.round();
-    let turned_away = (interested - golfers).max(0.0);
-    let green_fees = golfers * price;
-
-    trace.push(Event::Demand {
-        interested: interested as u32,
-        golfers: golfers as u32,
-        turned_away: turned_away as u32,
-        price,
-    });
-    trace.push(Event::GreenFees { amount: green_fees });
-    trace.push(Event::Secondary { amount: secondary });
-
-    DemandOutcome { revenue: green_fees + secondary, golfers }
-}
-
-/// Golfer traffic wears the course — greens and tees most. This couples growth
-/// back onto conditions: the more play you take, the harder it is to stay
-/// pristine. The brake and the flywheel are the same mechanism.
-pub fn wear_from_traffic(world: &mut World, golfers: f64) {
-    let total_wear = golfers * WEAR_PER_GOLFER;
-    let weight_sum: f64 = world.regions.iter().map(|r| r.kind.wear_rate()).sum();
-    if weight_sum <= 0.0 {
-        return;
-    }
-    for r in world.regions.iter_mut() {
-        let share = r.kind.wear_rate() / weight_sum;
-        r.wear = (r.wear + total_wear * share).clamp(0.0, 100.0);
-    }
-}
-
 /// How prone a region is to an outbreak, 0..1 — driven mostly by wear (stressed
-/// turf), with lush growth and dry/heat stress adding to it. Never surfaced to the
-/// player as a number; it's learned by playing (DESIGN §7).
+/// turf), with lush growth and dry/heat stress adding to it. Never surfaced as a
+/// number; learned by playing (DESIGN §7).
 fn susceptibility(r: &crate::model::Region, dryness: f64) -> f64 {
     (0.75 * (r.wear / 100.0) + 0.15 * (r.growth / 100.0) + 0.10 * (dryness / 6.0)).clamp(0.0, 1.0)
 }
@@ -231,6 +168,118 @@ pub fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
         let idx = healthy[pick];
         world.regions[idx].infection = SPREAD_SEVERITY;
         trace.push(Event::Spread { region: world.regions[idx].id });
+    }
+}
+
+/// Amenities prestige component (0..100), derived from capex (amenity_level).
+pub fn amenities_score(world: &World) -> f64 {
+    (world.amenity_level * 25.0).clamp(0.0, 100.0)
+}
+
+/// Prestige is the holistic experience: a weighted blend of current conditions,
+/// historical track record, amenities, reputation, and exclusivity. It moves
+/// toward that blend asymmetrically — slow to build, fast to fall — and it is what
+/// sets pricing power in `demand_and_revenue`.
+pub fn prestige_update(world: &mut World, trace: &mut Trace) {
+    let conditions = world.avg_health();
+    trace.push(Event::Conditions { avg_health: conditions, avg_wear: world.avg_wear() });
+
+    let target_score = W_CONDITIONS * conditions
+        + W_HISTORICAL * world.historical_excellence
+        + W_AMENITIES * amenities_score(world)
+        + W_REPUTATION * world.reputation
+        + W_EXCLUSIVITY * world.exclusivity;
+    let target = target_score * 10.0; // 0..100 → 0..1000
+
+    let diff = target - world.prestige;
+    let delta = if diff >= 0.0 {
+        diff.min(MAX_PRESTIGE_UP)
+    } else {
+        diff.max(-MAX_PRESTIGE_DOWN)
+    };
+    world.prestige = (world.prestige + delta).clamp(0.0, 1000.0);
+    trace.push(Event::Prestige { value: world.prestige, delta });
+}
+
+/// Segmented, value-based demand. Pricing power is the holistic prestige
+/// experience (with a little weight on today's conditions): a higher-prestige
+/// course draws more golfers and commands more before they balk. Playing golfers
+/// also generate secondary revenue and a satisfaction signal.
+pub fn demand_and_revenue(world: &mut World, price: f64, dryness: f64, trace: &mut Trace) -> DemandOutcome {
+    world.price = price;
+    let experience = (0.7 * (world.prestige / 1000.0) + 0.3 * (world.avg_health() / 100.0)).clamp(0.0, 1.0);
+    let amenity = world.amenity_level;
+    let weather_spend = 1.0 + dryness * 0.1;
+
+    let mut interested_total = 0.0;
+    let mut golfers_total = 0.0;
+    let mut affluent_golfers = 0.0;
+    let mut secondary = 0.0;
+
+    for s in &world.segments {
+        let wtp = s.base_wtp * (0.5 + 1.0 * experience);
+        let interested = s.population * (0.2 + 0.8 * experience);
+        let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
+        let golfers = interested * playing_fraction;
+
+        interested_total += interested;
+        golfers_total += golfers;
+        secondary += golfers * s.spend_propensity * amenity * weather_spend;
+        if s.name == "affluent" {
+            affluent_golfers += golfers;
+        }
+    }
+
+    let golfers = golfers_total.round();
+    let interested = interested_total.round();
+    let turned_away = (interested - golfers).max(0.0);
+    let green_fees = golfers * price;
+
+    // Satisfaction: good conditions, uncrowded play. Feeds reputation next turn.
+    let crowding_penalty = ((golfers_total - COMFORTABLE_GOLFERS).max(0.0) * 2.0).clamp(0.0, 100.0);
+    let satisfaction = (0.7 * world.avg_health() + 0.3 * (100.0 - crowding_penalty)).clamp(0.0, 100.0);
+    let affluent_share = if golfers_total > 0.0 { affluent_golfers / golfers_total } else { 0.0 };
+
+    trace.push(Event::Demand {
+        interested: interested as u32,
+        golfers: golfers as u32,
+        turned_away: turned_away as u32,
+        price,
+    });
+    trace.push(Event::GreenFees { amount: green_fees });
+    trace.push(Event::Secondary { amount: secondary });
+
+    DemandOutcome { revenue: green_fees + secondary, golfers, satisfaction, affluent_share }
+}
+
+/// Update prestige's slow-moving inputs from how the day actually went. Track
+/// record and reputation build slowly and fall faster; exclusivity reflects how
+/// high-end your pricing and clientele are. These shape *next* turn's prestige.
+pub fn standing_update(world: &mut World, outcome: &DemandOutcome) {
+    let conditions = world.avg_health();
+    let h_rate = if conditions >= world.historical_excellence { 0.04 } else { 0.12 };
+    world.historical_excellence += (conditions - world.historical_excellence) * h_rate;
+
+    let r_rate = if outcome.satisfaction >= world.reputation { 0.08 } else { 0.15 };
+    world.reputation += (outcome.satisfaction - world.reputation) * r_rate;
+
+    let price_factor = (world.price / 200.0).clamp(0.0, 1.0) * 100.0;
+    let target_excl = (0.6 * (outcome.affluent_share * 100.0) + 0.4 * price_factor).clamp(0.0, 100.0);
+    world.exclusivity += (target_excl - world.exclusivity) * 0.1;
+}
+
+/// Golfer traffic wears the course — greens and tees most. This couples growth
+/// back onto conditions: the more play you take, the harder it is to stay
+/// pristine. The brake and the flywheel are the same mechanism.
+pub fn wear_from_traffic(world: &mut World, golfers: f64) {
+    let total_wear = golfers * WEAR_PER_GOLFER;
+    let weight_sum: f64 = world.regions.iter().map(|r| r.kind.wear_rate()).sum();
+    if weight_sum <= 0.0 {
+        return;
+    }
+    for r in world.regions.iter_mut() {
+        let share = r.kind.wear_rate() / weight_sum;
+        r.wear = (r.wear + total_wear * share).clamp(0.0, 100.0);
     }
 }
 

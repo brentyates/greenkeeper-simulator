@@ -10,7 +10,7 @@ pub mod rng;
 pub mod systems;
 
 pub use decision::{
-    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, Strategy,
+    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, PlanStrategy, RampStrategy, Strategy,
     SweetSpotPricing,
 };
 pub use event::{Event, Trace};
@@ -33,9 +33,10 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     systems::maintenance(world, trace);
     systems::treatment(world, decisions.treat, trace);
     systems::disease_tick(world, dryness, trace);
-    systems::conditions_and_prestige(world, trace);
+    systems::prestige_update(world, trace);
     let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
     systems::wear_from_traffic(world, outcome.golfers);
+    systems::standing_update(world, &outcome);
     systems::economy(world, outcome.revenue, outcome.golfers, trace);
 }
 

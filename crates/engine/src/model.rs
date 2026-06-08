@@ -110,6 +110,10 @@ pub struct World {
     pub amenity_level: f64,  // multiplier on secondary spend (capex unlocks this)
     pub segments: Vec<Segment>,
     pub treatment_resistance: f64, // 0..1, builds with treatment overuse, decays when idle
+    // Prestige's slow-moving inputs (0..100 each), updated from play each turn:
+    pub historical_excellence: f64, // smoothed track record of conditions
+    pub reputation: f64,            // smoothed golfer satisfaction (word of mouth)
+    pub exclusivity: f64,           // how high-end the clientele/pricing is
     pub bankrupt: bool,
     pub rng: Rng,
 }
@@ -169,6 +173,9 @@ impl World {
             amenity_level: 1.0,
             segments: default_segments(),
             treatment_resistance: 0.0,
+            historical_excellence: 60.0,
+            reputation: 55.0,
+            exclusivity: 20.0,
             bankrupt: false,
             rng: Rng::new(seed),
         }
