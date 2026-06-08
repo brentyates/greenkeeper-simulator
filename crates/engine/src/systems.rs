@@ -14,6 +14,18 @@ const WAGE_PER_CAPACITY: f64 = 6.0;
 const FIXED_OVERHEAD: f64 = 400.0;
 const BANKRUPTCY_FLOOR: f64 = -1000.0;
 
+// --- disease (the agronomic-crisis risk layer) ---
+const OUTBREAK_RATE: f64 = 0.18; // scales susceptibility into a per-turn outbreak chance
+const OUTBREAK_SEVERITY: f64 = 30.0;
+const INFECTION_GROWTH: f64 = 14.0; // per-turn worsening of an active infection
+const SPREAD_CHANCE: f64 = 0.22; // chance each infected region seeds another per turn
+const SPREAD_SEVERITY: f64 = 20.0;
+const TREAT_POWER: f64 = 45.0; // infection cleared per region at full effectiveness
+const TREAT_COST: f64 = 140.0; // $ per region treated
+const RESIST_GAIN: f64 = 0.06; // treatment resistance gained per turn of use (overuse cost)
+const RESIST_DECAY: f64 = 0.02; // resistance lost per idle turn
+const RESIST_MAX: f64 = 0.85;
+
 /// Outcome of the demand system for one turn.
 pub struct DemandOutcome {
     pub revenue: f64,
@@ -154,6 +166,70 @@ pub fn wear_from_traffic(world: &mut World, golfers: f64) {
     for r in world.regions.iter_mut() {
         let share = r.kind.wear_rate() / weight_sum;
         r.wear = (r.wear + total_wear * share).clamp(0.0, 100.0);
+    }
+}
+
+/// How prone a region is to an outbreak, 0..1 — driven mostly by wear (stressed
+/// turf), with lush growth and dry/heat stress adding to it. Never surfaced to the
+/// player as a number; it's learned by playing (DESIGN §7).
+fn susceptibility(r: &crate::model::Region, dryness: f64) -> f64 {
+    (0.75 * (r.wear / 100.0) + 0.15 * (r.growth / 100.0) + 0.10 * (dryness / 6.0)).clamp(0.0, 1.0)
+}
+
+/// Treat active disease if chosen: clears infection, but each turn of use breeds
+/// resistance that saps effectiveness — overtreating a chronically sick course
+/// eventually stops working. Idle turns let resistance fade.
+pub fn treatment(world: &mut World, treat: bool, trace: &mut Trace) {
+    let any_infected = world.regions.iter().any(|r| r.infection > 0.0);
+    if !treat || !any_infected {
+        world.treatment_resistance = (world.treatment_resistance - RESIST_DECAY).max(0.0);
+        return;
+    }
+    let effectiveness = TREAT_POWER * (1.0 - world.treatment_resistance);
+    let mut treated = 0u32;
+    for r in world.regions.iter_mut() {
+        if r.infection > 0.0 {
+            r.infection = (r.infection - effectiveness).max(0.0);
+            treated += 1;
+        }
+    }
+    let cost = treated as f64 * TREAT_COST;
+    world.cash -= cost;
+    world.treatment_resistance = (world.treatment_resistance + RESIST_GAIN).min(RESIST_MAX);
+    trace.push(Event::Treated { regions: treated, cost });
+}
+
+/// Outbreaks ignite on stressed turf, worsen if untreated, and spread to other
+/// regions — the calculated-risk layer that makes a worn course dangerous.
+pub fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
+    let n = world.regions.len();
+
+    for i in 0..n {
+        let infection = world.regions[i].infection;
+        if infection > 0.0 {
+            world.regions[i].infection = (infection + INFECTION_GROWTH).min(100.0);
+        } else {
+            let susc = susceptibility(&world.regions[i], dryness);
+            if world.rng.next_f64() < susc * OUTBREAK_RATE {
+                world.regions[i].infection = OUTBREAK_SEVERITY;
+                trace.push(Event::Outbreak { region: world.regions[i].id });
+            }
+        }
+    }
+
+    let infected: Vec<usize> = (0..n).filter(|&i| world.regions[i].infection > 0.0).collect();
+    for _ in infected {
+        if world.rng.next_f64() >= SPREAD_CHANCE {
+            continue;
+        }
+        let healthy: Vec<usize> = (0..n).filter(|&i| world.regions[i].infection <= 0.0).collect();
+        if healthy.is_empty() {
+            break;
+        }
+        let pick = ((world.rng.next_f64() * healthy.len() as f64) as usize).min(healthy.len() - 1);
+        let idx = healthy[pick];
+        world.regions[idx].infection = SPREAD_SEVERITY;
+        trace.push(Event::Spread { region: world.regions[idx].id });
     }
 }
 

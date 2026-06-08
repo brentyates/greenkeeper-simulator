@@ -49,3 +49,16 @@ fn pricier_turns_more_golfers_away() {
     let dear = sum_turned_away(&run_at(120.0, 7, 40));
     assert!(dear > cheap, "high price should turn more away (dear={dear}, cheap={cheap})");
 }
+
+fn sum_outbreaks(trace: &engine::Trace) -> u64 {
+    trace.iter().filter(|e| matches!(e, Event::Outbreak { .. })).count() as u64
+}
+
+#[test]
+fn worn_courses_get_sicker() {
+    // Cheap pricing draws crowds, wears the turf, and invites more outbreaks than
+    // a quiet premium course, summed across many seeds for stability.
+    let cheap: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(25.0, s, 80))).sum();
+    let premium: u64 = (1..=40).map(|s| sum_outbreaks(&run_at(120.0, s, 80))).sum();
+    assert!(cheap > premium, "worn cheap courses should see more outbreaks (cheap={cheap}, premium={premium})");
+}

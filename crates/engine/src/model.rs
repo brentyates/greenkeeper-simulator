@@ -60,6 +60,7 @@ pub struct Region {
     pub nutrients: f64, // 0..100, higher is better
     pub growth: f64,    // 0..100, lower (freshly mown) is better
     pub wear: f64,      // 0..100, foot/cart traffic damage, higher is worse
+    pub infection: f64, // 0..100, active turf disease severity (0 = healthy)
 }
 
 impl Region {
@@ -71,8 +72,9 @@ impl Region {
         // Turf fails fast once badly worn: wear compounds steeply past a threshold.
         let wear_penalty = self.wear + (self.wear - 40.0).max(0.0) * 2.0;
         let wear_score = (100.0 - wear_penalty).clamp(0.0, 100.0);
-        (0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score)
-            .clamp(0.0, 100.0)
+        let base = 0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score;
+        // Active disease drags condition down hard — a crisis you must respond to.
+        (base - self.infection * 0.7).clamp(0.0, 100.0)
     }
 }
 
@@ -107,6 +109,7 @@ pub struct World {
     pub staff_capacity: f64, // maintenance points available per turn
     pub amenity_level: f64,  // multiplier on secondary spend (capex unlocks this)
     pub segments: Vec<Segment>,
+    pub treatment_resistance: f64, // 0..1, builds with treatment overuse, decays when idle
     pub bankrupt: bool,
     pub rng: Rng,
 }
@@ -153,6 +156,7 @@ impl World {
                 nutrients: 75.0,
                 growth: 10.0,
                 wear: 0.0,
+                infection: 0.0,
             })
             .collect();
         World {
@@ -164,6 +168,7 @@ impl World {
             staff_capacity: 20.0,
             amenity_level: 1.0,
             segments: default_segments(),
+            treatment_resistance: 0.0,
             bankrupt: false,
             rng: Rng::new(seed),
         }

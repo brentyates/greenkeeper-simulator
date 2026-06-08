@@ -45,6 +45,11 @@ fn render(event: &Event) -> String {
         ),
         Event::GreenFees { amount } => format!("  green fees +${amount:.0}"),
         Event::Secondary { amount } => format!("  secondary  +${amount:.0}"),
+        Event::Outbreak { region } => format!("  !! disease outbreak on region {region}"),
+        Event::Spread { region } => format!("  !! disease spread to region {region}"),
+        Event::Treated { regions, cost } => {
+            format!("  treatment  {regions} regions (-${cost:.0})")
+        }
         Event::Cash { value, delta } => format!("  cash       ${value:.0} ({delta:+.0})"),
         Event::Bankrupt { turn } => format!("  ** BANKRUPT on turn {turn} **"),
     }

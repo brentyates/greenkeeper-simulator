@@ -14,6 +14,9 @@ pub enum Event {
     Demand { interested: u32, golfers: u32, turned_away: u32, price: f64 },
     GreenFees { amount: f64 },
     Secondary { amount: f64 },
+    Outbreak { region: u32 },
+    Spread { region: u32 },
+    Treated { regions: u32, cost: f64 },
     Cash { value: f64, delta: f64 },
     Bankrupt { turn: u32 },
 }

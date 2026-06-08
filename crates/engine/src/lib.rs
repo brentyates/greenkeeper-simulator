@@ -9,7 +9,9 @@ pub mod model;
 pub mod rng;
 pub mod systems;
 
-pub use decision::{Decisions, FixedPricing, GreedyPricing, Strategy, SweetSpotPricing};
+pub use decision::{
+    Decisions, FixedPricing, GreedyPricing, NeglectfulPricing, Strategy, SweetSpotPricing,
+};
 pub use event::{Event, Trace};
 pub use model::{default_segments, Region, RegionKind, Segment, World};
 pub use rng::Rng;
@@ -26,6 +28,8 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     let dryness = systems::weather(world, trace);
     systems::agronomy(world, dryness);
     systems::maintenance(world, trace);
+    systems::treatment(world, decisions.treat, trace);
+    systems::disease_tick(world, dryness, trace);
     systems::conditions_and_prestige(world, trace);
     let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
     systems::wear_from_traffic(world, outcome.golfers);

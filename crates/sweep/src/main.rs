@@ -21,6 +21,8 @@ struct RunResult {
     total_turned_away: u64,
     total_green: f64,
     total_secondary: f64,
+    total_outbreaks: u64,
+    total_treatment: f64,
 }
 
 fn run_one(price: f64, seed: u64, turns: u32) -> RunResult {
@@ -32,6 +34,8 @@ fn run_one(price: f64, seed: u64, turns: u32) -> RunResult {
     let mut total_turned_away = 0u64;
     let mut total_green = 0.0;
     let mut total_secondary = 0.0;
+    let mut total_outbreaks = 0u64;
+    let mut total_treatment = 0.0;
     for event in &trace {
         match event {
             Event::Demand { golfers, turned_away, .. } => {
@@ -40,6 +44,8 @@ fn run_one(price: f64, seed: u64, turns: u32) -> RunResult {
             }
             Event::GreenFees { amount } => total_green += amount,
             Event::Secondary { amount } => total_secondary += amount,
+            Event::Outbreak { .. } => total_outbreaks += 1,
+            Event::Treated { cost, .. } => total_treatment += cost,
             _ => {}
         }
     }
@@ -54,6 +60,8 @@ fn run_one(price: f64, seed: u64, turns: u32) -> RunResult {
         total_turned_away,
         total_green,
         total_secondary,
+        total_outbreaks,
+        total_treatment,
     }
 }
 
@@ -92,10 +100,10 @@ fn main() {
 
     println!("Balance sweep — {seeds} seeds x {turns} turns, demo course (fixed-price scan)\n");
     println!(
-        "{:>6} {:>6} {:>10} {:>8} {:>7} {:>6} {:>8} {:>7} {:>9} {:>9}",
-        "fee", "bust%", "mean $", "prestige", "health", "wear", "golfers", "balked", "green $", "secd $",
+        "{:>6} {:>6} {:>10} {:>8} {:>7} {:>6} {:>8} {:>7} {:>9} {:>9} {:>7} {:>8}",
+        "fee", "bust%", "mean $", "prestige", "health", "wear", "golfers", "balked", "green $", "secd $", "sick", "treat $",
     );
-    println!("{}", "-".repeat(86));
+    println!("{}", "-".repeat(103));
 
     for &price in &prices {
         let results: Vec<RunResult> = (1..=seeds).map(|s| run_one(price, s, turns)).collect();
@@ -109,10 +117,12 @@ fn main() {
         let mean_turned = mean(results.iter().map(|r| r.total_turned_away as f64));
         let mean_green = mean(results.iter().map(|r| r.total_green));
         let mean_secondary = mean(results.iter().map(|r| r.total_secondary));
+        let mean_outbreaks = mean(results.iter().map(|r| r.total_outbreaks as f64));
+        let mean_treatment = mean(results.iter().map(|r| r.total_treatment));
 
         println!(
-            "{:>6.0} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>6.1} {:>8.0} {:>7.0} {:>9.0} {:>9.0}",
-            price, bust, mean_cash, mean_prestige, mean_health, mean_wear, mean_golfers, mean_turned, mean_green, mean_secondary,
+            "{:>6.0} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>6.1} {:>8.0} {:>7.0} {:>9.0} {:>9.0} {:>7.1} {:>8.0}",
+            price, bust, mean_cash, mean_prestige, mean_health, mean_wear, mean_golfers, mean_turned, mean_green, mean_secondary, mean_outbreaks, mean_treatment,
         );
     }
 }
