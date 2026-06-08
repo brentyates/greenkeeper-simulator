@@ -105,8 +105,12 @@ game.
   demand; they can underperform. Never a guaranteed "spend → golfers" shortcut.
 - **Allocation.** Limited labor/attention/money across competing regions and
   needs. The 4th green is failing *and* payroll is due *and* research is mid-fund.
-- **Capital vs. labor.** Substitute money for ongoing labor: hire → irrigation →
-  robots → elite turf. Each is a capital bet with a break-even and a failure mode.
+- **Capital vs. labor.** Substitute money for ongoing labor, lever by lever. The
+  three maintenance jobs automate by different means: **robot units mow and
+  fertilize** (capital + mechanics + breakdowns); **an irrigation system — buying
+  pipes and installing sprinklers — automates watering** (a capital build that
+  takes moisture off the crew's plate). The arc is hire → irrigation → robots →
+  elite turf, each a capital bet with a break-even and a failure mode.
 - **Risk posture.** How much to spend on prevention vs. reaction. (§8)
 - **Pacing.** How tightly to pack play: revenue now vs. pace-of-play, wear, and
   reputation over time.
@@ -317,9 +321,11 @@ No meshes, tiles, or coordinates beyond what gameplay needs.
   trace. Holes are maintenance regions *for now* (per-hole character revisitable;
   see §12). [§6, §9]
 - **Research:** RCT-style funded tech tree — set a budget, accrue points, unlock
-  in order. Passive techs cut maintenance cost and water; robot mowers (capital +
-  mechanics + breakdowns) and whole-course turf science build on it. These
-  advanced inputs are the intended answer to course scaling. [§6]
+  in order. Passive techs cut maintenance cost. The automation built on it splits
+  by job: **robot units mow and fertilize** (capital + mechanics + breakdowns); an
+  **irrigation system (pipes + sprinklers) automates watering** as a capital build.
+  Whole-course turf science layers on top. These advanced inputs are the intended
+  answer to course scaling. [§6]
 - **Course model:** features/regions with aggregate agronomic state. [§10]
 
 ---
