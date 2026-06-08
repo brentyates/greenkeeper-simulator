@@ -7,6 +7,32 @@ fixed_overhead = 400.0
 variable_cost_per_golfer = 15.0
 bankruptcy_floor = -1000.0
 
+[conditions]
+moisture_ideal = 60.0
+moisture_falloff = 1.4
+wear_fail_threshold = 40.0
+wear_compound = 2.0
+infection_penalty = 0.7
+w_moisture = 0.25
+w_growth = 0.2
+w_nutrients = 0.2
+w_wear = 0.35
+
+[weather]
+dryness_max = 6.0
+
+[demand]
+experience_prestige = 0.7
+experience_conditions = 0.3
+wtp_base = 0.5
+wtp_slope = 1.0
+interest_base = 0.2
+interest_slope = 0.8
+crowding_penalty = 2.0
+satisfaction_conditions = 0.7
+secondary_weather_factor = 0.1
+demand_scale_per_hole = 0.4444444444444444
+
 [prestige]
 max_up = 5.0
 max_down = 15.0
@@ -16,6 +42,17 @@ w_amenities = 0.2
 w_reputation = 0.2
 w_exclusivity = 0.1
 comfortable_golfers = 30.0
+prestige_scale = 10.0
+amenity_per_level = 25.0
+hist_up_rate = 0.04
+hist_down_rate = 0.12
+rep_up_rate = 0.08
+rep_down_rate = 0.15
+excl_share_weight = 0.6
+excl_price_weight = 0.4
+excl_price_ref = 200.0
+excl_smoothing = 0.1
+demand_modifier_decay = 0.95
 
 [disease]
 outbreak_rate = 0.18
@@ -28,6 +65,12 @@ treat_cost = 140.0
 resist_gain = 0.06
 resist_decay = 0.02
 resist_max = 0.85
+susc_wear = 0.75
+susc_growth = 0.15
+susc_dryness = 0.1
+
+[tournament]
+success_threshold = 0.5
 
 [[tournament.tiers]]
 name = "Local"
@@ -228,6 +271,13 @@ population = 5.0
 base_wtp = 140.0
 wtp_spread = 50.0
 spend_propensity = 25.0
+
+[agronomy]
+lush_multiplier = 1.5
+lush_threshold = 50.0
+serviced_moisture = 70.0
+serviced_growth = 5.0
+serviced_nutrients = 80.0
 
 [agronomy.green]
 growth = 8.0

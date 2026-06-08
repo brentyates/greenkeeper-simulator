@@ -59,7 +59,7 @@ fn main() {
         world.finances.cash,
         world.standing.prestige,
         world.standing.tier() + 1,
-        world.course.avg_health(),
+        world.course.avg_health(&world.balance.conditions),
         world.course.avg_wear(),
         if world.finances.bankrupt {
             "   [BANKRUPT]"
@@ -135,7 +135,7 @@ fn run_scenario(args: &[String]) {
         world.finances.cash,
         world.standing.prestige,
         world.standing.tier() + 1,
-        world.course.avg_health(),
+        world.course.avg_health(&world.balance.conditions),
     );
 }
 

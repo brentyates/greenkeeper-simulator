@@ -79,7 +79,7 @@ fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
     RunResult {
         final_cash: world.finances.cash,
         final_prestige: world.standing.prestige,
-        final_health: world.course.avg_health(),
+        final_health: world.course.avg_health(&world.balance.conditions),
         bankrupt: world.finances.bankrupt,
         total_golfers,
         total_outbreaks,

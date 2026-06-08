@@ -105,7 +105,10 @@ fn state_stays_finite() {
             let (world, trace) = run_plan(price, 40.0, DiseasePolicy::Treat, seed, 80);
             assert!(world.finances.cash.is_finite());
             assert!(world.standing.prestige.is_finite());
-            assert!(world.course.avg_health().is_finite());
+            assert!(world
+                .course
+                .avg_health(&world.balance.conditions)
+                .is_finite());
             for e in &trace {
                 if let Event::Cash { value, delta } = e {
                     assert!(

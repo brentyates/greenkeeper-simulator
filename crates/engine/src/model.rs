@@ -42,18 +42,24 @@ pub struct Region {
 }
 
 impl Region {
-    /// Condition of this region, 0..100, derived from its agronomic state.
-    pub fn health(&self) -> f64 {
-        let moisture_score = (100.0 - (self.moisture - 60.0).abs() * 1.4).clamp(0.0, 100.0);
+    /// Condition of this region, 0..100, derived from its agronomic state and the
+    /// tuneable condition weights/factors.
+    pub fn health(&self, c: &ConditionsBalance) -> f64 {
+        let moisture_score = (100.0
+            - (self.moisture - c.moisture_ideal).abs() * c.moisture_falloff)
+            .clamp(0.0, 100.0);
         let growth_score = (100.0 - self.growth).clamp(0.0, 100.0);
         let nutrient_score = self.nutrients.clamp(0.0, 100.0);
         // Turf fails fast once badly worn: wear compounds steeply past a threshold.
-        let wear_penalty = self.wear + (self.wear - 40.0).max(0.0) * 2.0;
+        let wear_penalty =
+            self.wear + (self.wear - c.wear_fail_threshold).max(0.0) * c.wear_compound;
         let wear_score = (100.0 - wear_penalty).clamp(0.0, 100.0);
-        let base =
-            0.25 * moisture_score + 0.20 * growth_score + 0.20 * nutrient_score + 0.35 * wear_score;
+        let base = c.w_moisture * moisture_score
+            + c.w_growth * growth_score
+            + c.w_nutrients * nutrient_score
+            + c.w_wear * wear_score;
         // Active disease drags condition down hard — a crisis you must respond to.
-        (base - self.infection * 0.7).clamp(0.0, 100.0)
+        (base - self.infection * c.infection_penalty).clamp(0.0, 100.0)
     }
 }
 
@@ -127,6 +133,17 @@ pub struct PrestigeBalance {
     pub w_reputation: f64,
     pub w_exclusivity: f64,
     pub comfortable_golfers: f64, // beyond this, crowding hurts satisfaction
+    pub prestige_scale: f64,      // 0..100 condition blend → 0..1000 prestige target
+    pub amenity_per_level: f64,   // amenities prestige per unit of amenity_level
+    pub hist_up_rate: f64,        // historical-excellence EMA toward conditions (rising)
+    pub hist_down_rate: f64,      // ...falling (faster)
+    pub rep_up_rate: f64,         // reputation EMA toward satisfaction (rising)
+    pub rep_down_rate: f64,       // ...falling (faster)
+    pub excl_share_weight: f64,   // exclusivity from premium clientele share
+    pub excl_price_weight: f64,   // ...and from price level
+    pub excl_price_ref: f64,      // price that reads as "fully premium"
+    pub excl_smoothing: f64,      // exclusivity EMA rate
+    pub demand_modifier_decay: f64, // tournament residual fade per turn
 }
 
 impl Default for PrestigeBalance {
@@ -140,6 +157,17 @@ impl Default for PrestigeBalance {
             w_reputation: 0.20,
             w_exclusivity: 0.10,
             comfortable_golfers: 30.0,
+            prestige_scale: 10.0,
+            amenity_per_level: 25.0,
+            hist_up_rate: 0.04,
+            hist_down_rate: 0.12,
+            rep_up_rate: 0.08,
+            rep_down_rate: 0.15,
+            excl_share_weight: 0.6,
+            excl_price_weight: 0.4,
+            excl_price_ref: 200.0,
+            excl_smoothing: 0.1,
+            demand_modifier_decay: 0.95,
         }
     }
 }
@@ -156,6 +184,10 @@ pub struct DiseaseBalance {
     pub resist_gain: f64,  // resistance gained per turn of treatment use (overuse cost)
     pub resist_decay: f64, // resistance lost per idle turn
     pub resist_max: f64,
+    // Susceptibility weights: how wear / lush growth / dry weather drive outbreaks.
+    pub susc_wear: f64,
+    pub susc_growth: f64,
+    pub susc_dryness: f64,
 }
 
 impl Default for DiseaseBalance {
@@ -171,6 +203,9 @@ impl Default for DiseaseBalance {
             resist_gain: 0.06,
             resist_decay: 0.02,
             resist_max: 0.85,
+            susc_wear: 0.75,
+            susc_growth: 0.15,
+            susc_dryness: 0.10,
         }
     }
 }
@@ -208,6 +243,7 @@ pub struct TournamentBalance {
     pub tiers: Vec<TournamentTier>,
     pub prep_tasks: Vec<PrepTask>,     // mandatory pool
     pub optional_tasks: Vec<PrepTask>, // optional (boost) pool
+    pub success_threshold: f64,        // grade ≥ this counts as a successful host
 }
 
 impl Default for TournamentBalance {
@@ -281,6 +317,7 @@ impl Default for TournamentBalance {
                 task("broadcast & media compound", 22.0, true),
                 task("host a pro-am charity day", 16.0, true),
             ],
+            success_threshold: 0.5,
         }
     }
 }
@@ -324,9 +361,86 @@ impl Default for ResearchBalance {
     }
 }
 
+/// How a region's condition (0..100) is composed from its agronomic state.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ConditionsBalance {
+    pub moisture_ideal: f64,      // moisture that scores best
+    pub moisture_falloff: f64,    // condition lost per point away from ideal
+    pub wear_fail_threshold: f64, // wear past which turf fails fast
+    pub wear_compound: f64,       // extra penalty multiplier past the threshold
+    pub infection_penalty: f64,   // condition lost per point of infection
+    pub w_moisture: f64,
+    pub w_growth: f64,
+    pub w_nutrients: f64,
+    pub w_wear: f64,
+}
+
+impl Default for ConditionsBalance {
+    fn default() -> Self {
+        ConditionsBalance {
+            moisture_ideal: 60.0,
+            moisture_falloff: 1.4,
+            wear_fail_threshold: 40.0,
+            wear_compound: 2.0,
+            infection_penalty: 0.7,
+            w_moisture: 0.25,
+            w_growth: 0.20,
+            w_nutrients: 0.20,
+            w_wear: 0.35,
+        }
+    }
+}
+
+/// Weather variability.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WeatherBalance {
+    pub dryness_max: f64, // max extra moisture loss from a dry/hot turn
+}
+
+impl Default for WeatherBalance {
+    fn default() -> Self {
+        WeatherBalance { dryness_max: 6.0 }
+    }
+}
+
+/// The shape of the demand/value curve and satisfaction.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DemandBalance {
+    pub experience_prestige: f64,   // weight of prestige in perceived value
+    pub experience_conditions: f64, // weight of current conditions
+    pub wtp_base: f64,              // willingness-to-pay floor multiplier (at zero appeal)
+    pub wtp_slope: f64,             // ...rise with appeal
+    pub interest_base: f64,         // segment draw floor multiplier
+    pub interest_slope: f64,        // ...rise with appeal
+    pub crowding_penalty: f64,      // satisfaction lost per golfer past comfortable
+    pub satisfaction_conditions: f64, // weight of conditions in satisfaction (rest = uncrowded)
+    pub secondary_weather_factor: f64, // secondary-spend boost per point of dryness
+    pub demand_scale_per_hole: f64, // golfer throughput per hole (÷ baseline)
+}
+
+impl Default for DemandBalance {
+    fn default() -> Self {
+        DemandBalance {
+            experience_prestige: 0.7,
+            experience_conditions: 0.3,
+            wtp_base: 0.5,
+            wtp_slope: 1.0,
+            interest_base: 0.2,
+            interest_slope: 0.8,
+            crowding_penalty: 2.0,
+            satisfaction_conditions: 0.7,
+            secondary_weather_factor: 0.1,
+            demand_scale_per_hole: 4.0 / 9.0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Balance {
     pub economy: EconomyBalance,
+    pub conditions: ConditionsBalance,
+    pub weather: WeatherBalance,
+    pub demand: DemandBalance,
     pub prestige: PrestigeBalance,
     pub disease: DiseaseBalance,
     pub tournament: TournamentBalance,
@@ -363,6 +477,11 @@ pub struct AgronomyBalance {
     pub tee: KindRates,
     pub fairway: KindRates,
     pub rough: KindRates,
+    pub lush_multiplier: f64, // growth speed-up when well-watered & fed (the treadmill)
+    pub lush_threshold: f64,  // moisture & nutrients above this → lush growth
+    pub serviced_moisture: f64, // state a fully-serviced region is restored to
+    pub serviced_growth: f64,
+    pub serviced_nutrients: f64,
 }
 
 impl Default for AgronomyBalance {
@@ -388,6 +507,11 @@ impl Default for AgronomyBalance {
                 moisture_decay: 7.0,
                 wear: 0.6,
             },
+            lush_multiplier: 1.5,
+            lush_threshold: 50.0,
+            serviced_moisture: 70.0,
+            serviced_growth: 5.0,
+            serviced_nutrients: 80.0,
         }
     }
 }
@@ -615,11 +739,11 @@ pub struct Course {
 
 impl Course {
     /// Average region condition, 0..100.
-    pub fn avg_health(&self) -> f64 {
+    pub fn avg_health(&self, c: &ConditionsBalance) -> f64 {
         if self.regions.is_empty() {
             return 0.0;
         }
-        self.regions.iter().map(|r| r.health()).sum::<f64>() / self.regions.len() as f64
+        self.regions.iter().map(|r| r.health(c)).sum::<f64>() / self.regions.len() as f64
     }
 
     /// Average wear across regions, 0..100.
@@ -715,7 +839,8 @@ impl World {
         // more crew for the same golfers as a desert one of equal hole count. The
         // ×4/9 baseline keeps a standard ~4-region/hole course balanced like the
         // 9-region sandbox.
-        self.demand_scale = (scenario.course.holes as f64 * 4.0 / 9.0).max(0.1);
+        self.demand_scale =
+            (scenario.course.holes as f64 * self.balance.demand.demand_scale_per_hole).max(0.1);
         self.course.regions = regions;
         self.scenario = Some(scenario);
         self

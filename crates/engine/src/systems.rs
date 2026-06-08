@@ -4,8 +4,8 @@
 
 use crate::event::{Event, Trace};
 use crate::model::{
-    DiseasePolicy, LossReason, Objective, Outcome, PrepTask, TournamentPhase, TournamentState,
-    TournamentTier, World,
+    DiseaseBalance, DiseasePolicy, LossReason, Objective, Outcome, PrepTask, TournamentPhase,
+    TournamentState, TournamentTier, World,
 };
 
 /// Outcome of the demand system for one turn.
@@ -55,7 +55,7 @@ pub(crate) fn research_tick(world: &mut World, funding: f64, trace: &mut Trace) 
 
 /// Weather for the turn: returns extra moisture loss (rng-driven, so seeded).
 pub(crate) fn weather(world: &mut World, trace: &mut Trace) -> f64 {
-    let dryness = world.rng.range(0.0, 6.0);
+    let dryness = world.rng.range(0.0, world.balance.weather.dryness_max);
     trace.push(Event::Weather { dryness });
     dryness
 }
@@ -71,8 +71,8 @@ pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
         r.moisture = (r.moisture - moisture_loss).clamp(0.0, 100.0);
         r.nutrients = (r.nutrients - nutrient_decay).clamp(0.0, 100.0);
         let mut growth = rates.growth;
-        if r.moisture > 50.0 && r.nutrients > 50.0 {
-            growth *= 1.5;
+        if r.moisture > agro.lush_threshold && r.nutrients > agro.lush_threshold {
+            growth *= agro.lush_multiplier;
         }
         r.growth = (r.growth + growth).clamp(0.0, 100.0);
     }
@@ -84,12 +84,14 @@ pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
 pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
     // Better mowers/equipment make each region cheaper to service.
     let service_cost = world.balance.economy.service_cost * (1.0 - tech_bonuses(world).0);
+    let c = world.balance.conditions.clone();
+    let agro = world.balance.agronomy.clone();
 
     let mut order: Vec<usize> = (0..world.course.regions.len()).collect();
     order.sort_by(|&a, &b| {
         world.course.regions[a]
-            .health()
-            .total_cmp(&world.course.regions[b].health())
+            .health(&c)
+            .total_cmp(&world.course.regions[b].health(&c))
     });
 
     let mut budget = capacity;
@@ -99,9 +101,9 @@ pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
             break;
         }
         let r = &mut world.course.regions[i];
-        r.moisture = 70.0;
-        r.growth = 5.0;
-        r.nutrients = 80.0;
+        r.moisture = agro.serviced_moisture;
+        r.growth = agro.serviced_growth;
+        r.nutrients = agro.serviced_nutrients;
         r.wear = 0.0;
         budget -= service_cost;
         serviced += 1;
@@ -115,8 +117,16 @@ pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
 /// How prone a region is to an outbreak, 0..1 — driven mostly by wear (stressed
 /// turf), with lush growth and dry/heat stress adding to it. Never surfaced as a
 /// number; learned by playing (DESIGN §7).
-fn susceptibility(r: &crate::model::Region, dryness: f64) -> f64 {
-    (0.75 * (r.wear / 100.0) + 0.15 * (r.growth / 100.0) + 0.10 * (dryness / 6.0)).clamp(0.0, 1.0)
+fn susceptibility(
+    r: &crate::model::Region,
+    dryness: f64,
+    d: &DiseaseBalance,
+    dryness_max: f64,
+) -> f64 {
+    (d.susc_wear * (r.wear / 100.0)
+        + d.susc_growth * (r.growth / 100.0)
+        + d.susc_dryness * (dryness / dryness_max))
+        .clamp(0.0, 1.0)
 }
 
 /// Treat active disease if chosen: clears infection, but each turn of use breeds
@@ -150,6 +160,7 @@ pub(crate) fn treatment(world: &mut World, policy: DiseasePolicy, trace: &mut Tr
 /// regions — the calculated-risk layer that makes a worn course dangerous.
 pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
     let d = world.balance.disease.clone();
+    let dryness_max = world.balance.weather.dryness_max;
     let outbreak_rate = d.outbreak_rate * (1.0 - tech_bonuses(world).2); // fungicide research
     let n = world.course.regions.len();
 
@@ -158,7 +169,7 @@ pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
         if infection > 0.0 {
             world.course.regions[i].infection = (infection + d.infection_growth).min(100.0);
         } else {
-            let susc = susceptibility(&world.course.regions[i], dryness);
+            let susc = susceptibility(&world.course.regions[i], dryness, &d, dryness_max);
             if world.rng.next_f64() < susc * outbreak_rate {
                 world.course.regions[i].infection = d.outbreak_severity;
                 trace.push(Event::Outbreak {
@@ -192,7 +203,7 @@ pub(crate) fn disease_tick(world: &mut World, dryness: f64, trace: &mut Trace) {
 
 /// Amenities prestige component (0..100), derived from capex (amenity_level).
 pub(crate) fn amenities_score(world: &World) -> f64 {
-    (world.ops.amenity_level * 25.0).clamp(0.0, 100.0)
+    (world.ops.amenity_level * world.balance.prestige.amenity_per_level).clamp(0.0, 100.0)
 }
 
 /// Prestige is the holistic experience: a weighted blend of current conditions,
@@ -200,8 +211,8 @@ pub(crate) fn amenities_score(world: &World) -> f64 {
 /// toward that blend asymmetrically — slow to build, fast to fall — and it is what
 /// sets pricing power in `demand_and_revenue`.
 pub(crate) fn prestige_update(world: &mut World, trace: &mut Trace) {
-    let p = &world.balance.prestige;
-    let conditions = world.course.avg_health();
+    let p = world.balance.prestige.clone();
+    let conditions = world.course.avg_health(&world.balance.conditions);
     trace.push(Event::Conditions {
         avg_health: conditions,
         avg_wear: world.course.avg_wear(),
@@ -212,7 +223,7 @@ pub(crate) fn prestige_update(world: &mut World, trace: &mut Trace) {
         + p.w_amenities * amenities_score(world)
         + p.w_reputation * world.standing.reputation
         + p.w_exclusivity * world.standing.exclusivity;
-    let target = target_score * 10.0; // 0..100 → 0..1000
+    let target = target_score * p.prestige_scale; // 0..100 → 0..1000
 
     let diff = target - world.standing.prestige;
     let delta = if diff >= 0.0 {
@@ -239,11 +250,13 @@ pub(crate) fn demand_and_revenue(
     trace: &mut Trace,
 ) -> DemandOutcome {
     world.finances.price = price;
-    let experience = (0.7 * (world.standing.prestige / 1000.0)
-        + 0.3 * (world.course.avg_health() / 100.0))
+    let dm = world.balance.demand.clone();
+    let avg_health = world.course.avg_health(&world.balance.conditions);
+    let experience = (dm.experience_prestige * (world.standing.prestige / 1000.0)
+        + dm.experience_conditions * (avg_health / 100.0))
         .clamp(0.0, 1.0);
     let amenity = world.ops.amenity_level;
-    let weather_spend = 1.0 + dryness * 0.1;
+    let weather_spend = 1.0 + dryness * dm.secondary_weather_factor;
     // Course size (throughput), tournament spotlight (attention), and residual draw.
     let demand_mult = (attention * (1.0 + world.demand_modifier)).max(0.0) * world.demand_scale;
 
@@ -253,8 +266,9 @@ pub(crate) fn demand_and_revenue(
     let mut secondary = 0.0;
 
     for s in &world.balance.market.segments {
-        let wtp = s.base_wtp * (0.5 + 1.0 * experience);
-        let interested = s.population * (0.2 + 0.8 * experience) * demand_mult;
+        let wtp = s.base_wtp * (dm.wtp_base + dm.wtp_slope * experience);
+        let interested =
+            s.population * (dm.interest_base + dm.interest_slope * experience) * demand_mult;
         let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
         let golfers = interested * playing_fraction;
 
@@ -273,9 +287,11 @@ pub(crate) fn demand_and_revenue(
 
     // Satisfaction: good conditions, uncrowded play. Feeds reputation next turn.
     let comfortable = world.balance.prestige.comfortable_golfers;
-    let crowding_penalty = ((golfers_total - comfortable).max(0.0) * 2.0).clamp(0.0, 100.0);
-    let satisfaction =
-        (0.7 * world.course.avg_health() + 0.3 * (100.0 - crowding_penalty)).clamp(0.0, 100.0);
+    let crowding_penalty =
+        ((golfers_total - comfortable).max(0.0) * dm.crowding_penalty).clamp(0.0, 100.0);
+    let satisfaction = (dm.satisfaction_conditions * avg_health
+        + (1.0 - dm.satisfaction_conditions) * (100.0 - crowding_penalty))
+        .clamp(0.0, 100.0);
     let premium_share = if golfers_total > 0.0 {
         premium_golfers / golfers_total
     } else {
@@ -303,29 +319,31 @@ pub(crate) fn demand_and_revenue(
 /// record and reputation build slowly and fall faster; exclusivity reflects how
 /// high-end your pricing and clientele are. These shape *next* turn's prestige.
 pub(crate) fn standing_update(world: &mut World, outcome: &DemandOutcome) {
-    let conditions = world.course.avg_health();
+    let p = world.balance.prestige.clone();
+    let conditions = world.course.avg_health(&world.balance.conditions);
     let h_rate = if conditions >= world.standing.historical_excellence {
-        0.04
+        p.hist_up_rate
     } else {
-        0.12
+        p.hist_down_rate
     };
     world.standing.historical_excellence +=
         (conditions - world.standing.historical_excellence) * h_rate;
 
     let r_rate = if outcome.satisfaction >= world.standing.reputation {
-        0.08
+        p.rep_up_rate
     } else {
-        0.15
+        p.rep_down_rate
     };
     world.standing.reputation += (outcome.satisfaction - world.standing.reputation) * r_rate;
 
-    let price_factor = (world.finances.price / 200.0).clamp(0.0, 1.0) * 100.0;
-    let target_excl =
-        (0.6 * (outcome.premium_share * 100.0) + 0.4 * price_factor).clamp(0.0, 100.0);
-    world.standing.exclusivity += (target_excl - world.standing.exclusivity) * 0.1;
+    let price_factor = (world.finances.price / p.excl_price_ref).clamp(0.0, 1.0) * 100.0;
+    let target_excl = (p.excl_share_weight * (outcome.premium_share * 100.0)
+        + p.excl_price_weight * price_factor)
+        .clamp(0.0, 100.0);
+    world.standing.exclusivity += (target_excl - world.standing.exclusivity) * p.excl_smoothing;
 
     // Tournament residual demand fades back toward zero over time.
-    world.demand_modifier *= 0.95;
+    world.demand_modifier *= p.demand_modifier_decay;
 }
 
 /// Commit to hosting a tournament if one is requested, eligible (prestige gate),
@@ -417,7 +435,7 @@ pub(crate) fn tournament_prep(world: &mut World, prep_effort: f64, trace: &mut T
 /// conditions. Returns the demand-surge "attention" multiplier for this turn (1.0
 /// when no event is live). Resolves and grades the event on its final day.
 pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
-    let conditions = world.course.avg_health();
+    let conditions = world.course.avg_health(&world.balance.conditions);
     let Some(mut state) = world.tournament.take() else {
         return 1.0;
     };
@@ -507,7 +525,7 @@ fn resolve_tournament(
     let condition_grade =
         ((avg_condition - tier.fail_floor) / (tier.target - tier.fail_floor)).clamp(0.0, 1.0);
     let grade = condition_grade * readiness;
-    if grade >= 0.5 {
+    if grade >= world.balance.tournament.success_threshold {
         world.best_hosted_tier = Some(world.best_hosted_tier.map_or(tier_idx, |b| b.max(tier_idx)));
     }
     let bonus = if optional_done {
@@ -585,9 +603,10 @@ pub(crate) fn objective_check(world: &mut World, trace: &mut Trace) {
         Objective::PrestigeBy { prestige, by_turn } => {
             (world.standing.prestige >= prestige, Some(by_turn))
         }
-        Objective::RestoreBy { health, by_turn } => {
-            (world.course.avg_health() >= health, Some(by_turn))
-        }
+        Objective::RestoreBy { health, by_turn } => (
+            world.course.avg_health(&world.balance.conditions) >= health,
+            Some(by_turn),
+        ),
         Objective::HostBy { min_tier, by_turn } => (
             world.best_hosted_tier.is_some_and(|t| t >= min_tier),
             Some(by_turn),
