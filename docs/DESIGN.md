@@ -1,9 +1,8 @@
-# Greenkeeper — Design (v0.5 draft)
+# Greenkeeper — Design
 
-> Status: living draft, being refined through design interview. Single source of
-> truth for the *strategy-first rebuild*. Implementation-agnostic on purpose — no
-> language, runtime, or rendering decisions live here. Supersedes the legacy docs
-> (reference only); where it conflicts with them, this doc wins.
+> The single source of truth for the game's design. Implementation-agnostic on
+> purpose — no language, runtime, or rendering decisions live here (those live in
+> `TECH.md`).
 
 ---
 
@@ -27,10 +26,9 @@ risky decisions — and live with the consequences of each one.*
 
 ---
 
-## 2. Design principles (the lessons, made into rules)
+## 2. Design principles
 
-These exist because the previous attempt died of them. They are constraints, not
-aspirations.
+Hard constraints, not aspirations.
 
 1. **Strategy is the foundation, not a future layer.** Risk/reward and
    meaningful decisions are built *first*. The simulation exists to make those
@@ -41,7 +39,7 @@ aspirations.
 3. **Deterministic base, reactive risk.** The core is predictable enough to plan
    around; managed uncertainty forces you to adapt.
 4. **Model the course as features, not geometry.** The unit of state is a
-   *region* (a green, a fairway, a bunker), not a tile or a triangle.
+   *region* (a green, a fairway, a bunker), not a tile or a coordinate.
 5. **Depth through interaction.** Richness comes from systems feeding each other,
    not from more systems. One loop with five consequences over five loops with
    one each.
@@ -129,10 +127,9 @@ the game.
   immediate decision before time continues.
 - **The period zooms with your role.** Early, hands-on play runs in fine grain
   (days). As you delegate and the course increasingly runs itself, the turn
-  widens to weeks, then seasons — the time scale literally follows the
-  doing→delegating arc. Zooming out is a *reward* for building a self-sustaining
-  operation, and re-compressing (a crisis drags you back to daily firefighting)
-  is a real cost.
+  widens to weeks, then seasons — the time scale follows the doing→delegating
+  arc. Zooming out is a *reward* for building a self-sustaining operation, and
+  re-compressing (a crisis drags you back to daily firefighting) is a real cost.
 
 ---
 
@@ -140,11 +137,11 @@ the game.
 
 Progression is not just bigger numbers — each tier opens *new decisions*. The
 goal structure is a **scenario campaign** of hand-crafted, **self-contained**
-levels — each its own course, fresh start, objective, and difficulty modifiers
-(building on the original 10-level design). Money, staff, and research are
-**per-scenario**; what carries between levels is *your* mastery, not in-game
-assets. Each scenario is therefore a complete run of the doing→delegating arc in
-miniature: build up, then hold or hit a target — or lose.
+levels — each its own course, fresh start, objective, and difficulty modifiers.
+Money, staff, and research are **per-scenario**; what carries between levels is
+*your* mastery, not in-game assets. Each scenario is therefore a complete run of
+the doing→delegating arc in miniature: build up, then hold or hit a target — or
+lose.
 
 Scenarios span several **objective archetypes** — restoration (revive a ruined
 course), economic targets (hit profit/cash by a deadline), survival (endure
@@ -164,9 +161,8 @@ The spine that runs through every scenario:
 - **Staff as investment.** Crew are individuals with skill, experience, and
   reliability you develop over time. A great hire is a compounding asset; a key
   departure hurts. Good help is genuinely hard to find — recruiting, training,
-  and *trusting* them is the substrate of delegation. (Revives the deleted V1
-  employee depth, which a pure sim can afford since there's no character art to
-  maintain.)
+  and *trusting* them is the substrate of delegation. A pure simulation can
+  afford this depth; there's no character art to maintain.
 - **Prestige tiers (★1–5).** The master gate. Higher tiers raise pricing power
   and unlock memberships, tournament eligibility, and amenities. Scored from
   conditions, *historical* excellence (so you can't fake it for an inspection),
@@ -179,15 +175,14 @@ The spine that runs through every scenario:
 - **Tournaments — the apex bet.** Earned through *sustained* excellence, not
   bought. An **optional high-risk play available wherever you've earned
   eligibility** (and the explicit objective of some scenarios). Huge payouts and
-  permanent gains on success; lasting setbacks on failure. The legacy layer the
-  old game specced but never built.
+  permanent gains on success; lasting setbacks on failure.
 
 ---
 
-## 7. Risk & reward — calculated risk (the core, not the "future")
+## 7. Risk & reward — calculated risk
 
-This is the depth the original design named and never shipped — graded in its own
-notes as *"Risk Management: Low, Adaptation: Low."* It is now first-class.
+Risk and the player's response to it are first-class — built into the core, not
+bolted on.
 
 **Stance: calculated risk.** Randomness is meaningful but manageable — you play
 the odds, not chaos, through buffers, prevention, and insurance. A bad outcome
@@ -227,11 +222,11 @@ still open** (§10):
 - **Time** advances in discrete turns/periods (§5). Determinism where possible;
   seeded randomness for risk events.
 
-No meshes, tiles, triangles, or coordinates beyond what gameplay needs.
+No meshes, tiles, or coordinates beyond what gameplay needs.
 
 ---
 
-## 9. Decided so far
+## 9. Decisions locked
 
 - **Heart:** the interlock (agronomy ↔ economy as one flywheel). [§3]
 - **Player role:** hands-on, evolving into delegation as you scale. [§1, §6]
@@ -242,8 +237,7 @@ No meshes, tiles, triangles, or coordinates beyond what gameplay needs.
   only player mastery carries between them. [§6]
 - **Delegation:** layered and deepening — assign people → standing orders →
   department heads, each unlocked by growth. [§4, §6]
-- **Failure:** hard game-over per scenario (bankruptcy or blown objective); retry
-  with what you learned. [§5]
+- **Failure:** hard game-over per scenario (bankruptcy or blown objective). [§5]
 - **Staff:** individuals with progression — an investment you develop and trust;
   the substrate of delegation. [§6]
 - **Risk stance:** calculated risk, **hidden but learnable** — no surfaced odds,
@@ -258,21 +252,20 @@ No meshes, tiles, triangles, or coordinates beyond what gameplay needs.
 
 ---
 
-## 10. Open decisions (tracked, not yet made)
+## 10. Open decisions
 
-- **First risk system** for the core slice (§7) — deferred to build time by
-  choice.
-- **Runtime/language** — explicitly parked.
+- **First risk system** for the core slice (§7) — chosen when the first slice is
+  built.
 
 ---
 
-## 11. Definition of done (so this can be finished)
+## 11. Definition of done
 
-- **This doc (the vision):** done when §1–§8 are agreed and §10 has owners. It is
+- **This design:** done when §1–§8 are agreed and §10 has calls. It is
   intentionally high-level; mechanics and numbers live in per-system docs.
-- **Documentation set overall:** this vision doc + one focused doc per core
-  system (agronomy, economy & pricing, prestige & demand, risk events,
+- **Documentation set:** this design doc + one focused doc per core system
+  (agronomy, economy & pricing, prestige & demand, risk events,
   progression/research, tournaments). Small and curated.
-- **First playable slice (later):** one small course, a handful of regions, the
-  §3 interlock, the doing→delegating arc in miniature, and *one* §7 risk system —
+- **First playable slice:** one small course, a handful of regions, the §3
+  interlock, the doing→delegating arc in miniature, and *one* §7 risk system —
   enough to prove the strategy is fun before anything is widened.
