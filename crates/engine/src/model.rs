@@ -105,10 +105,10 @@ impl Default for EconomyBalance {
         EconomyBalance {
             service_cost: 10.0,
             nutrient_decay: 2.0,
-            wear_per_golfer: 2.5,
+            wear_per_golfer: 4.0,
             wage_per_capacity: 6.0,
-            fixed_overhead: 400.0,
-            variable_cost_per_golfer: 15.0,
+            fixed_overhead: 420.0,
+            variable_cost_per_golfer: 17.0,
             bankruptcy_floor: -1000.0,
         }
     }
@@ -329,8 +329,8 @@ impl Default for ConditionsBalance {
         ConditionsBalance {
             moisture_ideal: 60.0,
             moisture_falloff: 1.4,
-            wear_fail_threshold: 40.0,
-            wear_compound: 2.0,
+            wear_fail_threshold: 28.0,
+            wear_compound: 3.0,
             w_moisture: 0.25,
             w_growth: 0.20,
             w_nutrients: 0.20,
@@ -369,12 +369,12 @@ pub struct DemandBalance {
 impl Default for DemandBalance {
     fn default() -> Self {
         DemandBalance {
-            experience_prestige: 0.7,
-            experience_conditions: 0.3,
+            experience_prestige: 0.5,
+            experience_conditions: 0.5,
             wtp_base: 0.5,
             wtp_slope: 1.0,
-            interest_base: 0.2,
-            interest_slope: 0.8,
+            interest_base: 0.12,
+            interest_slope: 0.9,
             crowding_penalty: 2.0,
             satisfaction_conditions: 0.7,
             secondary_weather_factor: 0.1,
