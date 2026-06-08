@@ -1,5 +1,5 @@
 //! Decisions are what the player (or an automated strategy) commits each turn.
-//! For the first slice the only lever is price; more will join it as systems grow.
+//! For now the only lever is price; more will join it as systems grow.
 
 use crate::model::World;
 use crate::systems::sweet_spot;
@@ -15,7 +15,18 @@ pub trait Strategy {
     fn decide(&mut self, world: &World) -> Decisions;
 }
 
-/// Prices at the sweet spot for the current prestige tier: maximum demand.
+/// Holds a flat green fee every turn. The workhorse for sweeping the price curve.
+pub struct FixedPricing {
+    pub price: f64,
+}
+
+impl Strategy for FixedPricing {
+    fn decide(&mut self, _world: &World) -> Decisions {
+        Decisions { price: self.price }
+    }
+}
+
+/// Prices at the sweet spot for the current prestige tier.
 pub struct SweetSpotPricing;
 
 impl Strategy for SweetSpotPricing {
@@ -24,7 +35,7 @@ impl Strategy for SweetSpotPricing {
     }
 }
 
-/// Prices above the sweet spot, gambling higher margin against lost golfers.
+/// Prices above the tier's sweet spot, gambling margin against lost golfers.
 pub struct GreedyPricing {
     pub multiplier: f64,
 }

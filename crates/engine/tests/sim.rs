@@ -1,37 +1,51 @@
-use engine::{run, GreedyPricing, Strategy, SweetSpotPricing, World};
+use engine::{run, Event, FixedPricing, World};
 
-fn sweet_run(seed: u64, turns: u32) -> engine::Trace {
+fn run_at(price: f64, seed: u64, turns: u32) -> engine::Trace {
     let mut world = World::demo(seed);
-    let mut strat = SweetSpotPricing;
+    let mut strat = FixedPricing { price };
     run(&mut world, &mut strat, turns)
+}
+
+fn sum_golfers(trace: &engine::Trace) -> u64 {
+    trace
+        .iter()
+        .map(|e| match e {
+            Event::Demand { golfers, .. } => *golfers as u64,
+            _ => 0,
+        })
+        .sum()
+}
+
+fn sum_turned_away(trace: &engine::Trace) -> u64 {
+    trace
+        .iter()
+        .map(|e| match e {
+            Event::Demand { turned_away, .. } => *turned_away as u64,
+            _ => 0,
+        })
+        .sum()
 }
 
 #[test]
 fn same_seed_is_identical() {
-    assert_eq!(sweet_run(42, 40), sweet_run(42, 40));
+    assert_eq!(run_at(45.0, 42, 40), run_at(45.0, 42, 40));
 }
 
 #[test]
 fn different_seed_differs() {
-    assert_ne!(sweet_run(1, 40), sweet_run(2, 40));
+    assert_ne!(run_at(45.0, 1, 40), run_at(45.0, 2, 40));
 }
 
 #[test]
-fn greedy_pricing_turns_more_golfers_away() {
-    fn turned_away(strategy: &mut dyn Strategy) -> u32 {
-        let mut world = World::demo(7);
-        run(&mut world, strategy, 40)
-            .iter()
-            .map(|e| match e {
-                engine::Event::Demand { turned_away, .. } => *turned_away,
-                _ => 0,
-            })
-            .sum()
-    }
-    let sweet = turned_away(&mut SweetSpotPricing);
-    let greedy = turned_away(&mut GreedyPricing { multiplier: 1.6 });
-    assert!(
-        greedy > sweet,
-        "greedy pricing should turn away more golfers (greedy={greedy}, sweet={sweet})"
-    );
+fn cheaper_draws_more_golfers() {
+    let cheap = sum_golfers(&run_at(30.0, 7, 40));
+    let dear = sum_golfers(&run_at(120.0, 7, 40));
+    assert!(cheap > dear, "cheap should draw more golfers (cheap={cheap}, dear={dear})");
+}
+
+#[test]
+fn pricier_turns_more_golfers_away() {
+    let cheap = sum_turned_away(&run_at(30.0, 7, 40));
+    let dear = sum_turned_away(&run_at(120.0, 7, 40));
+    assert!(dear > cheap, "high price should turn more away (dear={dear}, cheap={cheap})");
 }

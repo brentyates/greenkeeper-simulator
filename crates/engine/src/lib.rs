@@ -9,9 +9,9 @@ pub mod model;
 pub mod rng;
 pub mod systems;
 
-pub use decision::{Decisions, GreedyPricing, Strategy, SweetSpotPricing};
+pub use decision::{Decisions, FixedPricing, GreedyPricing, Strategy, SweetSpotPricing};
 pub use event::{Event, Trace};
-pub use model::{Region, RegionKind, World};
+pub use model::{default_segments, Region, RegionKind, Segment, World};
 pub use rng::Rng;
 
 /// Advance the world by one turn, running every system in fixed order and
@@ -27,8 +27,9 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     systems::agronomy(world, dryness);
     systems::maintenance(world, trace);
     systems::conditions_and_prestige(world, trace);
-    let revenue = systems::demand_and_revenue(world, decisions.price, trace);
-    systems::economy(world, revenue, trace);
+    let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
+    systems::wear_from_traffic(world, outcome.golfers);
+    systems::economy(world, outcome.revenue, trace);
 }
 
 /// Run `turns` turns, letting `strategy` choose decisions each turn. Stops early

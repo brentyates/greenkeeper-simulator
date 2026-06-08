@@ -31,6 +31,16 @@ impl RegionKind {
         }
     }
 
+    /// How fast golfer traffic wears this kind (greens/tees take the brunt).
+    pub fn wear_rate(self) -> f64 {
+        match self {
+            RegionKind::Green => 1.4,
+            RegionKind::Tee => 1.2,
+            RegionKind::Fairway => 1.0,
+            RegionKind::Rough => 0.6,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             RegionKind::Green => "green",
@@ -49,6 +59,7 @@ pub struct Region {
     pub moisture: f64,  // 0..100, ideal ~60
     pub nutrients: f64, // 0..100, higher is better
     pub growth: f64,    // 0..100, lower (freshly mown) is better
+    pub wear: f64,      // 0..100, foot/cart traffic damage, higher is worse
 }
 
 impl Region {
@@ -57,18 +68,43 @@ impl Region {
         let moisture_score = (100.0 - (self.moisture - 60.0).abs() * 1.4).clamp(0.0, 100.0);
         let growth_score = (100.0 - self.growth).clamp(0.0, 100.0);
         let nutrient_score = self.nutrients.clamp(0.0, 100.0);
-        (0.40 * moisture_score + 0.35 * growth_score + 0.25 * nutrient_score).clamp(0.0, 100.0)
+        let wear_score = (100.0 - self.wear).clamp(0.0, 100.0);
+        (0.30 * moisture_score + 0.25 * growth_score + 0.20 * nutrient_score + 0.25 * wear_score)
+            .clamp(0.0, 100.0)
     }
+}
+
+/// A slice of the golfer market: how many consider visiting, what they'll pay,
+/// and how much they spend beyond the green fee. Demand emerges from the mix.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Segment {
+    pub name: &'static str,
+    pub population: f64,      // potential visitors per turn at full appeal
+    pub base_wtp: f64,        // willingness to pay at neutral appeal
+    pub wtp_spread: f64,      // price range over which participation falls to zero
+    pub spend_propensity: f64, // secondary $ per round at full amenities
+}
+
+/// The default market: bargain-hunters through affluent members.
+pub fn default_segments() -> Vec<Segment> {
+    vec![
+        Segment { name: "bargain", population: 30.0, base_wtp: 25.0, wtp_spread: 15.0, spend_propensity: 4.0 },
+        Segment { name: "regular", population: 20.0, base_wtp: 45.0, wtp_spread: 20.0, spend_propensity: 8.0 },
+        Segment { name: "avid", population: 10.0, base_wtp: 80.0, wtp_spread: 30.0, spend_propensity: 14.0 },
+        Segment { name: "affluent", population: 5.0, base_wtp: 140.0, wtp_spread: 50.0, spend_propensity: 25.0 },
+    ]
 }
 
 #[derive(Clone, Debug)]
 pub struct World {
     pub turn: u32,
     pub cash: f64,
-    pub prestige: f64, // 0..1000 (200 per ★)
-    pub price: f64,    // current green fee
+    pub prestige: f64,     // 0..1000 (200 per ★)
+    pub price: f64,        // current green fee
     pub regions: Vec<Region>,
     pub staff_capacity: f64, // maintenance points available per turn
+    pub amenity_level: f64,  // multiplier on secondary spend (capex unlocks this)
+    pub segments: Vec<Segment>,
     pub bankrupt: bool,
     pub rng: Rng,
 }
@@ -82,9 +118,23 @@ impl World {
         self.regions.iter().map(|r| r.health()).sum::<f64>() / self.regions.len() as f64
     }
 
+    /// Average wear across regions, 0..100.
+    pub fn avg_wear(&self) -> f64 {
+        if self.regions.is_empty() {
+            return 0.0;
+        }
+        self.regions.iter().map(|r| r.wear).sum::<f64>() / self.regions.len() as f64
+    }
+
     /// Prestige tier as a 0-based index (0 = ★1 … 4 = ★5).
     pub fn tier(&self) -> u32 {
         ((self.prestige / 200.0).floor() as u32).min(4)
+    }
+
+    /// How appealing the course is right now, 0..1 — drives both how many golfers
+    /// consider visiting and how much they perceive a round to be worth.
+    pub fn appeal(&self) -> f64 {
+        (0.5 * (self.prestige / 1000.0) + 0.5 * (self.avg_health() / 100.0)).clamp(0.0, 1.0)
     }
 
     /// A small starter course used for the first slice and tests.
@@ -100,6 +150,7 @@ impl World {
                 moisture: 65.0,
                 nutrients: 75.0,
                 growth: 10.0,
+                wear: 0.0,
             })
             .collect();
         World {
@@ -109,6 +160,8 @@ impl World {
             price: 35.0,
             regions,
             staff_capacity: 40.0,
+            amenity_level: 1.0,
+            segments: default_segments(),
             bankrupt: false,
             rng: Rng::new(seed),
         }

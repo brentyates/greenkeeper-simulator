@@ -48,10 +48,14 @@ Hard constraints, not aspirations.
    *region* (a green, a fairway, a bunker), not a tile or a coordinate.
 5. **Depth through interaction.** Richness comes from systems feeding each other,
    not from more systems.
-6. **Entertainment is narrative, not spectacle.** Character and story reach the
+6. **Earned, never declared.** Quality, character, and reputation are *derived
+   from simulation state and player decisions* — never authored attributes or
+   canned flavor. The trace reports what was earned; it never invents it. If the
+   systems can't produce it, the game doesn't claim it.
+7. **Entertainment is narrative, not spectacle.** Character and story reach the
    player through the trace — events, reactions, word-of-mouth — never a rendered
    scene. The spatial/visual layer is out of scope by design.
-7. **Finishable scope.** Every system, and this document, has a definition of
+8. **Finishable scope.** Every system, and this document, has a definition of
    done. Vertical slices that are fully playable, then depth.
 
 ---
@@ -231,8 +235,10 @@ delivered, per principle 6, as **narrative in the trace, not a rendered round**.
   per-hole *character* (a signature hole golfers fear or adore) is achievable
   headlessly as attributes + narrative; per-hole *design* (shaping and seeing a
   hole) is the part that genuinely wants visuals, and that stays out of scope.
-- Story is emergent flavor on top of the systems, never a system to maintain in
-  itself.
+- Every story beat is **earned** (principle 6): it reports a real simulation
+  outcome — a genuine pace jam, a true condition peak, an actual lost golfer —
+  never an authored adjective. If the systems can't produce it, the trace doesn't
+  claim it.
 
 ---
 
