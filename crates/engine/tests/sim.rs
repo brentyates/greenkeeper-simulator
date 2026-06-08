@@ -342,6 +342,7 @@ fn tournament_eligibility_is_gated() {
                 research_funding: 0.0,
                 buy_irrigation: false,
                 buy_robots: 0,
+                mechanics: 0,
             }
         }
     }

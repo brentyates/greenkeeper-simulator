@@ -278,9 +278,11 @@ impl Default for TournamentBalance {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tech {
     pub name: String,
-    pub cost: f64,             // research points to unlock
-    pub mower_efficiency: f64, // reduces effective maintenance cost per region
-    pub irrigation: f64,       // reduces moisture decay
+    pub cost: f64,                // research points to unlock
+    pub mower_efficiency: f64,    // reduces effective maintenance cost per region
+    pub irrigation: f64,          // reduces moisture decay
+    pub unlocks_irrigation: bool, // enables installing the irrigation system
+    pub unlocks_robots: bool,     // enables buying robot units (the elite endgame)
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -291,19 +293,26 @@ pub struct ResearchBalance {
 
 impl Default for ResearchBalance {
     fn default() -> Self {
-        let t = |name: &str, cost, mower_efficiency, irrigation| Tech {
-            name: name.to_string(),
-            cost,
-            mower_efficiency,
-            irrigation,
+        let t = |name: &str, cost, mower_efficiency, irrigation, unlocks_irrigation, unlocks_robots| {
+            Tech {
+                name: name.to_string(),
+                cost,
+                mower_efficiency,
+                irrigation,
+                unlocks_irrigation,
+                unlocks_robots,
+            }
         };
         ResearchBalance {
             funding_to_points: 1.0,
+            // Unlocked in order: the irrigation system mid-tree, robots as the
+            // expensive elite endgame (matching the original tier structure).
             techs: vec![
-                t("Sharper Blades", 600.0, 0.15, 0.0),
-                t("Drip Irrigation", 900.0, 0.0, 0.30),
-                t("Fleet Mowers", 1800.0, 0.20, 0.0),
-                t("Soil Science", 2400.0, 0.0, 0.15),
+                t("Sharper Blades", 600.0, 0.15, 0.0, false, false),
+                t("Piped Irrigation", 900.0, 0.0, 0.30, true, false),
+                t("Fleet Mowers", 1800.0, 0.20, 0.0, false, false),
+                t("Soil Science", 2400.0, 0.0, 0.15, false, false),
+                t("Robotics", 5000.0, 0.0, 0.0, false, true),
             ],
         }
     }
@@ -475,18 +484,22 @@ impl Default for AgronomyBalance {
 
 /// Automation: capital that takes maintenance jobs off the crew. The irrigation
 /// system (pipes + sprinklers) is a one-time course-wide install that waters
-/// automatically; robot units mow and fertilize up to a throughput, with running
-/// cost and the risk of breakdowns. Tuning.
+/// automatically; robot units mow and fertilize up to a throughput. Robots follow
+/// the original design — high capital, low operating cost, and reliable but for
+/// occasional breakdowns that mechanics keep in check. Tuning.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AutomationBalance {
     pub irrigation_install: f64, // one-time capital: pipes + sprinklers, whole course
     pub irrigation_upkeep: f64,  // per-turn running cost once installed
-    pub robot_price: f64,        // capital per robot unit
+    pub robot_price: f64,        // capital per robot unit (high)
     pub robot_throughput: f64,   // regions one unit mows+fertilizes per turn
-    pub robot_upkeep: f64,       // per-turn running cost per owned unit
-    pub robot_breakdown: f64,    // per-unit per-turn breakdown chance
+    pub robot_upkeep: f64,       // per-turn running cost per owned unit (low — power, not wages)
+    pub robot_breakdown: f64,    // base per-unit per-turn breakdown chance (rare)
     pub robot_repair_cost: f64,  // paid when a unit breaks down
     pub robot_repair_turns: u32, // turns a broken unit is out of service
+    pub mechanic_wage: f64,      // per-turn wage per mechanic on staff
+    pub breakdown_no_mechanic: f64, // breakdown multiplier with no mechanics (penalty)
+    pub breakdown_floor: f64,    // breakdown multiplier with a mechanic per robot (best)
 }
 
 impl Default for AutomationBalance {
@@ -494,12 +507,15 @@ impl Default for AutomationBalance {
         AutomationBalance {
             irrigation_install: 8000.0,
             irrigation_upkeep: 25.0,
-            robot_price: 6000.0,
+            robot_price: 4000.0,
             robot_throughput: 4.0,
-            robot_upkeep: 18.0,
-            robot_breakdown: 0.035,
-            robot_repair_cost: 600.0,
-            robot_repair_turns: 3,
+            robot_upkeep: 10.0,
+            robot_breakdown: 0.012,
+            robot_repair_cost: 800.0,
+            robot_repair_turns: 2,
+            mechanic_wage: 30.0,
+            breakdown_no_mechanic: 1.5,
+            breakdown_floor: 0.4,
         }
     }
 }
@@ -771,6 +787,7 @@ pub struct Finances {
 pub struct Operations {
     pub staff_capacity: f64, // maintenance points available per turn
     pub amenity_level: f64,  // multiplier on secondary spend (capex unlocks this)
+    pub mechanics: u32,      // mechanics on staff this turn (keep robots running)
 }
 
 /// Prestige and its slow-moving inputs (0..100 each), the holistic reputation
@@ -826,6 +843,26 @@ impl World {
         self
     }
 
+    /// Have the unlocked techs (in order) enabled the irrigation system yet?
+    pub fn irrigation_unlocked(&self) -> bool {
+        self.balance
+            .research
+            .techs
+            .iter()
+            .take(self.research.unlocked as usize)
+            .any(|t| t.unlocks_irrigation)
+    }
+
+    /// Have the unlocked techs enabled robot units yet? (The elite endgame.)
+    pub fn robots_unlocked(&self) -> bool {
+        self.balance
+            .research
+            .techs
+            .iter()
+            .take(self.research.unlocked as usize)
+            .any(|t| t.unlocks_robots)
+    }
+
     /// Set up a scenario run: build its course (replacing the sandbox course),
     /// degrade it by `start_neglect`, and attach the objective to win or lose.
     pub fn with_scenario(mut self, scenario: Scenario) -> Self {
@@ -879,6 +916,7 @@ impl World {
             ops: Operations {
                 staff_capacity: 20.0,
                 amenity_level: 1.0,
+                mechanics: 0,
             },
             standing: Standing {
                 prestige: 200.0,

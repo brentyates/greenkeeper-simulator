@@ -22,6 +22,9 @@ pub struct Decisions {
     pub buy_irrigation: bool,
     /// Buy this many robot units this turn (capital), affordability permitting.
     pub buy_robots: u32,
+    /// Mechanics on staff this turn — they keep the robot fleet running (fewer
+    /// breakdowns), for a wage.
+    pub mechanics: u32,
 }
 
 impl Decisions {
@@ -35,6 +38,7 @@ impl Decisions {
             research_funding: 0.0,
             buy_irrigation: false,
             buy_robots: 0,
+            mechanics: 0,
         }
     }
 }
@@ -147,6 +151,7 @@ impl Strategy for ScenarioStrategy {
             research_funding: self.research_funding,
             buy_irrigation: false,
             buy_robots: 0,
+            mechanics: 0,
         }
     }
 }
@@ -168,16 +173,31 @@ impl Strategy for InvestStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
         let a = &world.balance.automation;
         let agro = &world.balance.agronomy;
-        let buy_irrigation = self.irrigation && !world.irrigation;
-        // One unit at a time, keeping a cash cushion so a purchase never bankrupts,
-        // and not in the same turn we're paying for the irrigation install.
+
+        // Automation is research-gated, so fund research until the wanted unlocks
+        // land (robots are the elite endgame — it takes a while). Then stop.
+        let need_irrigation_unlock = self.irrigation && !world.irrigation_unlocked();
+        let need_robots_unlock = self.robot_target > 0 && !world.robots_unlocked();
+        let research_funding = if need_irrigation_unlock || need_robots_unlock {
+            (world.finances.cash * 0.5).clamp(0.0, 250.0)
+        } else {
+            0.0
+        };
+
+        // Buy once unlocked: irrigation first, then robots one at a time, always
+        // keeping a cash cushion so a purchase never bankrupts.
+        let buy_irrigation =
+            self.irrigation && world.irrigation_unlocked() && !world.irrigation;
         let want_more = (world.robots.len() as u32) < self.robot_target;
-        let buy_robots =
-            if want_more && !buy_irrigation && world.finances.cash >= a.robot_price * 2.0 {
-                1
-            } else {
-                0
-            };
+        let buy_robots = if want_more
+            && world.robots_unlocked()
+            && !buy_irrigation
+            && world.finances.cash >= a.robot_price * 2.0
+        {
+            1
+        } else {
+            0
+        };
 
         // Size the crew to the maintenance still done by hand. Irrigation removes
         // watering from every region the crew touches (a proportional saving);
@@ -190,23 +210,29 @@ impl Strategy for InvestStrategy {
             target_capacity *= (full - agro.water_cost) / full;
         }
         target_capacity -= working * a.robot_throughput * (agro.mow_cost + agro.fertilize_cost);
-        // Keep a skeleton crew on hand to patch the ground robots can't reach and
-        // to cover breakdown slack — never fully hollow out the payroll.
-        let floor = if self.robot_target > 0 || self.irrigation {
-            self.base_capacity * 0.15
+        // Keep a little crew on hand to patch breakdown slack (a couple of units'
+        // worth of work) — but don't carry dead payroll once robots cover the course.
+        let floor = if self.robot_target > 0 {
+            2.0 * a.robot_throughput * (agro.mow_cost + agro.fertilize_cost)
         } else {
             0.0
         };
         let target_capacity = target_capacity.max(floor);
+
+        // One mechanic per few robots keeps breakdowns near the floor; they earn
+        // their wage by sparing repair bills and downtime once the fleet is sizable.
+        let owned = world.robots.len() as u32;
+        let mechanics = owned.div_ceil(3);
 
         Decisions {
             price: sweet_spot(world.standing.tier()),
             target_capacity,
             accept_tournament: None,
             prep_effort: 0.0,
-            research_funding: 0.0,
+            research_funding,
             buy_irrigation,
             buy_robots,
+            mechanics,
         }
     }
 }

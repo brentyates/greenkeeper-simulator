@@ -33,6 +33,7 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     trace.push(Event::TurnStarted { turn: world.turn });
 
     world.ops.staff_capacity = decisions.target_capacity.max(0.0);
+    world.ops.mechanics = decisions.mechanics;
     systems::research_tick(world, decisions.research_funding, trace);
 
     let dryness = systems::weather(world, trace);

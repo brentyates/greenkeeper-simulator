@@ -87,23 +87,31 @@ pub(crate) fn automation(
     trace: &mut Trace,
 ) {
     let a = world.balance.automation.clone();
-    if buy_irrigation && !world.irrigation && world.finances.cash >= a.irrigation_install {
+    // Both automations are research-gated: the irrigation system mid-tree, robots
+    // as the elite endgame unlock.
+    if buy_irrigation
+        && world.irrigation_unlocked()
+        && !world.irrigation
+        && world.finances.cash >= a.irrigation_install
+    {
         world.finances.cash -= a.irrigation_install;
         world.irrigation = true;
         trace.push(Event::IrrigationInstalled {
             cost: a.irrigation_install,
         });
     }
-    for _ in 0..buy_robots {
-        if world.finances.cash < a.robot_price {
-            break;
+    if world.robots_unlocked() {
+        for _ in 0..buy_robots {
+            if world.finances.cash < a.robot_price {
+                break;
+            }
+            world.finances.cash -= a.robot_price;
+            world.robots.push(0);
+            trace.push(Event::RobotPurchased {
+                cost: a.robot_price,
+                owned: world.robots.len() as u32,
+            });
         }
-        world.finances.cash -= a.robot_price;
-        world.robots.push(0);
-        trace.push(Event::RobotPurchased {
-            cost: a.robot_price,
-            owned: world.robots.len() as u32,
-        });
     }
 
     // Running costs for installed/owned kit.
@@ -112,11 +120,24 @@ pub(crate) fn automation(
     }
     world.finances.cash -= a.robot_upkeep * world.robots.len() as f64;
 
+    // Mechanics keep the fleet running: a mechanic per robot pushes breakdowns to
+    // the floor; none leaves them at the penalty rate. (More important the more you
+    // automate — automation ties back to the staff-as-investment pillar.)
+    let n_robots = world.robots.len();
+    let factor = if n_robots == 0 {
+        0.0
+    } else {
+        let coverage = (world.ops.mechanics as f64 / n_robots as f64).clamp(0.0, 1.0);
+        (a.breakdown_no_mechanic - (a.breakdown_no_mechanic - a.breakdown_floor) * coverage)
+            .max(a.breakdown_floor)
+    };
+    let breakdown = a.robot_breakdown * factor;
+
     // Recover units mid-repair; roll breakdowns on the operational ones.
-    for i in 0..world.robots.len() {
+    for i in 0..n_robots {
         if world.robots[i] > 0 {
             world.robots[i] -= 1;
-        } else if world.rng.next_f64() < a.robot_breakdown {
+        } else if world.rng.next_f64() < breakdown {
             world.robots[i] = a.robot_repair_turns;
             world.finances.cash -= a.robot_repair_cost;
             trace.push(Event::RobotBrokeDown {
@@ -582,6 +603,7 @@ pub(crate) fn wear_from_traffic(world: &mut World, golfers: f64) {
 pub(crate) fn economy(world: &mut World, revenue: f64, golfers: f64, trace: &mut Trace) {
     let e = &world.balance.economy;
     let expenses = world.ops.staff_capacity * e.wage_per_capacity
+        + world.ops.mechanics as f64 * world.balance.automation.mechanic_wage
         + e.fixed_overhead
         + golfers * e.variable_cost_per_golfer;
     let floor = e.bankruptcy_floor;
