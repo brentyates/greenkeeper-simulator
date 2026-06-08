@@ -88,13 +88,17 @@ greenkeeper/
 
 ---
 
-## 6. Scenario data (input) [open: format]
+## 6. Scenario & balance data (input) [format decided: TOML]
 
-Scenarios are serde-deserialized data: starting conditions, course definition
-(regions), objective + difficulty modifiers, and any scripted events. **Format is
-the one open call** — leaning **RON** (Rust-native, supports enums/nesting
-cleanly, great for rich config), with **TOML** as the simpler, more universally
-familiar alternative.
+Tuning and scenarios are serde-deserialized data: the `Balance` struct
+(economy/prestige/disease/tournament), plus starting conditions, course
+definition (regions), objective + difficulty modifiers. **Format = TOML** —
+purpose-built for config, comments, no whitespace footguns, best-maintained
+crate, and it maps cleanly onto the grouped `Balance` (`[economy]` / `[prestige]`
+/ …). (Chosen over YAML — whose `serde_yaml` is unmaintained and which has
+type-coercion footguns — and RON.) File loading lives in the shell (`cli`/`sweep`/
+a future tuner), keeping the engine pure; `Balance` is already injectable via
+`World::with_balance`.
 
 **Strategies** (a decision policy you run to test/tune — "price at sweet spot,
 hire when backlog > N") start as small Rust code implementing a `Strategy` trait,
@@ -157,9 +161,9 @@ Consider dev-only `insta`/`proptest` later. Resist adding more without a reason.
 
 ## 10. Open
 
-- **Scenario file format:** RON [leaning] vs TOML. (§6)
+- **Wire TOML loading:** add `serde` derives on `Balance` (+ a `toml` read in the
+  shell) and a `balance.toml` so tuning is editable without a recompile. (§6)
 - **Strategies as code vs data:** start as code; revisit. (§6)
-- (From DESIGN) which **risk system** anchors the first slice.
 
 ---
 

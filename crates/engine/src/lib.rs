@@ -11,11 +11,13 @@ pub mod systems;
 
 pub use decision::{
     sweet_spot, Decisions, FixedPricing, NeglectfulPricing, PlanStrategy, RampStrategy, Strategy,
+    TournamentStrategy,
 };
 pub use event::{Event, Trace};
 pub use model::{
     default_segments, Balance, Course, DiseaseBalance, DiseasePolicy, EconomyBalance, Finances,
-    Operations, PrestigeBalance, Region, RegionKind, Segment, Standing, World,
+    Operations, PrestigeBalance, Region, RegionKind, Segment, Standing, TournamentBalance,
+    TournamentPhase, TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 
@@ -36,7 +38,9 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
     systems::treatment(world, decisions.disease, trace);
     systems::disease_tick(world, dryness, trace);
     systems::prestige_update(world, trace);
-    let outcome = systems::demand_and_revenue(world, decisions.price, dryness, trace);
+    let attention = systems::tournament_tick(world, trace);
+    systems::tournament_accept(world, decisions.accept_tournament, trace);
+    let outcome = systems::demand_and_revenue(world, decisions.price, dryness, attention, trace);
     systems::wear_from_traffic(world, outcome.golfers);
     systems::standing_update(world, &outcome);
     systems::economy(world, outcome.revenue, outcome.golfers, trace);

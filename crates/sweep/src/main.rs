@@ -6,7 +6,9 @@
 //!
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
-use engine::{run, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, World};
+use engine::{
+    run, DiseasePolicy, Event, PlanStrategy, RampStrategy, Strategy, TournamentStrategy, World,
+};
 
 type Factory = Box<dyn Fn() -> Box<dyn Strategy>>;
 
@@ -27,6 +29,10 @@ fn plan(price: f64, capacity: f64, disease: DiseasePolicy) -> Factory {
 
 fn ramp(capacity: f64) -> Factory {
     Box::new(move || Box::new(RampStrategy { capacity }) as Box<dyn Strategy>)
+}
+
+fn host(capacity: f64) -> Factory {
+    Box::new(move || Box::new(TournamentStrategy { capacity }) as Box<dyn Strategy>)
 }
 
 struct RunResult {
@@ -102,6 +108,10 @@ fn main() {
         Path {
             name: "ramp (earn up)",
             make: ramp(35.0),
+        },
+        Path {
+            name: "tournament host",
+            make: host(35.0),
         },
         // Run badly — these should fail.
         Path {

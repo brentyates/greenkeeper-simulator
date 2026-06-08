@@ -3,7 +3,7 @@
 //! `pub(crate)` so only `step` can orchestrate them — preserving the fixed order.
 
 use crate::event::{Event, Trace};
-use crate::model::{DiseasePolicy, World};
+use crate::model::{DiseasePolicy, TournamentPhase, TournamentState, TournamentTier, World};
 
 /// Outcome of the demand system for one turn.
 pub(crate) struct DemandOutcome {
@@ -189,6 +189,7 @@ pub(crate) fn demand_and_revenue(
     world: &mut World,
     price: f64,
     dryness: f64,
+    attention: f64,
     trace: &mut Trace,
 ) -> DemandOutcome {
     world.finances.price = price;
@@ -197,6 +198,8 @@ pub(crate) fn demand_and_revenue(
         .clamp(0.0, 1.0);
     let amenity = world.ops.amenity_level;
     let weather_spend = 1.0 + dryness * 0.1;
+    // Tournament spotlight (attention) plus any lasting residual draw.
+    let demand_mult = (attention * (1.0 + world.demand_modifier)).max(0.0);
 
     let mut interested_total = 0.0;
     let mut golfers_total = 0.0;
@@ -205,7 +208,7 @@ pub(crate) fn demand_and_revenue(
 
     for s in &world.course.segments {
         let wtp = s.base_wtp * (0.5 + 1.0 * experience);
-        let interested = s.population * (0.2 + 0.8 * experience);
+        let interested = s.population * (0.2 + 0.8 * experience) * demand_mult;
         let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
         let golfers = interested * playing_fraction;
 
@@ -274,6 +277,108 @@ pub(crate) fn standing_update(world: &mut World, outcome: &DemandOutcome) {
     let target_excl =
         (0.6 * (outcome.premium_share * 100.0) + 0.4 * price_factor).clamp(0.0, 100.0);
     world.standing.exclusivity += (target_excl - world.standing.exclusivity) * 0.1;
+
+    // Tournament residual demand fades back toward zero over time.
+    world.demand_modifier *= 0.95;
+}
+
+/// Commit to hosting a tournament if one is requested, eligible (prestige gate),
+/// and affordable. Pays the entry fee and books a prep countdown.
+pub(crate) fn tournament_accept(world: &mut World, tier_idx: Option<usize>, trace: &mut Trace) {
+    let Some(idx) = tier_idx else {
+        return;
+    };
+    if world.tournament.is_some() {
+        return;
+    }
+    let Some(tier) = world.balance.tournament.tiers.get(idx).cloned() else {
+        return;
+    };
+    if world.standing.prestige < tier.prestige_required || world.finances.cash < tier.entry_cost {
+        return;
+    }
+    world.finances.cash -= tier.entry_cost;
+    world.tournament = Some(TournamentState {
+        tier: idx,
+        phase: TournamentPhase::Scheduled {
+            turns_until: tier.prep_turns,
+        },
+    });
+    trace.push(Event::TournamentScheduled {
+        tier: tier.name,
+        starts_in: tier.prep_turns,
+    });
+}
+
+/// Advance a booked tournament: count down prep, then run the event accumulating
+/// conditions. Returns the demand-surge "attention" multiplier for this turn (1.0
+/// when no event is live). Resolves and grades the event on its final day.
+pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
+    let conditions = world.course.avg_health();
+    let Some(mut state) = world.tournament.take() else {
+        return 1.0;
+    };
+    let tier = world.balance.tournament.tiers[state.tier].clone();
+    let mut attention = 1.0;
+
+    match &mut state.phase {
+        TournamentPhase::Scheduled { turns_until } => {
+            if *turns_until > 1 {
+                *turns_until -= 1;
+                world.tournament = Some(state);
+            } else {
+                trace.push(Event::TournamentStarted {
+                    tier: tier.name.clone(),
+                });
+                attention = tier.attention;
+                if tier.duration <= 1 {
+                    resolve_tournament(world, &tier, conditions, trace);
+                } else {
+                    state.phase = TournamentPhase::Running {
+                        day: 1,
+                        condition_sum: conditions,
+                    };
+                    world.tournament = Some(state);
+                }
+            }
+        }
+        TournamentPhase::Running { day, condition_sum } => {
+            *day += 1;
+            *condition_sum += conditions;
+            attention = tier.attention;
+            if *day >= tier.duration {
+                let avg = *condition_sum / *day as f64;
+                resolve_tournament(world, &tier, avg, trace);
+            } else {
+                world.tournament = Some(state);
+            }
+        }
+    }
+    attention
+}
+
+/// Grade the event by how well conditions held under the spotlight, then pay out,
+/// swing prestige (amplified), and set a lasting residual demand modifier.
+fn resolve_tournament(
+    world: &mut World,
+    tier: &TournamentTier,
+    avg_condition: f64,
+    trace: &mut Trace,
+) {
+    let grade =
+        ((avg_condition - tier.fail_floor) / (tier.target - tier.fail_floor)).clamp(0.0, 1.0);
+    let payout = tier.payout * grade;
+    world.finances.cash += payout;
+    let prestige_delta = tier.prestige_swing * (2.0 * grade - 1.0);
+    world.standing.prestige = (world.standing.prestige + prestige_delta).clamp(0.0, 1000.0);
+    world.demand_modifier += tier.residual * (2.0 * grade - 1.0);
+    world.tournament = None;
+    trace.push(Event::TournamentResult {
+        tier: tier.name.clone(),
+        grade,
+        payout,
+        prestige_delta,
+    });
 }
 
 /// Golfer traffic wears the course — greens and tees most. This couples growth

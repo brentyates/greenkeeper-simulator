@@ -162,9 +162,16 @@ The spine that runs through every scenario:
   tradeoffs, with distinct viable paths.
 - **Course scale (3 → 9 → 18 → 27 holes).** More ground than a small crew can
   hold, forcing the hire-then-automate arc.
-- **Tournaments — the apex bet.** Earned through *sustained* excellence; an
-  optional high-risk play wherever eligible (and the objective of some scenarios).
-  Huge gains on success, lasting setbacks on failure.
+- **Tournaments — the apex bet (the path to heaps).** A staircase of tiers, each
+  behind a **hard prestige gate**: small locals open early and pay a pittance;
+  State → National → Major need high prestige and pay *exponentially* more. You
+  **commit, then prep** (a lead time to get ready), then the event runs as a
+  **heightened spotlight** — attention surges (a crowd that stresses the course
+  right when it's being judged) and the stakes are amplified. Performance is
+  **graded** by how well conditions hold during the event: nail it for a huge
+  payout, a prestige bump, and a lasting demand *residual* (the trickle-down);
+  flub it and everyone's talking — an amplified prestige hit and a demand penalty.
+  This is where the hard, high-prestige path finally pays heaps.
 
 ---
 

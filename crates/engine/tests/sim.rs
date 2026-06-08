@@ -1,4 +1,7 @@
-use engine::{run, Balance, DiseasePolicy, Event, FixedPricing, PlanStrategy, Trace, World};
+use engine::{
+    run, Balance, DiseasePolicy, Event, FixedPricing, PlanStrategy, RampStrategy,
+    TournamentStrategy, Trace, World,
+};
 
 fn run_at(price: f64, seed: u64, turns: u32) -> Trace {
     let mut world = World::demo(seed);
@@ -190,6 +193,59 @@ fn balance_is_data_driven() {
     assert!(
         dearer_cash < base,
         "higher overhead should lower cash (base={base:.0}, dearer={dearer_cash:.0})"
+    );
+}
+
+#[test]
+fn hosting_tournaments_pays_heaps() {
+    // The same course, hosting tournaments vs never hosting: the hard path (clear
+    // the prestige gate, deliver under the spotlight) pays vastly more. This is the
+    // reward curve — heaps only via tournaments.
+    fn total_cash(host: bool) -> f64 {
+        (1..=20)
+            .map(|s| {
+                let mut world = World::demo(s);
+                if host {
+                    run(&mut world, &mut TournamentStrategy { capacity: 35.0 }, 150);
+                } else {
+                    run(&mut world, &mut RampStrategy { capacity: 35.0 }, 150);
+                }
+                world.finances.cash
+            })
+            .sum()
+    }
+    let hosting = total_cash(true);
+    let not_hosting = total_cash(false);
+    assert!(
+        hosting > not_hosting * 3.0,
+        "hosting should pay far more (hosting={hosting:.0}, not={not_hosting:.0})"
+    );
+}
+
+#[test]
+fn tournament_eligibility_is_gated() {
+    // A fresh, low-prestige course cannot book a top-tier tournament: the hard gate
+    // holds even when the player keeps trying to commit to the Major (tier 4).
+    struct AlwaysBookMajor;
+    impl engine::Strategy for AlwaysBookMajor {
+        fn decide(&mut self, _world: &World) -> engine::Decisions {
+            engine::Decisions {
+                price: 45.0,
+                target_capacity: 40.0,
+                disease: DiseasePolicy::Treat,
+                accept_tournament: Some(4),
+            }
+        }
+    }
+    let mut world = World::demo(1);
+    assert!(world.standing.prestige < world.balance.tournament.tiers[4].prestige_required);
+    let trace = run(&mut world, &mut AlwaysBookMajor, 10);
+    let booked_major = trace
+        .iter()
+        .any(|e| matches!(e, Event::TournamentScheduled { tier, .. } if tier == "Major"));
+    assert!(
+        !booked_major,
+        "should not be able to book Major at low prestige"
     );
 }
 

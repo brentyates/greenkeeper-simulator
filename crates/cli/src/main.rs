@@ -71,6 +71,21 @@ fn render(event: &Event) -> String {
         Event::Treated { regions, cost } => {
             format!("  treatment  {regions} regions (-${cost:.0})")
         }
+        Event::TournamentScheduled { tier, starts_in } => {
+            format!("  >> {tier} tournament booked (starts in {starts_in})")
+        }
+        Event::TournamentStarted { tier } => {
+            format!("  >> {tier} tournament underway — all eyes on the course")
+        }
+        Event::TournamentResult {
+            tier,
+            grade,
+            payout,
+            prestige_delta,
+        } => format!(
+            "  >> {tier} result: grade {:.0}%  payout +${payout:.0}  prestige {prestige_delta:+.0}",
+            grade * 100.0
+        ),
         Event::Cash { value, delta } => format!("  cash       ${value:.0} ({delta:+.0})"),
         Event::Bankrupt { turn } => format!("  ** BANKRUPT on turn {turn} **"),
     }

@@ -205,11 +205,96 @@ impl Default for DiseaseBalance {
     }
 }
 
+/// One tier of tournament. Bigger tiers gate behind prestige (hard) and pay far
+/// more — the staircase to "heaps". Tuning, so it lives in `Balance`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TournamentTier {
+    pub name: String,
+    pub prestige_required: f64, // hard eligibility gate
+    pub prep_turns: u32,        // lead time after committing
+    pub duration: u32,          // event length in turns
+    pub entry_cost: f64,
+    pub payout: f64,         // at top grade
+    pub attention: f64,      // demand surge during the event (>1) — the spotlight
+    pub prestige_swing: f64, // max +/- prestige at resolution (amplified spotlight)
+    pub residual: f64,       // lasting demand modifier (+ on success, - on failure)
+    pub fail_floor: f64,     // avg event condition at/below which grade = 0
+    pub target: f64,         // avg event condition at/above which grade = 1
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TournamentBalance {
+    pub tiers: Vec<TournamentTier>,
+}
+
+impl Default for TournamentBalance {
+    fn default() -> Self {
+        #[allow(clippy::too_many_arguments)]
+        let t = |name: &str,
+                 prestige_required,
+                 prep_turns,
+                 duration,
+                 entry_cost,
+                 payout,
+                 attention,
+                 prestige_swing,
+                 residual,
+                 fail_floor,
+                 target| TournamentTier {
+            name: name.to_string(),
+            prestige_required,
+            prep_turns,
+            duration,
+            entry_cost,
+            payout,
+            attention,
+            prestige_swing,
+            residual,
+            fail_floor,
+            target,
+        };
+        TournamentBalance {
+            tiers: vec![
+                t(
+                    "Local", 0.0, 3, 2, 200.0, 2_000.0, 1.3, 30.0, 0.10, 50.0, 80.0,
+                ),
+                t(
+                    "Regional", 400.0, 4, 3, 1_000.0, 12_000.0, 1.6, 50.0, 0.15, 60.0, 85.0,
+                ),
+                t(
+                    "State", 600.0, 5, 3, 4_000.0, 50_000.0, 2.0, 80.0, 0.20, 65.0, 88.0,
+                ),
+                t(
+                    "National", 800.0, 6, 4, 15_000.0, 200_000.0, 2.5, 120.0, 0.25, 70.0, 90.0,
+                ),
+                t(
+                    "Major", 900.0, 8, 4, 50_000.0, 800_000.0, 3.0, 200.0, 0.30, 75.0, 92.0,
+                ),
+            ],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Balance {
     pub economy: EconomyBalance,
     pub prestige: PrestigeBalance,
     pub disease: DiseaseBalance,
+    pub tournament: TournamentBalance,
+}
+
+/// A committed tournament's lifecycle: a prep countdown, then the event itself
+/// (accumulating conditions to grade at the end).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TournamentPhase {
+    Scheduled { turns_until: u32 },
+    Running { day: u32, condition_sum: f64 },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TournamentState {
+    pub tier: usize,
+    pub phase: TournamentPhase,
 }
 
 // ===========================================================================
@@ -281,6 +366,8 @@ pub struct World {
     pub ops: Operations,
     pub standing: Standing,
     pub treatment_resistance: f64, // 0..resist_max, builds with treatment overuse
+    pub tournament: Option<TournamentState>,
+    pub demand_modifier: f64, // residual demand swing from tournaments; decays to 0
     pub rng: Rng,
     pub balance: Balance,
 }
@@ -335,6 +422,8 @@ impl World {
                 exclusivity: 20.0,
             },
             treatment_resistance: 0.0,
+            tournament: None,
+            demand_modifier: 0.0,
             rng: Rng::new(seed),
             balance: Balance::default(),
         }

@@ -46,6 +46,20 @@ pub enum Event {
         regions: u32,
         cost: f64,
     },
+    TournamentScheduled {
+        tier: String,
+        starts_in: u32,
+    },
+    TournamentStarted {
+        tier: String,
+    },
+    /// `grade` 0..1 = how well conditions held under the spotlight.
+    TournamentResult {
+        tier: String,
+        grade: f64,
+        payout: f64,
+        prestige_delta: f64,
+    },
     Cash {
         value: f64,
         delta: f64,

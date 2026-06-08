@@ -10,6 +10,9 @@ pub struct Decisions {
     /// fights disease, but costs wages.
     pub target_capacity: f64,
     pub disease: DiseasePolicy,
+    /// Commit to hosting a tournament of this tier index, if eligible and none is
+    /// already booked. `None` means don't commit this turn.
+    pub accept_tournament: Option<usize>,
 }
 
 /// Green-fee sweet spot by prestige tier (0-based): the price tier-relative
@@ -31,7 +34,8 @@ pub trait Strategy {
 }
 
 /// A full operating plan: a price point, a staffing level, and a disease policy.
-/// Expresses a *path* (budget / value / premium, well- or ill-run).
+/// Expresses a *path* (budget / value / premium, well- or ill-run). Hosts no
+/// tournaments.
 pub struct PlanStrategy {
     pub price: f64,
     pub capacity: f64,
@@ -44,6 +48,7 @@ impl Strategy for PlanStrategy {
             price: self.price,
             target_capacity: self.capacity,
             disease: self.disease,
+            accept_tournament: None,
         }
     }
 }
@@ -60,6 +65,41 @@ impl Strategy for RampStrategy {
             price: sweet_spot(world.standing.tier()),
             target_capacity: self.capacity,
             disease: DiseasePolicy::Treat,
+            accept_tournament: None,
+        }
+    }
+}
+
+/// Like `RampStrategy`, but also chases tournaments: whenever none is booked, it
+/// commits to the biggest tier it's eligible for and can afford. The path to heaps.
+pub struct TournamentStrategy {
+    pub capacity: f64,
+}
+
+impl Strategy for TournamentStrategy {
+    fn decide(&mut self, world: &World) -> Decisions {
+        let accept = if world.tournament.is_none() {
+            // Tiers are ordered ascending, so the last eligible+affordable is the biggest.
+            world
+                .balance
+                .tournament
+                .tiers
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| {
+                    world.standing.prestige >= t.prestige_required
+                        && world.finances.cash >= t.entry_cost
+                })
+                .map(|(i, _)| i)
+                .next_back()
+        } else {
+            None
+        };
+        Decisions {
+            price: sweet_spot(world.standing.tier()),
+            target_capacity: self.capacity,
+            disease: DiseasePolicy::Treat,
+            accept_tournament: accept,
         }
     }
 }
@@ -75,6 +115,7 @@ impl Strategy for FixedPricing {
             price: self.price,
             target_capacity: world.ops.staff_capacity,
             disease: DiseasePolicy::Treat,
+            accept_tournament: None,
         }
     }
 }
@@ -90,6 +131,7 @@ impl Strategy for NeglectfulPricing {
             price: self.price,
             target_capacity: world.ops.staff_capacity,
             disease: DiseasePolicy::Ignore,
+            accept_tournament: None,
         }
     }
 }
