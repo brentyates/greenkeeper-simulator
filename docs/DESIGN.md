@@ -164,14 +164,20 @@ The spine that runs through every scenario:
   hold, forcing the hire-then-automate arc.
 - **Tournaments — the apex bet (the path to heaps).** A staircase of tiers, each
   behind a **hard prestige gate**: small locals open early and pay a pittance;
-  State → National → Major need high prestige and pay *exponentially* more. You
-  **commit, then prep** (a lead time to get ready), then the event runs as a
-  **heightened spotlight** — attention surges (a crowd that stresses the course
-  right when it's being judged) and the stakes are amplified. Performance is
-  **graded** by how well conditions hold during the event: nail it for a huge
-  payout, a prestige bump, and a lasting demand *residual* (the trickle-down);
-  flub it and everyone's talking — an amplified prestige hit and a demand penalty.
-  This is where the hard, high-prestige path finally pays heaps.
+  State → National → Major need high prestige and pay *exponentially* more.
+  Committing draws a **finite prep checklist** (heist-style) — a few mandatory
+  jobs (install grandstands, grow out the rough, double-cut the greens, set
+  championship pins…) plus **one optional task that grants a payout boost**. You
+  must finish the mandatory list before the start date or you're **screwed**:
+  *readiness* (fraction completed) scales the whole result. The catch — **prep
+  effort is stolen from your maintenance crew** unless you staff up, so chasing
+  the checklist (and tempting the optional boost) while keeping conditions pristine
+  is the squeeze. Then the event runs as a **heightened spotlight**: attention
+  surges (a crowd that stresses the course right when it's judged), and the result
+  is **graded** by how well conditions held × readiness — nail it for a huge
+  payout (×optional bonus), a prestige bump, and a lasting demand *residual*; flub
+  it and everyone's talking, with an amplified prestige hit. Prestige is the
+  *gate*, never a prep task. This is where the hard path finally pays heaps.
 
 ---
 

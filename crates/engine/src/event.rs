@@ -50,8 +50,14 @@ pub enum Event {
         tier: String,
         starts_in: u32,
     },
+    TournamentPrep {
+        task: String,
+        optional: bool,
+    },
     TournamentStarted {
         tier: String,
+        readiness: f64,
+        optional_done: bool,
     },
     /// `grade` 0..1 = how well conditions held under the spotlight.
     TournamentResult {

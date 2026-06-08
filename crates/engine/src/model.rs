@@ -205,6 +205,15 @@ impl Default for DiseaseBalance {
     }
 }
 
+/// A single prep job before a tournament. Mandatory ones build *readiness*;
+/// the one optional one grants a bonus if you can also fit it in.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PrepTask {
+    pub name: String,
+    pub effort: f64, // capacity-turns to complete (used as remaining once committed)
+    pub optional: bool,
+}
+
 /// One tier of tournament. Bigger tiers gate behind prestige (hard) and pay far
 /// more — the staircase to "heaps". Tuning, so it lives in `Balance`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -212,6 +221,8 @@ pub struct TournamentTier {
     pub name: String,
     pub prestige_required: f64, // hard eligibility gate
     pub prep_turns: u32,        // lead time after committing
+    pub prep_task_count: u32,   // how many mandatory prep tasks are drawn
+    pub optional_bonus: f64,    // payout multiplier added if the optional task is done
     pub duration: u32,          // event length in turns
     pub entry_cost: f64,
     pub payout: f64,         // at top grade
@@ -225,6 +236,8 @@ pub struct TournamentTier {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TournamentBalance {
     pub tiers: Vec<TournamentTier>,
+    pub prep_tasks: Vec<PrepTask>,     // mandatory pool
+    pub optional_tasks: Vec<PrepTask>, // optional (boost) pool
 }
 
 impl Default for TournamentBalance {
@@ -233,6 +246,8 @@ impl Default for TournamentBalance {
         let t = |name: &str,
                  prestige_required,
                  prep_turns,
+                 prep_task_count,
+                 optional_bonus,
                  duration,
                  entry_cost,
                  payout,
@@ -244,6 +259,8 @@ impl Default for TournamentBalance {
             name: name.to_string(),
             prestige_required,
             prep_turns,
+            prep_task_count,
+            optional_bonus,
             duration,
             entry_cost,
             payout,
@@ -253,23 +270,46 @@ impl Default for TournamentBalance {
             fail_floor,
             target,
         };
+        let task = |name: &str, effort, optional| PrepTask {
+            name: name.to_string(),
+            effort,
+            optional,
+        };
         TournamentBalance {
             tiers: vec![
                 t(
-                    "Local", 0.0, 3, 2, 200.0, 2_000.0, 1.3, 30.0, 0.10, 50.0, 80.0,
+                    "Local", 0.0, 3, 2, 0.15, 2, 200.0, 2_000.0, 1.3, 30.0, 0.10, 50.0, 80.0,
                 ),
                 t(
-                    "Regional", 400.0, 4, 3, 1_000.0, 12_000.0, 1.6, 50.0, 0.15, 60.0, 85.0,
+                    "Regional", 400.0, 4, 3, 0.20, 3, 1_000.0, 12_000.0, 1.6, 50.0, 0.15, 60.0,
+                    85.0,
                 ),
                 t(
-                    "State", 600.0, 5, 3, 4_000.0, 50_000.0, 2.0, 80.0, 0.20, 65.0, 88.0,
+                    "State", 600.0, 5, 3, 0.25, 3, 4_000.0, 50_000.0, 2.0, 80.0, 0.20, 65.0, 88.0,
                 ),
                 t(
-                    "National", 800.0, 6, 4, 15_000.0, 200_000.0, 2.5, 120.0, 0.25, 70.0, 90.0,
+                    "National", 800.0, 6, 4, 0.30, 4, 15_000.0, 200_000.0, 2.5, 120.0, 0.25, 70.0,
+                    90.0,
                 ),
                 t(
-                    "Major", 900.0, 8, 4, 50_000.0, 800_000.0, 3.0, 200.0, 0.30, 75.0, 92.0,
+                    "Major", 900.0, 8, 5, 0.35, 4, 50_000.0, 800_000.0, 3.0, 200.0, 0.30, 75.0,
+                    92.0,
                 ),
+            ],
+            prep_tasks: vec![
+                task("install grandstands", 18.0, false),
+                task("put up sponsor signage", 10.0, false),
+                task("grow out the rough", 14.0, false),
+                task("double-cut & roll the greens", 16.0, false),
+                task("narrow the fairways", 12.0, false),
+                task("firm up the bunkers", 11.0, false),
+                task("set championship pins", 9.0, false),
+                task("lay spectator pathways", 13.0, false),
+            ],
+            optional_tasks: vec![
+                task("premium hospitality village", 20.0, true),
+                task("broadcast & media compound", 22.0, true),
+                task("host a pro-am charity day", 16.0, true),
             ],
         }
     }
@@ -283,12 +323,25 @@ pub struct Balance {
     pub tournament: TournamentBalance,
 }
 
-/// A committed tournament's lifecycle: a prep countdown, then the event itself
-/// (accumulating conditions to grade at the end).
+/// A committed tournament's lifecycle: a prep window working a checklist, then the
+/// event itself (accumulating conditions to grade at the end).
 #[derive(Clone, Debug, PartialEq)]
 pub enum TournamentPhase {
-    Scheduled { turns_until: u32 },
-    Running { day: u32, condition_sum: f64 },
+    /// Prep: `tasks` (effort = remaining) are worked down with diverted capacity.
+    /// `mandatory_total` is the original mandatory effort, for the readiness ratio.
+    Scheduled {
+        turns_until: u32,
+        tasks: Vec<PrepTask>,
+        mandatory_total: f64,
+    },
+    /// The event: `readiness` (0..1, locked at start) scales the grade;
+    /// `optional_done` grants the tier's bonus.
+    Running {
+        day: u32,
+        condition_sum: f64,
+        readiness: f64,
+        optional_done: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

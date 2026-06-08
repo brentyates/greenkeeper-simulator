@@ -33,6 +33,8 @@ resist_max = 0.85
 name = "Local"
 prestige_required = 0.0
 prep_turns = 3
+prep_task_count = 2
+optional_bonus = 0.15
 duration = 2
 entry_cost = 200.0
 payout = 2000.0
@@ -46,6 +48,8 @@ target = 80.0
 name = "Regional"
 prestige_required = 400.0
 prep_turns = 4
+prep_task_count = 3
+optional_bonus = 0.2
 duration = 3
 entry_cost = 1000.0
 payout = 12000.0
@@ -59,6 +63,8 @@ target = 85.0
 name = "State"
 prestige_required = 600.0
 prep_turns = 5
+prep_task_count = 3
+optional_bonus = 0.25
 duration = 3
 entry_cost = 4000.0
 payout = 50000.0
@@ -72,6 +78,8 @@ target = 88.0
 name = "National"
 prestige_required = 800.0
 prep_turns = 6
+prep_task_count = 4
+optional_bonus = 0.3
 duration = 4
 entry_cost = 15000.0
 payout = 200000.0
@@ -85,6 +93,8 @@ target = 90.0
 name = "Major"
 prestige_required = 900.0
 prep_turns = 8
+prep_task_count = 5
+optional_bonus = 0.35
 duration = 4
 entry_cost = 50000.0
 payout = 800000.0
@@ -93,3 +103,58 @@ prestige_swing = 200.0
 residual = 0.3
 fail_floor = 75.0
 target = 92.0
+
+[[tournament.prep_tasks]]
+name = "install grandstands"
+effort = 18.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "put up sponsor signage"
+effort = 10.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "grow out the rough"
+effort = 14.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "double-cut & roll the greens"
+effort = 16.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "narrow the fairways"
+effort = 12.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "firm up the bunkers"
+effort = 11.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "set championship pins"
+effort = 9.0
+optional = false
+
+[[tournament.prep_tasks]]
+name = "lay spectator pathways"
+effort = 13.0
+optional = false
+
+[[tournament.optional_tasks]]
+name = "premium hospitality village"
+effort = 20.0
+optional = true
+
+[[tournament.optional_tasks]]
+name = "broadcast & media compound"
+effort = 22.0
+optional = true
+
+[[tournament.optional_tasks]]
+name = "host a pro-am charity day"
+effort = 16.0
+optional = true

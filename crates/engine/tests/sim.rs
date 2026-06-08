@@ -243,6 +243,7 @@ fn tournament_eligibility_is_gated() {
                 target_capacity: 40.0,
                 disease: DiseasePolicy::Treat,
                 accept_tournament: Some(4),
+                prep_effort: 0.0,
             }
         }
     }

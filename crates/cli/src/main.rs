@@ -6,7 +6,9 @@
 //! Balance is loaded from the TOML file at `$GK_BALANCE` (default
 //! `config/balance.toml`); if absent, the built-in defaults are used.
 
-use engine::{run, Balance, DiseasePolicy, Event, PlanStrategy, World};
+use engine::{
+    run, Balance, DiseasePolicy, Event, PlanStrategy, Strategy, TournamentStrategy, World,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -16,18 +18,29 @@ fn main() {
         return;
     }
 
-    let price: f64 = args.first().and_then(|s| s.parse().ok()).unwrap_or(45.0);
-    let capacity: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(40.0);
-    let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
-    let turns: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(30);
+    // `cli host [capacity] [seed] [turns]` chases tournaments; otherwise a plain
+    // `cli [price] [capacity] [seed] [turns]` runs a fixed plan.
+    let host_mode = args.first().map(String::as_str) == Some("host");
+    let (mut strategy, seed, turns): (Box<dyn Strategy>, u64, u32) = if host_mode {
+        let capacity: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(35.0);
+        let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let turns: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(60);
+        (Box::new(TournamentStrategy { capacity }), seed, turns)
+    } else {
+        let price: f64 = args.first().and_then(|s| s.parse().ok()).unwrap_or(45.0);
+        let capacity: f64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(40.0);
+        let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let turns: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(30);
+        let s = PlanStrategy {
+            price,
+            capacity,
+            disease: DiseasePolicy::Treat,
+        };
+        (Box::new(s), seed, turns)
+    };
 
     let mut world = World::demo(seed).with_balance(load_balance());
-    let mut strategy = PlanStrategy {
-        price,
-        capacity,
-        disease: DiseasePolicy::Treat,
-    };
-    let trace = run(&mut world, &mut strategy, turns);
+    let trace = run(&mut world, strategy.as_mut(), turns);
 
     for event in &trace {
         println!("{}", render(event));
@@ -98,9 +111,19 @@ fn render(event: &Event) -> String {
         Event::TournamentScheduled { tier, starts_in } => {
             format!("  >> {tier} tournament booked (starts in {starts_in})")
         }
-        Event::TournamentStarted { tier } => {
-            format!("  >> {tier} tournament underway — all eyes on the course")
+        Event::TournamentPrep { task, optional } => {
+            let tag = if *optional { " (optional boost!)" } else { "" };
+            format!("  >> prep done: {task}{tag}")
         }
+        Event::TournamentStarted {
+            tier,
+            readiness,
+            optional_done,
+        } => format!(
+            "  >> {tier} underway — readiness {:.0}%{}",
+            readiness * 100.0,
+            if *optional_done { " + boost" } else { "" }
+        ),
         Event::TournamentResult {
             tier,
             grade,

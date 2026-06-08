@@ -3,7 +3,9 @@
 //! `pub(crate)` so only `step` can orchestrate them — preserving the fixed order.
 
 use crate::event::{Event, Trace};
-use crate::model::{DiseasePolicy, TournamentPhase, TournamentState, TournamentTier, World};
+use crate::model::{
+    DiseasePolicy, PrepTask, TournamentPhase, TournamentState, TournamentTier, World,
+};
 
 /// Outcome of the demand system for one turn.
 pub(crate) struct DemandOutcome {
@@ -37,7 +39,7 @@ pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
 /// Limited crew capacity fully services the neediest regions first (restoring
 /// moisture, mowing, fertilizing, repairing wear). When needy regions outnumber
 /// capacity, conditions slip — the core allocation tension.
-pub(crate) fn maintenance(world: &mut World, trace: &mut Trace) {
+pub(crate) fn maintenance(world: &mut World, capacity: f64, trace: &mut Trace) {
     let service_cost = world.balance.economy.service_cost;
 
     let mut order: Vec<usize> = (0..world.course.regions.len()).collect();
@@ -47,7 +49,7 @@ pub(crate) fn maintenance(world: &mut World, trace: &mut Trace) {
             .total_cmp(&world.course.regions[b].health())
     });
 
-    let mut budget = world.ops.staff_capacity;
+    let mut budget = capacity;
     let mut serviced = 0u32;
     for i in order {
         if budget < service_cost {
@@ -63,7 +65,7 @@ pub(crate) fn maintenance(world: &mut World, trace: &mut Trace) {
     }
     trace.push(Event::Maintenance {
         regions_serviced: serviced,
-        capacity_used: world.ops.staff_capacity - budget,
+        capacity_used: capacity - budget,
     });
 }
 
@@ -283,7 +285,8 @@ pub(crate) fn standing_update(world: &mut World, outcome: &DemandOutcome) {
 }
 
 /// Commit to hosting a tournament if one is requested, eligible (prestige gate),
-/// and affordable. Pays the entry fee and books a prep countdown.
+/// and affordable. Pays the entry fee and draws the prep checklist (mandatory
+/// tasks + one optional boost task).
 pub(crate) fn tournament_accept(world: &mut World, tier_idx: Option<usize>, trace: &mut Trace) {
     let Some(idx) = tier_idx else {
         return;
@@ -291,23 +294,79 @@ pub(crate) fn tournament_accept(world: &mut World, tier_idx: Option<usize>, trac
     if world.tournament.is_some() {
         return;
     }
-    let Some(tier) = world.balance.tournament.tiers.get(idx).cloned() else {
+    let tb = world.balance.tournament.clone();
+    let Some(tier) = tb.tiers.get(idx).cloned() else {
         return;
     };
     if world.standing.prestige < tier.prestige_required || world.finances.cash < tier.entry_cost {
         return;
     }
+
+    let mut tasks = pick_distinct(
+        &tb.prep_tasks,
+        tier.prep_task_count as usize,
+        &mut world.rng,
+    );
+    tasks.extend(pick_distinct(&tb.optional_tasks, 1, &mut world.rng));
+    let mandatory_total: f64 = tasks.iter().filter(|t| !t.optional).map(|t| t.effort).sum();
+
     world.finances.cash -= tier.entry_cost;
     world.tournament = Some(TournamentState {
         tier: idx,
         phase: TournamentPhase::Scheduled {
             turns_until: tier.prep_turns,
+            tasks,
+            mandatory_total,
         },
     });
     trace.push(Event::TournamentScheduled {
         tier: tier.name,
         starts_in: tier.prep_turns,
     });
+}
+
+/// Pick `n` distinct tasks from a pool using the seeded RNG. Deterministic.
+fn pick_distinct(pool: &[PrepTask], n: usize, rng: &mut crate::rng::Rng) -> Vec<PrepTask> {
+    let mut idxs: Vec<usize> = (0..pool.len()).collect();
+    let mut out = Vec::new();
+    for _ in 0..n.min(pool.len()) {
+        let k = ((rng.next_f64() * idxs.len() as f64) as usize).min(idxs.len() - 1);
+        out.push(pool[idxs.remove(k)].clone());
+    }
+    out
+}
+
+/// Work the prep checklist with diverted capacity — mandatory tasks first, the
+/// optional boost last (so it's only finished if you push extra effort in).
+/// Returns effort actually spent. No-op outside the prep window.
+pub(crate) fn tournament_prep(world: &mut World, prep_effort: f64, trace: &mut Trace) -> f64 {
+    let Some(state) = world.tournament.as_mut() else {
+        return 0.0;
+    };
+    let TournamentPhase::Scheduled { tasks, .. } = &mut state.phase else {
+        return 0.0;
+    };
+    let mut budget = prep_effort.max(0.0);
+    let mut spent = 0.0;
+    for task in tasks.iter_mut() {
+        if budget <= 0.0 {
+            break;
+        }
+        if task.effort <= 0.0 {
+            continue;
+        }
+        let apply = budget.min(task.effort);
+        task.effort -= apply;
+        budget -= apply;
+        spent += apply;
+        if task.effort <= 0.0 {
+            trace.push(Event::TournamentPrep {
+                task: task.name.clone(),
+                optional: task.optional,
+            });
+        }
+    }
+    spent
 }
 
 /// Advance a booked tournament: count down prep, then run the event accumulating
@@ -322,33 +381,56 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
     let mut attention = 1.0;
 
     match &mut state.phase {
-        TournamentPhase::Scheduled { turns_until } => {
+        TournamentPhase::Scheduled {
+            turns_until,
+            tasks,
+            mandatory_total,
+        } => {
             if *turns_until > 1 {
                 *turns_until -= 1;
                 world.tournament = Some(state);
             } else {
+                // Lock readiness from how much of the mandatory checklist got done.
+                let remaining_mandatory: f64 =
+                    tasks.iter().filter(|t| !t.optional).map(|t| t.effort).sum();
+                let readiness = if *mandatory_total > 0.0 {
+                    (1.0 - remaining_mandatory / *mandatory_total).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                let optional_done = tasks.iter().filter(|t| t.optional).all(|t| t.effort <= 0.0);
                 trace.push(Event::TournamentStarted {
                     tier: tier.name.clone(),
+                    readiness,
+                    optional_done,
                 });
                 attention = tier.attention;
                 if tier.duration <= 1 {
-                    resolve_tournament(world, &tier, conditions, trace);
+                    resolve_tournament(world, &tier, conditions, readiness, optional_done, trace);
                 } else {
                     state.phase = TournamentPhase::Running {
                         day: 1,
                         condition_sum: conditions,
+                        readiness,
+                        optional_done,
                     };
                     world.tournament = Some(state);
                 }
             }
         }
-        TournamentPhase::Running { day, condition_sum } => {
+        TournamentPhase::Running {
+            day,
+            condition_sum,
+            readiness,
+            optional_done,
+        } => {
             *day += 1;
             *condition_sum += conditions;
             attention = tier.attention;
             if *day >= tier.duration {
                 let avg = *condition_sum / *day as f64;
-                resolve_tournament(world, &tier, avg, trace);
+                let (r, od) = (*readiness, *optional_done);
+                resolve_tournament(world, &tier, avg, r, od, trace);
             } else {
                 world.tournament = Some(state);
             }
@@ -357,17 +439,26 @@ pub(crate) fn tournament_tick(world: &mut World, trace: &mut Trace) -> f64 {
     attention
 }
 
-/// Grade the event by how well conditions held under the spotlight, then pay out,
-/// swing prestige (amplified), and set a lasting residual demand modifier.
+/// Grade the event by how well conditions held under the spotlight, scaled by
+/// prep readiness (showing up half-built tanks it); the optional task adds a
+/// payout bonus. Then pay out, swing prestige (amplified), and set a residual.
 fn resolve_tournament(
     world: &mut World,
     tier: &TournamentTier,
     avg_condition: f64,
+    readiness: f64,
+    optional_done: bool,
     trace: &mut Trace,
 ) {
-    let grade =
+    let condition_grade =
         ((avg_condition - tier.fail_floor) / (tier.target - tier.fail_floor)).clamp(0.0, 1.0);
-    let payout = tier.payout * grade;
+    let grade = condition_grade * readiness;
+    let bonus = if optional_done {
+        1.0 + tier.optional_bonus
+    } else {
+        1.0
+    };
+    let payout = tier.payout * grade * bonus;
     world.finances.cash += payout;
     let prestige_delta = tier.prestige_swing * (2.0 * grade - 1.0);
     world.standing.prestige = (world.standing.prestige + prestige_delta).clamp(0.0, 1000.0);

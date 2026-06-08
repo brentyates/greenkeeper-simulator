@@ -16,8 +16,8 @@ pub use decision::{
 pub use event::{Event, Trace};
 pub use model::{
     default_segments, Balance, Course, DiseaseBalance, DiseasePolicy, EconomyBalance, Finances,
-    Operations, PrestigeBalance, Region, RegionKind, Segment, Standing, TournamentBalance,
-    TournamentPhase, TournamentState, TournamentTier, World,
+    Operations, PrepTask, PrestigeBalance, Region, RegionKind, Segment, Standing,
+    TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 
@@ -34,7 +34,14 @@ pub fn step(world: &mut World, decisions: &Decisions, trace: &mut Trace) {
 
     let dryness = systems::weather(world, trace);
     systems::agronomy(world, dryness);
-    systems::maintenance(world, trace);
+    // Tournament prep steals capacity from maintenance unless you've staffed up.
+    let prep_request = decisions.prep_effort.clamp(0.0, world.ops.staff_capacity);
+    let prep_spent = systems::tournament_prep(world, prep_request, trace);
+    systems::maintenance(
+        world,
+        (world.ops.staff_capacity - prep_spent).max(0.0),
+        trace,
+    );
     systems::treatment(world, decisions.disease, trace);
     systems::disease_tick(world, dryness, trace);
     systems::prestige_update(world, trace);
