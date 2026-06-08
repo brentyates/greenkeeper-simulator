@@ -484,22 +484,24 @@ impl Default for AgronomyBalance {
 
 /// Automation: capital that takes maintenance jobs off the crew. The irrigation
 /// system (pipes + sprinklers) is a one-time course-wide install that waters
-/// automatically; robot units mow and fertilize up to a throughput. Robots follow
-/// the original design — high capital, low operating cost, and reliable but for
-/// occasional breakdowns that mechanics keep in check. Tuning.
+/// automatically; robot units mow and fertilize up to a throughput. Robots are the
+/// elite endgame from the original design — high capital up front, but they work
+/// tirelessly with no wage, so they replace expensive crew handily. They rarely
+/// break down, and a single mechanic keeps a whole fleet running. Tuning.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AutomationBalance {
     pub irrigation_install: f64, // one-time capital: pipes + sprinklers, whole course
     pub irrigation_upkeep: f64,  // per-turn running cost once installed
-    pub robot_price: f64,        // capital per robot unit (high)
+    pub robot_price: f64,        // capital per robot unit (high up front)
     pub robot_throughput: f64,   // regions one unit mows+fertilizes per turn
     pub robot_upkeep: f64,       // per-turn running cost per owned unit (low — power, not wages)
     pub robot_breakdown: f64,    // base per-unit per-turn breakdown chance (rare)
     pub robot_repair_cost: f64,  // paid when a unit breaks down
     pub robot_repair_turns: u32, // turns a broken unit is out of service
     pub mechanic_wage: f64,      // per-turn wage per mechanic on staff
-    pub breakdown_no_mechanic: f64, // breakdown multiplier with no mechanics (penalty)
-    pub breakdown_floor: f64,    // breakdown multiplier with a mechanic per robot (best)
+    pub robots_per_mechanic: f64, // how many robots one mechanic keeps covered
+    pub breakdown_no_mechanic: f64, // breakdown multiplier for uncovered robots (penalty)
+    pub breakdown_floor: f64,    // breakdown multiplier for mechanic-covered robots (best)
 }
 
 impl Default for AutomationBalance {
@@ -510,12 +512,13 @@ impl Default for AutomationBalance {
             robot_price: 4000.0,
             robot_throughput: 4.0,
             robot_upkeep: 10.0,
-            robot_breakdown: 0.012,
+            robot_breakdown: 0.01,
             robot_repair_cost: 800.0,
             robot_repair_turns: 2,
             mechanic_wage: 30.0,
-            breakdown_no_mechanic: 1.5,
-            breakdown_floor: 0.4,
+            robots_per_mechanic: 12.0,
+            breakdown_no_mechanic: 2.0,
+            breakdown_floor: 0.3,
         }
     }
 }

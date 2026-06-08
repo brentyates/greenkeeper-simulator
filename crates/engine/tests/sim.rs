@@ -212,6 +212,34 @@ fn irrigation_pays_off_at_scale() {
     );
 }
 
+#[test]
+fn robots_pay_off_at_scale() {
+    // Robots are the elite endgame: tireless wage-free workers. On a big course,
+    // adding an auto-sized robot fleet on top of irrigation out-earns irrigation
+    // alone — the fleet replaces expensive crew for only its upkeep and the rare
+    // repair. (`robot_target: u32::MAX` means "automate as far as it pays".)
+    fn cash(seed: u64, robots: bool) -> f64 {
+        let mut w = big_course(seed, 27);
+        let base = w.course.regions.len() as f64 * 4.0;
+        run(
+            &mut w,
+            &mut InvestStrategy {
+                base_capacity: base,
+                irrigation: true,
+                robot_target: if robots { u32::MAX } else { 0 },
+            },
+            250,
+        );
+        w.finances.cash
+    }
+    let with_robots: f64 = (1..=15).map(|s| cash(s, true)).sum();
+    let irrigation_only: f64 = (1..=15).map(|s| cash(s, false)).sum();
+    assert!(
+        with_robots > irrigation_only,
+        "robots should pay off at scale (robots={with_robots:.0}, irrigation_only={irrigation_only:.0})"
+    );
+}
+
 // --- invariants (guard against NaN, out-of-bounds, broken couplings) ---
 
 #[test]

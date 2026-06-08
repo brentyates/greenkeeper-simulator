@@ -120,17 +120,19 @@ pub(crate) fn automation(
     }
     world.finances.cash -= a.robot_upkeep * world.robots.len() as f64;
 
-    // Mechanics keep the fleet running: a mechanic per robot pushes breakdowns to
-    // the floor; none leaves them at the penalty rate. (More important the more you
-    // automate — automation ties back to the staff-as-investment pillar.)
+    // Mechanics keep the fleet running: one mechanic covers many robots
+    // (`robots_per_mechanic`), pushing their breakdown rate to the floor. Robots
+    // beyond what the mechanics can cover run at the penalty rate. So a small
+    // mechanic crew protects a large fleet cheaply — skimping entirely is what
+    // hurts.
     let n_robots = world.robots.len();
-    let factor = if n_robots == 0 {
+    let coverage = if n_robots == 0 {
         0.0
     } else {
-        let coverage = (world.ops.mechanics as f64 / n_robots as f64).clamp(0.0, 1.0);
-        (a.breakdown_no_mechanic - (a.breakdown_no_mechanic - a.breakdown_floor) * coverage)
-            .max(a.breakdown_floor)
+        (world.ops.mechanics as f64 * a.robots_per_mechanic / n_robots as f64).clamp(0.0, 1.0)
     };
+    let factor =
+        a.breakdown_no_mechanic - (a.breakdown_no_mechanic - a.breakdown_floor) * coverage;
     let breakdown = a.robot_breakdown * factor;
 
     // Recover units mid-repair; roll breakdowns on the operational ones.

@@ -157,15 +157,18 @@ impl Strategy for ScenarioStrategy {
 }
 
 /// Trades labor for capital: ramp pricing, installing the irrigation system and
-/// buying robot units (one at a time, as cash allows) up to a target fleet. Crew
-/// size *tracks what's still done by hand* — a full crew while saving up, shedding
-/// wages as each automation comes online, staffing back up when robots are down
-/// for repair. The automation path: a capital bet that pays off by shedding labor,
-/// most at scale.
+/// buying robot units (one at a time, as cash allows). Crew size *tracks what's
+/// still done by hand* — a full crew while saving up, shedding wages as each
+/// automation comes online, staffing back up when robots are down for repair. The
+/// fleet auto-sizes to exactly replace the hand crew, so robots are never idle
+/// capital. The automation path: a capital bet that pays off by shedding wages.
 pub struct InvestStrategy {
     /// The hands-on crew you'd run with no automation; automation scales it down.
     pub base_capacity: f64,
     pub irrigation: bool,
+    /// Upper cap on fleet ambition. The strategy buys only as many robots as it
+    /// takes to replace the hand crew (auto-sized), never more than this. Set high
+    /// (e.g. `u32::MAX`) to mean "fully automate".
     pub robot_target: u32,
 }
 
@@ -173,6 +176,7 @@ impl Strategy for InvestStrategy {
     fn decide(&mut self, world: &World) -> Decisions {
         let a = &world.balance.automation;
         let agro = &world.balance.agronomy;
+        let mowfert = a.robot_throughput * (agro.mow_cost + agro.fertilize_cost);
 
         // Automation is research-gated, so fund research until the wanted unlocks
         // land (robots are the elite endgame — it takes a while). Then stop.
@@ -184,11 +188,35 @@ impl Strategy for InvestStrategy {
             0.0
         };
 
+        // Keep a skeleton crew on hand to patch breakdown slack — a couple of
+        // units' worth of work — but don't carry dead payroll once robots cover
+        // the course.
+        let floor = if self.robot_target > 0 {
+            2.0 * mowfert
+        } else {
+            0.0
+        };
+
+        // The hand crew, scaled down by irrigation (which takes watering off every
+        // region the crew would touch). This is the labor robots are bought to
+        // replace.
+        let full = agro.mow_cost + agro.water_cost + agro.fertilize_cost;
+        let mut hand_crew = self.base_capacity;
+        if self.irrigation {
+            hand_crew *= (full - agro.water_cost) / full;
+        }
+        // Auto-size the fleet: buy robots only until they've shouldered the whole
+        // hand crew down to the floor — past that, a robot is idle capital. The
+        // caller's `robot_target` is just an upper cap on the ambition.
+        let need_to_replace = (hand_crew - floor).max(0.0);
+        let fleet_cap = (need_to_replace / mowfert).ceil() as u32;
+        let target_fleet = self.robot_target.min(fleet_cap);
+
         // Buy once unlocked: irrigation first, then robots one at a time, always
         // keeping a cash cushion so a purchase never bankrupts.
         let buy_irrigation =
             self.irrigation && world.irrigation_unlocked() && !world.irrigation;
-        let want_more = (world.robots.len() as u32) < self.robot_target;
+        let want_more = (world.robots.len() as u32) < target_fleet;
         let buy_robots = if want_more
             && world.robots_unlocked()
             && !buy_irrigation
@@ -199,30 +227,20 @@ impl Strategy for InvestStrategy {
             0
         };
 
-        // Size the crew to the maintenance still done by hand. Irrigation removes
-        // watering from every region the crew touches (a proportional saving);
-        // each operational robot offloads a fixed slab of mowing+fertilizing
-        // (its throughput), so the crew staffs back up when units are down.
-        let full = agro.mow_cost + agro.water_cost + agro.fertilize_cost;
+        // Size the crew to the maintenance still done by hand: each operational
+        // robot offloads a fixed slab of mowing+fertilizing (its throughput), so
+        // the crew staffs back up when units are down for repair.
         let working = world.robots.iter().filter(|&&d| d == 0).count() as f64;
-        let mut target_capacity = self.base_capacity;
-        if world.irrigation {
-            target_capacity *= (full - agro.water_cost) / full;
-        }
-        target_capacity -= working * a.robot_throughput * (agro.mow_cost + agro.fertilize_cost);
-        // Keep a little crew on hand to patch breakdown slack (a couple of units'
-        // worth of work) — but don't carry dead payroll once robots cover the course.
-        let floor = if self.robot_target > 0 {
-            2.0 * a.robot_throughput * (agro.mow_cost + agro.fertilize_cost)
-        } else {
-            0.0
-        };
-        let target_capacity = target_capacity.max(floor);
+        let target_capacity = (hand_crew - working * mowfert).max(floor);
 
-        // One mechanic per few robots keeps breakdowns near the floor; they earn
-        // their wage by sparing repair bills and downtime once the fleet is sizable.
+        // One mechanic covers many robots, so the mechanic crew is small and cheap
+        // insurance — they earn their wage by keeping the fleet out of the shop.
         let owned = world.robots.len() as u32;
-        let mechanics = owned.div_ceil(3);
+        let mechanics = if owned > 0 {
+            ((owned as f64 / a.robots_per_mechanic).ceil() as u32).max(1)
+        } else {
+            0
+        };
 
         Decisions {
             price: sweet_spot(world.standing.tier()),
