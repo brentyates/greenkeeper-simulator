@@ -15,10 +15,11 @@ pub use decision::{
 };
 pub use event::{Event, Trace};
 pub use model::{
-    campaign, default_segments, Balance, Course, CourseSpec, CourseType, DiseaseBalance,
-    DiseasePolicy, EconomyBalance, Finances, LossReason, Objective, Operations, Outcome, PrepTask,
-    PrestigeBalance, Region, RegionKind, Research, ResearchBalance, Scenario, Segment, Standing,
-    Tech, TournamentBalance, TournamentPhase, TournamentState, TournamentTier, World,
+    campaign, default_segments, AgronomyBalance, Balance, Course, CourseSpec, CourseType,
+    DiseaseBalance, DiseasePolicy, EconomyBalance, Finances, KindRates, LossReason, MarketBalance,
+    Objective, Operations, Outcome, PrepTask, PrestigeBalance, Region, RegionKind, Research,
+    ResearchBalance, Scenario, Segment, Standing, Tech, TournamentBalance, TournamentPhase,
+    TournamentState, TournamentTier, World,
 };
 pub use rng::Rng;
 

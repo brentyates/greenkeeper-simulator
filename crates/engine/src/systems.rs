@@ -64,11 +64,13 @@ pub(crate) fn weather(world: &mut World, trace: &mut Trace) -> f64 {
 pub(crate) fn agronomy(world: &mut World, extra_dryness: f64) {
     let nutrient_decay = world.balance.economy.nutrient_decay;
     let irrigation = tech_bonuses(world).1; // research cuts moisture loss
+    let agro = world.balance.agronomy.clone();
     for r in world.course.regions.iter_mut() {
-        let moisture_loss = r.kind.moisture_decay() * (1.0 - irrigation) + extra_dryness;
+        let rates = agro.rates(r.kind);
+        let moisture_loss = rates.moisture_decay * (1.0 - irrigation) + extra_dryness;
         r.moisture = (r.moisture - moisture_loss).clamp(0.0, 100.0);
         r.nutrients = (r.nutrients - nutrient_decay).clamp(0.0, 100.0);
-        let mut growth = r.kind.growth_rate();
+        let mut growth = rates.growth;
         if r.moisture > 50.0 && r.nutrients > 50.0 {
             growth *= 1.5;
         }
@@ -250,7 +252,7 @@ pub(crate) fn demand_and_revenue(
     let mut premium_golfers = 0.0;
     let mut secondary = 0.0;
 
-    for s in &world.course.segments {
+    for s in &world.balance.market.segments {
         let wtp = s.base_wtp * (0.5 + 1.0 * experience);
         let interested = s.population * (0.2 + 0.8 * experience) * demand_mult;
         let playing_fraction = (1.0 - (price - wtp).max(0.0) / s.wtp_spread).clamp(0.0, 1.0);
@@ -531,18 +533,19 @@ fn resolve_tournament(
 /// back onto conditions: the more play you take, the harder it is to stay
 /// pristine. The brake and the flywheel are the same mechanism.
 pub(crate) fn wear_from_traffic(world: &mut World, golfers: f64) {
+    let agro = world.balance.agronomy.clone();
     let total_wear = golfers * world.balance.economy.wear_per_golfer;
     let weight_sum: f64 = world
         .course
         .regions
         .iter()
-        .map(|r| r.kind.wear_rate())
+        .map(|r| agro.rates(r.kind).wear)
         .sum();
     if weight_sum <= 0.0 {
         return;
     }
     for r in world.course.regions.iter_mut() {
-        let share = r.kind.wear_rate() / weight_sum;
+        let share = agro.rates(r.kind).wear / weight_sum;
         r.wear = (r.wear + total_wear * share).clamp(0.0, 100.0);
     }
 }

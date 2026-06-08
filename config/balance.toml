@@ -196,3 +196,55 @@ cost = 2400.0
 mower_efficiency = 0.0
 irrigation = 0.15
 disease_resistance = 0.25
+
+[[market.segments]]
+name = "bargain"
+premium = false
+population = 30.0
+base_wtp = 25.0
+wtp_spread = 15.0
+spend_propensity = 4.0
+
+[[market.segments]]
+name = "regular"
+premium = false
+population = 20.0
+base_wtp = 45.0
+wtp_spread = 20.0
+spend_propensity = 8.0
+
+[[market.segments]]
+name = "avid"
+premium = false
+population = 10.0
+base_wtp = 80.0
+wtp_spread = 30.0
+spend_propensity = 14.0
+
+[[market.segments]]
+name = "affluent"
+premium = true
+population = 5.0
+base_wtp = 140.0
+wtp_spread = 50.0
+spend_propensity = 25.0
+
+[agronomy.green]
+growth = 8.0
+moisture_decay = 12.0
+wear = 1.4
+
+[agronomy.tee]
+growth = 6.0
+moisture_decay = 10.0
+wear = 1.2
+
+[agronomy.fairway]
+growth = 5.0
+moisture_decay = 9.0
+wear = 1.0
+
+[agronomy.rough]
+growth = 3.0
+moisture_decay = 7.0
+wear = 0.6

@@ -12,36 +12,6 @@ pub enum RegionKind {
 }
 
 impl RegionKind {
-    /// Grass length gained per turn (higher = needs mowing sooner).
-    pub fn growth_rate(self) -> f64 {
-        match self {
-            RegionKind::Green => 8.0,
-            RegionKind::Tee => 6.0,
-            RegionKind::Fairway => 5.0,
-            RegionKind::Rough => 3.0,
-        }
-    }
-
-    /// Moisture lost per turn before weather.
-    pub fn moisture_decay(self) -> f64 {
-        match self {
-            RegionKind::Green => 12.0,
-            RegionKind::Tee => 10.0,
-            RegionKind::Fairway => 9.0,
-            RegionKind::Rough => 7.0,
-        }
-    }
-
-    /// How fast golfer traffic wears this kind (greens/tees take the brunt).
-    pub fn wear_rate(self) -> f64 {
-        match self {
-            RegionKind::Green => 1.4,
-            RegionKind::Tee => 1.2,
-            RegionKind::Fairway => 1.0,
-            RegionKind::Rough => 0.6,
-        }
-    }
-
     pub fn label(self) -> &'static str {
         match self {
             RegionKind::Green => "green",
@@ -89,7 +59,7 @@ impl Region {
 
 /// A slice of the golfer market: how many consider visiting, what they'll pay,
 /// and how much they spend beyond the green fee. Demand emerges from the mix.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Segment {
     pub name: String,
     pub premium: bool,         // high-end clientele — drives exclusivity
@@ -361,6 +331,76 @@ pub struct Balance {
     pub disease: DiseaseBalance,
     pub tournament: TournamentBalance,
     pub research: ResearchBalance,
+    pub market: MarketBalance,
+    pub agronomy: AgronomyBalance,
+}
+
+/// The golfer market — the segment mix demand emerges from. Tuning.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MarketBalance {
+    pub segments: Vec<Segment>,
+}
+
+impl Default for MarketBalance {
+    fn default() -> Self {
+        MarketBalance {
+            segments: default_segments(),
+        }
+    }
+}
+
+/// Per-turn agronomy rates for one region kind. Tuning.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KindRates {
+    pub growth: f64,         // grass length gained per turn
+    pub moisture_decay: f64, // moisture lost per turn before weather
+    pub wear: f64,           // relative traffic-wear rate
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AgronomyBalance {
+    pub green: KindRates,
+    pub tee: KindRates,
+    pub fairway: KindRates,
+    pub rough: KindRates,
+}
+
+impl Default for AgronomyBalance {
+    fn default() -> Self {
+        AgronomyBalance {
+            green: KindRates {
+                growth: 8.0,
+                moisture_decay: 12.0,
+                wear: 1.4,
+            },
+            tee: KindRates {
+                growth: 6.0,
+                moisture_decay: 10.0,
+                wear: 1.2,
+            },
+            fairway: KindRates {
+                growth: 5.0,
+                moisture_decay: 9.0,
+                wear: 1.0,
+            },
+            rough: KindRates {
+                growth: 3.0,
+                moisture_decay: 7.0,
+                wear: 0.6,
+            },
+        }
+    }
+}
+
+impl AgronomyBalance {
+    pub fn rates(&self, kind: RegionKind) -> KindRates {
+        match kind {
+            RegionKind::Green => self.green,
+            RegionKind::Tee => self.tee,
+            RegionKind::Fairway => self.fairway,
+            RegionKind::Rough => self.rough,
+        }
+    }
 }
 
 /// A committed tournament's lifecycle: a prep window working a checklist, then the
@@ -566,11 +606,11 @@ pub fn campaign() -> Vec<Scenario> {
 // World state, grouped by concern.
 // ===========================================================================
 
-/// The course itself: its maintainable regions and its golfer market.
+/// The course itself: its maintainable regions. (The golfer market is tuning, in
+/// `Balance.market`.)
 #[derive(Clone, Debug)]
 pub struct Course {
     pub regions: Vec<Region>,
-    pub segments: Vec<Segment>,
 }
 
 impl Course {
@@ -702,10 +742,7 @@ impl World {
             .collect();
         World {
             turn: 0,
-            course: Course {
-                regions,
-                segments: default_segments(),
-            },
+            course: Course { regions },
             finances: Finances {
                 cash: 2000.0,
                 price: 35.0,
