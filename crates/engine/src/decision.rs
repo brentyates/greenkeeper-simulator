@@ -197,12 +197,12 @@ impl Strategy for InvestStrategy {
             0.0
         };
 
-        // The hand crew, scaled down by irrigation (which takes watering off every
-        // region the crew would touch). This is the labor robots are bought to
-        // replace.
+        // The hand crew, scaled down *once the irrigation system is installed*
+        // (which takes watering off every region the crew would touch). Until then
+        // the crew still waters by hand, so it stays full size while saving up.
         let full = agro.mow_cost + agro.water_cost + agro.fertilize_cost;
         let mut hand_crew = self.base_capacity;
-        if self.irrigation {
+        if world.irrigation {
             hand_crew *= (full - agro.water_cost) / full;
         }
         // Auto-size the fleet: buy robots only until they've shouldered the whole
