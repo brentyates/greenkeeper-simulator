@@ -7,8 +7,8 @@
 //! Usage: `sweep [seeds] [turns]`  (defaults: 150 seeds, 150 turns)
 
 use engine::{
-    run, Balance, Event, InvestStrategy, PlanStrategy, RampStrategy, Strategy, TournamentStrategy,
-    World,
+    run, Balance, CourseSpec, CourseType, Event, InvestStrategy, Objective, PlanStrategy,
+    RampStrategy, Scenario, Strategy, TournamentStrategy, World,
 };
 
 /// Load tuning from TOML (`$GK_BALANCE`, default `config/balance.toml`); fall back
@@ -53,6 +53,26 @@ fn invest(base_capacity: f64, irrigation: bool, robot_target: u32) -> Factory {
     })
 }
 
+/// A larger course for the automation paths to stretch their legs on: capital
+/// only pays back at scale, so robots never surface on the 9-region sandbox. Built
+/// scenario-free (like `demo`) so it runs the full turn count, with bankruptcy the
+/// only early exit.
+fn scaled_world(seed: u64, holes: u32) -> World {
+    let spec = CourseSpec {
+        holes,
+        par3: false,
+        course_type: CourseType::Parkland,
+    };
+    let mut w = World::demo(seed).with_scenario(Scenario {
+        name: String::new(),
+        course: spec,
+        objective: Objective::Survive { turns: 0 },
+        start_neglect: 0.0,
+    });
+    w.scenario = None;
+    w
+}
+
 struct RunResult {
     final_cash: f64,
     final_prestige: f64,
@@ -61,8 +81,14 @@ struct RunResult {
     total_golfers: u64,
 }
 
-fn run_one(path: &Path, balance: &Balance, seed: u64, turns: u32) -> RunResult {
-    let mut world = World::demo(seed).with_balance(balance.clone());
+fn run_one(
+    make_world: &dyn Fn(u64) -> World,
+    path: &Path,
+    balance: &Balance,
+    seed: u64,
+    turns: u32,
+) -> RunResult {
+    let mut world = make_world(seed).with_balance(balance.clone());
     let mut strategy = (path.make)();
     let trace = run(&mut world, strategy.as_mut(), turns);
 
@@ -89,6 +115,40 @@ fn mean(xs: impl Iterator<Item = f64>) -> f64 {
     } else {
         sum / n as f64
     }
+}
+
+fn print_table(
+    title: &str,
+    make_world: &dyn Fn(u64) -> World,
+    paths: &[Path],
+    balance: &Balance,
+    seeds: u64,
+    turns: u32,
+) {
+    println!("{title}\n");
+    println!(
+        "{:<20} {:>6} {:>10} {:>8} {:>7} {:>8}",
+        "path", "bust%", "mean $", "prestige", "health", "golfers",
+    );
+    println!("{}", "-".repeat(64));
+
+    for path in paths {
+        let results: Vec<RunResult> = (1..=seeds)
+            .map(|s| run_one(make_world, path, balance, s, turns))
+            .collect();
+        let n = results.len() as f64;
+        let bust = results.iter().filter(|r| r.bankrupt).count() as f64 / n * 100.0;
+        let mean_cash = mean(results.iter().map(|r| r.final_cash));
+        let mean_prestige = mean(results.iter().map(|r| r.final_prestige));
+        let mean_health = mean(results.iter().map(|r| r.final_health));
+        let mean_golfers = mean(results.iter().map(|r| r.total_golfers as f64));
+
+        println!(
+            "{:<20} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>8.0}",
+            path.name, bust, mean_cash, mean_prestige, mean_health, mean_golfers,
+        );
+    }
+    println!();
 }
 
 fn main() {
@@ -147,27 +207,44 @@ fn main() {
         },
     ];
 
-    println!("Balance sweep — {seeds} seeds x {turns} turns, demo course\n");
-    println!(
-        "{:<20} {:>6} {:>10} {:>8} {:>7} {:>8}",
-        "path", "bust%", "mean $", "prestige", "health", "golfers",
+    // Automation is for scale, so give it a real course to pay back on. Same base
+    // crew sized to the bigger course; robots auto-size to "as far as it pays".
+    let scaled_base = scaled_world(1, 27).course.regions.len() as f64 * 4.0;
+    let scaled_paths = [
+        Path {
+            name: "hand labor (ramp)",
+            make: ramp(scaled_base),
+        },
+        Path {
+            name: "auto: irrigation",
+            make: invest(scaled_base, true, 0),
+        },
+        Path {
+            name: "auto: robots",
+            make: invest(scaled_base, false, u32::MAX),
+        },
+        Path {
+            name: "auto: full",
+            make: invest(scaled_base, true, u32::MAX),
+        },
+    ];
+
+    print_table(
+        &format!("Balance sweep — {seeds} seeds x {turns} turns, demo course (9 regions)"),
+        &World::demo,
+        &paths,
+        &balance,
+        seeds,
+        turns,
     );
-    println!("{}", "-".repeat(64));
-
-    for path in &paths {
-        let results: Vec<RunResult> = (1..=seeds)
-            .map(|s| run_one(path, &balance, s, turns))
-            .collect();
-        let n = results.len() as f64;
-        let bust = results.iter().filter(|r| r.bankrupt).count() as f64 / n * 100.0;
-        let mean_cash = mean(results.iter().map(|r| r.final_cash));
-        let mean_prestige = mean(results.iter().map(|r| r.final_prestige));
-        let mean_health = mean(results.iter().map(|r| r.final_health));
-        let mean_golfers = mean(results.iter().map(|r| r.total_golfers as f64));
-
-        println!(
-            "{:<20} {:>5.0}% {:>10.0} {:>8.0} {:>7.1} {:>8.0}",
-            path.name, bust, mean_cash, mean_prestige, mean_health, mean_golfers,
-        );
-    }
+    print_table(
+        &format!(
+            "Automation at scale — {seeds} seeds x {turns} turns, 27-hole parkland (135 regions)"
+        ),
+        &|s| scaled_world(s, 27),
+        &scaled_paths,
+        &balance,
+        seeds,
+        turns,
+    );
 }
